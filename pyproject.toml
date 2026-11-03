@@ -1,0 +1,19 @@
+[project]
+name = "kami"
+version = "0.1.0"
+description = "Kami Download Manager (KDM) - kisisel, eklentilerle buyuyen indirme yoneticisi"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "pywebview>=5.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
