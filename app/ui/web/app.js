@@ -70,6 +70,7 @@ const ICONS = {
   folder: '<svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   open: '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   remove: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  hash: '<svg viewBox="0 0 24 24"><path d="M9 4 7 20M17 4l-2 16M4 9h16M3 15h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 
@@ -88,6 +89,7 @@ function actionsFor(d) {
       return b("resume", ICONS.resume, T("retry")) + b("remove", ICONS.remove, T("remove"), "danger");
     case "complete":
       return b("open", ICONS.open, T("open_file")) + b("folder", ICONS.folder, T("open_folder")) +
+             b("hash", ICONS.hash, T("hash_btn")) +
              b("remove", ICONS.remove, T("remove")) + b("delete", ICONS.trash, T("remove_file"), "danger");
     default:
       return b("remove", ICONS.remove, T("remove"), "danger");
@@ -111,6 +113,8 @@ function metaFor(d) {
     if (d.speed && d.size) parts.push(`<span>${T("eta", fmtEta((d.size - d.downloaded) / d.speed))}</span>`);
     if (d.connections) parts.push(`<span>${T("connections", d.connections)}</span>`);
   }
+  const badges = extraBadges(d);
+  if (badges) parts.push(badges);
   return parts.join("");
 }
 
@@ -133,9 +137,10 @@ function render() {
       li = document.createElement("li");
       li.className = "item";
       li.dataset.id = d.id;
+      li.draggable = true;   // surukle-sirala (extras.js)
       li.innerHTML = `<div class="ficon"></div><div class="name"></div><div class="actions"></div><div class="meta"></div><div class="bar"><i></i></div>`;
     }
-    const sig = `${d.status}|${d.filename}|${d.downloaded}|${d.size}|${d.speed}|${d.connections}|${d.error}|${d.phase}`;
+    const sig = `${d.status}|${d.filename}|${d.downloaded}|${d.size}|${d.speed}|${d.connections}|${d.error}|${d.phase}|${JSON.stringify(d.extra || {})}`;
     if (li.dataset.sig !== sig) {
       li.className = `item st-${d.status}`;
       const name = d.filename || d.url;
@@ -223,13 +228,19 @@ function hexA(hex, a) {
 }
 
 // ---------- veri dongusu ----------
+let ticking = false;
 async function tick() {
+  if (ticking) return;            // onceki cevap gelmeden yenisini yigma
+  ticking = true;
   try {
     const s = await api.get_state();
     state.items = s.items;
     (s.media_requests || []).forEach(handleMediaRequest);
     if ((s.clip_offers || []).length) showClipOffer(s.clip_offers[s.clip_offers.length - 1]);
     (s.rd_events || []).forEach(rdEvent);
+    state.rdProgress = s.rd_progress || [];
+    if (s.update) showUpdate(s.update);
+    renderLive();
     (s.torrent_requests || []).forEach((t) => (t.route === "ask" ? askTorrent : openTorrentLocal)(t));
     if (rd.view && Date.now() - rd.lastRefresh > 5000) rdRefresh();
     state.history.push(s.total_speed); state.history.shift();
@@ -247,7 +258,7 @@ async function tick() {
     drawSpeed();
   } catch (e) {
     console.error(e);
-  }
+  } finally { ticking = false; }
 }
 
 function notifyFinished(items) {
@@ -314,6 +325,7 @@ function bindEvents() {
       "folder": () => api.open_folder(id),
       "confirm-yes": () => api.confirm(id, true),
       "confirm-no": () => api.confirm(id, false),
+      "hash": () => openHash(id),
     };
     if (calls[act]) { await calls[act](); tick(); }
   });
@@ -603,17 +615,32 @@ async function openSettings() {
   }
   $("#dirPath").textContent = state.settings._effective_download_dir;
   $("#settings").showModal();
+  refreshFirewall();
+  refreshDesktop();
+}
+
+async function refreshFirewall() {
+  const r = await api.firewall_status();
+  $("#fwState").textContent = T(r.rule ? "s_tor_fw_ok" : "s_tor_fw_no");
+  $("#fwAllow").hidden = !!r.rule;
 }
 
 function bindSettings() {
+  $("#fwAllow").addEventListener("click", async () => {
+    await api.firewall_allow();
+    setTimeout(refreshFirewall, 4000); setTimeout(refreshFirewall, 12000);   // UAC onayi sonrasi
+  });
   const form = $("#settingsForm");
   form.addEventListener("change", async (e) => {
     const el = e.target;
     if (!el.name) return;
     const value = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value;
     const r = await api.set_setting(el.name, value);
-    if (!r.ok) { toast(r.error, true); return; }
+    if (!r.ok) { toast(T(r.error), true); return; }
     if (el.type === "number") el.value = r.value;
+    state.settings[el.name] = r.value;
+    syncToolbar();
+    if (["hotkey", "hotkey_enabled", "autostart"].includes(el.name)) setTimeout(refreshDesktop, 300);
     if (el.name === "language") { state.lang = r.value; applyI18n(); }
     if (el.name === "theme") applyTheme(r.value);
   });
@@ -638,6 +665,8 @@ async function init() {
   bindEvents();
   bindSettings();
   bindRd();
+  bindLive();
+  bindExtras();
   await tick();
   setInterval(() => { if (!document.hidden) tick(); }, 500);
 }

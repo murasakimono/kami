@@ -26,7 +26,8 @@ DEFAULTS: dict[str, Any] = {
     "capture_min_size_kib": 1024,  # bundan kucuk dosyalari tarayici indirsin (boyut biliniyorsa)
     "capture_exclude_hosts": [],   # ornek: ["example.com"]
     "confirm_extensions": ["exe", "msi", "apk", "bat", "cmd", "ps1", "scr", "vbs", "jar"],
-    "notify_on_complete": True,
+    "notify_on_complete": True,    # Windows bildirimi (tepsi simgesi uzerinden)
+    "notify_on_error": True,
     "clipboard_watch": True,       # desteklenen link kopyalaninca "indireyim mi?"
     # Medya (yt-dlp)
     "media_format": "mp4",         # mp4 | mp3
@@ -43,6 +44,22 @@ DEFAULTS: dict[str, Any] = {
     "torrent_stop_seeding": True,  # indirme bitince paylasimi durdur (kapali: oran 1.0'a kadar paylas)
     "torrent_upload_limit_kib": 0, # 0 = sinirsiz (KiB/s, toplam)
     "torrent_port": 0,             # 0 = otomatik (6881-6999); degisiklik Kami yeniden acilinca gecerli
+    "torrent_port_last": 0,        # otomatikte bir kez secilen port (DHT/guvenlik duvari icin sabit kalsin)
+    "torrent_tracker_update": True,# guncel herkese acik izleyici listesini gunde bir indir
+    # Asama 6a: uygulama temelleri
+    "tray_enabled": True,          # sistem tepsisi simgesi (bildirimler de bunun uzerinden)
+    "close_to_tray": True,         # X: kapatma yerine tepsiye gizle
+    "autostart": False,            # Windows'la baslama (HKCU Run; tepside baslar)
+    "hotkey_enabled": True,
+    "hotkey": "ctrl+alt+k",        # genel kisayol: Kami'yi one getir + panodaki linki sor
+    "speed_limit_preset_kib": 2048,# arac cubugundaki "hiz siniri" dugmesinin degeri
+    "schedule_enabled": False,     # zamanlayici: baslangicta tumunu surdur, bitiste duraklat
+    "schedule_start": "02:00",
+    "schedule_stop": "08:00",
+    "defender_mode": "exec_archive",  # off | exec_archive (calistirilabilir + arsiv) | all
+    "checksum_verify": True,       # site/link SHA256 verdiyse indirme bitince dogrula
+    "update_check": True,          # GitHub Releases'ta yeni surum var mi (gunde bir)
+    "update_last": 0,
 }
 
 
@@ -121,4 +138,15 @@ def _coerce(key: str, value: Any) -> Any:
         return [str(x).strip().lower() for x in value if str(x).strip()]
     if key == "rd_mode" and str(value) not in ("auto", "ask", "off"):
         raise ValueError("rd_mode")
+    if key == "defender_mode" and str(value) not in ("off", "exec_archive", "all"):
+        raise ValueError("defender_mode")
+    if key in ("schedule_start", "schedule_stop"):
+        from app.core.extras import _hm
+        _hm(value)   # gecersizse ValueError
+        h, m = str(value).strip().split(":")
+        return f"{int(h):02d}:{m}"
+    if key == "hotkey":
+        from app.core.desktop import parse_hotkey
+        parse_hotkey(str(value))
+        return str(value).strip().lower().replace(" ", "")
     return str(value)

@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS downloads (
     created_at  REAL NOT NULL,
     finished_at REAL NOT NULL DEFAULT 0,
     kind        TEXT NOT NULL DEFAULT 'file',
-    options     TEXT NOT NULL DEFAULT '{}'
+    options     TEXT NOT NULL DEFAULT '{}',
+    position    REAL NOT NULL DEFAULT 0,
+    extra       TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 """
@@ -41,7 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 _COLUMNS = (
     "url", "filename", "directory", "category", "status", "size", "downloaded",
     "gid", "error", "referer", "headers", "source", "page_url", "max_conn", "created_at", "finished_at",
-    "kind", "options",
+    "kind", "options", "position", "extra",
 )
 
 # Eski veritabanlarina sonradan eklenen sutunlar: (ad, tanim)
@@ -49,6 +51,8 @@ _MIGRATIONS = [
     ("max_conn", "INTEGER NOT NULL DEFAULT 0"),
     ("kind", "TEXT NOT NULL DEFAULT 'file'"),
     ("options", "TEXT NOT NULL DEFAULT '{}'"),
+    ("position", "REAL NOT NULL DEFAULT 0"),     # liste sirasi (surukle-sirala); 0 = id
+    ("extra", "TEXT NOT NULL DEFAULT '{}'"),     # tarama sonucu, sha256, beklenen hash ...
 ]
 
 
@@ -79,6 +83,9 @@ class DownloadStore:
         marks = ", ".join("?" for _ in row)
         with self._lock:
             cur = self._conn.execute(f"INSERT INTO downloads ({cols}) VALUES ({marks})", tuple(row.values()))
+            if "position" not in row:   # yeni kayit listenin en ustune
+                self._conn.execute("UPDATE downloads SET position = (SELECT COALESCE(MAX(position), 0) + 1 "
+                                   "FROM downloads) WHERE id = ?", (cur.lastrowid,))
             self._conn.commit()
             return self.get(cur.lastrowid)  # type: ignore[return-value]
 
@@ -90,6 +97,15 @@ class DownloadStore:
                 self._conn.execute(f"UPDATE downloads SET {sets} WHERE id = ?", (*row.values(), download_id))
                 self._conn.commit()
         return self.get(download_id)
+
+    def set_positions(self, ordered_ids: list[int]) -> None:
+        """Listedeki gorunen sira (ustten alta) -> position (buyuk = ustte)."""
+        n = len(ordered_ids)
+        with self._lock:
+            for i, did in enumerate(ordered_ids):
+                self._conn.execute("UPDATE downloads SET position = ? WHERE id = ?", (float(n - i), int(did)))
+            # siralanmayanlar (filtre disinda kalanlar) yeni siranin altinda kalmasin diye ust uste binmez:
+            self._conn.commit()
 
     def delete(self, download_id: int) -> None:
         with self._lock:
@@ -109,7 +125,7 @@ class DownloadStore:
             st = [str(s) for s in statuses]
             q += f" WHERE status IN ({', '.join('?' for _ in st)})"
             args = tuple(st)
-        q += " ORDER BY id DESC"
+        q += " ORDER BY CASE WHEN position = 0 THEN id ELSE position END DESC, id DESC"
         with self._lock:
             rows = self._conn.execute(q, args).fetchall()
         return [_from_row(r) for r in rows]
@@ -121,7 +137,7 @@ class DownloadStore:
 
 
 def _to_db(key: str, value: Any) -> Any:
-    if key in ("headers", "options"):
+    if key in ("headers", "options", "extra"):
         return json.dumps(value or {}, ensure_ascii=False)
     if key == "status":
         return str(value)
@@ -149,4 +165,6 @@ def _from_row(r: sqlite3.Row) -> Download:
         finished_at=r["finished_at"],
         kind=r["kind"],
         options=json.loads(r["options"] or "{}"),
+        position=r["position"] or r["id"],
+        extra=json.loads(r["extra"] or "{}"),
     )

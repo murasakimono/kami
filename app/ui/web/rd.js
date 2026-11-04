@@ -61,13 +61,69 @@ function askTorrent(t) {
   $("#rdAsk").showModal();
 }
 
-// Yerel torrent: magnet'te aria2 once metadata'yi alir (birkac sn, es azsa daha uzun) -> dosya secim penceresi
+// Yerel torrent: magnet'te aria2 once meta veriyi alir (arka planda; ustte "meta veri aranıyor - N eş"),
+// gelince dosya secim penceresi. .torrent dosyasi/linki: dogrudan liste.
+const metaJobs = new Map();   // jid -> {name, peers, seeders, elapsed}
+
+function magnetName(src) {
+  try { return new URLSearchParams(String(src).replace(/^magnet:\?/i, "")).get("dn") || ""; } catch { return ""; }
+}
+
 async function openTorrentLocal(t) {
-  toast(T(t.token ? "resolving" : "tor_meta"), false, true);
+  toast(T("resolving"), false, true);
   let r;
   try { r = await api.torrent_open(t.src || "", t.token || ""); } finally { toastDone(); }
   if (!r || !r.ok) { toast(T("err_" + ((r && r.error) || "torrent_meta_failed")), true); return; }
-  openCloud(r.cloud);
+  if (r.cloud) { openCloud(r.cloud); return; }
+  const jid = r.meta_job;
+  metaJobs.set(jid, { name: t.name || magnetName(t.src) || T("tor_magnet"), peers: 0, seeders: 0, elapsed: 0 });
+  renderLive();
+  while (metaJobs.has(jid)) {
+    await new Promise((res) => setTimeout(res, 1000));
+    let s;
+    try { s = await api.torrent_meta(jid); } catch { continue; }
+    if (!metaJobs.has(jid)) return;                       // iptal edildi
+    if (s.state === "done") { metaJobs.delete(jid); renderLive(); openCloud(s.cloud); return; }
+    if (s.state === "error") {
+      metaJobs.delete(jid); renderLive();
+      if (s.error !== "cancelled") toast(T("err_" + (s.error || "torrent_meta_failed")), true);
+      return;
+    }
+    Object.assign(metaJobs.get(jid), { peers: s.peers || 0, seeders: s.seeders || 0, elapsed: s.elapsed || 0 });
+    renderLive();
+  }
+}
+
+// Ustteki "hazirlaniyor" seridi: magnet meta veri isleri + Real-Debrid'de inen torrentler
+function renderLive() {
+  const ul = $("#liveList");
+  const rows = [];
+  for (const [jid, j] of metaJobs) {
+    rows.push(`<li><span class="live-name">${escapeHtml(j.name)}</span>` +
+      `<span class="live-st">${T("live_meta", j.peers, j.seeders)} · ${fmtEta(j.elapsed) || "0"}</span>` +
+      `<button class="btn ghost" data-meta-cancel="${escapeHtml(jid)}">${T("cancel")}</button></li>`);
+  }
+  for (const p of state.rdProgress || []) {
+    const k = "rd_st_" + p.status, st = T(k);
+    const bits = [st === k ? p.status : st];
+    if (p.status === "downloading" || p.progress) bits.push(state.lang === "tr" ? "%" + Math.floor(p.progress) : Math.floor(p.progress) + "%");
+    if (p.seeders != null) bits.push(T("live_seeders", p.seeders));
+    if (p.speed) bits.push(fmtBytes(p.speed) + "/s");
+    rows.push(`<li><span class="live-name">${escapeHtml(p.name || "Real-Debrid")}</span>` +
+      `<span class="live-st">RD: ${bits.join(" · ")}</span><i class="live-bar" style="--p:${Math.min(100, p.progress || 0)}%"></i></li>`);
+  }
+  ul.innerHTML = rows.join("");
+  ul.hidden = rows.length === 0;
+}
+
+function bindLive() {
+  $("#liveList").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-meta-cancel]");
+    if (!b) return;
+    const jid = b.dataset.metaCancel;
+    metaJobs.delete(jid); renderLive();
+    api.torrent_meta_cancel(jid);
+  });
 }
 
 async function rdAskAnswer(viaRd) {

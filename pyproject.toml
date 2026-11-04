@@ -1,9 +1,11 @@
 [project]
 name = "kami"
-version = "0.1.0"
+version = "0.6.0"
 description = "Kami Download Manager (KDM) - kisisel, eklentilerle buyuyen indirme yoneticisi"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+    "pillow>=13.0.0",
+    "pystray>=0.19.5",
     "pywebview>=5.3",
     "yt-dlp[curl-cffi,default]>=2026.10.26",
 ]

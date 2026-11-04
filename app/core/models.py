@@ -62,6 +62,8 @@ class Download:
     kind: str = "file"                 # file (aria2) | media (yt-dlp)
     options: dict[str, Any] = field(default_factory=dict)
     phase: str = ""                    # medya: downloading | processing (kalici degil)
+    position: float = 0.0              # liste sirasi (buyuk = ustte)
+    extra: dict[str, Any] = field(default_factory=dict)   # scan, sha256, checksum ...
 
     @property
     def path(self) -> str:

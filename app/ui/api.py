@@ -8,6 +8,7 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 from app.core.manager import CaptureRejected, PageLinkRejected
+from app.core.watchdog import log_slow_calls
 from app.core.models import DownloadRequest, Status
 
 if TYPE_CHECKING:
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+@log_slow_calls
 class Api:
     # pywebview, alt cizgiyle baslayan nitelikleri JS'e acmaz
     def __init__(self, manager: "DownloadManager", engine: "Aria2Engine", registry: "PluginRegistry",
@@ -27,6 +29,10 @@ class Api:
         self._registry = registry
         self._bridge_port = bridge_port_getter
         self._window = None
+        self._watchdog = None                            # UiWatchdog (kalp atisi: get_state)
+        self._hotkey = None                              # desktop.HotKey (main kurar)
+        self._update_info: dict[str, Any] | None = None  # GitHub'da yeni surum varsa
+        self._update_shown = False
         self._media_inbox: list[dict[str, Any]] = []   # eklentiden "Kami'de sec" istekleri
         self._inbox_lock = threading.Lock()
         self._clip_offers: list[str] = []               # pano izleyicinin buldugu linkler
@@ -43,13 +49,22 @@ class Api:
 
     # ---------- durum ----------
     def get_state(self) -> dict[str, Any]:
+        if self._watchdog:
+            self._watchdog.beat()
         items = self._manager.snapshot()
         with self._inbox_lock:
             inbox, self._media_inbox = self._media_inbox, []
             offers, self._clip_offers = self._clip_offers, []
             rd_events, self._rd_events = self._rd_events, []
             torrents, self._torrent_inbox = self._torrent_inbox, []
+        rd = self._rd
+        upd = None
+        with self._inbox_lock:
+            if self._update_info and not self._update_shown:   # yeni surum bilgisi arayuze bir kez
+                upd, self._update_shown = self._update_info, True
         return {
+            "update": upd,
+            "rd_progress": rd.progress() if rd is not None and hasattr(rd, "progress") else [],
             "rd_events": rd_events,
             "torrent_requests": torrents,
             "media_requests": inbox,
@@ -199,8 +214,8 @@ class Api:
         try:
             if token:
                 meta, _ = svc.get(token)
-            elif is_magnet(src):
-                token, meta = svc.from_magnet(src.strip())
+            elif is_magnet(src):   # arka planda: arayuz "meta veri aranıyor - N eş" gosterir (torrent_meta)
+                return {"ok": True, "meta_job": svc.start_magnet(src.strip())}
             elif src.lower().startswith(("http://", "https://")):
                 try:
                     data = self._fetch_torrent(src)
@@ -214,6 +229,32 @@ class Api:
             log.warning("Torrent acilamadi: %s %s", exc.code, exc.detail)
             return {"ok": False, "error": exc.code, "detail": exc.detail}
         return {"ok": True, "cloud": svc.public(token, meta)}
+
+    def torrent_meta(self, job: str) -> dict[str, Any]:
+        """Magnet meta veri isinin durumu: searching (peers, seeders, elapsed) | done (cloud) | error."""
+        svc = self._manager.torrents
+        j = svc.job(str(job))
+        if j.get("state") == "done":
+            try:
+                meta, _ = svc.get(j["token"])
+            except Exception:
+                return {"ok": False, "state": "error", "error": "cloud_expired"}
+            return {"ok": True, "state": "done", "cloud": svc.public(j["token"], meta)}
+        if j.get("state") == "error":
+            return {"ok": False, **j}
+        return {"ok": True, **j}
+
+    def torrent_meta_cancel(self, job: str) -> None:
+        self._manager.torrents.cancel_job(str(job))
+
+    def firewall_status(self) -> dict[str, Any]:
+        from app.core import firewall
+        return {"ok": True, "rule": firewall.has_rule()}
+
+    def firewall_allow(self) -> dict[str, Any]:
+        from app import paths
+        from app.core import firewall
+        return {"ok": firewall.request_rule(paths.ARIA2_EXE)}
 
     def torrent_add(self, token: str, indexes: list) -> dict[str, Any]:
         from app.core.torrent import TorrentError
@@ -488,6 +529,85 @@ class Api:
             return {"ok": True}
         except DebridError as exc:
             return self._rd_err(exc)
+
+    # ---------- sira / oncelik ----------
+    def reorder(self, ids: list) -> dict[str, Any]:
+        self._manager.reorder([int(i) for i in ids or []])
+        return {"ok": True}
+
+    # ---------- SHA256 ----------
+    def hash_file(self, download_id: int, expected: str = "") -> dict[str, Any]:
+        """SHA256 hesapla (onbellekli); expected verilirse karsilastir ve beklenen olarak kaydet."""
+        from app.core import extras
+        d = self._manager.store.get(int(download_id))
+        if not d or not d.path or not os.path.isfile(d.path):
+            return {"ok": False, "error": "no_file"}
+        exp = extras.norm_hash(expected) if expected else (d.extra or {}).get("checksum", "")
+        if expected and not exp:
+            return {"ok": False, "error": "bad_hash"}
+        got = (d.extra or {}).get("sha256") or extras.sha256_file(d.path)
+        extra = {**(d.extra or {}), "sha256": got}
+        if exp:
+            extra.update(checksum=exp, checksum_ok=(got == exp))
+        self._manager.store.update(d.id, extra=extra)
+        return {"ok": True, "sha256": got, "expected": exp, "match": (got == exp) if exp else None}
+
+    # ---------- surukle-birak ----------
+    def drop_torrent(self, b64: str) -> dict[str, Any]:
+        import base64
+        from app.core.torrent import TorrentError
+        try:
+            data = base64.b64decode(str(b64 or ""), validate=True)
+            token, _ = self._manager.torrents.from_bytes(data)
+        except (ValueError, TorrentError):
+            return {"ok": False, "error": "bad_torrent"}
+        return self.torrent_source("", token)
+
+    # ---------- guncelleme / sorun bildir / masaustu ----------
+    def check_update(self) -> dict[str, Any]:
+        from app.core import extras
+        res = extras.check_update()
+        self._manager.settings.set("update_last", int(__import__("time").time()))
+        if res.get("available"):
+            with self._inbox_lock:
+                if not self._update_info or self._update_info.get("version") != res.get("version"):
+                    self._update_shown = False
+                self._update_info = res
+        return {"ok": "error" not in res, "current": extras.APP_VERSION, **res}
+
+    def open_release(self) -> bool:
+        from app.core import extras
+        url = (self._update_info or {}).get("url") or             f"https://github.com/{extras.GITHUB_REPO}/releases"
+        if not url.startswith(f"https://github.com/{extras.GITHUB_REPO}/"):
+            return False
+        os.startfile(url)  # type: ignore[attr-defined]
+        return True
+
+    def make_report(self) -> dict[str, Any]:
+        from app import paths
+        from app.core import extras
+        rd = self._rd
+        state = {
+            "items": [{k: v for k, v in d.to_public().items() if k not in ("referer",)}
+                      for d in self._manager.snapshot()[:200]],
+            "engine_ok": self._engine.running,
+            "rd": {"has_token": bool(rd and rd.has_token()), "pending": rd.progress() if rd else []},
+            "settings": {k: v for k, v in self._manager.settings.all().items()},
+            "plugins": self.plugins(),
+        }
+        try:
+            out = extras.build_report(state, paths.downloads_dir())
+        except Exception as exc:
+            log.exception("Sorun paketi olusturulamadi")
+            return {"ok": False, "error": type(exc).__name__}
+        subprocess.Popen(["explorer", "/select,", os.path.normpath(str(out))])
+        return {"ok": True, "path": str(out)}
+
+    def desktop_status(self) -> dict[str, Any]:
+        from app.core import desktop, extras
+        hk = self._hotkey
+        return {"autostart": desktop.autostart_enabled(), "hotkey_error": hk.error if hk else "",
+                "defender": bool(extras.mpcmdrun()), "version": extras.APP_VERSION}
 
     # ---------- ayarlar ----------
     def get_settings(self) -> dict[str, Any]:

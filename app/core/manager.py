@@ -155,11 +155,14 @@ class DownloadManager:
                 self.base_dir(), category, bool(self.settings.get("use_category_folders")))
             need_confirm = confirm if confirm is not None else (
                 r.source in ("browser", "context_menu") and self.needs_confirm(filename, r.url))
+            from app.core.extras import norm_hash
+            checksum = norm_hash((r.extra or {}).get("checksum", "")) or                 norm_hash(urlparse(r.url).fragment.partition("sha256=")[2][:64])   # link#sha256=...
             d = self.store.add(
                 url=r.url, filename=filename, directory=directory, category=category,
                 status=Status.CONFIRM if need_confirm else Status.QUEUED,
                 size=r.size or 0, referer=r.referer, headers=r.headers, source=r.source,
                 page_url=r.page_url, max_conn=max_conn, options=r.options,
+                extra={"checksum": checksum} if checksum else {},
             )
             self.events.emit("download.added", download=d)
             if need_confirm:
@@ -507,6 +510,21 @@ class DownloadManager:
         with self._lock:
             self._live.pop(d.id, None)
         self.events.emit("download.removed", download_id=d.id)
+
+    @_transition
+    def reorder(self, ordered_ids: list[int]) -> None:
+        """Surukle-sirala: gorunen sira (ustten alta) kaydedilir; motorda sirada bekleyenler de ayni
+        siraya dizilir (ustteki once baslar)."""
+        ids = [int(i) for i in ordered_ids]
+        self.store.set_positions(ids)
+        rank = {did: i for i, did in enumerate(ids)}
+        waiting = sorted((d for d in self.store.list([Status.WAITING]) if d.gid and d.kind != "media"
+                          and d.id in rank), key=lambda d: rank[d.id])
+        for pos, d in enumerate(waiting):
+            try:
+                self.engine.call("aria2.changePosition", d.gid, pos, "POS_SET")
+            except Exception:
+                log.debug("changePosition basarisiz: %s", d.gid)
 
     @_transition
     def clear_finished(self) -> None:

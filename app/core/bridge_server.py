@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 
 PREFERRED_PORT = 47321
 MAX_BODY = 8 * 1024 * 1024   # .torrent dosyasi (base64) icin
-APP_VERSION = "0.1.0"
+from app.core.extras import APP_VERSION  # noqa: E402
 
 
 class BridgeServer:
@@ -95,6 +95,7 @@ class BridgeServer:
                 mime=str(body.get("mime") or ""),
                 source=str(body.get("source") or "browser"),
                 page_url=str(body.get("page_url") or ""),
+                extra={"checksum": str(body.get("checksum") or "")[:80]} if body.get("checksum") else {},
             )
             if req.source not in ("browser", "context_menu", "ui"):
                 req.source = "browser"

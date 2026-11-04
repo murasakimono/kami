@@ -107,7 +107,9 @@ class Aria2Engine(Engine):
         if self.dht_file:
             # dht.dat ilk calistirmada bos: giris noktasi olmadan magnet metadata'si bulunamiyor (04.11 olculdu)
             args += [f"--dht-file-path={self.dht_file}", "--enable-dht=true", "--bt-enable-lpd=true",
-                     "--enable-peer-exchange=true", "--dht-entry-point=router.bittorrent.com:6881"]
+                     "--enable-peer-exchange=true", "--dht-entry-point=router.bittorrent.com:6881",
+                     # cevapsiz izleyicide 60 sn beklemesin (meta veri daha cabuk)
+                     "--bt-tracker-connect-timeout=10", "--bt-tracker-timeout=15", "--bt-max-peers=80"]
         # addTorrent ile verilen .torrent'i indirme klasorune <sha1>.torrent olarak kopyalamasin (biz data/'da tutuyoruz)
         args.append("--rpc-save-upload-metadata=false")
         if self.log_file:
@@ -236,8 +238,8 @@ class Aria2Engine(Engine):
             opts["bt-remove-unselected-file"] = "true"
         # paylasim: kapali -> indirme biter bitmez durur; acik -> oran 1.0'a kadar (aria2 varsayilani)
         if o.get("extra_trackers"):
-            from app.core.torrent import PUBLIC_TRACKERS
-            opts["bt-tracker"] = PUBLIC_TRACKERS
+            from app.core.torrent import trackers
+            opts["bt-tracker"] = trackers()
         if o.get("stop_seeding", True):
             opts["seed-time"] = "0"
         else:

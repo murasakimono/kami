@@ -227,6 +227,7 @@ class DebridService:
         self._domains_at = 0.0
         self._lock = threading.Lock()
         self._pending: dict[str, dict[str, Any]] = self._load_pending()
+        self._live: dict[str, dict[str, Any]] = {}     # tid -> son torrent_info ozeti (kaydedilmez)
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -407,9 +408,24 @@ class DebridService:
                 self._drop(tid)
                 self.notify({"kind": "error", "error": exc.code, "detail": exc.detail})
 
+    def progress(self) -> list[dict[str, Any]]:
+        """Kami'nin bekledigi RD torrentlerinin son durumu (arayuz: RD'de hazirlaniyor %, es, hiz)."""
+        with self._lock:
+            out = []
+            for tid, p in self._pending.items():
+                live = self._live.get(tid) or {}
+                out.append({"id": tid, "name": live.get("name") or "", "status": live.get("status") or "queued",
+                            "progress": live.get("progress", 0.0), "seeders": live.get("seeders"),
+                            "speed": live.get("speed", 0)})
+            return out
+
     def _step(self, tid: str) -> None:
         info = self.client.torrent_info(tid)
         st = info.get("status") or ""
+        with self._lock:
+            self._live[tid] = {"name": info.get("filename") or info.get("original_filename") or "",
+                               "status": st, "progress": float(info.get("progress") or 0),
+                               "seeders": info.get("seeders"), "speed": int(info.get("speed") or 0)}
         if st == "waiting_files_selection":
             self.client.select_all(tid)
             return
@@ -426,6 +442,7 @@ class DebridService:
     def _drop(self, tid: str) -> None:
         with self._lock:
             self._pending.pop(tid, None)
+            self._live.pop(tid, None)
             self._save_pending()
 
     def _queue_finished(self, info: dict[str, Any]) -> int:

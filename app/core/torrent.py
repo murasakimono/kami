@@ -33,6 +33,51 @@ PUBLIC_TRACKERS = ",".join([
 ])
 
 
+TRACKER_LIST_URL = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
+_TRACKER_FILE: Path | None = None     # data/trackers.txt (main ayarlar); guncel liste burada
+
+
+def set_tracker_file(path: Path) -> None:
+    global _TRACKER_FILE
+    _TRACKER_FILE = Path(path)
+
+
+def trackers() -> str:
+    """Yerlesik liste + (varsa) indirilmis guncel liste; tekrarsiz, en cok 40."""
+    out = PUBLIC_TRACKERS.split(",")
+    if _TRACKER_FILE and _TRACKER_FILE.exists():
+        try:
+            for ln in _TRACKER_FILE.read_text(encoding="utf-8").split():
+                if ln.startswith(("udp://", "http://", "https://")) and ln not in out:
+                    out.append(ln)
+        except OSError:
+            pass
+    return ",".join(out[:40])
+
+
+def update_trackers(max_age_h: float = 24.0) -> bool:
+    """Guncel izleyici listesini indir (gunde bir). Sadece bicimi dogru satirlar yazilir."""
+    if not _TRACKER_FILE:
+        return False
+    try:
+        if _TRACKER_FILE.exists() and time.time() - _TRACKER_FILE.stat().st_mtime < max_age_h * 3600:
+            return False
+        import requests
+        r = requests.get(TRACKER_LIST_URL, timeout=15)
+        r.raise_for_status()
+        lines = [ln.strip() for ln in r.text[:200_000].split() if
+                 re.fullmatch(r"(udp|https?)://[A-Za-z0-9.\-]+:\d{1,5}/announce", ln.strip())]
+        if not lines:
+            return False
+        _TRACKER_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _TRACKER_FILE.write_text("\n".join(lines[:60]), encoding="utf-8")
+        log.info("Izleyici listesi guncellendi: %d", len(lines))
+        return True
+    except Exception as exc:
+        log.warning("Izleyici listesi alinamadi: %s", type(exc).__name__)
+        return False
+
+
 class TorrentError(Exception):
     def __init__(self, code: str, detail: str = "") -> None:
         super().__init__(code)
@@ -139,6 +184,7 @@ class TorrentService:
         self.engine = engine
         self.dir = Path(store_dir)
         self._lists: dict[str, tuple[float, TorrentMeta, Path]] = {}
+        self._jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
 
     # ---- kaynaklar
@@ -154,31 +200,41 @@ class TorrentService:
             os.replace(tmp, path)
         return self._keep(meta, path), meta
 
-    def from_magnet(self, magnet: str, timeout: float = 180.0) -> tuple[str, TorrentMeta]:
-        """aria2 ile yalnizca metadata (genelde birkac sn; es yoksa zaman asimi)."""
+    def from_magnet(self, magnet: str, timeout: float = 180.0, on_progress=None,
+                    cancel: threading.Event | None = None) -> tuple[str, TorrentMeta]:
+        """aria2 ile yalnizca metadata (genelde birkac sn; es yoksa zaman asimi).
+        on_progress({peers, seeders, elapsed}) her yarim saniyede; cancel set edilirse durur."""
         if not re.match(r"^magnet:\?", magnet or "", re.I) or "xt=urn:btih:" not in magnet.lower():
             raise TorrentError("bad_magnet")
         work = self.dir / "meta" / secrets.token_hex(6)
         work.mkdir(parents=True, exist_ok=True)
         gid = ""
+        t0 = time.monotonic()
         try:
             gid = self.engine.call("aria2.addUri", [magnet], {
                 "dir": str(work), "bt-metadata-only": "true", "bt-save-metadata": "true",
-                "follow-torrent": "false", "seed-time": "0", "bt-tracker": PUBLIC_TRACKERS})
-            deadline = time.monotonic() + timeout
+                "follow-torrent": "false", "seed-time": "0", "bt-tracker": trackers()})
+            deadline = t0 + timeout
             while time.monotonic() < deadline:
-                st = self.engine.call("aria2.tellStatus", gid, ["status", "errorCode", "errorMessage"])
+                if cancel is not None and cancel.is_set():
+                    raise TorrentError("cancelled")
+                st = self.engine.call("aria2.tellStatus", gid,
+                                      ["status", "errorCode", "errorMessage", "connections", "numSeeders"])
                 status = st.get("status")
                 if status == "complete":
                     break
                 if status in ("error", "removed"):
                     raise TorrentError("torrent_meta_failed", st.get("errorMessage") or st.get("errorCode") or "")
+                if on_progress:
+                    on_progress({"peers": int(st.get("connections") or 0), "seeders": int(st.get("numSeeders") or 0),
+                                 "elapsed": int(time.monotonic() - t0)})
                 time.sleep(0.5)
             else:
                 raise TorrentError("torrent_no_peers")
             found = sorted(work.glob("*.torrent"))
             if not found:
                 raise TorrentError("torrent_meta_failed", "no_file")
+            log.info("Magnet meta verisi %.0f sn'de alindi", time.monotonic() - t0)
             return self.from_bytes(found[0].read_bytes())
         finally:
             if gid:
@@ -188,6 +244,45 @@ class TorrentService:
                     except Exception:
                         pass
             shutil.rmtree(work, ignore_errors=True)
+
+    # ---- arka plan meta veri isleri (arayuz bekletilmez, "N es" gosterir)
+    def start_magnet(self, magnet: str, timeout: float = 180.0) -> str:
+        if not re.match(r"^magnet:\?", magnet or "", re.I) or "xt=urn:btih:" not in magnet.lower():
+            raise TorrentError("bad_magnet")
+        jid = secrets.token_urlsafe(6)
+        job = {"state": "searching", "peers": 0, "seeders": 0, "elapsed": 0, "cancel": threading.Event(),
+               "at": time.time()}
+        with self._lock:
+            for k in [k for k, v in self._jobs.items() if time.time() - v["at"] > self.TTL]:
+                self._jobs.pop(k, None)
+            self._jobs[jid] = job
+
+        def run() -> None:
+            try:
+                token, meta = self.from_magnet(magnet, timeout, on_progress=job.update, cancel=job["cancel"])
+                job.update(state="done", token=token)
+            except TorrentError as exc:
+                log.warning("Magnet meta verisi alinamadi: %s %s", exc.code, exc.detail)
+                job.update(state="error", error=exc.code, detail=exc.detail)
+            except Exception as exc:
+                log.exception("Magnet meta verisi hatasi")
+                job.update(state="error", error="torrent_meta_failed", detail=type(exc).__name__)
+
+        threading.Thread(target=run, name="kami-magnet-meta", daemon=True).start()
+        return jid
+
+    def job(self, jid: str) -> dict[str, Any]:
+        with self._lock:
+            job = self._jobs.get(str(jid))
+        if not job:
+            return {"state": "error", "error": "cloud_expired"}
+        return {k: v for k, v in job.items() if k not in ("cancel", "at")}
+
+    def cancel_job(self, jid: str) -> None:
+        with self._lock:
+            job = self._jobs.get(str(jid))
+        if job:
+            job["cancel"].set()
 
     # ---- token
     def _keep(self, meta: TorrentMeta, path: Path) -> str:

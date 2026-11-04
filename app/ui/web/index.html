@@ -70,9 +70,13 @@
         <button class="btn ghost" id="pauseAll" data-i18n="pause_all"></button>
         <button class="btn ghost" id="resumeAll" data-i18n="resume_all"></button>
         <span class="spacer"></span>
+        <button class="btn ghost" id="speedToggle" data-i18n-title="speed_toggle_t"></button>
+        <label class="tb-conc"><span data-i18n="tb_concurrent"></span>
+          <select id="concSel"></select></label>
         <button class="btn ghost" id="clearFinished" data-i18n="clear_finished"></button>
       </div>
 
+      <ul class="live" id="liveList" role="list" hidden></ul>
       <ul class="list" id="list" role="list"></ul>
       <div class="empty" id="empty" hidden>
         <h2 data-i18n="empty_title"></h2>
@@ -108,6 +112,7 @@
   <footer class="statusbar">
     <span id="engineStatus"></span>
     <span id="bridgeStatus"></span>
+    <button type="button" class="link-btn update-link" id="updateLink" hidden></button>
   </footer>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -195,10 +200,76 @@
         <label class="check"><input type="checkbox" name="torrent_stop_seeding"><span data-i18n="s_tor_stopseed"></span></label>
         <label class="row"><span data-i18n="s_tor_uplimit"></span><input type="number" name="torrent_upload_limit_kib" min="0" step="64"></label>
         <label class="row"><span data-i18n="s_tor_port"></span><input type="number" name="torrent_port" min="0" max="65535"></label>
+        <label class="check"><input type="checkbox" name="torrent_tracker_update"><span data-i18n="s_tor_trackers"></span></label>
+        <div class="row"><span data-i18n="s_tor_fw"></span><span><span class="hint" id="fwState"></span>
+          <button type="button" class="btn ghost" id="fwAllow" data-i18n="s_tor_fw_add"></button></span></div>
         <p class="hint" data-i18n="s_tor_hint"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="s_app"></legend>
+        <label class="check"><input type="checkbox" name="tray_enabled"><span data-i18n="s_tray"></span></label>
+        <label class="check"><input type="checkbox" name="close_to_tray"><span data-i18n="s_close_tray"></span></label>
+        <label class="check"><input type="checkbox" name="autostart"><span data-i18n="s_autostart"></span></label>
+        <label class="check"><input type="checkbox" name="notify_on_complete"><span data-i18n="s_notify_done"></span></label>
+        <label class="check"><input type="checkbox" name="notify_on_error"><span data-i18n="s_notify_err"></span></label>
+        <label class="check"><input type="checkbox" name="hotkey_enabled"><span data-i18n="s_hotkey_on"></span></label>
+        <label class="row"><span data-i18n="s_hotkey"></span><input type="text" name="hotkey" spellcheck="false" style="width:140px"></label>
+        <p class="hint" id="hotkeyState" hidden></p>
+        <label class="row"><span data-i18n="s_speed_preset"></span><input type="number" name="speed_limit_preset_kib" min="64" step="256"></label>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="s_schedule"></legend>
+        <label class="check"><input type="checkbox" name="schedule_enabled"><span data-i18n="s_schedule_on"></span></label>
+        <label class="row"><span data-i18n="s_schedule_start"></span><input type="time" name="schedule_start"></label>
+        <label class="row"><span data-i18n="s_schedule_stop"></span><input type="time" name="schedule_stop"></label>
+        <p class="hint" data-i18n="s_schedule_hint"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="s_security"></legend>
+        <label class="row"><span data-i18n="s_defender"></span>
+          <select name="defender_mode">
+            <option value="exec_archive" data-i18n="def_exec"></option>
+            <option value="all" data-i18n="def_all"></option>
+            <option value="off" data-i18n="def_off"></option>
+          </select>
+        </label>
+        <p class="hint" id="defenderState" hidden data-i18n="def_missing"></p>
+        <label class="check"><input type="checkbox" name="checksum_verify"><span data-i18n="s_checksum"></span></label>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="s_about"></legend>
+        <label class="check"><input type="checkbox" name="update_check"><span data-i18n="s_update_check"></span></label>
+        <div class="row"><span><span data-i18n="s_version"></span> <b id="appVersion"></b> <span class="hint" id="updateState"></span></span>
+          <button type="button" class="btn ghost" id="updateNow" data-i18n="s_update_now"></button></div>
+        <div class="row"><span class="hint" data-i18n="s_report_hint"></span>
+          <button type="button" class="btn ghost" id="reportBtn" data-i18n="s_report"></button></div>
       </fieldset>
     </form>
   </dialog>
+
+  <dialog id="hashDlg" aria-labelledby="hashTitle">
+    <form method="dialog" class="settings-form" id="hashForm">
+      <header class="dialog-head">
+        <h2 id="hashTitle">SHA256</h2>
+        <button class="icon-btn" value="close" data-i18n-title="close" aria-label="close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <p class="hint" id="hashName"></p>
+      <code id="hashValue" class="hash-value"></code>
+      <label class="row stack"><span data-i18n="hash_expected"></span>
+        <input type="text" id="hashExpected" spellcheck="false" data-i18n-placeholder="hash_ph"></label>
+      <p id="hashResult" class="hint"></p>
+      <div class="rd-add-actions"><button type="button" class="btn ghost" id="hashCopy" data-i18n="hash_copy"></button>
+        <button type="button" class="btn primary" id="hashCheck" data-i18n="hash_check"></button></div>
+    </form>
+  </dialog>
+
+  <div class="drop-veil" id="dropVeil" hidden><div data-i18n="drop_here"></div></div>
 
   <dialog id="media" aria-labelledby="mediaTitle">
     <form method="dialog" class="settings-form" id="mediaForm">
@@ -295,5 +366,6 @@
   <script src="i18n.js"></script>
   <script src="app.js"></script>
   <script src="rd.js"></script>
+  <script src="extras.js"></script>
 </body>
 </html>

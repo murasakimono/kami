@@ -48,11 +48,18 @@ def main() -> int:
 
     # Tek ornek: zaten calisiyorsa onu one getir ve cik
     if call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping"):
+        try:   # on plandaki biz: calisan Kami'nin one gelmesine izin ver
+            import json as _json
+            from app.core.winwin import allow_foreground
+            allow_foreground(_json.loads(paths.BRIDGE_INFO_PATH.read_text(encoding="utf-8")).get("pid"))
+        except Exception:
+            pass
         if magnet:
             res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/rd", {"url": magnet, "source": "magnet"},
                                         timeout=5.0)
             log.info("Magnet calisan Kami'ye iletildi: %s", bool(res and res.get("ok")))
-        call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/show")
+        if "--tray" not in sys.argv[1:]:
+            call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/show")
         log.info("Kami zaten calisiyor; pencere one getirildi.")
         return 0
 
@@ -60,6 +67,15 @@ def main() -> int:
 
     settings = Settings()
     events = EventBus()
+    bt_port = settings.get("torrent_port") or settings.get("torrent_port_last")
+    if not bt_port:   # otomatik: bir kez sec, sonra hep ayni port (DHT dugumu + guvenlik duvari)
+        import random
+        bt_port = random.randint(6881, 6999)
+        settings.set("torrent_port_last", bt_port)
+    from app.core import torrent as _torrent
+    _torrent.set_tracker_file(paths.DATA_DIR / "trackers.txt")
+    if settings.get("torrent_tracker_update"):
+        threading.Thread(target=_torrent.update_trackers, name="kami-trackers", daemon=True).start()
     engine = Aria2Engine(
         paths.ARIA2_EXE,
         connections=settings.get("connections"),
@@ -67,7 +83,7 @@ def main() -> int:
         max_tries=settings.get("max_tries"),
         speed_limit_kib=settings.get("speed_limit_kib"),
         log_file=paths.DATA_DIR / "aria2.log",
-        bt_port=settings.get("torrent_port"),
+        bt_port=bt_port,
         upload_limit_kib=settings.get("torrent_upload_limit_kib"),
         dht_file=paths.DATA_DIR / "dht.dat",
     )
@@ -87,19 +103,13 @@ def main() -> int:
     from app.core.torrent import TorrentService
     manager.torrents = TorrentService(engine, paths.DATA_DIR / "torrents")
 
-    window_ref: dict = {}
+    # Pencereyi one getirme: Win32 ile, cagirani (kopru) BEKLETMEDEN. pywebview on_top/restore/show
+    # arayuz is parcacigini bekliyor ve evaluate_js ile kilitlendi (defter 23).
+    from app.core.winwin import WindowFront
+    front = WindowFront("Kami")
 
     def show_window() -> None:
-        w = window_ref.get("w")
-        if not w:
-            return
-        try:
-            w.restore()
-            w.show()
-            w.on_top = True
-            w.on_top = False
-        except Exception:
-            log.exception("Pencere one getirilemedi")
+        front.request()
 
     from app.core.vault import CookieStore
     from app.engines import ytdlp_engine
@@ -127,6 +137,7 @@ def main() -> int:
     events.on("ui.attention", lambda reason: show_window())
 
     api = Api(manager, engine, registry, lambda: bridge.port)
+    start_hidden = "--tray" in sys.argv[1:]
     window = webview.create_window(
         "Kami",
         url=str(paths.WEB_DIR / "index.html"),
@@ -134,17 +145,113 @@ def main() -> int:
         width=1180, height=740, min_size=(820, 520),
         background_color="#0D0A12" if settings.get("theme") == "dark" else "#F5F3F9",
         text_select=False,
+        minimized=start_hidden,
     )
-    window_ref["w"] = window
     api._set_window(window)
+
+    from app.core import desktop, winwin
+    from app.core.watchdog import UiWatchdog
+
+    # ---- sistem tepsisi + X ile tepsiye gizleme
+    quitting = {"v": False}
+
+    def pause_all() -> None:
+        api.pause_all()
+
+    def resume_all() -> None:
+        api.resume_all()
+
+    def quit_app() -> None:
+        quitting["v"] = True
+        try:
+            window.destroy()
+        except Exception:
+            log.exception("Pencere kapatilamadi")
+
+    tray = desktop.Tray(show_window, pause_all, resume_all, quit_app, lambda: settings.get("language"))
+    if settings.get("tray_enabled"):
+        tray.start()
+
+    def on_closing():
+        if not quitting["v"] and settings.get("close_to_tray") and tray.running:
+            winwin.hide(front._hwnd())   # arayuz is parcacigindayiz; Async: beklemez
+            return False                 # kapatmayi iptal et
+        quitting["v"] = True
+        return None
+
+    window.events.closing += on_closing
+    if start_hidden:   # Windows'la baslama: tepside basla (kucuk acilir, hemen gizlenir)
+        window.events.shown += lambda: winwin.hide(front._hwnd()) if tray.running else None
 
     # Kapanista arayuzun yarida kalan api cevabi (500 ms tick) olu GUI is parcacigina donmeye calisir:
     # pywebview "Error occurred in script / InvalidAsynchronousStateException" loglar. Zararsiz -> sustur.
-    closing = {"v": False}
-    window.events.closing += lambda: closing.__setitem__("v", True)
     logging.getLogger("pywebview").addFilter(
-        lambda rec: not (closing["v"] and "Error occurred in script" in rec.getMessage()))
+        lambda rec: not (quitting["v"] and "Error occurred in script" in rec.getMessage()))
 
+    # ---- genel kisayol: one getir + panodaki desteklenen linki sor
+    def on_hotkey() -> None:
+        show_window()
+        try:
+            from app.core.clipboard import get_text
+            txt = (get_text() or "").strip()
+            if txt and len(txt) < 4000 and api.link_supported(txt):
+                with api._inbox_lock:
+                    api._clip_offers.append(txt)
+        except Exception:
+            log.exception("Kisayol: pano okunamadi")
+
+    hotkey = desktop.HotKey(on_hotkey)
+    api._hotkey = hotkey
+    if settings.get("hotkey_enabled"):
+        hotkey.start(settings.get("hotkey"))
+
+    # Windows'la baslama ayari kayit defteriyle esit olsun (kullanici elle silmis olabilir)
+    try:
+        if bool(settings.get("autostart")) != desktop.autostart_enabled():
+            desktop.set_autostart(bool(settings.get("autostart")))
+    except OSError:
+        log.exception("Windows'la baslama ayarlanamadi")
+
+    def on_desktop_setting(key, value):
+        try:
+            if key == "tray_enabled":
+                tray.start() if value else tray.stop()
+            elif key == "autostart":
+                desktop.set_autostart(bool(value))
+            elif key in ("hotkey", "hotkey_enabled"):
+                if settings.get("hotkey_enabled"):
+                    hotkey.start(settings.get("hotkey"))
+                else:
+                    hotkey.stop()
+        except Exception:
+            log.exception("Masaustu ayari uygulanamadi: %s", key)
+
+    settings.on_change(on_desktop_setting)
+
+    # ---- zamanlayici, bitis sonrasi (SHA256 + Defender + bildirim), guncelleme denetimi
+    from app.core.extras import Scheduler
+    from app.core.postcomplete import PostComplete
+    scheduler = Scheduler(settings, resume_all, pause_all)
+    scheduler.start()
+    post = PostComplete(manager, tray.notify,
+                        focused=lambda: winwin.is_foreground(front._hwnd()))
+    post.start()
+
+    def update_loop() -> None:
+        import time as _t
+        _t.sleep(30)
+        while True:
+            if settings.get("update_check") and _t.time() - int(settings.get("update_last") or 0) > 86400:
+                try:
+                    api.check_update()
+                except Exception:
+                    log.exception("Guncelleme denetimi")
+            _t.sleep(3600)
+
+    threading.Thread(target=update_loop, name="kami-update", daemon=True).start()
+
+    api._watchdog = UiWatchdog(lambda: winwin.is_visible(front._hwnd()))
+    api._watchdog.start()
     manager.start()
     debrid.start()
     bridge.start()
@@ -157,6 +264,9 @@ def main() -> int:
                       storage_path=str(paths.DATA_DIR / "webview"))
     finally:
         log.info("Kami kapaniyor")
+        hotkey.stop()
+        tray.stop()
+        scheduler.stop()
         bridge.stop()
         debrid.stop()
         manager.stop()

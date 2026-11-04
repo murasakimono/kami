@@ -13,7 +13,7 @@ else:
     ROOT = Path(__file__).resolve().parent.parent
 
 BIN_DIR = ROOT / "bin"
-DATA_DIR = ROOT / "data"
+DATA_DIR = Path(os.environ["KAMI_DATA_DIR"]) if os.environ.get("KAMI_DATA_DIR") else ROOT / "data"   # testler: ayri klasor
 PLUGINS_DIR = ROOT / "plugins"
 WEB_DIR = ROOT / "app" / "ui" / "web"
 
