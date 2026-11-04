@@ -241,7 +241,8 @@ def test_phone_server_key_and_add():
     try:
         def post(key, body):
             req = urllib.request.Request(f"http://127.0.0.1:{port}/send", data=json.dumps(body).encode(),
-                                         headers={"Content-Type": "application/json", "X-Kami-Key": key})
+                                         headers={"Content-Type": "application/json", "X-Kami-Key": key,
+                                                  "Accept": "application/json"})
             try:
                 with urllib.request.urlopen(req, timeout=5) as r:
                     return r.status, json.loads(r.read())
@@ -253,6 +254,13 @@ def test_phone_server_key_and_add():
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5) as r:
             page = r.read().decode()
         assert "Kami'ye gönder" in page and "dogru-anahtar" not in page
+        # Kestirme (Accept: json yok): okunur duz metin yanit
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/send", data=b'{"text": "baslik"}',
+                                     headers={"Content-Type": "application/json", "X-Kami-Key": "dogru-anahtar-123"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            assert r.read().decode().startswith("✕ Link bulunamadı")
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/test", timeout=5) as r:
+            assert "Kami'ye ulaşıldı" in r.read().decode()
     finally:
         srv.stop()
 

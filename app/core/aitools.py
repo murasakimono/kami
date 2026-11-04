@@ -25,17 +25,21 @@ log = logging.getLogger(__name__)
 TOOLS: dict[str, dict[str, Any]] = {
     "whisper": {
         "module": "faster_whisper",
-        "packages": ["faster-whisper>=1.1", "nvidia-cublas-cu12", "nvidia-cudnn-cu12>=9,<10"],
+        # av<19: PyAV 19 av.open'dan metadata_errors'u kaldirdi, faster-whisper 1.2.1 hala kullaniyor (05.11 olculdu)
+        "packages": ["faster-whisper>=1.1", "av>=11,<19", "nvidia-cublas-cu12", "nvidia-cudnn-cu12>=9,<10"],
         "extra_index": "",
         "size_gb": 3.0,    # paketler ~1.4 GB + large-v3-turbo modeli ~1.6 GB
     },
     "uvr": {
         "module": "audio_separator",
-        "packages": ["audio-separator[gpu]", "torch>=2.3,<2.9", "torchaudio<2.9"],
+        # audioread: librosa 1.0 artik cekmiyor ama audio-separator (VR, spec_utils) ice aktariyor
+        "packages": ["audio-separator[gpu]", "audioread>=3", "soundfile", "torch>=2.3,<2.9", "torchaudio<2.9"],
         "extra_index": "https://download.pytorch.org/whl/cu128",
         "size_gb": 4.0,    # torch CUDA ~2.8 GB + onnxruntime-gpu + model ~0.6 GB
     },
 }
+# Is turu -> gereken araclar. "lyrics": UVR ile vokali ayir + Whisper ile sozleri yaziya dok (soz bulunamazsa)
+JOBS: dict[str, tuple[str, ...]] = {"whisper": ("whisper",), "uvr": ("uvr",), "lyrics": ("uvr", "whisper")}
 UVR_MODELS = ["model_bs_roformer_ep_317_sdr_12.9755.ckpt", "UVR-MDX-NET-Inst_HQ_3.onnx",
               "htdemucs_ft.yaml"]
 WHISPER_MODELS = ["large-v3-turbo", "large-v3", "medium", "small"]
@@ -59,6 +63,42 @@ def installed(name: str) -> bool:
         return importlib.util.find_spec(TOOLS[name]["module"]) is not None
     except (ImportError, ValueError):
         return False
+
+
+def _stamp_path(name: str):
+    return paths.DATA_DIR / "models" / name / ".kami_ok"
+
+
+def _spec(name: str) -> str:
+    return "|".join(TOOLS[name]["packages"])
+
+
+def needs_repair(name: str) -> bool:
+    """Paket var ama bu surumun paket listesiyle kurulup kendi kendine testten gecmemis (eski/bozuk kurulum)."""
+    if not installed(name):
+        return False
+    try:
+        return _stamp_path(name).read_text(encoding="utf-8") != _spec(name)
+    except OSError:
+        return True
+
+
+def selftest(name: str) -> dict:
+    """Alt surecte app.tools.selftest: model indirmeden ice aktarma + kucuk ses cozme."""
+    folder = os.path.join(models_dir(name), "_selftest")
+    try:
+        r = subprocess.run([python_exe(), "-m", "app.tools.selftest", name, folder], cwd=str(paths.ROOT),
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           creationflags=NO_WINDOW, timeout=300,
+                           env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"ok": False, "error": type(exc).__name__}
+    for line in reversed((r.stdout or "").splitlines()):
+        try:
+            return json.loads(line)
+        except ValueError:
+            continue
+    return {"ok": False, "error": "no_output"}
 
 
 def models_dir(name: str) -> str:
@@ -91,7 +131,16 @@ def install(name: str, on_line: Callable[[str], None] = lambda s: None) -> bool:
         return False
     importlib.invalidate_caches()
     log.info("Arac kurulumu %s: %s", name, "tamam" if ok else "BASARISIZ")
-    return ok and installed(name)
+    if not (ok and installed(name)):
+        return False
+    on_line("selftest...")
+    st = selftest(name)
+    log.info("Arac kendi kendine testi %s: %s", name, st)
+    if not st.get("ok"):
+        on_line("selftest: " + str(st.get("error", ""))[:100])
+        return False
+    _stamp_path(name).write_text(_spec(name), encoding="utf-8")
+    return True
 
 
 def _run_json(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event) -> dict:
@@ -190,10 +239,11 @@ class AiQueue:
 
     # ---- isler
     def submit(self, kind: str, did: int, **opts: Any) -> dict[str, Any]:
-        if kind not in TOOLS:
+        if kind not in JOBS:
             return {"ok": False, "error": "bad_tool"}
-        if not installed(kind):
-            return {"ok": False, "error": "tool_missing", "tool": kind, "size_gb": TOOLS[kind]["size_gb"]}
+        for tool in JOBS[kind]:
+            if not installed(tool):
+                return {"ok": False, "error": "tool_missing", "tool": tool, "size_gb": TOOLS[tool]["size_gb"]}
         key = (kind, did)
         if key in self._cancel:
             return {"ok": True, "already": True}
@@ -214,6 +264,17 @@ class AiQueue:
             try:
                 if ev.is_set():
                     self.set_extra(did, **{f"ai_{kind}": "cancelled"})
+                    continue
+                broken = [t for t in JOBS[kind] if needs_repair(t)]
+                for tool in broken:   # eski kurulum (ör. PyAV 19 / audioread eksik): sadece farki kurar
+                    self.set_extra(did, **{f"ai_{kind}": "running", f"ai_{kind}_p": 0})
+                    log.info("Arac onariliyor: %s", tool)
+                    if not install(tool):
+                        self.set_extra(did, **{f"ai_{kind}": "error", f"ai_{kind}_err": "repair_failed"})
+                        break
+                else:
+                    broken = []
+                if broken:
                     continue
                 self.set_extra(did, **{f"ai_{kind}": "running"})
                 getattr(self, f"_do_{kind}")(did, ev, **opts)
@@ -261,3 +322,47 @@ class AiQueue:
             return
         self.set_extra(did, ai_uvr="done", ai_uvr_p=1, ai_uvr_files=res["done"], ai_uvr_device=res.get("device", ""))
         self.notify(f"uvr:done:{os.path.basename(path)}")
+
+    def _do_lyrics(self, did: int, ev: threading.Event, lang: str = "") -> None:
+        """Soz bulunamayan sarki: UVR5 vokal -> Whisper (vokal uzerinde) -> zaman damgali .lrc (AI etiketli)."""
+        import tempfile
+        from app.core import lyrics, media_meta
+        path = self.get_path(did)
+        if not path or not os.path.isfile(path):
+            self.set_extra(did, ai_lyrics="error", ai_lyrics_err="no_file")
+            return
+        tmp = tempfile.mkdtemp(prefix="kami_lyr_", dir=models_dir("uvr"))
+        try:
+            res = _run_json(["app.tools.uvr_run", path, tmp, self.settings.get("uvr_model") or UVR_MODELS[0],
+                             models_dir("uvr"), "wav"],
+                            lambda m: m.get("stage") == "separate" and self.set_extra(did, ai_lyrics_p=0.2), ev)
+            if "error" in res:
+                raise _JobError(res["error"])
+            vocal = next((f for f in res["done"] if "(Vokal)" in os.path.basename(f)), "")
+            if not vocal:
+                raise _JobError("no_vocal")
+            srt = os.path.join(tmp, "vocal.srt")
+            lang = lang or self.settings.get("whisper_lang") or "auto"
+            res = _run_json(["app.tools.whisper_run", vocal, srt, lang,
+                             self.settings.get("whisper_model") or "large-v3-turbo", models_dir("whisper")],
+                            lambda m: "p" in m and self.set_extra(did, ai_lyrics_p=0.5 + m["p"] / 2), ev)
+            if "error" in res:
+                raise _JobError(res["error"])
+            with open(srt, encoding="utf-8") as f:
+                lrc = lyrics.srt_to_lrc(f.read())
+            if not lrc:
+                raise _JobError("no_speech")
+            g = media_meta.guess(path, "")
+            out = lyrics.write_lyrics(path, lrc, g["artist"], g["title"], bool(self.settings.get("lyrics_embed")),
+                                      ai=True)
+            self.set_extra(did, ai_lyrics="done", ai_lyrics_p=1, lyrics="ai", lyrics_lrc=out.get("lrc", ""))
+            self.notify(f"lyrics:done:{os.path.basename(path)}")
+        except _JobError as exc:
+            err = str(exc)
+            self.set_extra(did, ai_lyrics="cancelled" if err == "cancelled" else "error", ai_lyrics_err=err[:200])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class _JobError(Exception):
+    pass

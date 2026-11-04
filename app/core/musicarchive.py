@@ -1,7 +1,10 @@
 """Muzik arsivcisi: MusicBrainz ile dogru etiket -> <muzik klasoru>/<Sanatci>/<Album>/<NN Baslik>.mp3 + kapak.
 
 MusicBrainz kurali: anlamli User-Agent + saniyede en fazla 1 istek. Kapak: Cover Art Archive (front-500).
-Eslesme puani dusukse (<85) dosyaya DOKUNULMAZ (yanlis etiket yazmaktansa birak).
+Sira (05.11): baslik temizligi + yt-dlp artist/track -> MusicBrainz arama -> AcoustID parmak izi (fpcalc +
+istege bagli anahtar) -> YEDEK: YouTube bilgisinden etiket (Sanatci - Sarki, kanal, yil) + "Tekliler" klasoru.
+Arsivci her zaman bir sey yapar; kaynagini dondurur (musicbrainz | acoustid | youtube).
+MusicBrainz eslesme puani dusukse (<85) MB etiketi yazilmaz (yedek yola dusulur).
 """
 from __future__ import annotations
 
@@ -53,6 +56,26 @@ def lookup(artist: str, title: str, duration: float = 0, session: requests.Sessi
     except (requests.RequestException, ValueError):
         log.warning("MusicBrainz arama hatasi", exc_info=True)
         return None
+    return _best(recs, artist, title, duration)
+
+
+def lookup_id(recording_id: str, duration: float = 0, session: requests.Session | None = None) -> dict | None:
+    """AcoustID'nin verdigi MusicBrainz kayit kimligi -> ayni ozet (yayin secimi ayni kurallarla)."""
+    s = session or requests.Session()
+    try:
+        r = _get(s, f"{MB}/recording/{recording_id}",
+                 params={"inc": "artist-credits+releases+release-groups+media", "fmt": "json"})
+        rec = r.json() if r.status_code == 200 else None
+    except (requests.RequestException, ValueError):
+        log.warning("MusicBrainz kimlik sorgusu hatasi", exc_info=True)
+        return None
+    if not isinstance(rec, dict) or not rec.get("id"):
+        return None
+    rec["score"] = 100
+    return _best([rec], "", rec.get("title") or "", duration)
+
+
+def _best(recs: list, artist: str, title: str, duration: float) -> dict | None:
     # Arama sonuclari derlemelerle dolu: tum uygun kayitlarin yayinlarini topla, en "orijinal"i sec
     # (resmi > derleme degil > album > tekli > en eski tarih). Sure 10 sn'den fazla farkliysa ele.
     def rel_rank(rel: dict) -> tuple:
@@ -103,17 +126,85 @@ def cover(release_id: str, session: requests.Session | None = None) -> bytes | N
     return None
 
 
-def archive(path: str, music_dir: str, title_hint: str = "", move: bool = True,
-            session: requests.Session | None = None) -> dict[str, Any]:
-    """Etiketle + kapak gom + Sanatci/Album klasorune tasi. -> {archive: ok|nomatch|error, path}"""
+def find_fpcalc() -> str:
+    from app import paths
+    c = paths.BIN_DIR / "fpcalc.exe"
+    return str(c) if c.is_file() else (shutil.which("fpcalc") or "")
+
+
+def acoustid_lookup(path: str, key: str, session: requests.Session | None = None) -> str:
+    """Chromaprint parmak izi (fpcalc) -> AcoustID -> en iyi MusicBrainz kayit kimligi. Anahtar/fpcalc yoksa ''."""
+    import json
+    import subprocess
+    fp = find_fpcalc()
+    if not key or not fp:
+        return ""
+    try:
+        r = subprocess.run([fp, "-json", path], capture_output=True, text=True, timeout=120,
+                           creationflags=0x08000000)
+        data = json.loads(r.stdout or "{}")
+        if not data.get("fingerprint"):
+            return ""
+        s = session or requests.Session()
+        resp = s.post("https://api.acoustid.org/v2/lookup", timeout=20, data={
+            "client": key, "meta": "recordings", "duration": int(float(data.get("duration") or 0)),
+            "fingerprint": data["fingerprint"]})
+        res = resp.json()
+    except (OSError, ValueError, subprocess.SubprocessError, requests.RequestException):
+        log.warning("AcoustID hatasi", exc_info=True)
+        return ""
+    best = ("", 0.0)
+    for hit in res.get("results") or []:
+        score = float(hit.get("score") or 0)
+        recs = hit.get("recordings") or []
+        if score >= 0.8 and recs and score > best[1]:
+            best = (recs[0].get("id") or "", score)
+    return best[0]
+
+
+def guess_music(path: str, title_hint: str = "", yt: dict | None = None) -> dict[str, Any]:
+    """En iyi sanatci/baslik tahmini: yt-dlp artist/track > 'Sanatci - Sarki' basligi > etiket.
+    yt-dlp MP3'e sanatci olarak KANAL adini yazabildigi icin (ör. 'madebykestek') etiket tek basina guvenilmez."""
+    yt = yt or {}
     g = media_meta.guess(path, title_hint)
+    artist, title = g["artist"], g["title"]
+    raw_title = yt.get("title") or media_meta.read_tags(path).get("title") or title_hint or ""
+    a2, t2 = media_meta.split_artist_title(raw_title)
+    channel = (yt.get("channel") or "").removesuffix(" - Topic").strip()
+    if yt.get("artist") and yt.get("track"):
+        artist, title = yt["artist"].split(",")[0].strip(), media_meta.clean_title(yt["track"])
+    elif a2 and t2:
+        artist, title = a2, t2
+    elif channel and (not artist or artist == yt.get("channel")):
+        artist = channel
+    artist = artist.removesuffix(" - Topic").strip()
+    return {**g, "artist": artist, "title": title, "album": yt.get("album") or "", "year": yt.get("year") or "",
+            "duration": g.get("duration") or yt.get("duration") or 0}
+
+
+def archive(path: str, music_dir: str, title_hint: str = "", move: bool = True,
+            session: requests.Session | None = None, yt: dict | None = None,
+            acoustid_key: str = "") -> dict[str, Any]:
+    """Etiketle + kapak gom + Sanatci/Album klasorune tasi.
+    -> {archive: ok|nomatch, source: musicbrainz|acoustid|youtube, path, artist, title, album}"""
+    g = guess_music(path, title_hint, yt)
     if not g["title"]:
         return {"archive": "nomatch"}
     s = session or requests.Session()
-    m = lookup(g["artist"], g["title"], g.get("duration", 0), s)
+    dur = g.get("duration", 0)
+    source = "musicbrainz"
+    m = lookup(g["artist"], g["title"], dur, s)
     if not m:
-        return {"archive": "nomatch", "artist": g["artist"], "title": g["title"]}
-    img = cover(m["release"], s)
+        rid = acoustid_lookup(path, acoustid_key, s)
+        if rid:
+            m, source = lookup_id(rid, dur, s), "acoustid"
+    img = cover(m["release"], s) if m else None
+    if not m:   # YEDEK: YouTube bilgisinden (kapak yt-dlp tarafindan zaten gomulu)
+        if not g["artist"]:
+            return {"archive": "nomatch", "artist": "", "title": g["title"]}
+        source = "youtube"
+        m = {"artist": g["artist"], "title": g["title"], "album": g.get("album") or "", "date": g.get("year") or "",
+             "track": "", "recording": "", "release": ""}
     if path.lower().endswith(".mp3"):
         media_meta.write_mp3_tags(path, artist=m["artist"], title=m["title"], album=m["album"], date=m["date"],
                                   track=m["track"], cover=img, mb_recording=m["recording"])
@@ -134,9 +225,10 @@ def archive(path: str, music_dir: str, title_hint: str = "", move: bool = True,
                 dest = f"{os.path.splitext(base)[0]} ({i}){ext}"
                 i += 1
             shutil.move(path, dest)
-            lrc = os.path.splitext(path)[0] + ".lrc"   # soz dosyasi da beraber gitsin
-            if os.path.isfile(lrc):
-                shutil.move(lrc, os.path.splitext(dest)[0] + ".lrc")
+            for side in (".lrc", ".txt"):   # soz dosyasi da beraber gitsin
+                src = os.path.splitext(path)[0] + side
+                if os.path.isfile(src):
+                    shutil.move(src, os.path.splitext(dest)[0] + side)
             new_path = dest
         if img and not os.path.exists(os.path.join(folder, "cover.jpg")):
             try:
@@ -144,5 +236,6 @@ def archive(path: str, music_dir: str, title_hint: str = "", move: bool = True,
                     f.write(img)
             except OSError:
                 pass
-    log.info("Arsivlendi: %s - %s (%s)", m["artist"], m["title"], m["album"] or "-")
-    return {"archive": "ok", "path": new_path, "artist": m["artist"], "title": m["title"], "album": m["album"]}
+    log.info("Arsivlendi (%s): %s - %s (%s)", source, m["artist"], m["title"], m["album"] or "-")
+    return {"archive": "ok", "source": source, "path": new_path, "artist": m["artist"], "title": m["title"],
+            "album": m["album"]}

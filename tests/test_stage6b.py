@@ -1,6 +1,7 @@
 """Asama 6b: soz, muzik arsivi, AI kuyrugu, sosyal cerezler, kanal takibi (ag/GPU yok; sahte oturumlar)."""
 from __future__ import annotations
 
+import os
 import json
 import shutil
 import subprocess
@@ -108,8 +109,10 @@ def test_musicarchive_low_score_untouched(tmp_path, monkeypatch):
     monkeypatch.setattr(musicarchive.time, "sleep", lambda s: None)
     p = make_mp3(tmp_path / "X - Y.mp3")
     s = Sess({"musicbrainz.org": Resp(200, {"recordings": [{"id": "r", "score": 40, "title": "Y"}]})})
-    assert musicarchive.archive(str(p), str(tmp_path / "M"), session=s)["archive"] == "nomatch"
-    assert p.exists()
+    # 05.11: dusuk MB puaninda MB etiketi yazilmaz; YouTube/dosya adi yedegiyle Sanatci/Tekliler'e gider
+    r = musicarchive.archive(str(p), str(tmp_path / "M"), session=s)
+    assert r["archive"] == "ok" and r["source"] == "youtube" and r["album"] == ""
+    assert os.path.isfile(os.path.join(tmp_path, "M", "X", "Tekliler", "Y.mp3"))
 
 
 def test_cookie_store_groups_merge(tmp_path):

@@ -117,12 +117,21 @@
           <button type="button" class="btn ghost" id="batchParse" data-i18n="bt_parse"></button>
         </div>
         <div class="fw-add">
+          <span class="chips" id="batchChips">
+            <button type="button" class="chip on" data-k="all" data-i18n="bt_k_all"></button>
+            <button type="button" class="chip" data-k="video" data-i18n="bt_k_video"></button>
+            <button type="button" class="chip" data-k="music" data-i18n="bt_k_music"></button>
+            <button type="button" class="chip" data-k="archive" data-i18n="bt_k_archive"></button>
+            <button type="button" class="chip" data-k="doc" data-i18n="bt_k_doc"></button>
+            <button type="button" class="chip" data-k="image" data-i18n="bt_k_image"></button>
+          </span>
           <input id="batchFilter" type="text" spellcheck="false" data-i18n-placeholder="bt_filter_ph">
           <span class="hint" id="batchCount"></span>
           <button type="button" class="btn ghost" id="batchAll" data-i18n="bt_all"></button>
           <button type="button" class="btn ghost" id="batchNone" data-i18n="bt_none"></button>
           <button type="button" class="btn primary" id="batchAdd" data-i18n="bt_add"></button>
         </div>
+        <p class="hint" id="batchInfo"></p>
         <ul class="batch-list" id="batchList"></ul>
       </section>
 
@@ -279,7 +288,11 @@
           <input type="password" id="geniusToken" spellcheck="false" autocomplete="off" data-i18n-placeholder="s_genius_ph">
           <button type="button" class="btn ghost" id="geniusSave" data-i18n="save"></button>
           <button type="button" class="btn ghost" id="geniusClear" data-i18n="s_genius_clear" hidden></button></span></div>
+        <details class="howto"><summary data-i18n="s_genius_how"></summary><div class="hint" data-i18n="s_genius_how_body"></div></details>
+        <label class="check"><input type="checkbox" name="lyrics_ai"><span data-i18n="s_lyrics_ai"></span></label>
         <label class="check"><input type="checkbox" name="music_archive"><span data-i18n="s_archive"></span></label>
+        <div class="row"><span data-i18n="s_acoustid"></span><input type="text" name="acoustid_key" spellcheck="false" autocomplete="off" data-i18n-placeholder="s_acoustid_ph"></div>
+        <details class="howto"><summary data-i18n="s_acoustid_how"></summary><div class="hint" data-i18n="s_acoustid_how_body"></div></details>
         <div class="row"><span data-i18n="s_music_dir"></span><span><span class="hint" id="musicDir"></span>
           <button type="button" class="btn ghost" id="musicDirChange" data-i18n="change_dir"></button>
           <button type="button" class="btn ghost" id="musicDirReset" data-i18n="reset_dir"></button></span></div>
@@ -384,7 +397,11 @@
       </header>
       <p class="hint" id="mtName"></p>
       <div class="mt-row" id="mtLyricsRow"><div><b data-i18n="mt_lyrics"></b><div class="hint" id="mtLyrics"></div><div class="mt-links" id="mtLinks"></div></div>
-        <button type="button" class="btn ghost" id="mtLyricsBtn" data-i18n="mt_lyrics_find"></button></div>
+        <span><button type="button" class="btn ghost" id="mtLyricsBtn" data-i18n="mt_lyrics_find"></button>
+        <button type="button" class="btn ghost" id="mtLyricsAiBtn" data-i18n="mt_lyrics_ai"></button></span></div>
+      <div class="mt-paste" id="mtPasteRow"><div class="hint" data-i18n="mt_paste_hint"></div>
+        <textarea id="mtPaste" rows="5" spellcheck="false" data-i18n-placeholder="mt_paste_ph"></textarea>
+        <button type="button" class="btn ghost" id="mtPasteBtn" data-i18n="mt_paste_btn"></button></div>
       <div class="mt-row" id="mtArchiveRow"><div><b data-i18n="mt_archive"></b><div class="hint" id="mtArchive"></div></div>
         <button type="button" class="btn ghost" id="mtArchiveBtn" data-i18n="mt_archive_btn"></button></div>
       <div class="mt-row" id="mtWhisperRow"><div><b data-i18n="mt_whisper"></b><div class="hint" id="mtWhisper"></div></div>

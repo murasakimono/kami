@@ -56,6 +56,22 @@ def host_of(url: str) -> str:
         return ""
 
 
+# Medya siteleri: RD bunlari destek listesinde gosterse de (youtube.com vb.) RD ASLA sorulmaz, yt-dlp yolu kullanilir.
+# RD sorusu sadece dosya hoster'lari icin (mega, 1fichier, rapidgator, mediafire, drive, dropbox ...).
+MEDIA_HOSTS = (
+    "youtube.com", "youtu.be", "youtube-nocookie.com", "music.youtube.com", "vimeo.com", "dailymotion.com",
+    "dai.ly", "soundcloud.com", "instagram.com", "x.com", "twitter.com", "tiktok.com", "twitch.tv",
+    "facebook.com", "fb.watch", "reddit.com", "v.redd.it", "bilibili.com", "nicovideo.jp", "bandcamp.com",
+    "mixcloud.com", "streamable.com", "rumble.com", "kick.com", "vk.com", "ok.ru", "pinterest.com",
+    "tumblr.com", "imgur.com", "9gag.com", "threads.net", "bsky.app", "spotify.com", "deezer.com",
+)
+
+
+def is_media_site(url: str) -> bool:
+    h = host_of(url)
+    return bool(h) and any(h == m or h.endswith("." + m) for m in MEDIA_HOSTS)
+
+
 # RD API hata listesi (api.real-debrid.com, "error_code") -> Kami kodu (arayuzde err_<kod> metni).
 _RD_CODES: dict[int, str] = {
     -1: "rd_service", 25: "rd_service", 37: "rd_service",

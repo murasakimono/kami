@@ -306,7 +306,7 @@ class MediaJob:
                     raise MediaCancelled()
                 self._est_total = _estimate_size(info)
                 self.on_progress(phase="downloading", title=info.get("title") or "",
-                                 size=self._est_total, base=_base_name(ydl, info))
+                                 size=self._est_total, base=_base_name(ydl, info), meta=music_meta(info))
                 ydl.process_ie_result(info, download=True)
         except MediaCancelled:
             raise
@@ -316,6 +316,23 @@ class MediaJob:
             msg = self._aria_error or _clean_error(str(exc))
             raise MediaError(msg) from exc
         return self.final_path
+
+
+def music_meta(info: dict[str, Any]) -> dict[str, Any]:
+    """Muzik arsivcisi icin yt-dlp alanlari (YouTube Music'te artist/track/album dolu gelir)."""
+    def first(*keys):
+        for k in keys:
+            v = info.get(k)
+            if isinstance(v, list):
+                v = ", ".join(str(x) for x in v if x)
+            if v:
+                return str(v)
+        return ""
+    year = first("release_year") or (first("release_date", "upload_date")[:4])
+    return {"artist": first("artists", "artist", "creators", "creator"), "track": first("track"),
+            "album": first("album"), "year": year, "title": first("title"),
+            "channel": first("channel", "uploader"), "thumbnail": first("thumbnail"),
+            "duration": float(info.get("duration") or 0)}
 
 
 def _base_name(ydl, info: dict[str, Any]) -> str:

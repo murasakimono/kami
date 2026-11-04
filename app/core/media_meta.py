@@ -77,7 +77,7 @@ def guess(path: str, title_hint: str = "") -> dict[str, Any]:
 def write_mp3_tags(path: str, *, artist: str = "", title: str = "", album: str = "", date: str = "",
                    track: str = "", lyrics: str = "", cover: bytes | None = None,
                    mb_recording: str = "") -> bool:
-    """ID3v2.4: TPE1/TIT2/TALB/TDRC/TRCK + USLT (senkron LRC metni de olur; Pure Music okur) + APIC."""
+    """ID3v2.4: TPE1/TIT2/TALB/TDRC/TRCK + USLT (senkron LRC metni de olur; Dopamine okur) + APIC."""
     try:
         from mutagen.id3 import APIC, ID3, ID3NoHeaderError, TALB, TDRC, TIT2, TPE1, TPE2, TRCK, TXXX, USLT
         try:

@@ -254,6 +254,17 @@ def test_api_routing_modes(tmp_path):
     assert "rd_ask" not in api.add_url(link) and not api.link_supported("https://1fichier.com/?zz")
     settings.set("rd_mode", "ask")
     assert "rd_ask" not in api.add_url(link, direct=True)  # "Dogrudan (RD'siz)"
+    # Medya siteleri: RD destekliyor dese bile asla sorulmaz; "Dogrudan" yt-dlp yoluna direct'i tasir (dongu yok)
+    orig_supports = svc.supports
+    svc.supports = lambda u, wait=True: True
+    yt_link = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert api._rd_route(yt_link) == "" and api._rd_route("https://youtu.be/x") == ""
+    assert api._rd_route("https://mega.nz/file/x") == "ask"
+    seen = []
+    api.media_probe = lambda u, headers=None, direct=False: seen.append(direct) or {"ok": True, "media": {}}
+    assert "rd_ask" not in api.add_url(yt_link, direct=True) and seen == [True]
+    del api.media_probe
+    svc.supports = orig_supports
     mag = "magnet:?xt=urn:btih:abc"
     assert api.add_url(mag)["torrent_ask"]["src"] == mag   # Sor: "Real-Debrid / Yerel torrent"
     assert api.torrent_choose(mag, "", "rd")["torrents"] == 1

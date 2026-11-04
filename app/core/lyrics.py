@@ -1,15 +1,18 @@
 """Sarki sozu (defter 12, ONAY 1).
 
-1) LRCLIB (ucretsiz acik API, zaman damgali): /api/get (sanatci+baslik+sure) -> yoksa /api/search.
-   Senkron soz -> yanina .lrc + MP3'e USLT olarak gomulur (Pure Music okur). Sadece duz soz varsa .txt yerine
-   yine USLT (zaman damgasiz).
-2) LRCLIB'de yoksa: Genius RESMI API ile arama (token varsa) -> sarki sayfasi linki. Metin Genius/AZLyrics
-   sayfalarindan KAZINMAZ; arayuzde "Genius'ta ac / AZLyrics'te ara" linkleri.
+Sira (05.11 karari):
+1) LRCLIB senkron soz -> yanina .lrc + MP3'e USLT (Dopamine okur).
+2) LRCLIB duz metin (plainLyrics; zaman damgasiz ama TAM soz) -> yanina .txt + USLT.
+3) Yoksa: UVR5 vokal + Whisper ile yaziya dokme (aitools "lyrics" isi; iki arac kuruluysa) -> .lrc,
+   "yapay zeka ile cikarildi, hatali olabilir" etiketiyle.
+4) Genius RESMI API ile sarki sayfasi linki (token varsa) + AZLyrics arama linki. Sayfalardan metin KAZINMAZ.
+Ek: "Sozu yapistir" - kullanicinin elle kopyaladigi soz gomulur + .lrc/.txt yazilir.
 """
 from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any, Callable
 from urllib.parse import quote_plus
 
@@ -107,6 +110,66 @@ def genius_search(artist: str, title: str, token: str, session: requests.Session
     return ""
 
 
+LRC_LINE = re.compile(r"^\s*\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]")
+AI_NOTE = "Yapay zekâ ile çıkarıldı, hatalı olabilir / AI transcribed, may contain errors"
+
+
+def is_lrc(text: str) -> bool:
+    lines = [x for x in (text or "").splitlines() if x.strip()]
+    return bool(lines) and sum(1 for x in lines if LRC_LINE.match(x)) >= max(1, len(lines) // 2)
+
+
+def srt_to_lrc(srt: str) -> str:
+    """Whisper SRT -> LRC satirlari ([mm:ss.xx] metin)."""
+    out = []
+    for block in re.split(r"\n\s*\n", (srt or "").strip()):
+        lines = block.strip().splitlines()
+        tline = next((i for i, x in enumerate(lines) if "-->" in x), None)
+        if tline is None:
+            continue
+        m = re.match(r"(\d+):(\d+):(\d+)[,.](\d+)", lines[tline].strip())
+        text = " ".join(x.strip() for x in lines[tline + 1:] if x.strip())
+        if not m or not text:
+            continue
+        h, mi, se, ms = (int(g) for g in m.groups())
+        total = h * 3600 + mi * 60 + se + ms / 1000
+        out.append(f"[{int(total // 60):02d}:{total % 60:05.2f}]{text}")
+    return "\n".join(out)
+
+
+def write_lyrics(path: str, text: str, artist: str = "", title: str = "", embed: bool = True,
+                 ai: bool = False) -> dict[str, Any]:
+    """Soz metnini dosyanin yanina yaz (.lrc senkronsa, degilse .txt) + MP3'e USLT olarak gom."""
+    from app.core import media_meta
+    text = (text or "").replace("\r\n", "\n").strip()
+    if not text:
+        return {"lyrics": "none"}
+    synced = is_lrc(text)
+    base = os.path.splitext(path)[0]
+    head = "".join(f"[{k}:{v}]\n" for k, v in (("ar", artist), ("ti", title)) if v)
+    if ai:
+        head += f"[re:Kami AI]\n[by:{AI_NOTE}]\n"
+    if synced:
+        side = base + ".lrc"
+        body = head + text + "\n"
+    else:
+        side = base + ".txt"
+        body = (f"({AI_NOTE})\n\n" if ai else "") + text + "\n"
+    with open(side, "w", encoding="utf-8", newline="\n") as f:
+        f.write(body)
+    if embed and path.lower().endswith(".mp3"):
+        media_meta.write_mp3_tags(path, lyrics=(f"({AI_NOTE})\n" if ai else "") + text)
+    kind = "ai" if ai else ("synced" if synced else "plain")
+    return {"lyrics": kind, "lrc" if synced else "txt": side}
+
+
+def paste(path: str, text: str, title_hint: str = "", embed: bool = True) -> dict[str, Any]:
+    """Kullanicinin elle kopyaladigi soz (Genius/AZLyrics'ten): gomulur + .lrc/.txt yazilir. Kazima yok."""
+    from app.core import media_meta
+    g = media_meta.guess(path, title_hint)
+    return {**write_lyrics(path, text, g["artist"], g["title"], embed), "artist": g["artist"], "title": g["title"]}
+
+
 def fetch_for_file(path: str, title_hint: str = "", embed: bool = True,
                    genius_token: Callable[[], str] = lambda: "",
                    session: requests.Session | None = None) -> dict[str, Any]:
@@ -123,17 +186,8 @@ def fetch_for_file(path: str, title_hint: str = "", embed: bool = True,
     if found and found["instrumental"]:
         out["lyrics"] = "instrumental"
         return out
-    if found:
-        text = found["synced"] or found["plain"]
-        out["lyrics"] = "synced" if found["synced"] else "plain"
-        if found["synced"]:
-            lrc = os.path.splitext(path)[0] + ".lrc"
-            head = "".join(f"[{k}:{v}]\n" for k, v in (("ar", artist), ("ti", title)) if v)
-            with open(lrc, "w", encoding="utf-8", newline="\n") as f:
-                f.write(head + found["synced"].strip() + "\n")
-            out["lrc"] = lrc
-        if embed and path.lower().endswith(".mp3"):
-            media_meta.write_mp3_tags(path, lyrics=text)
+    if found:   # 1) senkron, 2) duz metin (zaman damgasiz ama tam soz)
+        out.update(write_lyrics(path, found["synced"] or found["plain"], artist, title, embed))
         return out
     url = genius_search(artist, title, genius_token(), session)
     if url:

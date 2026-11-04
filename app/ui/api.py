@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import re
 import logging
 import os
 import subprocess
@@ -69,7 +70,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now",
-        "batch_from_page", "batch_add", "ntfy_test", "ntfy_set_topic",
+        "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
     def job_start(self, name: str, args: list | None = None) -> dict[str, Any]:
@@ -206,13 +207,13 @@ class Api:
         from app.engines import ytdlp_engine as yt
         try:
             if yt.is_supported(url):
-                return self.media_probe(url)
+                return self.media_probe(url, direct=direct)   # direct: RD sorusu tekrar gelmesin (dongu)
         except Exception:
             log.exception("yt-dlp tanima hatasi")
         try:
             added = self._manager.add(DownloadRequest(url=url, filename=filename, source="ui"))
         except PageLinkRejected:
-            res = self.media_probe(url)   # genel cikarici: sayfadaki gomulu video
+            res = self.media_probe(url, direct=True)   # genel cikarici: sayfadaki gomulu video
             return res if res.get("ok") else {"ok": False, "error": "page_link"}
         except CaptureRejected as exc:
             return {"ok": False, "error": str(exc)}
@@ -481,6 +482,9 @@ class Api:
         if rd is None or mode == "off" or not (url or "").lower().startswith(("http://", "https://")) \
                 or not rd.has_token():
             return ""
+        from app.core.debrid import is_media_site
+        if is_media_site(url):   # youtube vb.: RD destek listesinde olsa da asla sorulmaz
+            return ""
         try:   # magnet/.torrent burada degil: torrent_source (RD / yerel torrent secimi)
             return mode if rd.supports(url, wait=wait) else ""
         except Exception:
@@ -735,6 +739,11 @@ class Api:
             return {"ok": False, "error": "unavailable"}
         return self._media_post.lyrics(int(download_id))
 
+    def media_lyrics_paste(self, download_id: int, text: str) -> dict[str, Any]:
+        if not self._media_post:
+            return {"ok": False, "error": "unavailable"}
+        return self._media_post.lyrics_paste(int(download_id), str(text or "")[:200_000])
+
     def media_archive(self, download_id: int) -> dict[str, Any]:
         if not self._media_post:
             return {"ok": False, "error": "unavailable"}
@@ -758,7 +767,7 @@ class Api:
     def ai_run(self, kind: str, download_id: int, lang: str = "") -> dict[str, Any]:
         if not self._ai:
             return {"ok": False, "error": "unavailable"}
-        opts = {"lang": lang} if kind == "whisper" and lang else {}
+        opts = {"lang": lang} if kind in ("whisper", "lyrics") and lang else {}
         return self._ai.submit(str(kind), int(download_id), **opts)
 
     def ai_cancel(self, kind: str, download_id: int) -> None:
@@ -902,11 +911,52 @@ class Api:
 
     # telefondan gonder
     def phone_info(self) -> dict[str, Any]:
-        from app.core.phone import lan_ip
+        import socket
+        from app.core.phone import lan_ips
         s = self._manager.settings
         key = self._phone_key.load() if self._phone_key else ""
+        ips = lan_ips()
         return {"enabled": bool(s.get("phone_enabled")), "running": bool(self._phone and self._phone.running),
-                "ip": lan_ip(), "port": s.get("phone_port"), "key": key}
+                "ip": ips[0], "ips": ips, "host": socket.gethostname().lower() + ".local",
+                "port": s.get("phone_port"), "key": key,
+                "last": (self._phone.last if self._phone else {}) or {}}
+
+    def phone_test(self, url: str) -> dict[str, Any]:
+        """Ayarlar'daki "test": bu bilgisayardan o adrese /test istegi (telefon tarafini kanitlamaz, sunucuyu kanitlar)."""
+        import requests
+        url = str(url or "")
+        if not re.fullmatch(r"http://[\w.\-]+:\d+/test", url):
+            return {"ok": False}
+        try:
+            r = requests.get(url, headers={"Accept": "application/json"}, timeout=4)
+            return {"ok": r.status_code == 200, "message": r.json().get("message", "")}
+        except Exception as exc:
+            return {"ok": False, "message": type(exc).__name__}
+
+    def phone_status_items(self) -> list[dict[str, Any]]:
+        """Telefon sayfasindaki "indirme durumu": aktif/bekleyen/duraklatilmis + son bitenler."""
+        order = {Status.ACTIVE: 0, Status.WAITING: 1, Status.PAUSED: 2, Status.ERROR: 3, Status.COMPLETE: 4}
+        items = sorted(self._manager.snapshot(), key=lambda d: (order.get(d.status, 5), -(d.id or 0)))
+        out = []
+        for d in items[:15]:
+            pct = int(d.downloaded * 100 / d.size) if d.size else (100 if d.status == Status.COMPLETE else 0)
+            st = {Status.ACTIVE: "iniyor", Status.WAITING: "sırada", Status.PAUSED: "duraklatıldı",
+                  Status.ERROR: "hata", Status.COMPLETE: "bitti"}.get(d.status, str(d.status))
+            speed = f" · {d.speed / 1048576:.1f} MB/sn" if d.status == Status.ACTIVE and d.speed else ""
+            out.append({"id": d.id, "name": d.filename or d.url, "percent": max(0, min(100, pct)),
+                        "label": f"{st} · %{pct}{speed}",
+                        "can_pause": d.status in (Status.ACTIVE, Status.WAITING),
+                        "can_resume": d.status in (Status.PAUSED, Status.ERROR)})
+        return out
+
+    def phone_control(self, download_id: int, action: str) -> bool:
+        if action == "pause":
+            self._manager.pause(int(download_id))
+            return True
+        if action == "resume":
+            self._manager.resume(int(download_id))
+            return True
+        return False
 
     def phone_new_key(self) -> dict[str, Any]:
         from app.core.phone import new_key
@@ -917,12 +967,15 @@ class Api:
 
     def add_text(self, text: str, source: str = "phone") -> int:
         """Telefondan / toplu listeden gelen metin: icindeki linkleri pencere acmadan kuyruga ekler."""
+        return self.add_text_detail(text, source)["added"]
+
+    def add_text_detail(self, text: str, source: str = "phone") -> dict[str, Any]:
         from app.core.automate import extract_links
-        n = 0
+        names = []
         for link in extract_links(str(text or ""))[:200]:
             if self._add_quiet(link, source):
-                n += 1
-        return n
+                names.append(link)
+        return {"added": len(names), "names": names}
 
     def _add_quiet(self, link: str, source: str) -> bool:
         from app.core.debrid import is_magnet, is_torrent_url
@@ -967,12 +1020,24 @@ class Api:
         return {"ok": True, "links": list(dict.fromkeys(links))[:5000]}
 
     def batch_from_page(self, url: str) -> dict[str, Any]:
+        """yt-dlp'nin tanidigi sayfa (YouTube kanal/liste/arama vb.) -> duz video listesi; digerleri <a> linkleri."""
         from app.core.automate import fetch_page_links
+        from app.engines import ytdlp_engine as yt
         url = str(url or "").strip()
         if not url.lower().startswith(("http://", "https://")):
             return {"ok": False, "error": "bad_url"}
         try:
-            return {"ok": True, "links": fetch_page_links(url)[:5000]}
+            if yt.is_supported(url) and not re.search(r"[?&]v=|youtu\.be/|/shorts/[\w-]+$", url):
+                from app.core.follow import list_entries, normalize_url
+                title, entries = list_entries(normalize_url(url), limit=500)
+                if entries:
+                    return {"ok": True, "links": [e["url"] for e in entries], "source": "ytdlp", "title": title,
+                            "titles": {e["url"]: e["title"] for e in entries}, "hidden": 0}
+        except Exception:
+            log.info("yt-dlp liste cikarimi olmadi, sayfa linkleri deneniyor", exc_info=True)
+        try:
+            r = fetch_page_links(url)
+            return {"ok": True, "links": r["links"][:5000], "hidden": r["hidden"], "source": "page"}
         except Exception as exc:
             return {"ok": False, "error": "page_fetch", "detail": type(exc).__name__}
 

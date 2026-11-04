@@ -393,6 +393,8 @@ class DownloadManager:
                     fields["filename"] = sanitize_filename(f["title"])
                 if f.get("base") and d.options.get("base") != f["base"]:
                     fields["options"] = {**d.options, "base": f["base"]}
+                if f.get("meta") and (d.extra or {}).get("yt") != f["meta"]:   # muzik arsivcisi icin
+                    fields["extra"] = {**(d.extra or {}), "yt": f["meta"]}
                 with self._lock:
                     cur = self._media_live.setdefault(download_id, {"speed": 0, "phase": ""})
                     if "speed" in f:

@@ -365,3 +365,16 @@ legend { padding: 0; margin-bottom: 8px; font-weight: 600; color: var(--accent);
 .sd-bar { position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%); z-index: 50; display: flex; gap: 14px; align-items: center;
   padding: 12px 16px; border-radius: 10px; background: #3a1420; color: #fff; box-shadow: 0 8px 30px rgba(0,0,0,.4); font-weight: 600; }
 #shutdownToggle.on { color: #F0626F; border-color: #F0626F; }
+
+/* 05.11: sozu yapistir + nasil alinir */
+.mt-paste { display: grid; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.mt-paste textarea { width: 100%; resize: vertical; min-height: 80px; background: var(--surface-2, #1D1727); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; font-size: 12.5px; }
+.mt-paste .btn { justify-self: end; }
+details.howto { margin: -2px 0 6px; }
+details.howto summary { cursor: pointer; color: var(--accent, #9D6BFF); font-size: 12.5px; }
+details.howto .hint { margin-top: 4px; line-height: 1.5; }
+.chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.chip { background: transparent; color: var(--text-dim, #9A91AB); border: 1px solid var(--line); border-radius: 999px;
+  padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }

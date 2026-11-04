@@ -328,6 +328,41 @@ class ShutdownWatcher:
 _URL_RE = re.compile(r"""(?:https?|ftp)://[^\s<>"'`{}|\\^\[\]]+|magnet:\?[^\s<>"']+""", re.I)
 
 
+# Sayfa kaynagi dosyalari (sayfadan cekerken varsayilan GIZLI): js/css/ikon/font/izleme pikselleri
+_RESOURCE_EXT = {".js", ".mjs", ".css", ".ico", ".svg", ".woff", ".woff2", ".ttf", ".otf", ".eot", ".map",
+                 ".json", ".xml", ".webmanifest", ".rss", ".atom", ".php", ".asp", ".aspx"}
+_RESOURCE_RE = re.compile(r"generate_204|/favicon|/manifest|/opensearch|/feeds?/|/rss|/s/player/|/yts/|/sw\.js|"
+                          r"googletagmanager|google-analytics|doubleclick|/ads?/|/static/|/assets?/(?:css|js|fonts?)/",
+                          re.I)
+
+
+def is_resource(url: str) -> bool:
+    """Sayfanin kendi kaynagi (indirilecek dosya degil)?"""
+    from urllib.parse import urlparse
+    try:
+        p = urlparse(url)
+    except ValueError:
+        return True
+    ext = os.path.splitext(p.path.lower())[1]
+    return ext in _RESOURCE_EXT or bool(_RESOURCE_RE.search(url))
+
+
+def page_anchor_links(html_text: str, base: str) -> list[str]:
+    """Sadece <a href> linkleri (src/data-src = sayfa kaynagi, alinmaz)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in re.finditer(r"""<a\b[^>]*?\bhref\s*=\s*["']([^"']+)["']""", html_text, re.I):
+        u = html.unescape(m.group(1).strip())
+        if u.startswith(("#", "javascript:", "mailto:", "data:", "tel:")):
+            continue
+        if not re.match(r"^(?:https?|ftp|magnet):", u, re.I):
+            u = urljoin(base, u)
+        if re.match(r"^(?:https?|ftp)://|^magnet:\?", u, re.I) and u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
 def extract_links(text: str, base: str = "") -> list[str]:
     """Metin ya da HTML -> benzersiz linkler (sirayi koru). HTML'de href/src de okunur, goreli linkler cozulur."""
     out: list[str] = []
@@ -364,8 +399,13 @@ def expand_numbered(text: str) -> list[str]:
     return [text[:m.start()] + str(i).zfill(width) + text[m.end():] for i in range(lo, hi + 1)]
 
 
-def fetch_page_links(url: str, timeout: float = 20.0) -> list[str]:
+def fetch_page_links(url: str, timeout: float = 20.0) -> dict[str, Any]:
+    """Sayfadaki <a> linkleri; kaynak dosyalari (js/css/ikon...) ayiklanir. -> {links, hidden}"""
     import requests
     r = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
-    return extract_links(r.text[:5_000_000], base=r.url)
+    text = r.text[:5_000_000]
+    raw = page_anchor_links(text, r.url)
+    raw = list(dict.fromkeys(raw))
+    links = [u for u in raw if not is_resource(u)]
+    return {"links": links, "hidden": len(raw) - len(links)}

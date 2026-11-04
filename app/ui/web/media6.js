@@ -15,7 +15,9 @@ function showView(name) {
 const _baseBadges = extraBadges;
 extraBadges = function (d) {   // eslint-disable-line no-global-assign
   const x = d.extra || {}, out = [_baseBadges(d)];
-  if (x.lyrics === "synced" || x.lyrics === "plain") out.push(`<span class="badge ok">${T("b_lyrics")}</span>`);
+  if (["synced", "plain", "pasted"].includes(x.lyrics)) out.push(`<span class="badge ok">${T("b_lyrics")}</span>`);
+  if (x.lyrics === "ai") out.push(`<span class="badge ok" title="${escapeHtml(T("ly_ai"))}">${T("b_lyrics_ai")}</span>`);
+  if (x.ai_lyrics === "running") out.push(`<span class="badge prog">${T("b_lyrics_ai")} ${Math.round((x.ai_lyrics_p || 0) * 100)}%</span>`);
   for (const k of ["whisper", "uvr"]) {
     const st = x["ai_" + k];
     if (st === "running") out.push(`<span class="badge prog">${k === "whisper" ? "Whisper" : "UVR5"} ${Math.round((x["ai_" + k + "_p"] || 0) * 100)}%</span>`);
@@ -45,19 +47,22 @@ function fillMediaTools() {
   const audio = d.category === "music";
   $("#mtName").textContent = d.filename || d.url;
   $("#mtLyricsRow").hidden = !audio;
+  $("#mtPasteRow").hidden = !audio;
   $("#mtArchiveRow").hidden = !audio;
   $("#mtUvrRow").hidden = !audio;
-  $("#mtLyrics").textContent = x.lyrics ? T("ly_" + x.lyrics) : "";
+  const aiL = aiLine(x, "lyrics");
+  $("#mtLyrics").textContent = (x.lyrics ? T("ly_" + x.lyrics) : "") + (aiL && x.lyrics !== "ai" ? " · AI: " + aiL : "");
+  $("#mtLyricsAiBtn").textContent = T(["queued", "running"].includes(x.ai_lyrics) ? "mt_cancel" : "mt_lyrics_ai");
   const links = x.lyrics_links || {};
   const L = [];
   if (links.genius_song) L.push(["ly_genius_song", links.genius_song]);
-  if (x.lyrics && x.lyrics !== "synced" && x.lyrics !== "instrumental") {
+  if (x.lyrics && !["synced", "instrumental", "pasted"].includes(x.lyrics)) {
     if (links.genius) L.push(["ly_genius", links.genius]);
     if (links.azlyrics) L.push(["ly_azlyrics", links.azlyrics]);
   }
   $("#mtLinks").innerHTML = L.map(([k, u]) => `<button type="button" class="link-btn" data-link="${escapeHtml(u)}">${T(k)}</button>`).join("") +
-    (x.lyrics_lrc ? `<button type="button" class="link-btn" data-path="${escapeHtml(x.lyrics_lrc)}">.lrc</button>` : "");
-  $("#mtArchive").textContent = x.archive === "ok" ? T("ar_ok", d.filename, x.album) : x.archive === "nomatch" ? T("ar_nomatch") : "";
+    (x.lyrics_lrc ? `<button type="button" class="link-btn" data-path="${escapeHtml(x.lyrics_lrc)}">.${escapeHtml(x.lyrics_lrc.split(".").pop())}</button>` : "");
+  $("#mtArchive").textContent = x.archive === "ok" ? T("ar_ok", d.filename, x.album, x.archive_source) : x.archive === "nomatch" ? T("ar_nomatch") : "";
   const w = aiLine(x, "whisper"), u = aiLine(x, "uvr");
   $("#mtWhisper").innerHTML = escapeHtml(w) + (x.ai_whisper_srt ? ` <button type="button" class="link-btn" data-path="${escapeHtml(x.ai_whisper_srt)}">${T("mt_open")}</button>` : "");
   $("#mtUvr").innerHTML = escapeHtml(u) + ((x.ai_uvr_files || [])[0] ? ` <button type="button" class="link-btn" data-path="${escapeHtml(x.ai_uvr_files[0])}">${T("mt_open")}</button>` : "");
@@ -78,12 +83,12 @@ async function runAi(kind) {
   if (!d) return;
   const x = d.extra || {};
   if (["queued", "running"].includes(x["ai_" + kind])) { await api.ai_cancel(kind, d.id); return; }
-  const r = await api.ai_run(kind, d.id, kind === "whisper" ? $("#mtWhisperLang").value : "");
+  const r = await api.ai_run(kind, d.id, kind !== "uvr" ? $("#mtWhisperLang").value : "");
   if (r.ok) { tick(); return; }
   if (r.error === "tool_missing") {
     // agir indirme: once sor (defter: modeller ilk kullanimda iner, once sorulur)
-    if (confirm(T("ai_ask", kind === "whisper" ? "Whisper" : "UVR5", r.size_gb))) {
-      await api.ai_install(kind);
+    if (confirm(T("ai_ask", r.tool === "whisper" ? "Whisper" : "UVR5", r.size_gb))) {
+      await api.ai_install(r.tool);
       toast(T("ai_install_started"));
     }
     return;
@@ -100,6 +105,16 @@ function bindMediaTools() {
   $("#mtArchiveBtn").addEventListener("click", async (e) => {
     e.target.disabled = true;
     try { await slow("media_archive", mt.id); } finally { e.target.disabled = false; }
+    await tick(); fillMediaTools();
+  });
+  $("#mtLyricsAiBtn").addEventListener("click", () => runAi("lyrics"));
+  $("#mtPasteBtn").addEventListener("click", async () => {
+    const txt = $("#mtPaste").value;
+    if (!txt.trim()) return;
+    const r = await api.media_lyrics_paste(mt.id, txt);
+    if (!r.ok) { toast(T("err_" + r.error) || r.error, true); return; }
+    $("#mtPaste").value = "";
+    toast(T("mt_paste_ok", (r.lrc || r.txt || "").split(".").pop()));
     await tick(); fillMediaTools();
   });
   $("#mtWhisperBtn").addEventListener("click", () => runAi("whisper"));

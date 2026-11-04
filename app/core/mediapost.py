@@ -50,7 +50,27 @@ class MediaPost:
         except Exception as exc:
             log.exception("Soz alinamadi")
             return {"ok": False, "error": type(exc).__name__}
-        self.set_extra(did, lyrics=res["lyrics"], lyrics_links=res["links"], lyrics_lrc=res.get("lrc", ""))
+        self.set_extra(did, lyrics=res["lyrics"], lyrics_links=res["links"],
+                       lyrics_lrc=res.get("lrc", "") or res.get("txt", ""))
+        # 3) bulunamadiysa: UVR vokal + Whisper ile yaziya dok (iki arac kuruluysa; AI etiketli)
+        if res["lyrics"] == "none" and self.s.get("lyrics_ai") and self.ai is not None:
+            from app.core import aitools
+            if aitools.installed("uvr") and aitools.installed("whisper"):
+                r = self.ai.submit("lyrics", did)
+                res["ai_queued"] = bool(r.get("ok"))
+        return {"ok": True, **res}
+
+    def lyrics_paste(self, did: int, text: str) -> dict[str, Any]:
+        """Kullanicinin elle kopyaladigi soz: MP3'e gomulur + .lrc/.txt yazilir (otomatik kazima yok)."""
+        from app.core import lyrics
+        d = self.manager.store.get(did)
+        if not d or not d.path or not os.path.isfile(d.path):
+            return {"ok": False, "error": "no_file"}
+        if not (text or "").strip():
+            return {"ok": False, "error": "empty"}
+        res = lyrics.paste(d.path, text, (d.extra or {}).get("title") or d.filename, embed=True)
+        self.set_extra(did, lyrics="pasted" if res["lyrics"] != "none" else "none",
+                       lyrics_lrc=res.get("lrc", "") or res.get("txt", ""))
         return {"ok": True, **res}
 
     def archive(self, did: int) -> dict[str, Any]:
@@ -59,14 +79,16 @@ class MediaPost:
         if not d or not d.path or not os.path.isfile(d.path):
             return {"ok": False, "error": "no_file"}
         try:
-            res = musicarchive.archive(d.path, self.music_dir(), (d.extra or {}).get("title") or d.filename)
+            res = musicarchive.archive(d.path, self.music_dir(), (d.extra or {}).get("title") or d.filename,
+                                       yt=(d.extra or {}).get("yt") or {}, acoustid_key=self.s.get("acoustid_key") or "")
         except Exception as exc:
             log.exception("Arsivleme hatasi")
             return {"ok": False, "error": type(exc).__name__}
         if res.get("archive") == "ok" and res.get("path") and res["path"] != d.path:
             self.manager.store.update(did, filename=os.path.basename(res["path"]),
                                       directory=os.path.dirname(res["path"]))
-        self.set_extra(did, archive=res.get("archive"), album=res.get("album", ""))
+        self.set_extra(did, archive=res.get("archive"), album=res.get("album", ""),
+                       archive_source=res.get("source", ""), archive_artist=res.get("artist", ""))
         return {"ok": res.get("archive") == "ok", **res}
 
     def process(self, did: int) -> None:
