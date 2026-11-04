@@ -34,6 +34,8 @@ class DownloadRequest:
     directory: str = ""                # bos = kategori klasoru
     page_url: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
+    kind: str = "file"                 # file (aria2) | media (yt-dlp)
+    options: dict[str, Any] = field(default_factory=dict)   # medya secenekleri
 
 
 @dataclass
@@ -57,6 +59,9 @@ class Download:
     max_conn: int = 0                  # 0 = ayardaki deger; sunucu sinirlarsa otomatik dusurulur
     created_at: float = 0.0
     finished_at: float = 0.0
+    kind: str = "file"                 # file (aria2) | media (yt-dlp)
+    options: dict[str, Any] = field(default_factory=dict)
+    phase: str = ""                    # medya: downloading | processing (kalici degil)
 
     @property
     def path(self) -> str:
@@ -67,6 +72,8 @@ class Download:
         """Arayuze gonderilecek hali (basliklar/cerezler gizli)."""
         d = asdict(self)
         d.pop("headers", None)
+        opts = d.pop("options", None) or {}
+        d["media_format"] = opts.get("format", "")
         d["status"] = str(self.status)
         d["path"] = self.path
         return d

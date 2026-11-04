@@ -1,11 +1,62 @@
 {
-  "ext_name": { "message": "Kami" },
-  "ext_desc": { "message": "Tarayıcı indirmelerini Kami Download Manager'a aktarır: çok bağlantılı hızlı indirme, sağ tık menüsü." },
-  "menu_download": { "message": "Kami ile indir" },
-  "popup_connected": { "message": "Kami açık" },
-  "popup_offline": { "message": "Kami kapalı. İndirmeler tarayıcıda kalır." },
-  "popup_nohost": { "message": "Köprü kurulu değil. Kami klasöründe native_host\\kur_host.bat dosyasını çalıştırın." },
-  "popup_capture": { "message": "İndirmeleri otomatik devral" },
-  "popup_open": { "message": "Kami'yi aç" },
-  "popup_alt_hint": { "message": "Alt tuşuna basılı tutarak tıklarsan dosyayı tarayıcı indirir." }
+  "ext_name": {
+    "message": "Kami"
+  },
+  "ext_desc": {
+    "message": "Tarayıcı indirmelerini ve sitelerdeki video/sesi Kami'ye aktarır: hızlı indirme, video üstü buton, sağ tık."
+  },
+  "menu_download": {
+    "message": "Kami ile indir"
+  },
+  "popup_connected": {
+    "message": "Kami açık"
+  },
+  "popup_offline": {
+    "message": "Kami kapalı. İndirmeler tarayıcıda kalır."
+  },
+  "popup_nohost": {
+    "message": "Köprü kurulu değil. Kami klasöründe native_host\\kur_host.bat dosyasını çalıştırın."
+  },
+  "popup_capture": {
+    "message": "İndirmeleri otomatik devral"
+  },
+  "popup_open": {
+    "message": "Kami'yi aç"
+  },
+  "popup_alt_hint": {
+    "message": "Alt tuşuna basılı tutarak tıklarsan dosyayı tarayıcı indirir."
+  },
+  "btn_download": {
+    "message": "Kami ile indir"
+  },
+  "btn_mp4_hint": {
+    "message": "video"
+  },
+  "btn_mp3_hint": {
+    "message": "ses"
+  },
+  "btn_choose": {
+    "message": "Kami'de seç…"
+  },
+  "btn_added": {
+    "message": "Kuyruğa eklendi"
+  },
+  "btn_opened": {
+    "message": "Kami'de açıldı"
+  },
+  "btn_rejected": {
+    "message": "İndirilemedi"
+  },
+  "btn_offline": {
+    "message": "Kami kapalı"
+  },
+  "popup_media": {
+    "message": "Bu sayfada yakalanan medya"
+  },
+  "popup_media_none": {
+    "message": "Henüz video/ses yakalanmadı. Videoyu oynatınca burada görünür."
+  },
+  "popup_choose": {
+    "message": "Seç…"
+  }
 }

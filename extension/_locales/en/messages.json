@@ -1,11 +1,62 @@
 {
-  "ext_name": { "message": "Kami" },
-  "ext_desc": { "message": "Hands browser downloads to Kami Download Manager: fast multi-connection downloads and a right-click menu." },
-  "menu_download": { "message": "Download with Kami" },
-  "popup_connected": { "message": "Kami is running" },
-  "popup_offline": { "message": "Kami is closed. Downloads stay in the browser." },
-  "popup_nohost": { "message": "The bridge isn't installed. Run native_host\\kur_host.bat in the Kami folder." },
-  "popup_capture": { "message": "Take over downloads automatically" },
-  "popup_open": { "message": "Open Kami" },
-  "popup_alt_hint": { "message": "Hold Alt while clicking to let the browser download the file." }
+  "ext_name": {
+    "message": "Kami"
+  },
+  "ext_desc": {
+    "message": "Sends browser downloads and on-page video/audio to Kami: fast downloads, on-video button, context menu."
+  },
+  "menu_download": {
+    "message": "Download with Kami"
+  },
+  "popup_connected": {
+    "message": "Kami is running"
+  },
+  "popup_offline": {
+    "message": "Kami is closed. Downloads stay in the browser."
+  },
+  "popup_nohost": {
+    "message": "The bridge isn't installed. Run native_host\\kur_host.bat in the Kami folder."
+  },
+  "popup_capture": {
+    "message": "Take over downloads automatically"
+  },
+  "popup_open": {
+    "message": "Open Kami"
+  },
+  "popup_alt_hint": {
+    "message": "Hold Alt while clicking to let the browser download the file."
+  },
+  "btn_download": {
+    "message": "Download with Kami"
+  },
+  "btn_mp4_hint": {
+    "message": "video"
+  },
+  "btn_mp3_hint": {
+    "message": "audio"
+  },
+  "btn_choose": {
+    "message": "Choose in Kami…"
+  },
+  "btn_added": {
+    "message": "Added to queue"
+  },
+  "btn_opened": {
+    "message": "Opened in Kami"
+  },
+  "btn_rejected": {
+    "message": "Can't download"
+  },
+  "btn_offline": {
+    "message": "Kami is closed"
+  },
+  "popup_media": {
+    "message": "Media caught on this page"
+  },
+  "popup_media_none": {
+    "message": "No video/audio caught yet. Play the video and it shows up here."
+  },
+  "popup_choose": {
+    "message": "Choose…"
+  }
 }

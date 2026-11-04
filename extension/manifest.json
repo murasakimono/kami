@@ -2,24 +2,58 @@
   "manifest_version": 3,
   "name": "__MSG_ext_name__",
   "description": "__MSG_ext_desc__",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "default_locale": "en",
   "minimum_chrome_version": "116",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm19ExD9G2DZMY3TGUtj8IFJhSndS7JHnX+lzhwigMM3VNgRinEMy/vbqTtIukjJspiEaPSaIapVx5+lORom+JfPgwqhuuk3x40ITFlB9wfcVH8zD1lt9QEFCNpWOAvqc8QqNPSAZNTaZvqYNYZ8R9rLkDCGij+ywDOpxv3tKmf+iV0CO4ksD7P4pmNcb7p/pOZn0mvUEcxgpdm562MuSi6vVa3hEBcyZDig83IQf/J8TuWV3CD6kNJn6yaK/NK71gs7f5k2rNQ4Vyfueh4zGYBnOS0gPnfcUuMb5DIoUojRwGapwCs6mTpqUjD3cNM+L6wco0PsMjDr51ho12KcedwIDAQAB",
-  "permissions": ["downloads", "contextMenus", "nativeMessaging", "storage", "cookies"],
-  "host_permissions": ["<all_urls>"],
-  "background": { "service_worker": "service_worker.js" },
+  "permissions": [
+    "downloads",
+    "contextMenus",
+    "nativeMessaging",
+    "storage",
+    "cookies",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Kami",
-    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png" }
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png"
+    }
   },
-  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content/alt_click.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/alt_click.js"
+      ],
       "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/video_button.js"
+      ],
+      "run_at": "document_idle",
       "all_frames": true
     }
   ]

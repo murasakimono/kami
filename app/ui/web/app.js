@@ -96,7 +96,7 @@ function actionsFor(d) {
 
 function metaFor(d) {
   const parts = [];
-  const st = `<span class="st-${d.status}">${d.status === "error" && d.error ? `${T("st_error")}: ${escapeHtml(d.error)}` : d.status === "confirm" ? T("confirm_q") : T("st_" + d.status)}</span>`;
+  const st = `<span class="st-${d.status}">${d.status === "error" && d.error ? `${T("st_error")}: ${escapeHtml(d.error)}` : d.status === "confirm" ? T("confirm_q") : d.phase === "processing" ? T("phase_processing") : T("st_" + d.status)}</span>`;
   parts.push(st);
   if (d.status === "complete" || d.status === "confirm") {
     if (d.size) parts.push(`<span>${fmtBytes(d.size)}</span>`);
@@ -135,7 +135,7 @@ function render() {
       li.dataset.id = d.id;
       li.innerHTML = `<div class="ficon"></div><div class="name"></div><div class="actions"></div><div class="meta"></div><div class="bar"><i></i></div>`;
     }
-    const sig = `${d.status}|${d.filename}|${d.downloaded}|${d.size}|${d.speed}|${d.connections}|${d.error}`;
+    const sig = `${d.status}|${d.filename}|${d.downloaded}|${d.size}|${d.speed}|${d.connections}|${d.error}|${d.phase}`;
     if (li.dataset.sig !== sig) {
       li.className = `item st-${d.status}`;
       const name = d.filename || d.url;
@@ -227,6 +227,7 @@ async function tick() {
   try {
     const s = await api.get_state();
     state.items = s.items;
+    (s.media_requests || []).forEach(handleMediaRequest);
     state.history.push(s.total_speed); state.history.shift();
     const [num, unit] = splitBytes(s.total_speed);
     $("#speedNum").textContent = num;
@@ -272,11 +273,14 @@ function bindEvents() {
     if (!urls.length) return;
     let ok = 0;
     for (const u of urls) {
+        toast(T("resolving"));
       const r = await api.add_url(u);
+      if (r.ok && r.media) { input.value = ""; openMedia(r, { url: u }); continue; }
       if (r.ok) ok++; else toast(T("err_" + r.error), true);
     }
     if (ok) { input.value = ""; toast(T("added")); tick(); }
   });
+  bindMedia();
 
   $("#sidebar").addEventListener("click", (e) => {
     const btn = e.target.closest(".nav-item");
@@ -321,6 +325,110 @@ function bindEvents() {
     const text = e.clipboardData.getData("text");
     if (text) { $("#addInput").value = text.trim(); $("#addInput").focus(); }
   });
+}
+
+// ---------- medya (yt-dlp) penceresi ----------
+const media = { info: null, ctx: null, pending: [], busy: false };
+const STD_HEIGHTS = [2160, 1440, 1080, 720, 480, 360];
+
+async function handleMediaRequest(req) {
+  if (media.busy || $("#media").open) { media.pending.push(req); return; }
+  media.busy = true;
+  toast(T("resolving"));
+  try {
+    const r = await api.media_probe(req.url, req.headers || {});
+    if (r.ok) openMedia(r, req); else toast(T("err_" + r.error), true);
+  } finally { media.busy = false; }
+}
+
+function openMedia(res, ctx) {
+  const info = res.media, def = res.defaults || {};
+  media.info = info; media.ctx = ctx;
+  const form = $("#mediaForm");
+  $("#mName").textContent = info.title;
+  const thumb = $("#mThumb");
+  thumb.hidden = !info.thumbnail; if (info.thumbnail) thumb.src = info.thumbnail;
+  const isList = info.kind === "playlist";
+  const sub = [];
+  if (info.duration) sub.push(fmtEta(info.duration));
+  if (info.is_live) sub.push(T("m_live"));
+  if (isList) sub.push(T("m_items", info.entries.length));
+  $("#mSub").textContent = sub.join(" · ");
+
+  $("#mListBox").hidden = !isList;
+  $("#mOnlyRow").hidden = !(isList && info.single_url);
+  $("#mOnly").checked = !!(isList && info.single_url);
+  $("#mAll").checked = true;
+  $("#mEntries").innerHTML = (info.entries || []).map((e, i) =>
+    `<li><label><input type="checkbox" data-i="${i}" checked><span>${escapeHtml(e.title)}</span>` +
+    `<small>${e.duration ? fmtEta(e.duration) : ""}</small></label></li>`).join("");
+
+  const heights = info.heights && info.heights.length ? info.heights.filter((h) => h >= 144) : STD_HEIGHTS;
+  $("#mQuality").innerHTML = `<option value="best">${T("m_best")}</option>` +
+    heights.map((h) => `<option value="${h}">${h}p</option>`).join("");
+  const q = String(def.quality || "best");
+  $("#mQuality").value = [...$("#mQuality").options].some((o) => o.value === q) ? q : "best";
+  form.elements.format.value = def.format || "mp4";
+  $("#mKbps").value = String(def.audio_kbps || 320);
+  form.elements.subs.checked = def.subs !== false;
+  form.elements.embed.checked = def.embed !== false;
+  form.elements.sponsorblock.value = def.sponsorblock || "mark";
+  form.elements.start.value = ""; form.elements.end.value = "";
+  syncMedia();
+  $("#media").showModal();
+}
+
+function syncMedia() {
+  const form = $("#mediaForm");
+  const mp3 = form.elements.format.value === "mp3";
+  $("#mQuality").hidden = mp3; $("#mKbps").hidden = !mp3;
+  $("#mSubsRow").hidden = mp3;
+  const info = media.info || {};
+  const only = $("#mOnly").checked && !$("#mOnlyRow").hidden;
+  const list = info.kind === "playlist" && !only;
+  $("#mRangeRow").hidden = list;
+  $$("#mEntries input, #mAll").forEach((el) => { el.disabled = only; });
+  const checked = $$("#mEntries input:checked").length;
+  $("#mCount").textContent = info.kind === "playlist" ? `(${checked}/${info.entries.length})` : "";
+}
+
+function bindMedia() {
+  const form = $("#mediaForm");
+  form.addEventListener("change", (e) => {
+    if (e.target.id === "mAll") $$("#mEntries input").forEach((el) => { el.checked = e.target.checked; });
+    syncMedia();
+  });
+  $("#media").addEventListener("close", () => {
+    const next = media.pending.shift();
+    if (next) setTimeout(() => handleMediaRequest(next), 50);
+  });
+  $("#mGo").addEventListener("click", async () => {
+    const info = media.info, ctx = media.ctx || {};
+    const only = $("#mOnly").checked && !$("#mOnlyRow").hidden;
+    let items;
+    if (info.kind !== "playlist") items = [{ url: info.url, title: info.title }];
+    else if (only) items = [{ url: info.single_url, title: "" }];
+    else items = $$("#mEntries input:checked").map((el) => info.entries[Number(el.dataset.i)]);
+    if (!items.length) return;
+    const el = form.elements;
+    const mp3 = el.format.value === "mp3";
+    const opts = {
+      format: el.format.value, quality: el.quality.value, audio_kbps: Number(el.audio_kbps.value),
+      subs: !mp3 && el.subs.checked, embed: el.embed.checked, sponsorblock: el.sponsorblock.value,
+      start: $("#mRangeRow").hidden ? "" : el.start.value.trim(),
+      end: $("#mRangeRow").hidden ? "" : el.end.value.trim(),
+    };
+    const r = await api.add_media(items, opts, ctx.headers || {}, ctx.page_url || "");
+    if (!r.ok) { toast(T("err_" + (r.error || "media_unsupported")), true); return; }
+    $("#media").close();
+    toast(T("added")); tick();
+    // son secimler varsayilan olsun (video ustu butondaki hizli MP4/MP3 de bunlari kullanir)
+    const remember = { media_format: opts.format, media_audio_kbps: opts.audio_kbps, media_embed: opts.embed,
+                       media_sponsorblock: opts.sponsorblock };
+    if (!mp3) { remember.media_quality = opts.quality; remember.media_subs = opts.subs; }
+    for (const [k, v] of Object.entries(remember)) api.set_setting(k, v);
+  });
+  $("#media").addEventListener("click", (e) => { if (e.target === $("#media")) $("#media").close(); });
 }
 
 // ---------- ayarlar ----------

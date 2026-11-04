@@ -3,7 +3,7 @@
 Tarayici eklentisi -> (stdin: 4 bayt uzunluk + JSON) -> bu betik -> 127.0.0.1 kopru -> Kami
 Yanit ayni yoldan geri doner. Hizli acilsin diye yalnizca stdlib kullanir, app paketini yuklemez.
 
-Mesajlar:  {"type": "ping"} | {"type": "add", ...indirme bilgisi} | {"type": "show"}
+Mesajlar:  {"type": "ping"} | {"type": "add", ...indirme bilgisi} | {"type": "show"} | {"type": "media", url, mode}
 Kami kapaliysa: {"ok": false, "error": "offline"}  -> eklenti indirmeyi tarayiciya birakir.
 """
 from __future__ import annotations
@@ -17,9 +17,10 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BRIDGE_INFO = ROOT / "data" / "bridge.json"
+BRIDGE_INFO = Path(os.environ.get("KAMI_BRIDGE_INFO") or ROOT / "data" / "bridge.json")  # e2e testleri icin
 MAX_IN = 8 * 1024 * 1024        # tarayicidan gelen tek mesaj icin makul ust sinir
-ROUTES = {"ping": "/v1/ping", "add": "/v1/add", "show": "/v1/show", "set_capture": "/v1/capture"}
+ROUTES = {"ping": "/v1/ping", "add": "/v1/add", "show": "/v1/show", "set_capture": "/v1/capture",
+          "media": "/v1/media"}
 
 
 def _binary_stdio() -> None:

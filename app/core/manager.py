@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import replace
@@ -50,7 +51,7 @@ class CaptureRejected(Exception):
 
 
 class PageLinkRejected(CaptureRejected):
-    """Link bir dosya degil, web sayfasi (orn. youtube.com/watch). Aşama 2'de yt-dlp bunlari cozecek."""
+    """Link bir dosya degil, web sayfasi. Arayuz/kopru bunu yt-dlp ile medya olarak cozmeyi dener."""
 
     def __init__(self) -> None:
         super().__init__("page_link")
@@ -59,8 +60,13 @@ class PageLinkRejected(CaptureRejected):
 class DownloadManager:
     def __init__(self, store: DownloadStore, engine: Engine, events: EventBus, settings: Settings,
                  registry: PluginRegistry | None = None, poll_interval: float = 0.5,
-                 prober: Callable[..., ProbeResult] | None = probe) -> None:
+                 prober: Callable[..., ProbeResult] | None = probe, media: Any = None) -> None:
         self.prober = prober  # None = yoklama yok (testler)
+        self.media = media    # MediaRunner (yt-dlp); None = medya devre disi
+        if media is not None:
+            media.on_event = self._on_media_event
+        self._media_live: dict[int, dict[str, Any]] = {}       # id -> {speed, phase}
+        self._media_progress: dict[int, tuple[int, int]] = {}  # id -> (downloaded, size); DB'ye her seferinde yazilmaz
         self.store = store
         self.engine = engine
         self.events = events
@@ -121,9 +127,12 @@ class DownloadManager:
         """Istegi (gerekirse eklentilerle cozup) kuyruga ekler. Eklenen kayitlari dondurur."""
         if req.source == "browser":
             self.check_capture(req)
-        requests = self._resolve(req)
+        requests = self._resolve(req) if req.kind != "media" else [req]
         added: list[Download] = []
         for r in requests:
+            if r.kind == "media":
+                added.append(self._add_media(r))
+                continue
             max_conn = 0
             info = self._probe(r)
             if info and info.ok:
@@ -181,6 +190,8 @@ class DownloadManager:
         return [req]
 
     def _start_engine(self, d: Download) -> Download:
+        if d.kind == "media":
+            return self._start_media(d)
         try:
             os.makedirs(d.directory, exist_ok=True)
             gid = self.engine.start(d)
@@ -191,6 +202,129 @@ class DownloadManager:
             self.events.emit("download.failed", download=d)
         self.events.emit("download.updated", download=d)
         return d
+
+    # ---------- medya (yt-dlp) ----------
+    def default_media_options(self) -> dict[str, Any]:
+        s = self.settings
+        return {"format": s.get("media_format"), "quality": s.get("media_quality"),
+                "audio_kbps": s.get("media_audio_kbps"), "subs": s.get("media_subs"),
+                "embed": s.get("media_embed"), "sponsorblock": s.get("media_sponsorblock"),
+                "start": "", "end": "", "no_playlist": True}
+
+    def add_media(self, url: str, *, options: dict[str, Any] | None = None, title: str = "",
+                  source: str = "ui", page_url: str = "", headers: dict[str, str] | None = None) -> Download:
+        from app.engines.ytdlp_engine import _clean_headers, parse_time
+        opts = self.default_media_options()
+        for k, v in (options or {}).items():
+            if k in opts:
+                opts[k] = v
+        parse_time(opts.get("start", ""))   # gecersizse ValueError
+        parse_time(opts.get("end", ""))
+        h = _clean_headers(url, headers)
+        if h:
+            opts["headers"] = h
+        if title and source == "extension":
+            opts["out_title"] = title   # eklenti sadece yakalanan akis/dogrudan dosyada baslik yollar
+        return self.add(DownloadRequest(url=url, filename=title, source=source, page_url=page_url,
+                                        kind="media", options=opts))[0]
+
+    def _add_media(self, r: DownloadRequest) -> Download:
+        opts = dict(r.options)
+        category = "music" if opts.get("format") == "mp3" else "video"
+        directory = r.directory or folder_for(
+            self.base_dir(), category, bool(self.settings.get("use_category_folders")))
+        d = self.store.add(
+            url=r.url, filename=sanitize_filename(r.filename) if r.filename else "", directory=directory,
+            category=category, status=Status.QUEUED, referer=r.referer, headers={}, source=r.source,
+            page_url=r.page_url, kind="media", options=opts,
+        )
+        self.events.emit("download.added", download=d)
+        return self._start_engine(d)
+
+    def _start_media(self, d: Download) -> Download:
+        if self.media is None:
+            d = self.store.update(d.id, status=Status.ERROR, error="yt-dlp yok")  # type: ignore[assignment]
+            self.events.emit("download.updated", download=d)
+            return d
+        os.makedirs(d.directory, exist_ok=True)
+        d = self.store.update(d.id, status=Status.WAITING, error="")  # type: ignore[assignment]
+        self.media.start(d.id, d.url, d.directory, d.options)
+        self.events.emit("download.updated", download=d)
+        return d
+
+    def _on_media_event(self, download_id: int, kind: str, **f: Any) -> None:
+        """MediaRunner thread'inden gelir: started | progress | done | error | cancelled."""
+        with self._state:
+            d = self.store.get(download_id)
+            if not d or d.kind != "media":
+                return
+            if kind == "cancelled" or d.status not in (Status.WAITING, Status.ACTIVE):
+                with self._lock:   # kullanici duraklatti/sildi: kayda dokunma
+                    self._media_live.pop(download_id, None)
+                return
+            fields: dict[str, Any] = {}
+            if kind in ("started", "progress"):
+                if d.status != Status.ACTIVE:
+                    fields["status"] = Status.ACTIVE
+                if f.get("title") and not d.filename:
+                    fields["filename"] = sanitize_filename(f["title"])
+                if f.get("base") and d.options.get("base") != f["base"]:
+                    fields["options"] = {**d.options, "base": f["base"]}
+                with self._lock:
+                    cur = self._media_live.setdefault(download_id, {"speed": 0, "phase": ""})
+                    if "speed" in f:
+                        cur["speed"] = int(f["speed"])
+                    if f.get("phase"):
+                        cur["phase"] = f["phase"]
+                    if "downloaded" in f or "size" in f:
+                        dl, sz = self._media_progress.get(download_id, (d.downloaded, d.size))
+                        self._media_progress[download_id] = (int(f.get("downloaded", dl)),
+                                                             int(f.get("size") or sz))
+                if not fields:
+                    return  # sik ilerleme: DB'ye yazma, canli tablodan okunur
+            elif kind == "done":
+                self._flush_media_progress(download_id)
+                path = f.get("path") or ""
+                fields.update(status=Status.COMPLETE, finished_at=time.time())
+                if path and os.path.isfile(path):
+                    directory, filename = os.path.split(path)
+                    size = os.path.getsize(path)
+                    fields.update(directory=directory, filename=filename, size=size, downloaded=size)
+                with self._lock:
+                    self._media_live.pop(download_id, None)
+            elif kind == "error":
+                self._flush_media_progress(download_id)
+                fields.update(status=Status.ERROR, error=f.get("error") or "yt-dlp hatasi",
+                              finished_at=time.time())
+                with self._lock:
+                    self._media_live.pop(download_id, None)
+            nd = self.store.update(d.id, **fields)
+        if kind == "done":
+            self.events.emit("download.completed", download=nd)
+        elif kind == "error":
+            self.events.emit("download.failed", download=nd)
+        self.events.emit("download.updated", download=nd)
+
+    def _flush_media_progress(self, download_id: int) -> None:
+        with self._lock:
+            p = self._media_progress.pop(download_id, None)
+        if p:
+            self.store.update(download_id, downloaded=p[0], size=p[1])
+
+    @staticmethod
+    def _media_files(d: Download, include_final: bool) -> list[str]:
+        """Medya isinin diskteki dosyalari: yarim parcalar (+ istenirse bitmis dosya)."""
+        out = []
+        if include_final and d.status == Status.COMPLETE and d.path and os.path.isfile(d.path):
+            out.append(d.path)
+        base = (d.options or {}).get("base") or ""
+        if base and os.path.isdir(d.directory):
+            for name in os.listdir(d.directory):
+                if not name.startswith(base + ".") or name == d.filename:
+                    continue
+                if re.search(r"\.(part|aria2|ytdl|temp)$|\.part-Frag\d+|\.f\d+[^.]*\.\w+|\.(vtt|srt|ass|jpg|webp|png)$", name):
+                    out.append(os.path.join(d.directory, name))
+        return out
 
     # ---------- kullanici islemleri ----------
     @_transition
@@ -209,7 +343,13 @@ class DownloadManager:
         d = self.store.get(download_id)
         if not d or d.status not in (Status.ACTIVE, Status.WAITING, Status.QUEUED):
             return
-        if d.gid:
+        if d.kind == "media":
+            if self.media is not None:
+                self.media.cancel(d.id)
+            self._flush_media_progress(d.id)
+            with self._lock:
+                self._media_live.pop(d.id, None)
+        elif d.gid:
             self.engine.pause(d.gid)
         d = self.store.update(d.id, status=Status.PAUSED)
         self.events.emit("download.updated", download=d)
@@ -221,6 +361,9 @@ class DownloadManager:
             return
         with self._lock:
             self._retries.pop(d.id, None)
+        if d.kind == "media":
+            self._start_engine(self.store.update(d.id, status=Status.QUEUED, error=""))  # type: ignore[arg-type]
+            return
         if d.status == Status.PAUSED and d.gid:
             try:
                 self.engine.resume(d.gid)
@@ -238,6 +381,24 @@ class DownloadManager:
     def remove(self, download_id: int, delete_file: bool = False) -> None:
         d = self.store.get(download_id)
         if not d:
+            return
+        if d.kind == "media":
+            if self.media is not None:
+                self.media.cancel(d.id)
+            # yarim parcalar her zaman temizlenir; bitmis dosya sadece "dosyayla sil"de
+            targets = self._media_files(d, include_final=delete_file)
+            if targets and self.media is not None:
+                time.sleep(0.5)  # iptal edilen is aria2/ffmpeg dosyalarini birakabilsin
+            for p in targets:
+                try:
+                    os.remove(p)
+                except OSError:
+                    log.warning("Dosya silinemedi: %s", p)
+            self.store.delete(d.id)
+            with self._lock:
+                self._media_live.pop(d.id, None)
+                self._media_progress.pop(d.id, None)
+            self.events.emit("download.removed", download_id=d.id)
             return
         if d.gid:
             self.engine.remove(d.gid)
@@ -271,17 +432,27 @@ class DownloadManager:
         items = self.store.list()
         with self._lock:
             live = dict(self._live)
+            mlive = {k: dict(v) for k, v in self._media_live.items()}
+            mprog = dict(self._media_progress)
         out = []
         for d in items:
-            info = live.get(d.id)
-            if info and d.status in (Status.ACTIVE, Status.WAITING):
-                d = replace(d, speed=info["speed"], connections=info["connections"])
+            if d.kind == "media":
+                if d.id in mprog and d.status == Status.ACTIVE:
+                    d = replace(d, downloaded=mprog[d.id][0], size=mprog[d.id][1])
+                info = mlive.get(d.id)
+                if info and d.status in (Status.ACTIVE, Status.WAITING):
+                    d = replace(d, speed=info["speed"], phase=info["phase"])
+            else:
+                info = live.get(d.id)
+                if info and d.status in (Status.ACTIVE, Status.WAITING):
+                    d = replace(d, speed=info["speed"], connections=info["connections"])
             out.append(d)
         return out
 
     def total_speed(self) -> int:
         with self._lock:
-            return sum(v["speed"] for v in self._live.values())
+            return sum(v["speed"] for v in self._live.values()) + \
+                sum(v.get("speed", 0) for v in self._media_live.values())
 
     def _loop(self) -> None:
         while not self._stop.is_set():

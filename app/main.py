@@ -55,7 +55,12 @@ def main() -> int:
     engine.start_service()
     registry = load_plugins(paths.PLUGINS_DIR, events, settings)
     store = DownloadStore(paths.DB_PATH)
-    manager = DownloadManager(store, engine, events, settings, registry)
+    from app.engines import ytdlp_engine
+    if settings.get("ytdlp_autoupdate"):
+        ytdlp_engine.start_self_update(24, settings)
+    media = ytdlp_engine.MediaRunner(engine, max_concurrent=settings.get("max_concurrent"),
+                                     connections_getter=lambda: int(settings.get("connections")))
+    manager = DownloadManager(store, engine, events, settings, registry, media=media)
 
     window_ref: dict = {}
 

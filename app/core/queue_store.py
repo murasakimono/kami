@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS downloads (
     page_url    TEXT NOT NULL DEFAULT '',
     max_conn    INTEGER NOT NULL DEFAULT 0,
     created_at  REAL NOT NULL,
-    finished_at REAL NOT NULL DEFAULT 0
+    finished_at REAL NOT NULL DEFAULT 0,
+    kind        TEXT NOT NULL DEFAULT 'file',
+    options     TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 """
@@ -39,11 +41,14 @@ CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 _COLUMNS = (
     "url", "filename", "directory", "category", "status", "size", "downloaded",
     "gid", "error", "referer", "headers", "source", "page_url", "max_conn", "created_at", "finished_at",
+    "kind", "options",
 )
 
 # Eski veritabanlarina sonradan eklenen sutunlar: (ad, tanim)
 _MIGRATIONS = [
     ("max_conn", "INTEGER NOT NULL DEFAULT 0"),
+    ("kind", "TEXT NOT NULL DEFAULT 'file'"),
+    ("options", "TEXT NOT NULL DEFAULT '{}'"),
 ]
 
 
@@ -116,7 +121,7 @@ class DownloadStore:
 
 
 def _to_db(key: str, value: Any) -> Any:
-    if key == "headers":
+    if key in ("headers", "options"):
         return json.dumps(value or {}, ensure_ascii=False)
     if key == "status":
         return str(value)
@@ -142,4 +147,6 @@ def _from_row(r: sqlite3.Row) -> Download:
         max_conn=r["max_conn"],
         created_at=r["created_at"],
         finished_at=r["finished_at"],
+        kind=r["kind"],
+        options=json.loads(r["options"] or "{}"),
     )

@@ -47,15 +47,126 @@ async function altBypassActive() {
   return Date.now() < altUntil;
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === "alt-bypass") {
     chrome.storage.session.set({ altUntil: Date.now() + ALT_BYPASS_MS });
   } else if (msg && msg.type === "popup") {
     native(msg.payload).then(sendResponse);
     return true; // asenkron yanit
+  } else if (msg && msg.type === "get-media") {
+    getTabMedia(msg.tabId).then(sendResponse);
+    return true;
+  } else if (msg && msg.type === "media-add") {      // acilir penceredeki yakalanan akis
+    sendMedia({ url: msg.url, pageUrl: msg.pageUrl, mode: msg.mode, title: msg.title }).then(sendResponse);
+    return true;
+  } else if (msg && msg.type === "video-button") {   // video ustu buton
+    onVideoButton(msg, sender).then(sendResponse);
+    return true;
   }
   return false;
 });
+
+// ---------- medya trafigi izleme (her sitede MP4 / HLS / DASH / ses) ----------
+const MEDIA_EXT = /\.(mp4|m4v|webm|mkv|mov|flv|mp3|m4a|aac|ogg|oga|opus|wav|flac)$/i;
+const MANIFEST_EXT = /\.(m3u8|mpd)$/i;
+const SEGMENT = /\.(ts|m4s|aac\.ts|cmfv|cmfa)$|[?&](range|bytes)=|\/range\/|\/seg(ment)?[-_]?\d+|[-_]frag(ment)?\d+/i;
+// YouTube akis parcalari googlevideo'dan gelir: orada sayfa linki (yt-dlp) kullanilir
+const SKIP_HOST = /(^|\.)(googlevideo\.com|ytimg\.com|doubleclick\.net|googlesyndication\.com|googleadservices\.com)$/i;
+const KNOWN_SITE = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com|vimeo\.com|dailymotion\.com|twitch\.tv|x\.com|twitter\.com|instagram\.com|tiktok\.com|reddit\.com|facebook\.com|soundcloud\.com|bilibili\.com|kick\.com|streamable\.com)$/i;
+const MIN_FILE = 512 * 1024;
+const MAX_PER_TAB = 25;
+
+function hdr(headers, name) {
+  const h = (headers || []).find((x) => x.name.toLowerCase() === name);
+  return h ? h.value : "";
+}
+
+function classify(url, ct, size) {
+  let u;
+  try { u = new URL(url); } catch (_) { return null; }
+  if (SKIP_HOST.test(u.hostname)) return null;
+  const path = u.pathname.toLowerCase();
+  ct = (ct || "").toLowerCase().split(";")[0].trim();
+  if (/mpegurl/.test(ct) || path.endsWith(".m3u8")) return "hls";
+  if (/dash\+xml/.test(ct) || path.endsWith(".mpd")) return "dash";
+  if (SEGMENT.test(path + u.search) || /mp2t|iso\.segment/.test(ct)) return null;
+  const isMedia = /^(video|audio)\//.test(ct) || (MEDIA_EXT.test(path) && !/^(text|image)\//.test(ct));
+  if (!isMedia) return null;
+  if (size && size < MIN_FILE) return null;
+  return /^audio\//.test(ct) || /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)$/.test(path) ? "audio" : "video";
+}
+
+const mediaKey = (tabId) => `media:${tabId}`;
+
+async function getTabMedia(tabId) {
+  const key = mediaKey(tabId);
+  const got = await chrome.storage.session.get(key);
+  return got[key] || [];
+}
+
+async function setBadgeCount(tabId, n) {
+  try {
+    await chrome.action.setBadgeBackgroundColor({ tabId, color: "#7C4DFF" });
+    await chrome.action.setBadgeText({ tabId, text: n ? String(n) : "" });
+  } catch (_) { /* sekme kapandi */ }
+}
+
+let mediaChain = Promise.resolve();   // ayni sekmeye esz amanli yazimlar karismasin
+chrome.webRequest.onHeadersReceived.addListener((d) => {
+  if (d.tabId < 0 || (d.statusCode !== 200 && d.statusCode !== 206)) return;
+  const ct = hdr(d.responseHeaders, "content-type");
+  const range = hdr(d.responseHeaders, "content-range");
+  const size = Number((range.split("/")[1]) || hdr(d.responseHeaders, "content-length") || 0) || 0;
+  const kind = classify(d.url, ct, size);
+  if (!kind) return;
+  mediaChain = mediaChain.then(async () => {
+    const list = await getTabMedia(d.tabId);
+    const base = d.url.split("#")[0];
+    if (list.some((m) => m.url === base)) return;
+    let pageUrl = "";
+    try { pageUrl = (await chrome.tabs.get(d.tabId)).url || ""; } catch (_) { return; }
+    list.unshift({ url: base, kind, size, mime: ct.split(";")[0], pageUrl, at: Date.now() });
+    list.length = Math.min(list.length, MAX_PER_TAB);
+    await chrome.storage.session.set({ [mediaKey(d.tabId)]: list });
+    setBadgeCount(d.tabId, list.length);
+  }).catch(() => {});
+}, { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other", "object"] }, ["responseHeaders"]);
+
+const pageOf = (u) => { try { const x = new URL(u); return x.origin + x.pathname + (/youtube\.com$/.test(x.hostname) ? x.search : ""); } catch (_) { return u; } };
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  if (!info.url) return;
+  getTabMedia(tabId).then((list) => {
+    if (list.length && list.every((m) => pageOf(m.pageUrl) !== pageOf(info.url))) {
+      chrome.storage.session.remove(mediaKey(tabId));
+      setBadgeCount(tabId, 0);
+    }
+  });
+});
+chrome.tabs.onRemoved.addListener((tabId) => { chrome.storage.session.remove(mediaKey(tabId)); });
+
+// ---------- medyayi Kami'ye gonder (yt-dlp) ----------
+async function sendMedia({ url, pageUrl = "", mode = "choose", title = "" }) {
+  const headers = await requestHeaders(url);
+  if (pageUrl && pageUrl !== url) headers["Referer"] = pageUrl;
+  return native({ type: "media", url, page_url: pageUrl, mode, title, headers });
+}
+
+async function onVideoButton(msg, sender) {
+  const pageUrl = msg.pageUrl || (sender.tab && sender.tab.url) || "";
+  const src = msg.src || "";
+  let url = pageUrl, title = "";
+  let host = "";
+  try { host = new URL(pageUrl).hostname; } catch (_) {}
+  if (/^https?:/i.test(src) && !SKIP_HOST.test(new URL(src).hostname) && !KNOWN_SITE.test(host)) {
+    url = src; title = msg.title || "";              // dogrudan dosya (generic)
+  } else if (!KNOWN_SITE.test(host) && sender.tab) {
+    const streams = (await getTabMedia(sender.tab.id)).filter((m) => m.kind === "hls" || m.kind === "dash");
+    if (streams.length) { url = streams[0].url; title = msg.title || ""; }   // en son yakalanan akis
+  }
+  const res = await sendMedia({ url, pageUrl, mode: msg.mode, title });
+  if (res.ok && res.accepted) flashBadge("✓", "#7C4DFF");
+  return res;
+}
 
 // ---------- otomatik yakalama ----------
 // onDeterminingFilename: yanit basliklari gelmistir -> dosya adi, boyut ve MIME bilinir.
@@ -106,9 +217,15 @@ chrome.contextMenus.onClicked.addListener((info, tab) => { onMenuClicked(info, t
 
 async function onMenuClicked(info, tab) {
   if (info.menuItemId !== "kami-download") return;
-  const url = info.linkUrl || info.srcUrl;
-  if (!url || SKIP_SCHEMES.test(url)) return;
   const pageUrl = info.frameUrl || info.pageUrl || (tab && tab.url) || "";
+  const url = info.linkUrl || info.srcUrl;
+  if (!info.linkUrl && (info.mediaType === "video" || info.mediaType === "audio") && (!url || /^blob:/i.test(url))) {
+    // MSE oynatici (YouTube vb.): sayfa linki yt-dlp ile cozulsun, Kami'de secim penceresi acilir
+    const res = await sendMedia({ url: pageUrl, pageUrl, mode: "choose" });
+    flashBadge(res.ok && res.accepted ? "✓" : "!", res.ok && res.accepted ? "#7C4DFF" : "#F0626F");
+    return;
+  }
+  if (!url || SKIP_SCHEMES.test(url)) return;
   const res = await sendToKami({ url, referrer: pageUrl, pageUrl, source: "context_menu" });
   if (res.ok && res.accepted) {
     flashBadge(res.confirm ? "?" : "✓", res.confirm ? "#E8B86A" : "#7C4DFF");

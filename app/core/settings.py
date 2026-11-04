@@ -27,6 +27,15 @@ DEFAULTS: dict[str, Any] = {
     "capture_exclude_hosts": [],   # ornek: ["example.com"]
     "confirm_extensions": ["exe", "msi", "apk", "bat", "cmd", "ps1", "scr", "vbs", "jar"],
     "notify_on_complete": True,
+    # Medya (yt-dlp)
+    "media_format": "mp4",         # mp4 | mp3
+    "media_quality": "best",       # best | 2160 | 1440 | 1080 | 720 | 480 | 360
+    "media_audio_kbps": 320,       # 320 | 256 | 192 | 128
+    "media_subs": True,            # insan yapimi EN/TR altyazi gom (otomatik altyazi yok)
+    "media_embed": True,           # kapak + etiket + bolum gom
+    "media_sponsorblock": "mark",  # mark | remove | off
+    "ytdlp_autoupdate": True,
+    "ytdlp_last_update": 0,
 }
 
 

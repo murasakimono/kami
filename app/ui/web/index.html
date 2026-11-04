@@ -126,6 +126,62 @@
     </form>
   </dialog>
 
+  <dialog id="media" aria-labelledby="mediaTitle">
+    <form method="dialog" class="settings-form" id="mediaForm">
+      <header class="dialog-head">
+        <h2 id="mediaTitle" data-i18n="m_title"></h2>
+        <button class="icon-btn" value="close" data-i18n-title="close" aria-label="close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="m-info">
+        <img id="mThumb" alt="" hidden>
+        <div><div id="mName" class="m-name"></div><div id="mSub" class="hint"></div></div>
+      </div>
+
+      <fieldset id="mListBox" hidden>
+        <legend data-i18n="m_playlist"></legend>
+        <label class="check" id="mOnlyRow" hidden><input type="checkbox" id="mOnly"><span data-i18n="m_only_this"></span></label>
+        <label class="check"><input type="checkbox" id="mAll" checked><span data-i18n="m_select_all"></span> <b id="mCount"></b></label>
+        <ul class="m-entries" id="mEntries"></ul>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="m_format"></legend>
+        <div class="row">
+          <span class="seg">
+            <label><input type="radio" name="format" value="mp4" checked><span>MP4</span></label>
+            <label><input type="radio" name="format" value="mp3"><span>MP3</span></label>
+          </span>
+          <select name="quality" id="mQuality"></select>
+          <select name="audio_kbps" id="mKbps" hidden>
+            <option value="320">320 kbps</option><option value="256">256 kbps</option>
+            <option value="192">192 kbps</option><option value="128">128 kbps</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="m_options"></legend>
+        <label class="check" id="mSubsRow"><input type="checkbox" name="subs"><span data-i18n="m_subs"></span></label>
+        <label class="check"><input type="checkbox" name="embed"><span data-i18n="m_embed"></span></label>
+        <label class="row"><span data-i18n="m_sponsor"></span>
+          <select name="sponsorblock">
+            <option value="mark" data-i18n="m_sb_mark"></option>
+            <option value="remove" data-i18n="m_sb_remove"></option>
+            <option value="off" data-i18n="m_sb_off"></option>
+          </select>
+        </label>
+        <div class="row" id="mRangeRow"><span data-i18n="m_range"></span>
+          <span class="m-range"><input type="text" name="start" placeholder="0:00" spellcheck="false"> – <input type="text" name="end" data-i18n-placeholder="m_end" spellcheck="false"></span>
+        </div>
+      </fieldset>
+      <div class="m-actions">
+        <button type="button" class="btn primary" id="mGo" data-i18n="add_button"></button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>

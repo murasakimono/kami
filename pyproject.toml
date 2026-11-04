@@ -5,6 +5,7 @@ description = "Kami Download Manager (KDM) - kisisel, eklentilerle buyuyen indir
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "pywebview>=5.3",
+    "yt-dlp[curl-cffi,default]>=2026.10.26",
 ]
 
 [dependency-groups]

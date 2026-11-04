@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
-from app.core.manager import CaptureRejected, DownloadManager
+from app.core.manager import CaptureRejected, DownloadManager, PageLinkRejected
 from app.core.models import DownloadRequest
 
 log = logging.getLogger(__name__)
@@ -99,11 +99,38 @@ class BridgeServer:
                 req.source = "browser"
             try:
                 added = self.manager.add(req)
+            except PageLinkRejected:
+                if req.source == "browser":
+                    return 200, {"ok": True, "accepted": False, "reason": "page_link"}
+                # sag tik ile sayfa linki (orn. YouTube): Kami'de medya penceresi acilsin
+                self._media_choose(url, req.page_url, req.headers)
+                return 200, {"ok": True, "accepted": True, "ids": [], "media": True}
             except CaptureRejected as exc:
                 return 200, {"ok": True, "accepted": False, "reason": str(exc)}
             return 200, {"ok": True, "accepted": True, "ids": [d.id for d in added],
                          "confirm": any(d.status == "confirm" for d in added)}
+        if path == "/v1/media":  # video ustu buton / acilir penceredeki yakalanan akislar
+            url = str(body.get("url") or "").strip()
+            if not url.lower().startswith(("http://", "https://")):
+                return 400, {"ok": False, "error": "bad_url"}
+            headers = body.get("headers") or {}
+            headers = {str(k): str(v) for k, v in headers.items()} if isinstance(headers, dict) else {}
+            page_url = str(body.get("page_url") or "")
+            mode = str(body.get("mode") or "choose")
+            if mode not in ("mp4", "mp3"):
+                self._media_choose(url, page_url, headers, str(body.get("title") or ""))
+                return 200, {"ok": True, "accepted": True, "ids": [], "media": True}
+            try:
+                d = self.manager.add_media(url, options={"format": mode}, title=str(body.get("title") or ""),
+                                           source="extension", page_url=page_url, headers=headers)
+            except (ValueError, CaptureRejected) as exc:
+                return 200, {"ok": True, "accepted": False, "reason": str(exc)}
+            return 200, {"ok": True, "accepted": True, "ids": [d.id]}
         return 404, {"ok": False, "error": "not_found"}
+
+    def _media_choose(self, url: str, page_url: str, headers: dict[str, str], title: str = "") -> None:
+        self.manager.events.emit("media.choose", url=url, page_url=page_url, headers=headers, title=title)
+        self.on_show()
 
 
 def _int(value: Any) -> int:
