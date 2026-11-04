@@ -1,0 +1,31 @@
+{
+  "name": "Cloud Mail.ru",
+  "version": "1.0.0",
+  "description": "Cloud Mail.ru herkese açık klasör/dosya linkleri.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Mail.ru Cloud",
+      "host": "^cloud\\.mail\\.ru$",
+      "share": "^/public/[^/]+/[^/]+",
+      "personal": "^/(home|trashbin|shared)",
+      "examples": {
+        "match": [
+          "https://cloud.mail.ru/public/AbCd/EfGh"
+        ],
+        "no_match": [
+          "https://cloud.mail.ru/home/"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

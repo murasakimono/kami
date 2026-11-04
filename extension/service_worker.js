@@ -11,6 +11,7 @@ const ALT_BYPASS_MS = 4000;
 async function native(msg) {
   try {
     const res = await chrome.runtime.sendNativeMessage(HOST, msg);
+    if (res && res.ok && Array.isArray(res.sites)) chrome.storage.local.set({ kamiSites: res.sites });   // eklenti desenleri
     return res || { ok: false, error: "empty" };
   } catch (e) {
     // host kayitli degil ya da baslatilamadi
@@ -77,7 +78,7 @@ chrome.cookies.onChanged.addListener(({ cookie }) => {
   clearTimeout(cookieTimer);
   cookieTimer = setTimeout(() => syncCookies(true, g), 5000);
 });
-chrome.runtime.onStartup.addListener(() => { syncCookies(true); });
+chrome.runtime.onStartup.addListener(() => { syncCookies(true); native({ type: "ping" }); });
 
 async function sendToKami({ url, filename = "", referrer = "", pageUrl = "", size = 0, mime = "", source }) {
   { const g = cookieGroupOf(url) || cookieGroupOf(pageUrl); if (g) await syncCookies(true, g); }
@@ -336,6 +337,7 @@ async function handleDownload(item) {
 // ---------- sag tik menusu ----------
 chrome.runtime.onInstalled.addListener(() => {
   syncCookies(true);
+  native({ type: "ping" });   // eklenti URL desenlerini Kami'den al
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "kami-download",

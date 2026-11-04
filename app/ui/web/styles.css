@@ -378,3 +378,9 @@ details.howto .hint { margin-top: 4px; line-height: 1.5; }
 .chip { background: transparent; color: var(--text-dim, #9A91AB); border: 1px solid var(--line); border-radius: 999px;
   padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Ayarlar > Eklentiler */
+.pl-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; display: grid; gap: 4px; }
+.pl-card.off { opacity: .6; }
+.pl-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pl-act { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
+.pl-in { display: inline-flex; gap: 6px; align-items: center; }

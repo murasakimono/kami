@@ -1,0 +1,31 @@
+{
+  "name": "Pixeldrain",
+  "version": "1.0.0",
+  "description": "Pixeldrain dosya (/u/), liste (/l/) ve klasör (/d/) linkleri.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Pixeldrain",
+      "host": "(^|\\.)(pixeldrain\\.(com|net)|pixeldra\\.in)$",
+      "share": "^/(u|l|d)/[^/]+",
+      "examples": {
+        "match": [
+          "https://pixeldrain.com/u/AbCd1234",
+          "https://pixeldrain.com/l/AbCd"
+        ],
+        "no_match": [
+          "https://pixeldrain.com/home"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

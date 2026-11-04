@@ -1,0 +1,32 @@
+{
+  "name": "Dropbox",
+  "version": "1.0.0",
+  "description": "Dropbox paylaşım linkleri (klasör tek ZIP olarak iner).",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Dropbox",
+      "host": "(^|\\.)dropbox\\.com$",
+      "share": "^/(s|sh|scl/fi|scl/fo)/",
+      "personal": "^/home",
+      "examples": {
+        "match": [
+          "https://www.dropbox.com/s/abc/x.zip?dl=0",
+          "https://www.dropbox.com/scl/fo/abc/def"
+        ],
+        "no_match": [
+          "https://www.dropbox.com/home"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

@@ -1,35 +1,48 @@
-// Desteklenen bulut paylasim sayfalari (Kami'deki plugins/*/plugin.py can_handle kaliplarinin aynasi).
-// kamiCloudKind(url) -> "share" (Kami cozebilir) | "personal" (kisisel disk: paylasim linki gerekir) | ""
+// Desteklenen bulut paylasim sayfalari. KAYNAK: Kami'deki plugins/*/plugin.json "url_patterns".
+// Kami'ye her baglanista (ping) guncel liste gelir ve chrome.storage.local.kamiSites'a yazilir;
+// bu dosyayi yeni site icin ELLE GUNCELLEMEK GEREKMEZ. Asagidaki liste sadece Kami'ye hic baglanilmadiysa yedek.
+// kamiCloudSite(url) -> {kind: "share" | "personal", name} | null ; kamiCloudKind(url) -> "share" | "personal" | ""
+// Desen anlami (Python match_patterns ile ayni): host = alan adi regex'i; share/personal = yol + ?sorgu + #parca regex'i.
 // Service worker (importScripts) ve icerik betikleri ortak kullanir.
 (() => {
   "use strict";
-  const SITES = [
-    { name: "Yandex Disk", host: /(^|\.)(disk(\.360)?\.yandex\.[a-z.]+|yadi\.sk)$/,
-      share: (p) => /^\/(d|i|public)\//.test(p), personal: (p) => /^\/client\//.test(p) },
-    { name: "Mail.ru Cloud", host: /^cloud\.mail\.ru$/,
-      share: (p) => /^\/public\/[^/]+\/[^/]+/.test(p), personal: (p) => /^\/(home|trashbin|shared)/.test(p) },
-    { name: "MediaFire", host: /(^|\.)mediafire\.com$/,
-      share: (p, u) => /^\/(folder|file|file_premium|view|download)\//.test(p) || /^\/\?\w/.test(p + u.search) },
-    { name: "MEGA", host: /(^|\.)(mega\.nz|mega\.co\.nz|mega\.io)$/,
-      share: (p, u) => /^\/(file|folder|embed)\/[^/#]+/.test(p) || /^#F?!/.test(u.hash),
-      personal: (p) => /^\/fm(\/|$)/.test(p) },
-    { name: "Google Drive", host: /^drive\.google\.com$/,
-      share: (p, u) => /^\/(file\/d\/|drive\/(u\/\d+\/)?folders\/|uc$|open$)/.test(p) && (!/^\/(uc|open)$/.test(p) || u.searchParams.has("id")),
-      personal: (p) => /^\/drive\/(u\/\d+\/)?(my-drive|home|recent|starred)/.test(p) },
-    { name: "Dropbox", host: /(^|\.)dropbox\.com$/, share: (p) => /^\/(s|sh|scl\/fi|scl\/fo)\//.test(p),
-      personal: (p) => /^\/home/.test(p) },
-    { name: "Pixeldrain", host: /(^|\.)(pixeldrain\.(com|net)|pixeldra\.in)$/, share: (p) => /^\/(u|l|d)\/[^/]+/.test(p) },
+  const FALLBACK = [
+    { name: "Yandex Disk", host: "(^|\\.)(disk(\\.360)?\\.yandex\\.[a-z.]+|yadi\\.sk)$", share: "^/(d|i|public)/", personal: "^/client/" },
+    { name: "Mail.ru Cloud", host: "^cloud\\.mail\\.ru$", share: "^/public/[^/]+/[^/]+", personal: "^/(home|trashbin|shared)" },
+    { name: "MediaFire", host: "(^|\\.)mediafire\\.com$", share: "^/(folder|file|file_premium|view|download)/|^/\\?\\w" },
+    { name: "MEGA", host: "(^|\\.)(mega\\.nz|mega\\.co\\.nz|mega\\.io)$", share: "^/(file|folder|embed)/[^/#]+|^/?#F?!", personal: "^/fm(/|$|\\?|#)" },
+    { name: "Google Drive", host: "^drive\\.google\\.com$", share: "^/(file/d/[\\w-]{10,}|drive/(u/\\d+/)?folders/[\\w-]{10,})|^/(uc|open)\\?(.*&)?id=",
+      personal: "^/drive/(u/\\d+/)?(my-drive|home|recent|starred)" },
+    { name: "Dropbox", host: "(^|\\.)dropbox\\.com$", share: "^/(s|sh|scl/fi|scl/fo)/", personal: "^/home" },
+    { name: "Pixeldrain", host: "(^|\\.)(pixeldrain\\.(com|net)|pixeldra\\.in)$", share: "^/(u|l|d)/[^/]+" },
   ];
+
+  const compile = (list) => (list || []).map((s) => {
+    try {
+      return { name: s.name || "", host: new RegExp(s.host), share: s.share ? new RegExp(s.share) : null,
+               personal: s.personal ? new RegExp(s.personal) : null };
+    } catch (_) { return null; }
+  }).filter(Boolean);
+
+  let SITES = compile(FALLBACK);
+  try {
+    chrome.storage.local.get("kamiSites").then((g) => { if (Array.isArray(g.kamiSites) && g.kamiSites.length) SITES = compile(g.kamiSites); });
+    chrome.storage.onChanged.addListener((ch, area) => {
+      if (area === "local" && ch.kamiSites && Array.isArray(ch.kamiSites.newValue)) SITES = compile(ch.kamiSites.newValue);
+    });
+  } catch (_) { /* storage yoksa yedek liste */ }
 
   function kamiCloudSite(url) {
     let u;
     try { u = new URL(url); } catch (_) { return null; }
     if (!/^https?:$/.test(u.protocol)) return null;
     const host = u.hostname.toLowerCase();
-    const site = SITES.find((s) => s.host.test(host));
-    if (!site) return null;
-    if (site.share(u.pathname, u)) return { kind: "share", name: site.name };
-    if (site.personal && site.personal(u.pathname, u)) return { kind: "personal", name: site.name };
+    const tail = u.pathname + u.search + u.hash;
+    for (const s of SITES) {
+      if (!s.host.test(host)) continue;
+      if (s.share && s.share.test(tail)) return { kind: "share", name: s.name };
+      if (s.personal && s.personal.test(tail)) return { kind: "personal", name: s.name };
+    }
     return null;
   }
 

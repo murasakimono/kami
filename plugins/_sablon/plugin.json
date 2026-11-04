@@ -1,0 +1,35 @@
+{
+  "name": "__NAME__",
+  "version": "0.1.0",
+  "description": "__NAME__ paylaşım linklerini indirir.",
+  "author": "",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": ["cloud"],
+  "url_patterns": [
+    {
+      "name": "__NAME__",
+      "host": "(^|\\.)ornek\\.com$",
+      "share": "^/(f|d)/[^/]+",
+      "examples": {
+        "match": ["https://ornek.com/f/abc123"],
+        "no_match": ["https://ornek.com/hakkinda"]
+      }
+    }
+  ],
+  "settings": [
+    {
+      "key": "use_api",
+      "type": "bool",
+      "default": true,
+      "label": {"tr": "Resmi API'yi kullan", "en": "Use the official API"},
+      "help": {"tr": "Kapalıysa sayfa bilgisinden çözülür.", "en": "If off, the page info is used."}
+    },
+    {
+      "key": "api_key",
+      "type": "secret",
+      "label": {"tr": "API anahtarı (isteğe bağlı)", "en": "API key (optional)"}
+    }
+  ],
+  "permissions": ["network"]
+}

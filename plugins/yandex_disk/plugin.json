@@ -1,0 +1,33 @@
+{
+  "name": "Yandex Disk",
+  "version": "1.0.0",
+  "description": "Yandex Disk paylaşım linkleri (dosya + klasör, alt klasörleriyle).",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Yandex Disk",
+      "host": "(^|\\.)(disk(\\.360)?\\.yandex\\.[a-z.]+|yadi\\.sk)$",
+      "share": "^/(d|i|public)/",
+      "personal": "^/client/",
+      "examples": {
+        "match": [
+          "https://disk.yandex.ru/d/AbCdEf123",
+          "https://yadi.sk/i/xyz"
+        ],
+        "no_match": [
+          "https://disk.yandex.ru/client/disk",
+          "https://yandex.ru/d/x"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

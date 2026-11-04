@@ -71,7 +71,13 @@ class CloudProvider(ABC):
     hosts: tuple[str, ...] = ()            # bu alan adlari ve alt alan adlari
     path_re: re.Pattern | None = None      # istege bagli: yol da uymali
 
+    patterns: list | None = None            # plugin.json url_patterns (hosts bossa bunlar kullanilir)
+
     def can_handle(self, url: str) -> bool:
+        if not self.hosts and self.patterns:
+            from app.core.plugin_api import match_patterns
+            m = match_patterns(url, self.patterns)
+            return bool(m and m[0] == "share")
         p = urlparse(url)
         host = (p.hostname or "").lower()
         if not any(host == h or host.endswith("." + h) for h in self.hosts):

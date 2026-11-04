@@ -71,8 +71,10 @@ class BridgeServer:
     # ---------- islemler ----------
     def handle(self, path: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         if path == "/v1/ping":
+            sites = self.manager.registry.url_patterns()   # eklentilerin URL desenleri -> tarayici eklentisi
             return 200, {"ok": True, "app": "kami", "version": APP_VERSION,
-                         "capture_enabled": bool(self.manager.settings.get("capture_enabled"))}
+                         "capture_enabled": bool(self.manager.settings.get("capture_enabled")),
+                         "sites": sites}
         if path == "/v1/show":
             self.on_show()
             return 200, {"ok": True}

@@ -1,0 +1,31 @@
+{
+  "name": "MediaFire",
+  "version": "1.0.0",
+  "description": "MediaFire dosya ve klasör linkleri.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "MediaFire",
+      "host": "(^|\\.)mediafire\\.com$",
+      "share": "^/(folder|file|file_premium|view|download)/|^/\\?\\w",
+      "examples": {
+        "match": [
+          "https://www.mediafire.com/file/abc123/x.zip/file",
+          "https://www.mediafire.com/?abc123"
+        ],
+        "no_match": [
+          "https://www.mediafire.com/upgrade/"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

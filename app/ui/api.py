@@ -723,11 +723,51 @@ class Api:
         return result[0] if result else ""
 
     def plugins(self) -> list[dict[str, Any]]:
-        return [
-            {"id": p.id, "name": p.name, "version": p.version, "description": p.description,
-             "enabled": p.enabled, "error": p.error}
-            for p in self._registry.plugins
-        ]
+        """Ayarlar > Eklentiler: liste + plugin.json ayar semasi + mevcut degerler (gizliler sadece var/yok)."""
+        store = self._registry.store
+        out = []
+        for p in self._registry.plugins:
+            fields = []
+            for sc in p.settings_schema:
+                f = {k: sc.get(k) for k in ("key", "type", "label", "help", "choices", "min", "max", "default")}
+                if sc.get("type") == "secret":
+                    f["has_value"] = bool(store and store.secret(p.id, sc["key"]))
+                else:
+                    f["value"] = store.value(p.id, sc["key"], sc.get("default")) if store else sc.get("default")
+                fields.append(f)
+            out.append({"id": p.id, "name": p.name, "version": p.version, "description": p.description,
+                        "author": p.meta.get("author", ""), "kinds": p.meta.get("kinds") or [],
+                        "sites": [x.get("name", "") for x in p.url_patterns],
+                        "enabled": p.enabled, "error": p.error, "settings": fields})
+        return out
+
+    def plugin_set_enabled(self, plugin_id: str, on: bool) -> dict[str, Any]:
+        from app.core.plugin_loader import set_enabled
+        info = set_enabled(self._registry, str(plugin_id), bool(on))
+        return {"ok": info is not None and not info.error, "error": info.error if info else "not_found"}
+
+    def plugin_reload(self, plugin_id: str) -> dict[str, Any]:
+        from app.core.plugin_loader import reload_plugin
+        info = reload_plugin(self._registry, str(plugin_id))
+        return {"ok": info is not None and not info.error, "error": info.error if info else "not_found",
+                "version": info.version if info else ""}
+
+    def plugin_set(self, plugin_id: str, key: str, value: Any) -> dict[str, Any]:
+        from app.core.plugin_loader import coerce_setting
+        info = next((p for p in self._registry.plugins if p.id == str(plugin_id)), None)
+        sc = next((x for x in (info.settings_schema if info else []) if x["key"] == key), None)
+        store = self._registry.store
+        if not info or not sc or store is None:
+            return {"ok": False, "error": "not_found"}
+        try:
+            if sc.get("type") == "secret":
+                store.set_secret(info.id, key, str(value or "").strip())
+                return {"ok": True}
+            v = coerce_setting(sc, value)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "bad_value"}
+        store.set_value(info.id, key, v)
+        return {"ok": True, "value": v}
 
     # ---------- Asama 6b: soz, muzik arsivi, Whisper, UVR ----------
     def _on_ai_event(self, msg: str) -> None:

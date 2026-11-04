@@ -96,7 +96,8 @@ def main() -> int:
         disable_ipv6=no_v6,
     )
     engine.start_service()
-    registry = load_plugins(paths.PLUGINS_DIR, events, settings)
+    from app.core.plugin_loader import PluginStore
+    registry = load_plugins(paths.PLUGINS_DIR, events, settings, store=PluginStore(paths.DATA_DIR / "plugins.json"))
     store = DownloadStore(paths.DB_PATH)
     from app.engines import ytdlp_engine
     if settings.get("ytdlp_autoupdate"):

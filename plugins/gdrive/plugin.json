@@ -1,0 +1,35 @@
+{
+  "name": "Google Drive",
+  "version": "1.0.0",
+  "description": "Google Drive paylaşılan dosya ve klasörleri (alt klasörleriyle).",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Google Drive",
+      "host": "^drive\\.google\\.com$",
+      "share": "^/(file/d/[\\w-]{10,}|drive/(u/\\d+/)?folders/[\\w-]{10,})|^/(uc|open)\\?(.*&)?id=",
+      "personal": "^/drive/(u/\\d+/)?(my-drive|home|recent|starred)",
+      "examples": {
+        "match": [
+          "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view",
+          "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOp",
+          "https://drive.google.com/uc?id=1AbCdEfGhIjKlMnOp&export=download"
+        ],
+        "no_match": [
+          "https://drive.google.com/drive/my-drive",
+          "https://drive.google.com/uc",
+          "https://drive.google.com/file/d/kisa/view"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

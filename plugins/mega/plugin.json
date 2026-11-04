@@ -1,0 +1,34 @@
+{
+  "name": "MEGA",
+  "version": "1.0.0",
+  "description": "MEGA dosya/klasör linkleri (istemci tarafı şifre çözme).",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "MEGA",
+      "host": "(^|\\.)(mega\\.nz|mega\\.co\\.nz|mega\\.io)$",
+      "share": "^/(file|folder|embed)/[^/#]+|^/?#F?!",
+      "personal": "^/fm(/|$|\\?|#)",
+      "examples": {
+        "match": [
+          "https://mega.nz/file/AbCd#key",
+          "https://mega.nz/folder/AbCd#key",
+          "https://mega.nz/#!abc!key"
+        ],
+        "no_match": [
+          "https://mega.nz/fm/abc",
+          "https://mega.nz/pro"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}
