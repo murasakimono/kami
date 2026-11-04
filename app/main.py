@@ -111,8 +111,16 @@ def main() -> int:
     window_ref["w"] = window
     api._set_window(window)
 
+    # Kapanista arayuzun yarida kalan api cevabi (500 ms tick) olu GUI is parcacigina donmeye calisir:
+    # pywebview "Error occurred in script / InvalidAsynchronousStateException" loglar. Zararsiz -> sustur.
+    closing = {"v": False}
+    window.events.closing += lambda: closing.__setitem__("v", True)
+    logging.getLogger("pywebview").addFilter(
+        lambda rec: not (closing["v"] and "Error occurred in script" in rec.getMessage()))
+
     manager.start()
     bridge.start()
+    api._start_clipboard()
     try:
         webview.start(debug=bool(os.environ.get("KAMI_DEBUG")), private_mode=False,
                       storage_path=str(paths.DATA_DIR / "webview"))

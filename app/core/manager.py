@@ -240,6 +240,8 @@ class DownloadManager:
             added += self.add(DownloadRequest(
                 url=url, filename=f.name, headers=headers, size=f.size, source=f"plugin:{provider.name}",
                 directory=directory, page_url=listing.url, options=options))
+        log.info("Bulut kuyruga eklendi (%s): %s | %d/%d dosya linki cozuldu",
+                 provider.name, listing.title, len(files) - self.cloud_failed, len(files))
         if not added and first_error is not None:
             if isinstance(first_error, CloudError):
                 raise first_error

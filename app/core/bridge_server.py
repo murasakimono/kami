@@ -128,6 +128,10 @@ class BridgeServer:
             headers = {str(k): str(v) for k, v in headers.items()} if isinstance(headers, dict) else {}
             page_url = str(body.get("page_url") or "")
             mode = str(body.get("mode") or "choose")
+            cloud_url = self._cloud_url(url, page_url)
+            if cloud_url:   # bulut paylasimi (orn. MEGA video sayfasi): eklenti cozucu, yt-dlp degil
+                self._media_choose(cloud_url, page_url, {})
+                return 200, {"ok": True, "accepted": True, "ids": [], "media": True, "cloud": True}
             if mode not in ("mp4", "mp3"):
                 self._media_choose(url, page_url, headers, str(body.get("title") or ""))
                 return 200, {"ok": True, "accepted": True, "ids": [], "media": True}
@@ -138,6 +142,13 @@ class BridgeServer:
                 return 200, {"ok": True, "accepted": False, "reason": str(exc)}
             return 200, {"ok": True, "accepted": True, "ids": [d.id]}
         return 404, {"ok": False, "error": "not_found"}
+
+    def _cloud_url(self, url: str, page_url: str) -> str:
+        """Link ya da sayfasi bir bulut eklentisine uyuyorsa o link (eklenti cozuculeri yt-dlp'den once)."""
+        for u in (url, page_url):
+            if u and u.lower().startswith(("http://", "https://")) and self.manager.cloud.provider_for(u):
+                return u
+        return ""
 
     def _media_choose(self, url: str, page_url: str, headers: dict[str, str], title: str = "") -> None:
         self.manager.events.emit("media.choose", url=url, page_url=page_url, headers=headers, title=title)

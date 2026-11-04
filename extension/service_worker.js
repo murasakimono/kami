@@ -1,6 +1,7 @@
 // Kami eklentisi - arka plan (MV3 service worker)
 // Tarayici indirmelerini yakalar, sag tik menusu ekler, native host uzerinden Kami'ye iletir.
 "use strict";
+importScripts("cloud_sites.js");   // kamiCloudSite / kamiCloudKind
 
 const HOST = "com.metehan.kami";
 const SKIP_SCHEMES = /^(blob:|data:|file:|chrome|brave|edge|about:|javascript:)/i;
@@ -94,6 +95,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg && msg.type === "media-add") {      // acilir penceredeki yakalanan akis
     sendMedia({ url: msg.url, pageUrl: msg.pageUrl, mode: msg.mode, title: msg.title }).then(sendResponse);
     return true;
+  } else if (msg && msg.type === "page-add") {      // bulut sayfa butonu / popup "Bu sayfayi Kami ile indir"
+    sendPage(msg.url || (sender.tab && sender.tab.url) || "").then(sendResponse);
+    return true;
   } else if (msg && msg.type === "video-button") {   // video ustu buton
     onVideoButton(msg, sender).then(sendResponse);
     return true;
@@ -141,9 +145,23 @@ async function getTabMedia(tabId) {
 
 async function setBadgeCount(tabId, n) {
   try {
+    let text = n ? String(n) : "";
+    if (!text) {   // medya yoksa: bulut paylasim sayfasi rozeti
+      const tab = await chrome.tabs.get(tabId);
+      if (kamiCloudKind(tab.url || "") === "share") text = "☁";
+    }
     await chrome.action.setBadgeBackgroundColor({ tabId, color: "#7C4DFF" });
-    await chrome.action.setBadgeText({ tabId, text: n ? String(n) : "" });
+    await chrome.action.setBadgeText({ tabId, text });
   } catch (_) { /* sekme kapandi */ }
+}
+
+// sayfa (sekme) linkini Kami'ye: bulut paylasimi -> secim penceresi, video sayfasi -> medya penceresi
+async function sendPage(url) {
+  if (!/^https?:/i.test(url)) return { ok: true, accepted: false, reason: "bad_url" };
+  const res = await sendToKami({ url, referrer: url, pageUrl: url, source: "context_menu" });
+  if (res.ok && res.accepted) flashBadge("✓", "#7C4DFF");
+  else flashBadge(res.ok ? "✕" : "!", "#F0626F");
+  return res;
 }
 
 let mediaChain = Promise.resolve();   // ayni sekmeye esz amanli yazimlar karismasin
@@ -170,6 +188,7 @@ chrome.webRequest.onHeadersReceived.addListener((d) => {
 const pageOf = (u) => { try { const x = new URL(u); return x.origin + x.pathname + (/youtube\.com$/.test(x.hostname) ? x.search : ""); } catch (_) { return u; } };
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   if (!info.url) return;
+  getTabMedia(tabId).then((list) => { if (!list.length) setBadgeCount(tabId, 0); });   // bulut rozeti
   getTabMedia(tabId).then((list) => {
     if (list.length && list.every((m) => pageOf(m.pageUrl) !== pageOf(info.url))) {
       chrome.storage.session.remove(mediaKey(tabId));

@@ -74,6 +74,12 @@ def test_youtube_gets_no_browser_cookies():
     h = {"Cookie": "a=1", "User-Agent": "UA", "X-Other": "z"}
     assert yt._clean_headers("https://www.youtube.com/watch?v=x", h) == {}
     assert yt._clean_headers("https://cdn.example.com/a.m3u8", h) == {"Cookie": "a=1", "User-Agent": "UA"}
+    # Cookie basligi yt-dlp'ye cookiefile olarak gider (uyari yok)
+    with yt._cookiefile("https://cdn.example.com/a.m3u8", yt._cookie_of(h)) as ck:
+        text = open(ck, encoding="utf-8").read()
+        assert ".cdn.example.com\tTRUE\t/\tTRUE\t0\ta\t1" in text
+    assert not os.path.exists(ck)
+    assert "Cookie:c=1" not in " ".join(yt.build_args({"headers": {"Cookie": "c=1"}}, "D:/x"))
 
 
 # ---------------------------------------------------------------- yonetici
@@ -188,3 +194,24 @@ def test_bridge_media_routes(mm, tmp_path):
     assert d.options["headers"] == {"Cookie": "c=1"}
     assert "headers" not in d.to_public() and "options" not in d.to_public()
     assert b.handle("/v1/media", {"url": "javascript:x"})[0] == 400
+
+
+def test_bridge_media_cloud_first(mm, tmp_path):
+    """MEGA gibi bulut sayfasindan gelen video butonu yt-dlp'ye degil bulut penceresine gider."""
+    from app.core.cloud import CloudProvider
+
+    class FakeMega(CloudProvider):
+        name, hosts = "mega", ("mega.nz",)
+
+        def list(self, url):
+            raise AssertionError("listelenmemeli")
+
+    m, r, _ = mm
+    m.cloud.providers.append(FakeMega())
+    seen = []
+    m.events.on("media.choose", lambda **kw: seen.append(kw))
+    b = BridgeServer(m, tmp_path / "bridge.json")
+    code, res = b.handle("/v1/media", {"url": "https://gfs1.userstorage.mega.co.nz/dl/x", "mode": "mp4",
+                                       "page_url": "https://mega.nz/file/abc#key"})
+    assert res["accepted"] and res.get("cloud") and seen[0]["url"] == "https://mega.nz/file/abc#key"
+    assert not r.started and not m.store.list()

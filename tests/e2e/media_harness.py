@@ -15,7 +15,7 @@ from app import paths  # noqa: E402
 from app.core import bridge_server  # noqa: E402
 from app.core.events import EventBus  # noqa: E402
 from app.core.manager import DownloadManager  # noqa: E402
-from app.core.plugin_api import PluginRegistry  # noqa: E402
+from app.core.plugin_loader import load_plugins  # noqa: E402
 from app.core.queue_store import DownloadStore  # noqa: E402
 from app.core.settings import Settings  # noqa: E402
 from app.engines import ytdlp_engine as yt  # noqa: E402
@@ -28,7 +28,8 @@ settings.set("download_dir", str(tmp / "dl"))
 eng = Aria2Engine(paths.ARIA2_EXE)
 eng.start_service()
 events = EventBus()
-mgr = DownloadManager(DownloadStore(tmp / "k.db"), eng, events, settings, PluginRegistry(),
+registry = load_plugins(paths.PLUGINS_DIR, events, settings)   # bulut eklentileri (bulut-once yonlendirme)
+mgr = DownloadManager(DownloadStore(tmp / "k.db"), eng, events, settings, registry,
                       media=yt.MediaRunner(eng))
 chooses: list[dict] = []
 events.on("media.choose", lambda **kw: chooses.append({k: v for k, v in kw.items() if k != "headers"}))

@@ -146,6 +146,8 @@ class CloudService:
         listing.url = url
         if not listing.files:
             raise CloudError("cloud_empty", url)
+        log.info("Bulut listelendi (%s): %s | %d dosya, %d bayt%s", p.name, listing.title,
+                 len(listing.files), sum(f.size for f in listing.files), " (klasor)" if listing.is_folder else "")
         token = secrets.token_hex(8)
         now = time.time()
         with self._lock:

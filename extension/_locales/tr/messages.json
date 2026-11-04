@@ -58,5 +58,31 @@
   },
   "popup_choose": {
     "message": "Seç…"
+  },
+  "cloud_download": {
+    "message": "Kami ile indir"
+  },
+  "cloud_sent": {
+    "message": "Kami'de açıldı"
+  },
+  "cloud_rejected": {
+    "message": "Kami bu linki alamadı"
+  },
+  "cloud_offline": {
+    "message": "Kami kapalı"
+  },
+  "cloud_personal_hint": {
+    "message": "Kami: bu kişisel diskiniz. İndirmek için dosya/klasörün paylaşım linkini açın."
+  },
+  "popup_page": {
+    "message": "Bu sayfayı Kami ile indir"
+  },
+  "popup_page_cloud": {
+    "message": "Bu paylaşımı Kami ile indir ($SITE$)",
+    "placeholders": {
+      "site": {
+        "content": "$1"
+      }
+    }
   }
 }

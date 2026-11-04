@@ -4,6 +4,11 @@
   "use strict";
   if (window.__kamiVideoButton) return;
   window.__kamiVideoButton = true;
+  // bulut paylasim sayfasi (MEGA vb.): video butonu yerine sayfa butonu (cloud_button.js)
+  const onCloudShare = () => {
+    try { return globalThis.kamiCloudKind && globalThis.kamiCloudKind(window.top === window ? location.href : document.referrer) === "share"; }
+    catch (_) { return false; }
+  };
 
   const MIN_W = 220, MIN_H = 120, HIDE_MS = 2200;
   const t = (k, fb) => { try { return chrome.i18n.getMessage(k) || fb; } catch (_) { return fb; } };
@@ -115,6 +120,7 @@
     raf = requestAnimationFrame(() => {
       raf = 0;
       const v = findVideo(e.clientX, e.clientY);
+      if (v && onCloudShare()) { hide(); return; }
       if (v) {
         if (!host) build();
         if (v !== current) { current = v; menu.classList.remove("open"); }

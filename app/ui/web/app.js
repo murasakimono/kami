@@ -228,6 +228,7 @@ async function tick() {
     const s = await api.get_state();
     state.items = s.items;
     (s.media_requests || []).forEach(handleMediaRequest);
+    if ((s.clip_offers || []).length) showClipOffer(s.clip_offers[s.clip_offers.length - 1]);
     state.history.push(s.total_speed); state.history.shift();
     const [num, unit] = splitBytes(s.total_speed);
     $("#speedNum").textContent = num;
@@ -283,6 +284,7 @@ function bindEvents() {
   });
   bindMedia();
   bindCloud();
+  bindClipboard();
 
   $("#sidebar").addEventListener("click", (e) => {
     const btn = e.target.closest(".nav-item");
@@ -327,6 +329,80 @@ function bindEvents() {
     const text = e.clipboardData.getData("text");
     if (text) { $("#addInput").value = text.trim(); $("#addInput").focus(); }
   });
+}
+
+// ---------- pano: yapistir butonu, sag tik menusu, pano izleme onerisi ----------
+function insertText(el, text) {
+  el.focus();
+  const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? el.value.length;
+  el.setRangeText(text, a, b, "end");
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+let clipTimer = 0;
+function showClipOffer(url) {
+  if ($("#media").open || $("#cloud").open || $("#addInput").value.trim() === url) return;
+  $("#clipUrl").textContent = url;
+  $("#clipUrl").title = url;
+  $("#clipOffer").dataset.url = url;
+  $("#clipOffer").hidden = false;
+  clearTimeout(clipTimer);
+  clipTimer = setTimeout(() => { $("#clipOffer").hidden = true; }, 15000);
+}
+
+function bindClipboard() {
+  $("#pasteBtn").addEventListener("click", async () => {
+    const text = (await api.read_clipboard() || "").trim();
+    if (!text) { toast(T("clip_empty"), true); return; }
+    $("#addInput").value = text;
+    $("#addInput").focus();
+  });
+  $("#clipYes").addEventListener("click", () => {
+    $("#clipOffer").hidden = true;
+    $("#addInput").value = $("#clipOffer").dataset.url || "";
+    $("#addForm").requestSubmit();
+  });
+  $("#clipNo").addEventListener("click", () => { $("#clipOffer").hidden = true; });
+
+  // pywebview varsayilan sag tik menusunu kapatiyor: metin alanlarinda kendi menumuz
+  const menu = $("#ctxMenu");
+  let target = null;
+  const hide = () => { menu.hidden = true; target = null; };
+  document.addEventListener("contextmenu", (e) => {
+    const el = e.target.closest("input[type=text], input[type=number], input:not([type]), textarea");
+    if (!el || el.disabled) { hide(); return; }
+    e.preventDefault();
+    target = el;
+    const hasSel = el.selectionStart !== el.selectionEnd;
+    menu.querySelector('[data-cmd="cut"]').disabled = !hasSel || el.readOnly;
+    menu.querySelector('[data-cmd="copy"]').disabled = !hasSel;
+    menu.querySelector('[data-cmd="paste"]').disabled = el.readOnly;
+    menu.hidden = false;
+    const r = menu.getBoundingClientRect();
+    menu.style.left = Math.min(e.clientX, innerWidth - r.width - 4) + "px";
+    menu.style.top = Math.min(e.clientY, innerHeight - r.height - 4) + "px";
+    // dialog acikken menu ust katmanda kalsin
+    const dlg = el.closest("dialog");
+    if (dlg && menu.parentNode !== dlg) dlg.appendChild(menu);
+    else if (!dlg && menu.parentNode !== document.body) document.body.appendChild(menu);
+  });
+  menu.addEventListener("mousedown", (e) => e.preventDefault());   // alan secimi kaybolmasin
+  menu.addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-cmd]");
+    if (!b || !target) return;
+    const el = target, cmd = b.dataset.cmd;
+    hide();
+    el.focus();
+    if (cmd === "selectAll") el.select();
+    else if (cmd === "paste") insertText(el, await api.read_clipboard() || "");
+    else { api.own_copy(); document.execCommand(cmd); }
+  });
+  document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target)) hide(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hide();
+    if (e.ctrlKey && /^[cx]$/i.test(e.key)) api.own_copy();   // Kami icinden kopyalanan link sorulmasin
+  });
+  window.addEventListener("blur", hide);
 }
 
 // ---------- medya (yt-dlp) penceresi ----------

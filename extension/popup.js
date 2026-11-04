@@ -6,12 +6,32 @@ document.getElementById("captureLabel").textContent = t("popup_capture");
 document.getElementById("open").textContent = t("popup_open");
 document.getElementById("hint").textContent = t("popup_alt_hint");
 
+// "Bu sayfayi Kami ile indir": sag tiki kendi menusuyle ezen siteler (Yandex Disk vb.) icin
+let pageTab = null;
+async function setupPage() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const b = document.getElementById("page");
+  if (!tab || !/^https?:/i.test(tab.url || "")) { b.hidden = true; return; }
+  pageTab = tab;
+  const site = kamiCloudSite(tab.url);
+  b.textContent = site && site.kind === "share" ? chrome.i18n.getMessage("popup_page_cloud", [site.name]) : t("popup_page");
+  b.addEventListener("click", async () => {
+    b.disabled = true;
+    const res = await chrome.runtime.sendMessage({ type: "page-add", url: tab.url, title: tab.title });
+    const ok = res && res.ok && res.accepted;
+    b.classList.add(ok ? "ok" : "err");
+    b.textContent = ok ? "✓" : "✕";
+    if (ok) setTimeout(() => window.close(), 700);
+  });
+}
+
 async function refresh() {
   const res = await ask({ type: "ping" });
   const status = document.getElementById("status");
   const text = document.getElementById("statusText");
   const capture = document.getElementById("capture");
   const open = document.getElementById("open");
+  document.getElementById("page").disabled = !(res && res.ok && pageTab);
   if (res && res.ok) {
     status.className = "status on";
     text.textContent = t("popup_connected") + (res.version ? ` (${res.version})` : "");
@@ -73,4 +93,4 @@ async function showMedia(online) {
   }
 }
 
-refresh().then((online) => showMedia(online));
+setupPage().then(refresh).then((online) => showMedia(online));

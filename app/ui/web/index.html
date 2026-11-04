@@ -18,6 +18,10 @@
     </div>
     <form class="add" id="addForm" autocomplete="off">
       <input id="addInput" type="text" spellcheck="false" data-i18n-placeholder="add_placeholder">
+      <button type="button" class="btn" id="pasteBtn" data-i18n-title="paste_clip">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM7 5.5H5.5v15h13v-15H17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <span data-i18n="paste_short"></span>
+      </button>
       <button type="submit" class="btn primary" data-i18n="add_button"></button>
     </form>
     <button class="icon-btn" id="settingsBtn" data-i18n-title="settings" aria-haspopup="dialog">
@@ -78,6 +82,17 @@
   </footer>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <div class="clip-offer" id="clipOffer" role="alertdialog" hidden>
+    <span data-i18n="clip_ask"></span> <b id="clipUrl"></b>
+    <button type="button" class="btn primary" id="clipYes" data-i18n="clip_yes"></button>
+    <button type="button" class="btn" id="clipNo" data-i18n="clip_no"></button>
+  </div>
+  <div class="ctx-menu" id="ctxMenu" role="menu" hidden>
+    <button type="button" role="menuitem" data-cmd="cut" data-i18n="ctx_cut"></button>
+    <button type="button" role="menuitem" data-cmd="copy" data-i18n="ctx_copy"></button>
+    <button type="button" role="menuitem" data-cmd="paste" data-i18n="ctx_paste"></button>
+    <button type="button" role="menuitem" data-cmd="selectAll" data-i18n="ctx_select_all"></button>
+  </div>
 
   <dialog id="settings" aria-labelledby="settingsTitle">
     <form method="dialog" class="settings-form" id="settingsForm">
@@ -118,6 +133,7 @@
       <fieldset>
         <legend data-i18n="s_browser"></legend>
         <label class="check"><input type="checkbox" name="capture_enabled"><span data-i18n="s_capture"></span></label>
+        <label class="check"><input type="checkbox" name="clipboard_watch"><span data-i18n="s_clipwatch"></span></label>
         <label class="row"><span data-i18n="s_minsize"></span><input type="number" name="capture_min_size_kib" min="0" step="64"></label>
         <label class="row stack"><span data-i18n="s_exclude"></span><input type="text" name="capture_exclude_hosts" spellcheck="false"></label>
         <label class="row stack"><span data-i18n="s_confirmext"></span><input type="text" name="confirm_extensions" spellcheck="false"></label>

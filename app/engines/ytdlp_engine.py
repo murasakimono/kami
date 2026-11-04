@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import sys
 import threading
 import time
@@ -130,6 +131,8 @@ def build_args(opts: dict[str, Any], directory: str) -> list[str]:
         b = _fmt_secs(end) if end is not None else "inf"
         args += ["--download-sections", f"*{a}-{b}"]
     for k, v in (opts.get("headers") or {}).items():
+        if k.lower() == "cookie":   # cerez -> cookiefile (MediaJob.run), basliga yazilmaz
+            continue
         if k and v and "\n" not in f"{k}{v}" and "\r" not in f"{k}{v}":
             args += ["--add-headers", f"{k}:{v}"]
     return args
@@ -146,7 +149,7 @@ def _clean_headers(url: str, headers: dict[str, str] | None) -> dict[str, str]:
         return {}
     keep = {}
     for k, v in headers.items():
-        if k.lower() in ("cookie", "user-agent", "referer") and v:
+        if k.lower() in ("cookie", "user-agent", "referer") and v:   # Cookie saklanir, yt-dlp'ye cookiefile olur
             keep[k] = v
     return keep
 
@@ -295,7 +298,7 @@ class MediaJob:
         if ffmpeg:
             ydl_opts["ffmpeg_location"] = ffmpeg
         try:
-            with _cookiefile(self.url) as ck, yt_dlp.YoutubeDL(
+            with _cookiefile(self.url, _cookie_of(self.options.get("headers"))) as ck, yt_dlp.YoutubeDL(
                     {**ydl_opts, "cookiefile": ck} if ck else ydl_opts) as ydl:
                 ydl.add_post_hook(self._post_hook)
                 info = ydl.extract_info(self.url, download=False)
@@ -337,10 +340,41 @@ def _clean_error(msg: str) -> str:
     return msg.replace("ERROR: ", "").strip()[:400]
 
 
-def _cookiefile(url: str):
-    """YouTube linkinde DPAPI deposundan gecici cookies.txt (yoksa None)."""
+def _cookie_of(headers: dict[str, str] | None) -> str:
+    return next((str(v) for k, v in (headers or {}).items() if k.lower() == "cookie" and v), "")
+
+
+@contextlib.contextmanager
+def _header_cookiefile(url: str, cookie: str):
+    """Eklentiden gelen 'Cookie: a=b; c=d' -> linkin alan adina gecici cookies.txt
+    (yt-dlp, cerezi baslikla vermeye 'potential security risk' uyarisi veriyor)."""
+    from app.core.vault import to_netscape
+    host = (urlparse(url).hostname or "").lower()
+    cookies = []
+    for part in cookie.split(";"):
+        name, sep, value = part.strip().partition("=")
+        if sep and name:
+            cookies.append({"name": name, "value": value, "domain": host, "path": "/",
+                            "secure": url.lower().startswith("https"), "hostOnly": False, "session": True})
+    if not host or not cookies:
+        yield None
+        return
+    fd, name = tempfile.mkstemp(prefix="kami_hc_", suffix=".txt")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(to_netscape(cookies))
+        yield name
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(name)
+
+
+def _cookiefile(url: str, cookie_header: str = ""):
+    """YouTube: DPAPI deposundan cookies.txt. Diger siteler: eklentinin Cookie basligindan. Yoksa None."""
     if COOKIES is not None and is_youtube(url):
         return COOKIES.cookiefile()
+    if cookie_header and not is_youtube(url):
+        return _header_cookiefile(url, cookie_header)
     return contextlib.nullcontext(None)
 
 
@@ -373,10 +407,13 @@ def probe(url: str, headers: dict[str, str] | None = None, timeout: float = 30.0
         "playlistend": 500,
     }
     h = _clean_headers(url, headers)
+    cookie = _cookie_of(h)
+    h = {k: v for k, v in h.items() if k.lower() != "cookie"}
     if h:
         opts["http_headers"] = h
     try:
-        with _cookiefile(url) as ck, yt_dlp.YoutubeDL({**opts, "cookiefile": ck} if ck else opts) as ydl:
+        with _cookiefile(url, cookie) as ck, \
+                yt_dlp.YoutubeDL({**opts, "cookiefile": ck} if ck else opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as exc:
         raise MediaError(_clean_error(str(exc))) from exc

@@ -29,6 +29,8 @@ class Api:
         self._window = None
         self._media_inbox: list[dict[str, Any]] = []   # eklentiden "Kami'de sec" istekleri
         self._inbox_lock = threading.Lock()
+        self._clip_offers: list[str] = []               # pano izleyicinin buldugu linkler
+        self._clip_watcher = None
         manager.events.on("media.choose", self._on_media_choose)
 
     def _set_window(self, window) -> None:
@@ -39,13 +41,54 @@ class Api:
         items = self._manager.snapshot()
         with self._inbox_lock:
             inbox, self._media_inbox = self._media_inbox, []
+            offers, self._clip_offers = self._clip_offers, []
         return {
             "media_requests": inbox,
+            "clip_offers": offers,
             "items": [d.to_public() for d in items],
             "total_speed": self._manager.total_speed(),
             "engine_ok": self._engine.running,
             "bridge_port": self._bridge_port(),
         }
+
+    # ---------- pano ----------
+    def link_supported(self, url: str) -> bool:
+        """Ag kullanmadan: bulut eklentisi, yt-dlp ozel cikarici ya da bilinen dosya uzantisi."""
+        from app.core.categories import EXT_TO_CATEGORY, extension_of
+        from urllib.parse import unquote, urlparse
+        if self._manager.cloud.provider_for(url):
+            return True
+        if extension_of(unquote(urlparse(url).path)) in EXT_TO_CATEGORY:
+            return True
+        from app.engines import ytdlp_engine as yt
+        try:
+            return yt.is_supported(url)
+        except Exception:
+            return False
+
+    def _start_clipboard(self) -> None:
+        from app.core.clipboard import ClipboardWatcher
+
+        def offer(url: str) -> None:
+            with self._inbox_lock:
+                self._clip_offers.append(url)
+
+        self._clip_watcher = ClipboardWatcher(
+            self.link_supported, offer, lambda: bool(self._manager.settings.get("clipboard_watch")))
+        self._clip_watcher.start()
+
+    def read_clipboard(self) -> str:
+        from app.core.clipboard import get_text
+        try:
+            return get_text()
+        except Exception:
+            log.exception("Pano okunamadi")
+            return ""
+
+    def own_copy(self) -> None:
+        """Arayuz kendi menusuyle kopyaladi: izleyici bunu sormasin."""
+        if self._clip_watcher:
+            self._clip_watcher.ignore_next = True
 
     # ---------- indirme islemleri ----------
     def add_url(self, url: str, filename: str = "") -> dict[str, Any]:

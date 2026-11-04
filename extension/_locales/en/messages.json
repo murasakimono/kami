@@ -58,5 +58,31 @@
   },
   "popup_choose": {
     "message": "Choose…"
+  },
+  "cloud_download": {
+    "message": "Download with Kami"
+  },
+  "cloud_sent": {
+    "message": "Opened in Kami"
+  },
+  "cloud_rejected": {
+    "message": "Kami couldn't take this link"
+  },
+  "cloud_offline": {
+    "message": "Kami is closed"
+  },
+  "cloud_personal_hint": {
+    "message": "Kami: this is your personal drive. Open the file/folder's share link to download it."
+  },
+  "popup_page": {
+    "message": "Download this page with Kami"
+  },
+  "popup_page_cloud": {
+    "message": "Download this share with Kami ($SITE$)",
+    "placeholders": {
+      "site": {
+        "content": "$1"
+      }
+    }
   }
 }
