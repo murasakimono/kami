@@ -120,6 +120,10 @@ class BridgeServer:
             cookies = body.get("cookies")
             if yt.COOKIES is None or not isinstance(cookies, list):
                 return 400, {"ok": False, "error": "bad_cookies"}
+            if not self.manager.settings.get("social_cookies"):   # Instagram/X/TikTok kapaliysa sadece YouTube
+                from app.core.vault import group_of
+                cookies = [c for c in cookies if isinstance(c, dict)
+                           and group_of(str(c.get("domain") or "")) in ("youtube", "")]
             n = yt.COOKIES.save(cookies)
             return 200, {"ok": True, "saved": n}
         if path == "/v1/media":  # video ustu buton / acilir penceredeki yakalanan akislar

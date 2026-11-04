@@ -46,6 +46,11 @@ class Api:
         manager.events.on("media.choose", self._on_media_choose)
         self._torrent_inbox: list[dict[str, Any]] = []   # magnet isleyicisinden gelenler (sor / yerel)
         manager.events.on("torrent.request", lambda src: self._on_torrent_request(src))
+        self._media_post = None                          # Asama 6b (main baglar)
+        self._ai = None
+        self._genius = None
+        self._ai_events: list[str] = []
+        self._follow = None                              # follow.FollowService
 
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
@@ -53,6 +58,7 @@ class Api:
         "add_url", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "hash_file", "make_report", "firewall_allow",
+        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now",
     })
 
     def job_start(self, name: str, args: list | None = None) -> dict[str, Any]:
@@ -103,12 +109,15 @@ class Api:
             offers, self._clip_offers = self._clip_offers, []
             rd_events, self._rd_events = self._rd_events, []
             torrents, self._torrent_inbox = self._torrent_inbox, []
+            ai_events, self._ai_events = self._ai_events, []
         rd = self._rd
         upd = None
         with self._inbox_lock:
             if self._update_info and not self._update_shown:   # yeni surum bilgisi arayuze bir kez
                 upd, self._update_shown = self._update_info, True
         return {
+            "ai_events": ai_events,
+            "ai_installing": dict(self._ai.installing) if self._ai else {},
             "update": upd,
             "rd_progress": rd.progress() if rd is not None and hasattr(rd, "progress") else [],
             "rd_events": rd_events,
@@ -684,3 +693,113 @@ class Api:
              "enabled": p.enabled, "error": p.error}
             for p in self._registry.plugins
         ]
+
+    # ---------- Asama 6b: soz, muzik arsivi, Whisper, UVR ----------
+    def _on_ai_event(self, msg: str) -> None:
+        with self._inbox_lock:
+            self._ai_events.append(str(msg))
+
+    def media_lyrics(self, download_id: int) -> dict[str, Any]:
+        if not self._media_post:
+            return {"ok": False, "error": "unavailable"}
+        return self._media_post.lyrics(int(download_id))
+
+    def media_archive(self, download_id: int) -> dict[str, Any]:
+        if not self._media_post:
+            return {"ok": False, "error": "unavailable"}
+        return self._media_post.archive(int(download_id))
+
+    def ai_status(self) -> dict[str, Any]:
+        from app.core import aitools
+        return {name: {"installed": aitools.installed(name), "size_gb": t["size_gb"],
+                       "installing": (self._ai.installing.get(name) if self._ai else None)}
+                for name, t in aitools.TOOLS.items()} | {
+            "whisper_models": aitools.WHISPER_MODELS, "uvr_models": aitools.UVR_MODELS}
+
+    def ai_install(self, name: str) -> dict[str, Any]:
+        """Kullanici onayladiktan sonra cagrilir (arayuz boyutu sorar)."""
+        from app.core import aitools
+        if name not in aitools.TOOLS or not self._ai:
+            return {"ok": False, "error": "bad_tool"}
+        self._ai.install_async(name)
+        return {"ok": True}
+
+    def ai_run(self, kind: str, download_id: int, lang: str = "") -> dict[str, Any]:
+        if not self._ai:
+            return {"ok": False, "error": "unavailable"}
+        opts = {"lang": lang} if kind == "whisper" and lang else {}
+        return self._ai.submit(str(kind), int(download_id), **opts)
+
+    def ai_cancel(self, kind: str, download_id: int) -> None:
+        if self._ai:
+            self._ai.cancel(str(kind), int(download_id))
+
+    def genius_status(self) -> dict[str, Any]:
+        return {"has_token": bool(self._genius and self._genius.load())}
+
+    def genius_set_token(self, token: str) -> dict[str, Any]:
+        """Genius 'Client Access Token' (api.genius.com/clients). Bir arama ile dogrulanir, DPAPI ile saklanir."""
+        import re
+        import requests
+        token = str(token or "").strip()
+        if not self._genius or not re.fullmatch(r"[A-Za-z0-9_\-]{20,128}", token):
+            return {"ok": False, "error": "bad_token"}
+        try:
+            r = requests.get("https://api.genius.com/search", params={"q": "test"},
+                             headers={"Authorization": f"Bearer {token}"}, timeout=15)
+        except requests.RequestException:
+            return {"ok": False, "error": "network"}
+        if r.status_code != 200:
+            return {"ok": False, "error": "bad_token"}
+        self._genius.save(token)
+        return {"ok": True}
+
+    def genius_clear(self) -> dict[str, Any]:
+        if self._genius:
+            self._genius.clear()
+        return {"ok": True}
+
+    def open_link(self, url: str) -> bool:
+        """Soz linkleri (Genius / AZLyrics) varsayilan tarayicida."""
+        url = str(url or "")
+        if not url.startswith(("https://genius.com/", "https://search.azlyrics.com/", "https://www.azlyrics.com/")):
+            return False
+        os.startfile(url)  # type: ignore[attr-defined]
+        return True
+
+    def open_path(self, path: str) -> bool:
+        """Uretilen yan dosyalar (srt, lrc, ayrilmis parcalar): sadece indirme kayitlarinda gecen yollar."""
+        path = str(path or "")
+        known = set()
+        for d in self._manager.snapshot():
+            x = d.extra or {}
+            known.update([x.get("ai_whisper_srt"), x.get("lyrics_lrc"), *(x.get("ai_uvr_files") or [])])
+        if path in known and os.path.exists(path):
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+            return True
+        return False
+
+    # ---------- kanal / liste takibi ----------
+    def follow_list(self) -> list[dict[str, Any]]:
+        return self._follow.list() if self._follow else []
+
+    def follow_add(self, url: str, fmt: str = "mp4", quality: str = "best", backfill: int = 0) -> dict[str, Any]:
+        if not self._follow:
+            return {"ok": False, "error": "unavailable"}
+        return self._follow.add_follow(str(url or ""), str(fmt), str(quality), int(backfill or 0))
+
+    def follow_update(self, fid: str, changes: dict) -> dict[str, Any]:
+        if not self._follow:
+            return {"ok": False, "error": "unavailable"}
+        allowed = {k: v for k, v in dict(changes or {}).items() if k in ("enabled", "format", "quality")}
+        return self._follow.update(str(fid), **allowed)
+
+    def follow_remove(self, fid: str) -> dict[str, Any]:
+        if self._follow:
+            self._follow.remove(str(fid))
+        return {"ok": True}
+
+    def follow_check_now(self, fid: str = "") -> dict[str, Any]:
+        if not self._follow:
+            return {"ok": False, "error": "unavailable"}
+        return {"ok": True, "new": self._follow.check(str(fid) or None, force=True)}

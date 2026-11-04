@@ -51,6 +51,7 @@
       <div class="nav-sep"></div>
       <div class="nav-group">
         <button class="nav-item" data-view="rd"><i class="dot c-torrent"></i><span>Real-Debrid</span></button>
+        <button class="nav-item" data-view="follow"><i class="dot c-video"></i><span data-i18n="v_follow"></span><b id="followCount"></b></button>
       </div>
       <div class="sidebar-foot">
         <button class="link-btn" id="openDownloads" data-i18n="open_downloads"></button>
@@ -82,6 +83,19 @@
         <h2 data-i18n="empty_title"></h2>
         <p id="emptyBody" data-i18n="empty_body"></p>
       </div>
+
+      <section class="xview" id="followView" data-i18n-aria="v_follow">
+        <div class="rd-head"><h2 data-i18n="v_follow"></h2><span class="hint" data-i18n="fw_hint"></span><span class="spacer"></span>
+          <button type="button" class="btn ghost" id="followCheckAll" data-i18n="fw_check_all"></button></div>
+        <form class="fw-add" id="followForm" autocomplete="off">
+          <input id="followUrl" type="text" spellcheck="false" data-i18n-placeholder="fw_ph">
+          <select id="followFmt"><option value="mp4">MP4</option><option value="mp3">MP3</option></select>
+          <label class="tb-conc"><span data-i18n="fw_backfill"></span><input id="followBack" type="number" min="0" max="30" value="0"></label>
+          <button type="submit" class="btn primary" data-i18n="fw_add"></button>
+        </form>
+        <ul class="rd-list" id="followList"></ul>
+        <p class="hint" id="followEmpty" data-i18n="fw_empty" hidden></p>
+      </section>
 
       <section class="rd-view" id="rdView" aria-label="Real-Debrid">
         <div class="rd-head">
@@ -229,6 +243,33 @@
       </fieldset>
 
       <fieldset>
+        <legend data-i18n="s_mx"></legend>
+        <label class="check"><input type="checkbox" name="lyrics_auto"><span data-i18n="s_lyrics_auto"></span></label>
+        <label class="check"><input type="checkbox" name="lyrics_embed"><span data-i18n="s_lyrics_embed"></span></label>
+        <div class="row"><span data-i18n="s_genius"></span><span><span class="hint" id="geniusState"></span>
+          <input type="password" id="geniusToken" spellcheck="false" autocomplete="off" data-i18n-placeholder="s_genius_ph">
+          <button type="button" class="btn ghost" id="geniusSave" data-i18n="save"></button>
+          <button type="button" class="btn ghost" id="geniusClear" data-i18n="s_genius_clear" hidden></button></span></div>
+        <label class="check"><input type="checkbox" name="music_archive"><span data-i18n="s_archive"></span></label>
+        <div class="row"><span data-i18n="s_music_dir"></span><span><span class="hint" id="musicDir"></span>
+          <button type="button" class="btn ghost" id="musicDirChange" data-i18n="change_dir"></button>
+          <button type="button" class="btn ghost" id="musicDirReset" data-i18n="reset_dir"></button></span></div>
+        <label class="check"><input type="checkbox" name="whisper_auto"><span data-i18n="s_whisper_auto"></span></label>
+        <label class="row"><span data-i18n="s_whisper_lang"></span>
+          <select name="whisper_lang"><option value="auto" data-i18n="lang_auto"></option><option value="tr">Türkçe</option><option value="en">English</option></select></label>
+        <label class="row"><span data-i18n="s_whisper_model"></span><select name="whisper_model" id="whisperModelSel"></select></label>
+        <label class="check"><input type="checkbox" name="whisper_embed"><span data-i18n="s_whisper_embed"></span></label>
+        <label class="check"><input type="checkbox" name="uvr_auto"><span data-i18n="s_uvr_auto"></span></label>
+        <label class="row"><span data-i18n="s_uvr_model"></span><select name="uvr_model" id="uvrModelSel"></select></label>
+        <label class="row"><span data-i18n="s_uvr_format"></span>
+          <select name="uvr_format"><option value="mp3">MP3</option><option value="flac">FLAC</option><option value="wav">WAV</option></select></label>
+        <p class="hint" id="aiState"></p>
+        <label class="check"><input type="checkbox" name="social_cookies"><span data-i18n="s_social"></span></label>
+        <label class="check"><input type="checkbox" name="follow_enabled"><span data-i18n="s_follow"></span></label>
+        <label class="row"><span data-i18n="s_follow_int"></span><input type="number" name="follow_interval_min" min="10" max="1440" step="10"></label>
+      </fieldset>
+
+      <fieldset>
         <legend data-i18n="s_security"></legend>
         <label class="row"><span data-i18n="s_defender"></span>
           <select name="defender_mode">
@@ -267,6 +308,27 @@
       <p id="hashResult" class="hint"></p>
       <div class="rd-add-actions"><button type="button" class="btn ghost" id="hashCopy" data-i18n="hash_copy"></button>
         <button type="button" class="btn primary" id="hashCheck" data-i18n="hash_check"></button></div>
+    </form>
+  </dialog>
+
+  <dialog id="mtools" aria-labelledby="mtTitle">
+    <form method="dialog" class="settings-form">
+      <header class="dialog-head">
+        <h2 id="mtTitle" data-i18n="mt_title"></h2>
+        <button class="icon-btn" value="close" data-i18n-title="close" aria-label="close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <p class="hint" id="mtName"></p>
+      <div class="mt-row" id="mtLyricsRow"><div><b data-i18n="mt_lyrics"></b><div class="hint" id="mtLyrics"></div><div class="mt-links" id="mtLinks"></div></div>
+        <button type="button" class="btn ghost" id="mtLyricsBtn" data-i18n="mt_lyrics_find"></button></div>
+      <div class="mt-row" id="mtArchiveRow"><div><b data-i18n="mt_archive"></b><div class="hint" id="mtArchive"></div></div>
+        <button type="button" class="btn ghost" id="mtArchiveBtn" data-i18n="mt_archive_btn"></button></div>
+      <div class="mt-row" id="mtWhisperRow"><div><b data-i18n="mt_whisper"></b><div class="hint" id="mtWhisper"></div></div>
+        <span><select id="mtWhisperLang"><option value="auto" data-i18n="lang_auto"></option><option value="tr">TR</option><option value="en">EN</option></select>
+        <button type="button" class="btn ghost" id="mtWhisperBtn" data-i18n="mt_run"></button></span></div>
+      <div class="mt-row" id="mtUvrRow"><div><b data-i18n="mt_uvr"></b><div class="hint" id="mtUvr"></div></div>
+        <button type="button" class="btn ghost" id="mtUvrBtn" data-i18n="mt_run"></button></div>
     </form>
   </dialog>
 
@@ -368,5 +430,7 @@
   <script src="app.js"></script>
   <script src="rd.js"></script>
   <script src="extras.js"></script>
+  <script src="i18n6.js"></script>
+  <script src="media6.js"></script>
 </body>
 </html>

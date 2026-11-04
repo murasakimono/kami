@@ -22,6 +22,8 @@ class PostComplete:
         self.manager = manager
         self.notify = notify
         self.focused = focused     # pencere ondeyse sadece uygulama ici bildirim yeter
+        self.media = None          # mediapost.MediaPost (Asama 6b): soz, arsiv, otomatik Whisper/UVR
+        self.after: list = []      # Asama 6c: bitis kurallari vb. -> fn(download_id)
         self._q: queue.Queue = queue.Queue()
         self._thread = threading.Thread(target=self._run, name="kami-post", daemon=True)
         manager.events.on("download.completed", lambda download: self._q.put(("done", download.id)))
@@ -86,3 +88,13 @@ class PostComplete:
             if notes:
                 msg += "\n⚠ " + " · ".join(notes)
             self.notify("Kami", msg)
+        if self.media is not None:
+            try:
+                self.media.process(did)
+            except Exception:
+                log.exception("Medya bitis isi hatasi (#%s)", did)
+        for fn in list(self.after):
+            try:
+                fn(did)
+            except Exception:
+                log.exception("Bitis isi hatasi (#%s)", did)

@@ -70,6 +70,7 @@ const ICONS = {
   folder: '<svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   open: '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   remove: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  mtools: '<svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16.5" cy="16" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   hash: '<svg viewBox="0 0 24 24"><path d="M9 4 7 20M17 4l-2 16M4 9h16M3 15h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
@@ -90,6 +91,7 @@ function actionsFor(d) {
     case "complete":
       return b("open", ICONS.open, T("open_file")) + b("folder", ICONS.folder, T("open_folder")) +
              b("hash", ICONS.hash, T("hash_btn")) +
+             (["video", "music"].includes(d.category) ? b("mtools", ICONS.mtools, T("mt_title")) : "") +
              b("remove", ICONS.remove, T("remove")) + b("delete", ICONS.trash, T("remove_file"), "danger");
     default:
       return b("remove", ICONS.remove, T("remove"), "danger");
@@ -238,6 +240,7 @@ async function tick() {
     (s.media_requests || []).forEach(handleMediaRequest);
     if ((s.clip_offers || []).length) showClipOffer(s.clip_offers[s.clip_offers.length - 1]);
     (s.rd_events || []).forEach(rdEvent);
+    if (typeof onStateExtras === "function") onStateExtras(s);
     state.rdProgress = s.rd_progress || [];
     if (s.update) showUpdate(s.update);
     renderLive();
@@ -305,8 +308,10 @@ function bindEvents() {
   $("#sidebar").addEventListener("click", (e) => {
     const btn = e.target.closest(".nav-item");
     if (!btn) return;
-    if (btn.dataset.view === "rd") { showRd(true); return; }
+    if (btn.dataset.view === "rd") { showView(null); showRd(true); return; }
+    if (btn.dataset.view) { showRd(false); showView(btn.dataset.view); return; }
     state.filter = btn.dataset.filter;
+    showView(null);
     showRd(false);
     render();
   });
@@ -326,6 +331,7 @@ function bindEvents() {
       "confirm-yes": () => api.confirm(id, true),
       "confirm-no": () => api.confirm(id, false),
       "hash": () => openHash(id),
+      "mtools": () => openMediaTools(id),
     };
     if (calls[act]) { await calls[act](); tick(); }
   });

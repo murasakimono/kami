@@ -62,6 +62,21 @@ DEFAULTS: dict[str, Any] = {
     "update_last": 0,
     # Ag: bazi sunucularin IPv6 adresi bu agda cevapsiz (RD: 21 sn x adres). Kapali = aria2 sadece IPv4.
     "aria2_ipv6": False,           # degisiklik Kami yeniden acilinca gecerli
+    # Asama 6b: medya ekstralari
+    "lyrics_auto": True,           # muzik inince LRCLIB'den soz (.lrc + MP3'e gom); yoksa Genius/AZLyrics linki
+    "lyrics_embed": True,
+    "music_archive": False,        # MusicBrainz etiket + Sanatci/Album klasoru + kapak
+    "music_dir": "",               # bos = Indirilenler\Muzik (Pure Music bu klasoru izleyebilir)
+    "whisper_auto": False,         # altyazisi olmayan videoya otomatik Whisper altyazi
+    "whisper_lang": "auto",        # auto | tr | en
+    "whisper_model": "large-v3-turbo",
+    "whisper_embed": True,         # uretilen altyaziyi videoya yumusak iz olarak gom
+    "uvr_auto": False,             # muzik inince otomatik vokal ayir
+    "uvr_model": "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+    "uvr_format": "mp3",           # mp3 | flac | wav
+    "social_cookies": True,        # Instagram/X/TikTok oturum cerezlerini eklentiden al (hikaye/ozel)
+    "follow_enabled": True,        # kanal/liste takibi
+    "follow_interval_min": 60,     # kontrol araligi (dk)
 }
 
 
@@ -131,6 +146,8 @@ def _coerce(key: str, value: Any) -> Any:
             v = max(1, min(20, v))
         elif key == "torrent_port" and not (v == 0 or 1024 <= v <= 65535):
             raise ValueError("torrent_port")
+        elif key == "follow_interval_min":
+            v = max(10, min(24 * 60, v))
         elif v < 0:
             v = 0
         return v
@@ -142,6 +159,10 @@ def _coerce(key: str, value: Any) -> Any:
         raise ValueError("rd_mode")
     if key == "defender_mode" and str(value) not in ("off", "exec_archive", "all"):
         raise ValueError("defender_mode")
+    if key == "whisper_lang" and str(value) not in ("auto", "tr", "en"):
+        raise ValueError("whisper_lang")
+    if key == "uvr_format" and str(value) not in ("mp3", "flac", "wav"):
+        raise ValueError("uvr_format")
     if key in ("schedule_start", "schedule_stop"):
         from app.core.extras import _hm
         _hm(value)   # gecersizse ValueError

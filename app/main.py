@@ -246,6 +246,28 @@ def main() -> int:
     scheduler.start()
     post = PostComplete(manager, tray.notify,
                         focused=lambda: winwin.is_foreground(front._hwnd()))
+
+    # ---- Asama 6b: soz + muzik arsivi + Whisper/UVR (alt surecte, sirali GPU kuyrugu)
+    from app.core import aitools
+    from app.core.debrid import TokenStore
+    from app.core.mediapost import MediaPost
+    genius = TokenStore(paths.DATA_DIR / "genius_token.bin")
+    media_post = MediaPost(manager, None, genius.load)
+    ai = aitools.AiQueue(settings, media_post.set_extra,
+                         lambda did: (manager.store.get(did).path if manager.store.get(did) else ""),
+                         notify=api._on_ai_event)
+    media_post.ai = ai
+    post.media = media_post
+    api._media_post, api._ai, api._genius = media_post, ai, genius
+    ytdlp_engine.SOCIAL_COOKIES = lambda: bool(settings.get("social_cookies"))
+    from app.core.follow import FollowService
+    follow = FollowService(paths.DATA_DIR / "follows.json", settings,
+                           lambda url, opts, title: manager.add_media(url, options={**manager.default_media_options(),
+                                                                                    **opts},
+                                                                      title=title, source="follow"),
+                           notify=api._on_ai_event)
+    api._follow = follow
+    follow.start()
     post.start()
 
     def update_loop() -> None:

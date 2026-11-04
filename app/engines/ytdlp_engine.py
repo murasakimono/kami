@@ -369,10 +369,16 @@ def _header_cookiefile(url: str, cookie: str):
             os.remove(name)
 
 
+SOCIAL_COOKIES = lambda: True   # main: ayar "social_cookies"
+
 def _cookiefile(url: str, cookie_header: str = ""):
     """YouTube: DPAPI deposundan cookies.txt. Diger siteler: eklentinin Cookie basligindan. Yoksa None."""
     if COOKIES is not None and is_youtube(url):
-        return COOKIES.cookiefile()
+        return COOKIES.cookiefile(url)
+    from app.core.vault import group_of
+    if COOKIES is not None and group_of(url) and SOCIAL_COOKIES() and COOKIES.groups().count(group_of(url)):
+        # Instagram/X/TikTok: eklentinin ilettigi oturum (hikaye/ozel hesap); yoksa sayfa basligindaki cerez
+        return COOKIES.cookiefile(url)
     if cookie_header and not is_youtube(url):
         return _header_cookiefile(url, cookie_header)
     return contextlib.nullcontext(None)
