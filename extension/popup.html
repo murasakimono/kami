@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <style>
-    :root { color-scheme: light dark; --accent: #1286A0; --muted: #646B80; --bg: #FFFFFF; --text: #1C2030; --line: #DDE1E8; }
-    @media (prefers-color-scheme: dark) { :root { --accent: #4CC3D9; --muted: #8C92A6; --bg: #20232D; --text: #E6E8EF; --line: #313544; } }
+    :root { color-scheme: light dark; --accent: #6B3FE0; --btn: #6B3FE0; --muted: #675F78; --bg: #FFFFFF; --text: #1D1726; --line: #DED8EA; }
+    @media (prefers-color-scheme: dark) { :root { --accent: #9D6BFF; --btn: #7C4DFF; --muted: #9A91AB; --bg: #15111C; --text: #E7E2EF; --line: #2A2236; } }
     body { margin: 0; width: 280px; background: var(--bg); color: var(--text);
            font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
     .wrap { padding: 14px 16px 16px; display: grid; gap: 12px; }
@@ -12,13 +12,12 @@
     .head img { width: 20px; height: 20px; }
     .status { display: flex; gap: 8px; align-items: flex-start; color: var(--muted); }
     .status i { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--muted); }
-    .status.on i { background: #2E9A5A; }
-    .status.off i { background: #C93C45; }
+    .status.on i { background: #5FD3A0; }
+    .status.off i { background: #F0626F; }
     .status.on { color: var(--text); }
     label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
     label input { width: 16px; height: 16px; accent-color: var(--accent); }
-    button { height: 32px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
-    @media (prefers-color-scheme: dark) { button { color: #0E2A31; } }
+    button { height: 32px; border: 0; border-radius: 6px; background: var(--btn); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
     button:disabled { opacity: .45; cursor: default; }
     .hint { margin: 0; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
   </style>

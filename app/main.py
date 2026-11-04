@@ -96,7 +96,7 @@ def main() -> int:
         url=str(paths.WEB_DIR / "index.html"),
         js_api=api,
         width=1180, height=740, min_size=(820, 520),
-        background_color="#1A1C24" if settings.get("theme") == "dark" else "#F3F5F8",
+        background_color="#0D0A12" if settings.get("theme") == "dark" else "#F5F3F9",
         text_select=False,
     )
     window_ref["w"] = window

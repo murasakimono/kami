@@ -87,7 +87,7 @@ async function handleDownload(item) {
 
   try { await chrome.downloads.cancel(item.id); } catch (_) {}
   try { await chrome.downloads.erase({ id: item.id }); } catch (_) {}
-  flashBadge(res.confirm ? "?" : "✓", res.confirm ? "#E8B04B" : "#1286A0");
+  flashBadge(res.confirm ? "?" : "✓", res.confirm ? "#E8B86A" : "#7C4DFF");
   return true;
 }
 
@@ -111,10 +111,10 @@ async function onMenuClicked(info, tab) {
   const pageUrl = info.frameUrl || info.pageUrl || (tab && tab.url) || "";
   const res = await sendToKami({ url, referrer: pageUrl, pageUrl, source: "context_menu" });
   if (res.ok && res.accepted) {
-    flashBadge(res.confirm ? "?" : "✓", res.confirm ? "#E8B04B" : "#1286A0");
+    flashBadge(res.confirm ? "?" : "✓", res.confirm ? "#E8B86A" : "#7C4DFF");
   } else {
     // Kami kapali: kullanici bos donmesin, tarayici indirsin
-    flashBadge("!", "#C93C45");
+    flashBadge("!", "#F0626F");
     chrome.downloads.download({ url });
   }
 }

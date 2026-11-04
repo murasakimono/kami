@@ -118,7 +118,7 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-const CAT_VAR = { video: "#7C8CF8", music: "#E07BB5", archive: "#D9A54C", program: "#67C08A", document: "#8FA3B8", torrent: "#B48CF2" };
+const catVar = (c) => (["video", "music", "archive", "program", "document", "torrent"].includes(c) ? `var(--cat-${c})` : "var(--muted)");
 
 function render() {
   const list = $("#list");
@@ -142,7 +142,7 @@ function render() {
       const nameEl = $(".name", li);
       nameEl.textContent = name;
       nameEl.title = d.path || d.url;
-      $(".ficon", li).style.setProperty("--cat", CAT_VAR[d.category] || "var(--muted)");
+      $(".ficon", li).style.setProperty("--cat", catVar(d.category));
       $(".meta", li).innerHTML = metaFor(d);
       $(".bar i", li).style.width = d.size ? `${Math.min(100, (d.downloaded / d.size) * 100)}%` : "0";
       if (li.dataset.status !== d.status) {

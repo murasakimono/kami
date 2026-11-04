@@ -12,9 +12,9 @@ from pathlib import Path
 
 OUT = Path(__file__).resolve().parent.parent / "extension" / "icons"
 
-BG = (0x1A, 0x1C, 0x24)
-PAPER = (0xE6, 0xE8, 0xEF)
-ACCENT = (0x4C, 0xC3, 0xD9)
+BG = (0x0D, 0x0A, 0x12)
+PAPER = (0xE7, 0xE2, 0xEF)
+ACCENT = (0x9D, 0x6B, 0xFF)
 
 # 32x32 tasarim izgarasinda cizgiler (arayuzdeki SVG ile ayni)
 PAGE = [((6, 5), (20, 5)), ((20, 5), (26, 11)), ((26, 11), (26, 27)), ((26, 27), (6, 27)), ((6, 27), (6, 5)),

@@ -1,39 +1,54 @@
-/* Kami arayuzu. Koyu = sumi murekkebi, acik = soguk kagit. Vurgu: asagi mavisi. */
+/* Kami arayuzu. Palet: defter 13.1 (mor-siyah, goz yormayan). Tum renkler burada, CSS degiskenlerinde.
+   Kural: liste/metin alani sade; doygun mor sadece kucuk alanlarda (buton, ilerleme, secili satir);
+   kirmizi sadece hata (ileride karakterin gozu). Duzen (C+A: muska kart + Sunak) sonraki adim. */
 :root {
   --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --r-sm: 6px;
   --r-md: 10px;
   --sidebar-w: 212px;
+  /* tur renkleri (kirmizi yok: kirmizi = hata) */
+  --cat-video: #8E86F5; --cat-music: #D98AC8; --cat-archive: #D6A85A;
+  --cat-program: #6CC79A; --cat-document: #9C9AB8; --cat-torrent: #B796F5;
 }
 [data-theme="dark"] {
-  --bg: #1A1C24;
-  --panel: #20232D;
-  --raised: #282C38;
-  --line: #313544;
-  --text: #E6E8EF;
-  --muted: #8C92A6;
-  --accent: #4CC3D9;
-  --accent-ink: #0E2A31;
-  --accent-soft: rgba(76, 195, 217, .14);
-  --ok: #6CCB8E;
-  --warn: #E8B04B;
-  --err: #E5636B;
+  --bg: #0D0A12;          /* mor tonlu siyah (saf #000 degil) */
+  --panel: #15111C;
+  --raised: #1D1727;
+  --line: #2A2236;
+  --text: #E7E2EF;        /* kirik beyaz */
+  --muted: #9A91AB;
+  --accent: #9D6BFF;      /* vurgu / cizgi / grafik */
+  --accent-2: #C9B3FF;    /* krom acigi / lila */
+  --accent-soft: rgba(157, 107, 255, .14);
+  --glow: rgba(157, 107, 255, .35);
+  --btn: #7C4DFF;         /* dolu buton: #9D6BFF uzerinde beyaz yazi okunmuyor */
+  --btn-ink: #FFFFFF;
+  --ok: #5FD3A0;
+  --warn: #E8B86A;
+  --err: #F0626F;
+  --shadow: rgba(0, 0, 0, .5);
+  --backdrop: rgba(6, 4, 10, .66);
   color-scheme: dark;
 }
-[data-theme="light"] {
-  --bg: #F3F5F8;
+[data-theme="light"] {   /* ikincil tema, sonra elden gecirilecek */
+  --bg: #F5F3F9;
   --panel: #FFFFFF;
-  --raised: #EBEEF3;
-  --line: #DDE1E8;
-  --text: #1C2030;
-  --muted: #646B80;
-  --accent: #1286A0;
-  --accent-ink: #FFFFFF;
-  --accent-soft: rgba(18, 134, 160, .10);
-  --ok: #2E9A5A;
-  --warn: #B07A12;
+  --raised: #EEEAF5;
+  --line: #DED8EA;
+  --text: #1D1726;
+  --muted: #675F78;
+  --accent: #6B3FE0;
+  --accent-2: #9D6BFF;
+  --accent-soft: rgba(107, 63, 224, .10);
+  --glow: rgba(107, 63, 224, .22);
+  --btn: #6B3FE0;
+  --btn-ink: #FFFFFF;
+  --ok: #23875A;
+  --warn: #A06C10;
   --err: #C93C45;
+  --shadow: rgba(29, 23, 38, .18);
+  --backdrop: rgba(29, 23, 38, .4);
   color-scheme: light;
 }
 
@@ -77,7 +92,7 @@ button, input, select { font: inherit; color: inherit; }
   border: 1px solid transparent; border-radius: var(--r-sm);
   background: var(--raised); cursor: pointer; white-space: nowrap;
 }
-.btn.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.primary { background: var(--btn); color: var(--btn-ink); font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.ghost { background: transparent; border-color: var(--line); height: 30px; padding: 0 12px; font-size: 13px; }
 .btn.ghost:hover { background: var(--raised); }
@@ -110,9 +125,9 @@ button, input, select { font: inherit; color: inherit; }
 .nav-item.active b { color: var(--accent); }
 .nav-sep { height: 1px; background: var(--line); margin: 10px 6px; }
 .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
-.c-video { background: #7C8CF8; } .c-music { background: #E07BB5; } .c-archive { background: #D9A54C; }
-.c-program { background: #67C08A; } .c-document { background: #8FA3B8; } .c-other { background: var(--muted); }
-.c-torrent { background: #B48CF2; }
+.c-video { background: var(--cat-video); } .c-music { background: var(--cat-music); } .c-archive { background: var(--cat-archive); }
+.c-program { background: var(--cat-program); } .c-document { background: var(--cat-document); } .c-other { background: var(--muted); }
+.c-torrent { background: var(--cat-torrent); }
 .sidebar-foot { margin-top: auto; padding: 10px; }
 
 .main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
@@ -157,10 +172,10 @@ button, input, select { font: inherit; color: inherit; }
 }
 .actions button:hover { background: var(--raised); color: var(--text); }
 .actions button.danger:hover { color: var(--err); }
-.actions button.yes { background: var(--accent); color: var(--accent-ink); font-weight: 600; padding: 0 12px; }
+.actions button.yes { background: var(--btn); color: var(--btn-ink); font-weight: 600; padding: 0 12px; }
 .actions svg { width: 17px; height: 17px; }
 .bar { position: absolute; left: 54px; right: 12px; bottom: 5px; height: 3px; border-radius: 2px; background: var(--raised); overflow: hidden; }
-.bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .4s linear; }
+.bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent-2), var(--accent)); border-radius: 2px; transition: width .4s linear; }
 .item.st-paused .bar i { background: var(--muted); }
 .item.st-error .bar i { background: var(--err); }
 .item.st-complete .bar { display: none; }
@@ -182,7 +197,7 @@ button, input, select { font: inherit; color: inherit; }
   position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%);
   max-width: min(560px, 90vw); padding: 10px 16px;
   background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-md);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
+  box-shadow: 0 8px 28px var(--shadow);
 }
 .toast.err { border-color: var(--err); }
 
@@ -191,9 +206,9 @@ dialog {
   width: min(600px, 92vw); max-height: 86vh; padding: 0;
   background: var(--panel); color: var(--text);
   border: 1px solid var(--line); border-radius: var(--r-md);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, .4);
+  box-shadow: 0 24px 64px var(--shadow);
 }
-dialog::backdrop { background: rgba(10, 12, 18, .55); }
+dialog::backdrop { background: var(--backdrop); }
 dialog[open] { animation: rise .16s ease-out; }
 @keyframes rise { from { transform: translateY(8px); opacity: 0; } }
 .settings-form { padding: 4px 24px 24px; }
