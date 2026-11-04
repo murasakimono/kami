@@ -14,7 +14,12 @@ async function setupPage() {
   if (!tab || !/^https?:/i.test(tab.url || "")) { b.hidden = true; return; }
   pageTab = tab;
   const site = kamiCloudSite(tab.url);
-  b.textContent = site && site.kind === "share" ? chrome.i18n.getMessage("popup_page_cloud", [site.name]) : t("popup_page");
+  if (site && site.kind === "share") {
+    // iki satir: ana metin + altta kucuk site adi (tek satirda tasiyordu)
+    const main = document.createElement("span"); main.textContent = t("popup_page_cloud");
+    const sub = document.createElement("small"); sub.textContent = site.name;
+    b.replaceChildren(main, sub);
+  } else b.textContent = t("popup_page");
   b.addEventListener("click", async () => {
     b.disabled = true;
     const res = await chrome.runtime.sendMessage({ type: "page-add", url: tab.url, title: tab.title });
@@ -93,4 +98,47 @@ async function showMedia(online) {
   }
 }
 
-setupPage().then(refresh).then((online) => showMedia(online));
+// sayfadaki magnet / .torrent linkleri -> Real-Debrid (Kami uzerinden)
+async function showTorrents(online) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) return;
+  const list = await chrome.runtime.sendMessage({ type: "get-torrents", tabId: tab.id }) || [];
+  if (!list.length) return;
+  const box = document.getElementById("torrents");
+  box.hidden = false;
+  document.getElementById("torrentsTitle").textContent = `${t("popup_torrents")} (${list.length})`;
+  const ul = document.getElementById("torrentList");
+  const mark = (b, res) => {
+    const ok = res && res.ok && res.accepted;
+    b.textContent = ok ? "✓" : "✕";
+    if (res && res.reason === "rd_no_token") document.getElementById("hint").textContent = t("popup_rd_notoken");
+  };
+  for (const l of list) {
+    const li = document.createElement("li");
+    const nm = document.createElement("div"); nm.className = "nm";
+    nm.textContent = l.text || nameOf(l.url); nm.title = l.url;
+    const kd = document.createElement("div"); kd.className = "kd";
+    kd.textContent = /^magnet:/i.test(l.url) ? "MAGNET" : "TORRENT";
+    const acts = document.createElement("div"); acts.className = "acts";
+    const b = document.createElement("button");
+    b.textContent = t("popup_rd_send"); b.disabled = !online;
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      mark(b, await chrome.runtime.sendMessage({ type: "rd-send", url: l.url, pageUrl: tab.url }));
+    });
+    acts.appendChild(b);
+    li.append(nm, acts, kd);
+    ul.appendChild(li);
+  }
+  const all = document.getElementById("rdAll");
+  all.textContent = t("popup_rd_all");
+  all.hidden = list.length < 2; all.disabled = !online;
+  all.addEventListener("click", async () => {
+    all.disabled = true;
+    let res;
+    for (const l of list) res = await chrome.runtime.sendMessage({ type: "rd-send", url: l.url, pageUrl: tab.url });
+    mark(all, res);
+  });
+}
+
+setupPage().then(refresh).then((online) => { showMedia(online); showTorrents(online); });

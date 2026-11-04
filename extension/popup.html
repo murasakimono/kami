@@ -17,7 +17,9 @@
     .status.on { color: var(--text); }
     label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
     label input { width: 16px; height: 16px; accent-color: var(--accent); }
-    button { height: 32px; border: 0; border-radius: 6px; background: var(--btn); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button { min-height: 32px; padding: 6px 10px; line-height: 1.25; overflow-wrap: anywhere; border: 0; border-radius: 6px; background: var(--btn); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    #page { display: grid; justify-items: center; gap: 1px; }
+    #page small { font-weight: 400; font-size: 11px; opacity: .85; }
     button.sec { background: transparent; color: var(--text); border: 1px solid var(--line); }
     button.ok { background: #2E9E6E; } button.err { background: #D9485A; }
     button:disabled { opacity: .45; cursor: default; }
@@ -28,7 +30,7 @@
     .media .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
     .media .kd { color: var(--muted); font-size: 11px; }
     .media .acts { display: flex; gap: 4px; grid-row: span 2; }
-    .media .acts button { height: 26px; padding: 0 8px; font-size: 12px; }
+    .media .acts button { height: 26px; min-height: 0; padding: 0 8px; font-size: 12px; }
     .media .empty { color: var(--muted); font-size: 12px; margin: 0; }
     .hint { margin: 0; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
   </style>
@@ -44,6 +46,11 @@
       <h3 id="mediaTitle"></h3>
       <ul id="mediaList"></ul>
       <p class="empty" id="mediaEmpty" hidden></p>
+    </div>
+    <div class="media" id="torrents" hidden>
+      <h3 id="torrentsTitle"></h3>
+      <ul id="torrentList"></ul>
+      <button id="rdAll"></button>
     </div>
     <p class="hint" id="hint"></p>
   </div>

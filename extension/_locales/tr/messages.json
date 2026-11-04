@@ -78,11 +78,21 @@
     "message": "Bu sayfayı Kami ile indir"
   },
   "popup_page_cloud": {
-    "message": "Bu paylaşımı Kami ile indir ($SITE$)",
-    "placeholders": {
-      "site": {
-        "content": "$1"
-      }
-    }
+    "message": "Kami ile indir"
+  },
+  "menu_rd": {
+    "message": "Real-Debrid'e gönder (Kami)"
+  },
+  "popup_torrents": {
+    "message": "Torrent / magnet linkleri"
+  },
+  "popup_rd_send": {
+    "message": "RD'ye gönder"
+  },
+  "popup_rd_all": {
+    "message": "Tümünü Real-Debrid'e gönder"
+  },
+  "popup_rd_notoken": {
+    "message": "Kami'de Real-Debrid token'ı yok (Ayarlar)."
   }
 }

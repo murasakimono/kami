@@ -101,6 +101,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg && msg.type === "video-button") {   // video ustu buton
     onVideoButton(msg, sender).then(sendResponse);
     return true;
+  } else if (msg && msg.type === "torrent-links") {  // icerik betigi: sayfadaki magnet/.torrent linkleri
+    if (sender.tab) saveTorrentLinks(sender.tab.id, msg.links || []);
+  } else if (msg && msg.type === "get-torrents") {
+    chrome.storage.session.get(tlKey(msg.tabId)).then((g) => sendResponse(g[tlKey(msg.tabId)] || []));
+    return true;
+  } else if (msg && msg.type === "rd-send") {        // popup "RD'ye gonder"
+    sendRd(msg.url, msg.pageUrl || "").then(sendResponse);
+    return true;
   }
   return false;
 });
@@ -146,9 +154,10 @@ async function getTabMedia(tabId) {
 async function setBadgeCount(tabId, n) {
   try {
     let text = n ? String(n) : "";
-    if (!text) {   // medya yoksa: bulut paylasim sayfasi rozeti
+    if (!text) {   // medya yoksa: bulut paylasim sayfasi rozeti, o da yoksa torrent/magnet rozeti
       const tab = await chrome.tabs.get(tabId);
       if (kamiCloudKind(tab.url || "") === "share") text = "☁";
+      else if (((await chrome.storage.session.get(tlKey(tabId)))[tlKey(tabId)] || []).length) text = "🧲";
     }
     await chrome.action.setBadgeBackgroundColor({ tabId, color: "#7C4DFF" });
     await chrome.action.setBadgeText({ tabId, text });
@@ -188,6 +197,9 @@ chrome.webRequest.onHeadersReceived.addListener((d) => {
 const pageOf = (u) => { try { const x = new URL(u); return x.origin + x.pathname + (/youtube\.com$/.test(x.hostname) ? x.search : ""); } catch (_) { return u; } };
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   if (!info.url) return;
+  chrome.storage.session.remove(tlKey(tabId)).then(() => {   // onceki sayfanin magnet/.torrent listesi
+    chrome.tabs.sendMessage(tabId, { type: "torrent-rescan" }).catch(() => {});
+  });
   getTabMedia(tabId).then((list) => { if (!list.length) setBadgeCount(tabId, 0); });   // bulut rozeti
   getTabMedia(tabId).then((list) => {
     if (list.length && list.every((m) => pageOf(m.pageUrl) !== pageOf(info.url))) {
@@ -196,7 +208,41 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
     }
   });
 });
-chrome.tabs.onRemoved.addListener((tabId) => { chrome.storage.session.remove(mediaKey(tabId)); });
+chrome.tabs.onRemoved.addListener((tabId) => { chrome.storage.session.remove([mediaKey(tabId), tlKey(tabId)]); });
+
+// ---------- Real-Debrid: sayfadaki magnet / .torrent linkleri ----------
+const tlKey = (tabId) => `tl:${tabId}`;
+async function saveTorrentLinks(tabId, links) {
+  await chrome.storage.session.set({ [tlKey(tabId)]: links.slice(0, 200) });
+  const media = await getTabMedia(tabId);
+  if (!media.length) setBadgeCount(tabId, 0);
+}
+
+function toBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+// magnet -> RD; .torrent -> dosya tarayicinin oturumuyla (cerezler) burada indirilir, Kami'ye icerik gider;
+// diger linkler (hoster) -> RD unrestrict. Sonuc Kami'de bildirim olarak gorunur.
+async function sendRd(url, pageUrl = "") {
+  let msg = { type: "rd", url, page_url: pageUrl };
+  if (/^https?:/i.test(url) && /\.torrent$/i.test(new URL(url).pathname)) {
+    try {
+      const r = await fetch(url, { credentials: "include", referrer: pageUrl || undefined });
+      const buf = await r.arrayBuffer();
+      if (r.ok && buf.byteLength > 0 && buf.byteLength < 6 * 1024 * 1024 && new Uint8Array(buf)[0] === 0x64) {   // 'd' (bencode)
+        msg = { type: "rd", torrent_b64: toBase64(buf), name: decodeURIComponent(new URL(url).pathname.split("/").pop()) };
+      }
+    } catch (_) { /* olmazsa Kami linki kendisi indirmeyi dener */ }
+  }
+  const res = await native(msg);
+  if (res.ok && res.accepted) flashBadge("✓", "#7C4DFF");
+  else flashBadge(res.ok ? "✕" : "!", "#F0626F");
+  return res;
+}
 
 // ---------- medyayi Kami'ye gonder (yt-dlp) ----------
 async function sendMedia({ url, pageUrl = "", mode = "choose", title = "" }) {
@@ -266,12 +312,21 @@ chrome.runtime.onInstalled.addListener(() => {
       title: chrome.i18n.getMessage("menu_download"),
       contexts: ["link", "video", "audio", "image"],
     });
+    chrome.contextMenus.create({   // magnet, .torrent ya da RD destekli hoster linki
+      id: "kami-rd",
+      title: chrome.i18n.getMessage("menu_rd"),
+      contexts: ["link"],
+    });
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => { onMenuClicked(info, tab); });
 
 async function onMenuClicked(info, tab) {
+  if (info.menuItemId === "kami-rd") {
+    if (info.linkUrl) await sendRd(info.linkUrl, info.frameUrl || info.pageUrl || (tab && tab.url) || "");
+    return;
+  }
   if (info.menuItemId !== "kami-download") return;
   const pageUrl = info.frameUrl || info.pageUrl || (tab && tab.url) || "";
   const url = info.linkUrl || info.srcUrl;

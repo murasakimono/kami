@@ -31,6 +31,9 @@ class Api:
         self._inbox_lock = threading.Lock()
         self._clip_offers: list[str] = []               # pano izleyicinin buldugu linkler
         self._clip_watcher = None
+        self._rd_events: list[dict[str, Any]] = []      # RD bildirimleri (arka plan torrentleri, kopru)
+        if getattr(manager, "debrid", None) is not None:
+            manager.debrid.notify = self._on_rd_event
         manager.events.on("media.choose", self._on_media_choose)
 
     def _set_window(self, window) -> None:
@@ -42,7 +45,9 @@ class Api:
         with self._inbox_lock:
             inbox, self._media_inbox = self._media_inbox, []
             offers, self._clip_offers = self._clip_offers, []
+            rd_events, self._rd_events = self._rd_events, []
         return {
+            "rd_events": rd_events,
             "media_requests": inbox,
             "clip_offers": offers,
             "items": [d.to_public() for d in items],
@@ -57,6 +62,8 @@ class Api:
         from app.core.categories import EXT_TO_CATEGORY, extension_of
         from urllib.parse import unquote, urlparse
         if self._manager.cloud.provider_for(url):
+            return True
+        if self._rd_route(url):
             return True
         if extension_of(unquote(urlparse(url).path)) in EXT_TO_CATEGORY:
             return True
@@ -91,11 +98,19 @@ class Api:
             self._clip_watcher.ignore_next = True
 
     # ---------- indirme islemleri ----------
-    def add_url(self, url: str, filename: str = "") -> dict[str, Any]:
-        """Dosya linki -> aria2. yt-dlp'nin tanidigi sayfa linki -> {media: bilgi} (arayuz secim penceresi acar)."""
+    def add_url(self, url: str, filename: str = "", direct: bool = False) -> dict[str, Any]:
+        """Dosya linki -> aria2. yt-dlp'nin tanidigi sayfa linki -> {media: bilgi} (arayuz secim penceresi acar).
+        Magnet -> Real-Debrid. RD destekli hoster linki -> rd_mode'a gore (direct=True: RD'siz)."""
         url = (url or "").strip()
+        from app.core.debrid import is_magnet
+        if is_magnet(url):
+            return self.rd_add(url)
         if not url.lower().startswith(("http://", "https://", "ftp://")):
             return {"ok": False, "error": "bad_url"}
+        if not direct:
+            routed = self._rd_routed(url)
+            if routed is not None:
+                return routed
         if self._manager.cloud.provider_for(url):
             return self.cloud_list(url)
         from app.engines import ytdlp_engine as yt
@@ -132,7 +147,11 @@ class Api:
                 "failed": int(getattr(self._manager, "cloud_failed", 0))}
 
     # ---------- medya (yt-dlp) ----------
-    def media_probe(self, url: str, headers: dict | None = None) -> dict[str, Any]:
+    def media_probe(self, url: str, headers: dict | None = None, direct: bool = False) -> dict[str, Any]:
+        if not direct:
+            routed = self._rd_routed(url or "")
+            if routed is not None:
+                return routed
         if self._manager.cloud.provider_for(url or ""):
             return self.cloud_list(url)
         from app.engines import ytdlp_engine as yt
@@ -215,6 +234,154 @@ class Api:
         base = self._manager.base_dir()
         os.makedirs(base, exist_ok=True)
         os.startfile(base)  # type: ignore[attr-defined]
+
+    # ---------- Real-Debrid ----------
+    @property
+    def _rd(self):
+        return getattr(self._manager, "debrid", None)
+
+    def _rd_route(self, url: str) -> str:
+        """'' | 'auto' | 'ask': token varsa ve link RD destekli hoster (ya da .torrent) ise ayara gore."""
+        rd = self._rd
+        mode = self._manager.settings.get("rd_mode")
+        if rd is None or mode == "off" or not (url or "").lower().startswith(("http://", "https://")) \
+                or not rd.has_token():
+            return ""
+        from app.core.debrid import is_torrent_url
+        try:
+            return mode if (is_torrent_url(url) or rd.supports(url)) else ""
+        except Exception:
+            log.exception("RD destek kontrolu")
+            return ""
+
+    def _rd_routed(self, url: str) -> dict[str, Any] | None:
+        mode = self._rd_route(url)
+        if mode == "ask":
+            return {"ok": True, "rd_ask": url}
+        if mode == "auto":
+            res = self.rd_add(url)
+            if res.get("ok"):
+                return res
+            log.info("RD otomatik gecis basarisiz (%s), dogrudan deneniyor", res.get("error"))
+        return None
+
+    def _on_rd_event(self, ev: dict[str, Any]) -> None:
+        with self._inbox_lock:
+            self._rd_events.append(ev)
+
+    @staticmethod
+    def _rd_err(exc) -> dict[str, Any]:
+        return {"ok": False, "error": exc.code, "detail": exc.detail}
+
+    def rd_status(self) -> dict[str, Any]:
+        if self._rd is None:
+            return {"has_token": False, "available": False}
+        return {**self._rd.status(), "available": True}
+
+    def rd_set_token(self, token: str) -> dict[str, Any]:
+        from app.core.debrid import DebridError
+        try:
+            u = self._rd.set_token(str(token or ""))
+        except DebridError as exc:
+            return self._rd_err(exc)
+        return {"ok": True, "username": u.get("username", "")}
+
+    def rd_clear_token(self) -> dict[str, Any]:
+        self._rd.clear_token()
+        return {"ok": True}
+
+    @staticmethod
+    def _fetch_torrent(url: str) -> bytes:
+        import requests
+        limit = 10 * 1024 * 1024
+        with requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"}, stream=True) as r:
+            r.raise_for_status()
+            data = r.raw.read(limit + 1, decode_content=True)
+        if len(data) > limit:
+            raise ValueError("torrent too large")
+        return data
+
+    def rd_add(self, text: str) -> dict[str, Any]:
+        """Yapistir-gec: her satir magnet / .torrent linki / hoster linki."""
+        from app.core.debrid import DebridError
+        if self._rd is None:
+            return {"ok": False, "error": "rd_no_token"}
+        lines = [x.strip() for x in str(text or "").splitlines() if x.strip()]
+        if not lines:
+            return {"ok": False, "error": "bad_url"}
+        torrents = added = 0
+        err = None
+        for line in lines:
+            try:
+                r = self._rd.add_any(line, self._fetch_torrent)
+                torrents += 1 if "torrent" in r else 0
+                added += int(r.get("added") or 0)
+            except DebridError as exc:
+                err = exc
+            except Exception as exc:   # .torrent indirilemedi vb.
+                log.warning("RD ekleme hatasi: %s", type(exc).__name__)
+                err = DebridError("rd_failed", type(exc).__name__)
+        if not torrents and not added:
+            return self._rd_err(err) if err else {"ok": False, "error": "rd_failed"}
+        return {"ok": True, "rd": True, "torrents": torrents, "added": added,
+                "partial": err.code if err else ""}
+
+    def rd_pick_torrent(self) -> dict[str, Any]:
+        from app.core.debrid import DebridError
+        if not self._window or self._rd is None:
+            return {"ok": False, "error": "rd_failed"}
+        import webview
+        dialog = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        res = self._window.create_file_dialog(dialog, allow_multiple=True, file_types=("Torrent (*.torrent)",))
+        if not res:
+            return {"ok": False, "cancelled": True}
+        n, err = 0, None
+        for path in res:
+            try:
+                with open(path, "rb") as f:
+                    self._rd.add_torrent_bytes(f.read(10 * 1024 * 1024))
+                n += 1
+            except DebridError as exc:
+                err = exc
+            except OSError:
+                err = DebridError("rd_bad_torrent")
+        if not n:
+            return self._rd_err(err) if err else {"ok": False, "error": "rd_failed"}
+        return {"ok": True, "rd": True, "torrents": n, "added": 0}
+
+    def rd_lists(self) -> dict[str, Any]:
+        from app.core.debrid import DebridError
+        try:
+            return {"ok": True, **self._rd.account_lists()}
+        except DebridError as exc:
+            return self._rd_err(exc)
+
+    def rd_queue_torrent(self, tid: str) -> dict[str, Any]:
+        from app.core.debrid import DebridError
+        try:
+            return {"ok": True, "added": self._rd.queue_torrent(str(tid))}
+        except DebridError as exc:
+            return self._rd_err(exc)
+
+    def rd_queue_download(self, item: dict) -> dict[str, Any]:
+        from app.core.debrid import DebridError
+        try:
+            return {"ok": True, "added": self._rd.queue_download(dict(item or {}))}
+        except DebridError as exc:
+            return self._rd_err(exc)
+        except KeyError:
+            return {"ok": False, "error": "rd_failed"}
+
+    def rd_delete(self, kind: str, rid: str) -> dict[str, Any]:
+        from app.core.debrid import DebridError
+        try:
+            if kind == "torrent":
+                self._rd.client.delete_torrent(str(rid))
+            else:
+                self._rd.client.delete_download(str(rid))
+            return {"ok": True}
+        except DebridError as exc:
+            return self._rd_err(exc)
 
     # ---------- ayarlar ----------
     def get_settings(self) -> dict[str, Any]:

@@ -78,11 +78,21 @@
     "message": "Download this page with Kami"
   },
   "popup_page_cloud": {
-    "message": "Download this share with Kami ($SITE$)",
-    "placeholders": {
-      "site": {
-        "content": "$1"
-      }
-    }
+    "message": "Download with Kami"
+  },
+  "menu_rd": {
+    "message": "Send to Real-Debrid (Kami)"
+  },
+  "popup_torrents": {
+    "message": "Torrent / magnet links"
+  },
+  "popup_rd_send": {
+    "message": "Send to RD"
+  },
+  "popup_rd_all": {
+    "message": "Send all to Real-Debrid"
+  },
+  "popup_rd_notoken": {
+    "message": "No Real-Debrid token in Kami (Settings)."
   }
 }

@@ -47,6 +47,10 @@
         <button class="nav-item" data-filter="cat:document"><i class="dot c-document"></i><span data-i18n="cat_document"></span><b data-count="cat:document"></b></button>
         <button class="nav-item" data-filter="cat:other"><i class="dot c-other"></i><span data-i18n="cat_other"></span><b data-count="cat:other"></b></button>
       </div>
+      <div class="nav-sep"></div>
+      <div class="nav-group">
+        <button class="nav-item" data-view="rd"><i class="dot c-torrent"></i><span>Real-Debrid</span></button>
+      </div>
       <div class="sidebar-foot">
         <button class="link-btn" id="openDownloads" data-i18n="open_downloads"></button>
       </div>
@@ -73,6 +77,30 @@
         <h2 data-i18n="empty_title"></h2>
         <p id="emptyBody" data-i18n="empty_body"></p>
       </div>
+
+      <section class="rd-view" id="rdView" aria-label="Real-Debrid">
+        <div class="rd-head">
+          <h2>Real-Debrid</h2><span class="hint" id="rdUser"></span><span class="spacer"></span>
+          <button type="button" class="btn ghost" id="rdRefresh" data-i18n="rd_refresh"></button>
+        </div>
+        <div class="rd-notoken" id="rdNoToken" hidden>
+          <p data-i18n="rd_notoken"></p>
+          <button type="button" class="btn primary" id="rdOpenSettings" data-i18n="rd_set_token"></button>
+        </div>
+        <div id="rdBody" hidden>
+          <form class="rd-add" id="rdForm" autocomplete="off">
+            <textarea id="rdInput" rows="3" spellcheck="false" data-i18n-placeholder="rd_placeholder"></textarea>
+            <div class="rd-add-actions">
+              <button type="button" class="btn ghost" id="rdPick" data-i18n="rd_pick"></button>
+              <button type="submit" class="btn primary" id="rdSend" data-i18n="rd_send"></button>
+            </div>
+          </form>
+          <h3 data-i18n="rd_torrents"></h3>
+          <ul class="rd-list" id="rdTorrents"></ul>
+          <h3 data-i18n="rd_downloads"></h3>
+          <ul class="rd-list" id="rdDownloads"></ul>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -138,6 +166,27 @@
         <label class="row stack"><span data-i18n="s_exclude"></span><input type="text" name="capture_exclude_hosts" spellcheck="false"></label>
         <label class="row stack"><span data-i18n="s_confirmext"></span><input type="text" name="confirm_extensions" spellcheck="false"></label>
         <p class="hint" data-i18n="s_capture_hint"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Real-Debrid</legend>
+        <div class="row dir-row">
+          <span data-i18n="s_rd_token"></span>
+          <div class="dir-ctl">
+            <input type="password" id="rdToken" autocomplete="off" spellcheck="false" data-i18n-placeholder="s_rd_token_ph">
+            <button type="button" class="btn ghost" id="rdTokenSave" data-i18n="s_rd_save"></button>
+            <button type="button" class="btn ghost" id="rdTokenClear" data-i18n="s_rd_clear" hidden></button>
+          </div>
+        </div>
+        <p class="hint" id="rdTokenState"></p>
+        <label class="row"><span data-i18n="s_rd_mode"></span>
+          <select name="rd_mode">
+            <option value="ask" data-i18n="rd_mode_ask"></option>
+            <option value="auto" data-i18n="rd_mode_auto"></option>
+            <option value="off" data-i18n="rd_mode_off"></option>
+          </select>
+        </label>
+        <p class="hint" data-i18n="s_rd_hint"></p>
       </fieldset>
     </form>
   </dialog>
@@ -217,7 +266,25 @@
     </form>
   </dialog>
 
+  <dialog id="rdAsk" aria-labelledby="rdAskTitle">
+    <form method="dialog" class="settings-form">
+      <header class="dialog-head">
+        <h2 id="rdAskTitle" data-i18n="rd_ask_title"></h2>
+        <button class="icon-btn" value="close" data-i18n-title="close" aria-label="close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <p class="rd-ask-url" id="rdAskUrl"></p>
+      <p class="hint" data-i18n="rd_ask_body"></p>
+      <div class="m-actions rd-ask-actions">
+        <button type="button" class="btn" id="rdAskDirect" data-i18n="rd_ask_direct"></button>
+        <button type="button" class="btn primary" id="rdAskRd" data-i18n="rd_ask_rd"></button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="i18n.js"></script>
   <script src="app.js"></script>
+  <script src="rd.js"></script>
 </body>
 </html>

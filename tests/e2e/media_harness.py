@@ -33,6 +33,29 @@ mgr = DownloadManager(DownloadStore(tmp / "k.db"), eng, events, settings, regist
                       media=yt.MediaRunner(eng))
 chooses: list[dict] = []
 events.on("media.choose", lambda **kw: chooses.append({k: v for k, v in kw.items() if k != "headers"}))
+
+
+class FakeDebrid:
+    """RD taklidi: kopru /v1/rd'nin eklentiden ne aldigini kaydeder (gercek token/ag yok)."""
+    def __init__(self):
+        self.calls = []
+        self.notify = lambda ev: None
+
+    def has_token(self):
+        return True
+
+    def add_magnet(self, m):
+        self.calls.append({"kind": "magnet", "value": m})
+
+    def add_torrent_bytes(self, data):
+        self.calls.append({"kind": "torrent", "value": data[:40].decode("latin-1"), "size": len(data)})
+
+    def add_link(self, url):
+        self.calls.append({"kind": "link", "value": url})
+        return 1
+
+
+mgr.debrid = FakeDebrid()
 bridge_server.PREFERRED_PORT = 0  # kullanicinin Kami'si 47321'de olabilir
 bridge = bridge_server.BridgeServer(mgr, tmp / "bridge.json")
 mgr.start()
@@ -44,7 +67,7 @@ def dump() -> None:
         items = [{"id": d.id, "url": d.url, "status": str(d.status), "filename": d.filename, "kind": d.kind,
                   "size": d.size, "error": d.error, "path": d.path} for d in mgr.snapshot()]
         tmpf = tmp / "state.tmp"
-        tmpf.write_text(json.dumps({"items": items, "chooses": chooses}, ensure_ascii=False), encoding="utf-8")
+        tmpf.write_text(json.dumps({"items": items, "chooses": chooses, "rd": mgr.debrid.calls}, ensure_ascii=False), encoding="utf-8")
         tmpf.replace(tmp / "state.json")
         time.sleep(0.5)
 

@@ -37,6 +37,8 @@ DEFAULTS: dict[str, Any] = {
     "media_sponsorblock": "mark",  # mark | remove | off
     "ytdlp_autoupdate": True,
     "ytdlp_last_update": 0,
+    # Real-Debrid (token burada DEGIL: data/rd_token.bin, DPAPI)
+    "rd_mode": "ask",              # RD destekli hoster linki: auto | ask | off (dogrudan indirme her zaman secenek)
 }
 
 
@@ -111,4 +113,6 @@ def _coerce(key: str, value: Any) -> Any:
         if isinstance(value, str):
             value = [x.strip() for x in value.replace("\n", ",").split(",")]
         return [str(x).strip().lower() for x in value if str(x).strip()]
+    if key == "rd_mode" and str(value) not in ("auto", "ask", "off"):
+        raise ValueError("rd_mode")
     return str(value)

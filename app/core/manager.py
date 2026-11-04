@@ -248,6 +248,19 @@ class DownloadManager:
             raise CloudError("cloud_failed", str(first_error))
         return added
 
+    # ---------- Real-Debrid ----------
+    def add_debrid_files(self, files: list[dict[str, Any]], folder: str = "") -> int:
+        """RD'nin verdigi dogrudan linkler -> aria2 (cok baglanti). files: [{url, filename, size, rel}]."""
+        root = os.path.join(self.base_dir(), sanitize_filename(folder)) if folder else ""
+        n = 0
+        for f in files:
+            rel = [sanitize_filename(p) for p in str(f.get("rel") or "").replace("\\", "/").split("/") if p]
+            name = f.get("filename") or (rel[-1] if rel else "")
+            directory = os.path.join(root, *[p for p in rel[:-1] if p]) if root else ""
+            n += len(self.add(DownloadRequest(url=f["url"], filename=name, size=int(f.get("size") or 0),
+                                              source="plugin:realdebrid", directory=directory)))
+        return n
+
     # ---------- medya (yt-dlp) ----------
     def default_media_options(self) -> dict[str, Any]:
         s = self.settings

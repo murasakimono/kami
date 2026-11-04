@@ -23,7 +23,7 @@ from app.core.models import DownloadRequest
 log = logging.getLogger(__name__)
 
 PREFERRED_PORT = 47321
-MAX_BODY = 1024 * 1024
+MAX_BODY = 8 * 1024 * 1024   # .torrent dosyasi (base64) icin
 APP_VERSION = "0.1.0"
 
 
@@ -141,7 +141,49 @@ class BridgeServer:
             except (ValueError, CaptureRejected) as exc:
                 return 200, {"ok": True, "accepted": False, "reason": str(exc)}
             return 200, {"ok": True, "accepted": True, "ids": [d.id]}
+        if path == "/v1/rd":   # eklenti "Real-Debrid'e gonder" / Windows magnet isleyicisi
+            return self._rd(body)
         return 404, {"ok": False, "error": "not_found"}
+
+    def _rd(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        """Is arka planda yapilir (RD cevaplari yavas olabilir); sonuc Kami'de bildirim olarak gorunur."""
+        import base64
+        from app.core.debrid import DebridError, is_magnet
+        rd = getattr(self.manager, "debrid", None)
+        url = str(body.get("url") or "").strip()
+        raw = str(body.get("torrent_b64") or "")
+        if not raw and not (is_magnet(url) or url.lower().startswith(("http://", "https://"))):
+            return 400, {"ok": False, "error": "bad_url"}
+        notify = rd.notify if rd else (lambda ev: None)
+        if rd is None or not rd.has_token():
+            notify({"kind": "error", "error": "rd_no_token"})
+            self.on_show()
+            return 200, {"ok": True, "accepted": False, "reason": "rd_no_token"}
+        try:
+            data = base64.b64decode(raw, validate=True) if raw else b""
+        except ValueError:
+            return 400, {"ok": False, "error": "bad_torrent"}
+
+        def work() -> None:
+            try:
+                if data:
+                    rd.add_torrent_bytes(data)
+                    notify({"kind": "torrent", "name": str(body.get("name") or "")})
+                elif is_magnet(url):
+                    rd.add_magnet(url)
+                    notify({"kind": "torrent", "name": ""})
+                else:
+                    n = rd.add_link(url)
+                    notify({"kind": "queued", "name": "", "count": n})
+            except DebridError as exc:
+                log.warning("RD istegi basarisiz: %s %s", exc.code, exc.detail)
+                notify({"kind": "error", "error": exc.code})
+            except Exception:
+                log.exception("RD istegi hatasi")
+                notify({"kind": "error", "error": "rd_failed"})
+
+        threading.Thread(target=work, name="kami-rd-req", daemon=True).start()
+        return 200, {"ok": True, "accepted": True}
 
     def _cloud_url(self, url: str, page_url: str) -> str:
         """Link ya da sayfasi bir bulut eklentisine uyuyorsa o link (eklenti cozuculeri yt-dlp'den once)."""

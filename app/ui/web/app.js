@@ -229,6 +229,8 @@ async function tick() {
     state.items = s.items;
     (s.media_requests || []).forEach(handleMediaRequest);
     if ((s.clip_offers || []).length) showClipOffer(s.clip_offers[s.clip_offers.length - 1]);
+    (s.rd_events || []).forEach(rdEvent);
+    if (rd.view && Date.now() - rd.lastRefresh > 5000) rdRefresh();
     state.history.push(s.total_speed); state.history.shift();
     const [num, unit] = splitBytes(s.total_speed);
     $("#speedNum").textContent = num;
@@ -256,14 +258,15 @@ function notifyFinished(items) {
 }
 
 let toastTimer = 0;
-function toast(msg, isErr = false) {
+function toast(msg, isErr = false, sticky = false) {
   const el = $("#toast");
   el.textContent = msg;
   el.classList.toggle("err", isErr);
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+  if (!sticky) toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
 }
+function toastDone() { const el = $("#toast"); if (el.textContent === T("resolving")) el.hidden = true; }
 
 // ---------- olaylar ----------
 function bindEvents() {
@@ -274,11 +277,12 @@ function bindEvents() {
     if (!urls.length) return;
     let ok = 0;
     for (const u of urls) {
-        toast(T("resolving"));
-      const r = await api.add_url(u);
-      if (r.ok && r.media) { input.value = ""; openMedia(r, { url: u }); continue; }
-      if (r.ok && r.cloud) { input.value = ""; openCloud(r.cloud); continue; }
-      if (r.ok) ok++; else toast(T("err_" + r.error), true);
+      toast(T("resolving"), false, true);    // yavas servislerde (Pixeldrain ~20 sn) cevap gelene kadar kalir
+      let r;
+      try { r = await api.add_url(u); } finally { toastDone(); }
+      const how = dispatchAdd(r, u, { url: u });   // rd.js: RD sorusu / medya / bulut penceresi
+      if (how === "plain") ok++;
+      else if (how === "handled") input.value = "";
     }
     if (ok) { input.value = ""; toast(T("added")); tick(); }
   });
@@ -289,8 +293,9 @@ function bindEvents() {
   $("#sidebar").addEventListener("click", (e) => {
     const btn = e.target.closest(".nav-item");
     if (!btn) return;
-    $$(".nav-item").forEach((b) => b.classList.toggle("active", b === btn));
+    if (btn.dataset.view === "rd") { showRd(true); return; }
     state.filter = btn.dataset.filter;
+    showRd(false);
     render();
   });
 
@@ -341,7 +346,7 @@ function insertText(el, text) {
 
 let clipTimer = 0;
 function showClipOffer(url) {
-  if ($("#media").open || $("#cloud").open || $("#addInput").value.trim() === url) return;
+  if ($("#media").open || $("#cloud").open || $("#rdAsk").open || $("#addInput").value.trim() === url) return;
   $("#clipUrl").textContent = url;
   $("#clipUrl").title = url;
   $("#clipOffer").dataset.url = url;
@@ -358,8 +363,10 @@ function bindClipboard() {
     $("#addInput").focus();
   });
   $("#clipYes").addEventListener("click", () => {
+    const url = $("#clipOffer").dataset.url || "";
     $("#clipOffer").hidden = true;
-    $("#addInput").value = $("#clipOffer").dataset.url || "";
+    if (!url) return;
+    $("#addInput").value = url;
     $("#addForm").requestSubmit();
   });
   $("#clipNo").addEventListener("click", () => { $("#clipOffer").hidden = true; });
@@ -412,11 +419,11 @@ const STD_HEIGHTS = [2160, 1440, 1080, 720, 480, 360];
 async function handleMediaRequest(req) {
   if (media.busy || $("#media").open || $("#cloud").open) { media.pending.push(req); return; }
   media.busy = true;
-  toast(T("resolving"));
+  toast(T("resolving"), false, true);
   try {
-    const r = await api.media_probe(req.url, req.headers || {});
-    if (r.ok && r.cloud) openCloud(r.cloud);
-    else if (r.ok) openMedia(r, req); else toast(T("err_" + r.error), true);
+    let r;
+    try { r = await api.media_probe(req.url, req.headers || {}); } finally { toastDone(); }
+    dispatchAdd(r, req.url, { ...req, headers: req.headers || {} });
   } finally { media.busy = false; }
 }
 
@@ -628,6 +635,7 @@ async function init() {
   applyI18n();
   bindEvents();
   bindSettings();
+  bindRd();
   await tick();
   setInterval(() => { if (!document.hidden) tick(); }, 500);
 }

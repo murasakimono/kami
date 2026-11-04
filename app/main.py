@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import threading
 
 from app import paths
 from app.core.bridge_server import BridgeServer, call_running_instance
@@ -30,12 +31,27 @@ def _setup_logging() -> None:
         root.addHandler(logging.StreamHandler())
 
 
+def _magnet_arg(argv: list[str]) -> str:
+    """Windows magnet: isleyicisi -> kami_open.pyw --magnet "<link>"."""
+    for i, a in enumerate(argv):
+        if a == "--magnet" and i + 1 < len(argv):
+            return argv[i + 1]
+        if a.lower().startswith("magnet:?"):
+            return a
+    return ""
+
+
 def main() -> int:
     paths.ensure_dirs()
     _setup_logging()
+    magnet = _magnet_arg(sys.argv[1:])
 
     # Tek ornek: zaten calisiyorsa onu one getir ve cik
     if call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping"):
+        if magnet:
+            res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/rd", {"url": magnet, "source": "magnet"},
+                                        timeout=5.0)
+            log.info("Magnet calisan Kami'ye iletildi: %s", bool(res and res.get("ok")))
         call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/show")
         log.info("Kami zaten calisiyor; pencere one getirildi.")
         return 0
@@ -61,6 +77,10 @@ def main() -> int:
     media = ytdlp_engine.MediaRunner(engine, max_concurrent=settings.get("max_concurrent"),
                                      connections_getter=lambda: int(settings.get("connections")))
     manager = DownloadManager(store, engine, events, settings, registry, media=media)
+    from app.core.debrid import DebridService, TokenStore
+    debrid = DebridService(TokenStore(paths.DATA_DIR / "rd_token.bin"), paths.DATA_DIR / "rd_pending.json")
+    debrid.enqueue = manager.add_debrid_files
+    manager.debrid = debrid
 
     window_ref: dict = {}
 
@@ -119,14 +139,19 @@ def main() -> int:
         lambda rec: not (closing["v"] and "Error occurred in script" in rec.getMessage()))
 
     manager.start()
+    debrid.start()
     bridge.start()
     api._start_clipboard()
+    if magnet:   # Kami kapaliyken magnet linkine tiklandi
+        threading.Thread(target=bridge.handle, args=("/v1/rd", {"url": magnet, "source": "magnet"}),
+                         daemon=True).start()
     try:
         webview.start(debug=bool(os.environ.get("KAMI_DEBUG")), private_mode=False,
                       storage_path=str(paths.DATA_DIR / "webview"))
     finally:
         log.info("Kami kapaniyor")
         bridge.stop()
+        debrid.stop()
         manager.stop()
         engine.shutdown()
         store.close()

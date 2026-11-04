@@ -1,6 +1,8 @@
 /* Kami arayuzu. Palet: defter 13.1 (mor-siyah, goz yormayan). Tum renkler burada, CSS degiskenlerinde.
    Kural: liste/metin alani sade; doygun mor sadece kucuk alanlarda (buton, ilerleme, secili satir);
    kirmizi sadece hata (ileride karakterin gozu). Duzen (C+A: muska kart + Sunak) sonraki adim. */
+/* hidden ozniteligi her zaman kazanir (display:flex kurallari onu ezmesin) */
+[hidden] { display: none !important; }
 :root {
   --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
@@ -204,7 +206,7 @@ button, input, select { font: inherit; color: inherit; }
 #pasteBtn { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; }
 #pasteBtn svg { width: 16px; height: 16px; }
 .clip-offer {
-  position: fixed; right: 20px; bottom: 44px; z-index: 50;
+  position: fixed; right: 20px; bottom: 96px; z-index: 50;   /* bildirimin (toast) ustunde dursun */
   display: flex; align-items: center; gap: 10px; max-width: min(620px, 92vw); padding: 10px 12px 10px 16px;
   background: var(--raised); border: 1px solid var(--accent); border-radius: var(--r-md);
   box-shadow: 0 8px 28px var(--shadow);
@@ -284,3 +286,31 @@ legend { padding: 0; margin-bottom: 8px; font-weight: 600; color: var(--accent);
 .m-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
 #media fieldset[disabled] { opacity: .5; }
 #media [hidden] { display: none !important; }
+
+/* ---------- Real-Debrid gorunumu ---------- */
+.main:not(.rd-mode) > .rd-view { display: none; }
+.main.rd-mode > .toolbar, .main.rd-mode > #list, .main.rd-mode > #empty { display: none !important; }
+.rd-view { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 20px; }
+.rd-head { display: flex; align-items: baseline; gap: 12px; margin: 6px 0 12px; }
+.rd-head h2 { margin: 0; font: 600 17px var(--font-display); }
+.rd-head .hint { margin: 0; }
+.rd-head .spacer { flex: 1; }
+.rd-notoken { padding: 24px; border: 1px dashed var(--line); border-radius: var(--r-md); color: var(--muted); }
+.rd-notoken p { margin: 0 0 12px; }
+.rd-add { display: grid; gap: 8px; margin-bottom: 18px; }
+.rd-add textarea { resize: vertical; min-height: 64px; padding: 10px 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--panel); color: var(--text); font: 13px var(--font); }
+.rd-add textarea:focus { outline: none; border-color: var(--accent); }
+.rd-add-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.rd-view h3 { margin: 16px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.rd-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.rd-item { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 2px 12px; align-items: center;
+  padding: 8px 10px; border-radius: var(--r-sm); background: var(--panel); }
+.rd-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rd-meta { grid-row: 2; font-size: 12px; color: var(--muted); }
+.rd-acts { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 6px; }
+.rd-acts .btn { height: 28px; padding: 0 10px; }
+.rd-empty { color: var(--muted); font-size: 12.5px; padding: 6px 2px; }
+.rd-ask-url { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.rd-ask-actions { gap: 8px; }
+#rdToken { flex: 1; min-width: 0; }
