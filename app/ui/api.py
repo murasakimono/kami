@@ -74,6 +74,8 @@ class Api:
         try:
             info = yt.probe(url, headers=headers)
         except yt.MediaError as exc:
+            if str(exc) == yt.BOT_ERROR:
+                return {"ok": False, "error": yt.BOT_ERROR}
             return {"ok": False, "error": "media_unsupported", "detail": str(exc)}
         except Exception as exc:
             log.exception("Medya bilgisi alinamadi")

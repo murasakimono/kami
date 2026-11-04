@@ -109,6 +109,13 @@ class BridgeServer:
                 return 200, {"ok": True, "accepted": False, "reason": str(exc)}
             return 200, {"ok": True, "accepted": True, "ids": [d.id for d in added],
                          "confirm": any(d.status == "confirm" for d in added)}
+        if path == "/v1/cookies":  # eklenti: YouTube/Google oturum cerezleri (DPAPI ile saklanir)
+            from app.engines import ytdlp_engine as yt
+            cookies = body.get("cookies")
+            if yt.COOKIES is None or not isinstance(cookies, list):
+                return 400, {"ok": False, "error": "bad_cookies"}
+            n = yt.COOKIES.save(cookies)
+            return 200, {"ok": True, "saved": n}
         if path == "/v1/media":  # video ustu buton / acilir penceredeki yakalanan akislar
             url = str(body.get("url") or "").strip()
             if not url.lower().startswith(("http://", "https://")):

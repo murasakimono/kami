@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
@@ -28,6 +29,8 @@ SPONSORBLOCK_REMOVE = "sponsor,selfpromo,interaction"
 _YT_HOSTS = ("youtube.com", "youtu.be", "youtube-nocookie.com")
 _update_done = threading.Event()
 _update_done.set()  # guncelleme baslatilmadiysa beklenmez
+BOT_ERROR = "yt_bot"   # arayuz bu kodu "YouTube bot dogrulamasi" mesajina cevirir
+COOKIES = None         # app.core.vault.CookieStore (main.py baglar): eklentiden gelen YouTube/Google cerezleri
 
 
 class MediaCancelled(Exception):
@@ -292,7 +295,8 @@ class MediaJob:
         if ffmpeg:
             ydl_opts["ffmpeg_location"] = ffmpeg
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            with _cookiefile(self.url) as ck, yt_dlp.YoutubeDL(
+                    {**ydl_opts, "cookiefile": ck} if ck else ydl_opts) as ydl:
                 ydl.add_post_hook(self._post_hook)
                 info = ydl.extract_info(self.url, download=False)
                 if self.cancel.is_set():
@@ -328,7 +332,16 @@ def _estimate_size(info: dict[str, Any]) -> int:
 
 def _clean_error(msg: str) -> str:
     msg = re.sub(r"\x1b\[[0-9;]*m", "", msg)
+    if re.search(r"confirm you.{0,3}re not a bot|Sign in to confirm", msg, re.I):
+        return BOT_ERROR
     return msg.replace("ERROR: ", "").strip()[:400]
+
+
+def _cookiefile(url: str):
+    """YouTube linkinde DPAPI deposundan gecici cookies.txt (yoksa None)."""
+    if COOKIES is not None and is_youtube(url):
+        return COOKIES.cookiefile()
+    return contextlib.nullcontext(None)
 
 
 class _YdlLogger:
@@ -363,7 +376,7 @@ def probe(url: str, headers: dict[str, str] | None = None, timeout: float = 30.0
     if h:
         opts["http_headers"] = h
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with _cookiefile(url) as ck, yt_dlp.YoutubeDL({**opts, "cookiefile": ck} if ck else opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as exc:
         raise MediaError(_clean_error(str(exc))) from exc

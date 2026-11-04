@@ -76,6 +76,10 @@ def main() -> int:
         except Exception:
             log.exception("Pencere one getirilemedi")
 
+    from app.core.vault import CookieStore
+    from app.engines import ytdlp_engine
+    ytdlp_engine.COOKIES = CookieStore(paths.DATA_DIR / "yt_cookies.bin")
+
     bridge = BridgeServer(manager, paths.BRIDGE_INFO_PATH, on_show=show_window)
 
     def on_setting(key, value):

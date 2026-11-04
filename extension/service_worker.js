@@ -27,7 +27,42 @@ async function requestHeaders(url) {
   return headers;
 }
 
+// ---------- YouTube/Google oturum cerezleri -> Kami (DPAPI ile saklar, yt-dlp cookiefile) ----------
+// YouTube bu agda cerezsiz istekleri "bot musun" diye reddediyor; Brave'deki oturum cerezleri gerekiyor.
+const YT_RE = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/i;
+const COOKIE_DOMAINS = ["youtube.com", "google.com"];
+let lastCookieSync = 0;
+
+function isYouTube(u) {
+  try { return YT_RE.test(new URL(u).hostname); } catch (_) { return false; }
+}
+
+async function syncCookies(force = false) {
+  if (!force && Date.now() - lastCookieSync < 60000) return;
+  lastCookieSync = Date.now();
+  try {
+    const all = [];
+    for (const domain of COOKIE_DOMAINS) all.push(...await chrome.cookies.getAll({ domain }));
+    if (!all.some((c) => /^(SAPISID|__Secure-3PAPISID|LOGIN_INFO|SID)$/.test(c.name))) return; // giris yok
+    const cookies = all.map((c) => ({
+      name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure,
+      hostOnly: c.hostOnly, session: c.session, expirationDate: c.expirationDate || 0,
+    }));
+    await native({ type: "cookies", cookies });
+  } catch (_) { /* Kami kapali ya da izin yok */ }
+}
+
+let cookieTimer = null;
+chrome.cookies.onChanged.addListener(({ cookie }) => {
+  if (!/(^|\.)(youtube|google)\.com$/i.test(cookie.domain.replace(/^\./, ""))) return;
+  if (!/^(SAPISID|__Secure-[13]PAPISID|__Secure-[13]PSID\w*|LOGIN_INFO|SID|HSID|SSID|APISID)$/.test(cookie.name)) return;
+  clearTimeout(cookieTimer);
+  cookieTimer = setTimeout(() => syncCookies(true), 5000);
+});
+chrome.runtime.onStartup.addListener(() => { syncCookies(true); });
+
 async function sendToKami({ url, filename = "", referrer = "", pageUrl = "", size = 0, mime = "", source }) {
+  if (isYouTube(url) || isYouTube(pageUrl)) await syncCookies(true);
   const headers = await requestHeaders(url);
   return native({
     type: "add", url, filename, referer: referrer, page_url: pageUrl || referrer,
@@ -146,6 +181,7 @@ chrome.tabs.onRemoved.addListener((tabId) => { chrome.storage.session.remove(med
 
 // ---------- medyayi Kami'ye gonder (yt-dlp) ----------
 async function sendMedia({ url, pageUrl = "", mode = "choose", title = "" }) {
+  if (isYouTube(url) || isYouTube(pageUrl)) await syncCookies(true);
   const headers = await requestHeaders(url);
   if (pageUrl && pageUrl !== url) headers["Referer"] = pageUrl;
   return native({ type: "media", url, page_url: pageUrl, mode, title, headers });
@@ -204,6 +240,7 @@ async function handleDownload(item) {
 
 // ---------- sag tik menusu ----------
 chrome.runtime.onInstalled.addListener(() => {
+  syncCookies(true);
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "kami-download",

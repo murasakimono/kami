@@ -96,7 +96,7 @@ function actionsFor(d) {
 
 function metaFor(d) {
   const parts = [];
-  const st = `<span class="st-${d.status}">${d.status === "error" && d.error ? `${T("st_error")}: ${escapeHtml(d.error)}` : d.status === "confirm" ? T("confirm_q") : d.phase === "processing" ? T("phase_processing") : T("st_" + d.status)}</span>`;
+  const st = `<span class="st-${d.status}">${d.status === "error" && d.error ? `${T("st_error")}: ${escapeHtml(d.error === "yt_bot" ? T("err_yt_bot") : d.error)}` : d.status === "confirm" ? T("confirm_q") : d.phase === "processing" ? T("phase_processing") : T("st_" + d.status)}</span>`;
   parts.push(st);
   if (d.status === "complete" || d.status === "confirm") {
     if (d.size) parts.push(`<span>${fmtBytes(d.size)}</span>`);
