@@ -5,6 +5,7 @@ import hashlib
 import os
 import re
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -16,6 +17,8 @@ class _Handler(BaseHTTPRequestHandler):
     files: dict[str, bytes] = {}
     connections: set = set()
     lock = threading.Lock()
+    active_limited = 0
+    rejected = 0
 
     def log_message(self, *a):  # sessiz
         pass
@@ -28,6 +31,27 @@ class _Handler(BaseHTTPRequestHandler):
             return
         with self.lock:
             self.connections.add(self.client_address)
+            limited = name == "limited.bin"
+            if limited:
+                if self.active_limited >= 2:  # OVH gibi: IP basina en fazla 2 es zamanli baglanti
+                    type(self).rejected += 1
+                    reject = True
+                else:
+                    type(self).active_limited += 1
+                    reject = False
+        if limited and reject:
+            self.send_response(429)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        try:
+            self._send_body(data, name, head_only)
+        finally:
+            if limited:
+                with self.lock:
+                    type(self).active_limited -= 1
+
+    def _send_body(self, data: bytes, name: str, head_only: bool) -> None:
         rng = self.headers.get("Range")
         start, end = 0, len(data) - 1
         status = 200
@@ -47,6 +71,11 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if not head_only:
             try:
+                if name == "limited.bin":  # yavas sun ki baglantilar ust uste binsin
+                    for i in range(0, len(chunk), 256 * 1024):
+                        self.wfile.write(chunk[i:i + 256 * 1024])
+                        time.sleep(0.02)
+                    return
                 self.wfile.write(chunk)
             except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
                 pass
@@ -61,7 +90,8 @@ class _Handler(BaseHTTPRequestHandler):
 @pytest.fixture(scope="session")
 def http_server():
     data = os.urandom(24 * 1024 * 1024)
-    _Handler.files = {"big.bin": data, "video.mp4": data[: 3 * 1024 * 1024], "setup.exe": b"MZ" + data[:4096]}
+    _Handler.files = {"big.bin": data, "video.mp4": data[: 3 * 1024 * 1024], "setup.exe": b"MZ" + data[:4096],
+                      "limited.bin": data[: 12 * 1024 * 1024]}
     srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()

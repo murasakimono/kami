@@ -122,6 +122,17 @@ def test_pause_resume_remove(env, http_server):
     assert not os.path.exists(d.path) and mgr.store.get(d.id) is None
 
 
+def test_server_connection_limit_fallback(env, http_server):
+    """Sunucu fazla baglantiya 429 donerse baglanti dusurulup kaldigi yerden tamamlanir."""
+    mgr, settings, seen, tmp = env
+    http_server.handler.rejected = 0
+    [d] = mgr.add(DownloadRequest(url=http_server.base + "/limited.bin"))
+    d = _wait(mgr, d.id, Status.COMPLETE, timeout=60)
+    assert http_server.handler.rejected > 0          # sunucu gercekten reddetti
+    assert _sha(d.path) == http_server.sha["limited.bin"]
+    assert "download.failed" not in seen
+
+
 def test_recover_after_restart(tmp_path, http_server):
     """Uygulama kapanip acilinca yarim indirme kaldigi yerden devam eder."""
     settings = Settings(tmp_path / "s.json")

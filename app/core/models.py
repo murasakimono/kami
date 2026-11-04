@@ -54,6 +54,7 @@ class Download:
     headers: dict[str, str] = field(default_factory=dict)
     source: str = "ui"
     page_url: str = ""
+    max_conn: int = 0                  # 0 = ayardaki deger; sunucu sinirlarsa otomatik dusurulur
     created_at: float = 0.0
     finished_at: float = 0.0
 

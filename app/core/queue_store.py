@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS downloads (
     headers     TEXT NOT NULL DEFAULT '{}',
     source      TEXT NOT NULL DEFAULT 'ui',
     page_url    TEXT NOT NULL DEFAULT '',
+    max_conn    INTEGER NOT NULL DEFAULT 0,
     created_at  REAL NOT NULL,
     finished_at REAL NOT NULL DEFAULT 0
 );
@@ -37,8 +38,13 @@ CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 
 _COLUMNS = (
     "url", "filename", "directory", "category", "status", "size", "downloaded",
-    "gid", "error", "referer", "headers", "source", "page_url", "created_at", "finished_at",
+    "gid", "error", "referer", "headers", "source", "page_url", "max_conn", "created_at", "finished_at",
 )
+
+# Eski veritabanlarina sonradan eklenen sutunlar: (ad, tanim)
+_MIGRATIONS = [
+    ("max_conn", "INTEGER NOT NULL DEFAULT 0"),
+]
 
 
 class DownloadStore:
@@ -49,6 +55,10 @@ class DownloadStore:
         with self._lock:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.executescript(_SCHEMA)
+            have = {r[1] for r in self._conn.execute("PRAGMA table_info(downloads)")}
+            for name, ddl in _MIGRATIONS:
+                if name not in have:
+                    self._conn.execute(f"ALTER TABLE downloads ADD COLUMN {name} {ddl}")
             self._conn.commit()
 
     def close(self) -> None:
@@ -129,6 +139,7 @@ def _from_row(r: sqlite3.Row) -> Download:
         headers=json.loads(r["headers"] or "{}"),
         source=r["source"],
         page_url=r["page_url"],
+        max_conn=r["max_conn"],
         created_at=r["created_at"],
         finished_at=r["finished_at"],
     )

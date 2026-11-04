@@ -79,7 +79,8 @@ class Aria2Engine(Engine):
             "--auto-file-renaming=true",
             "--allow-overwrite=false",
             "--content-disposition-default-utf8=true",
-            "--file-allocation=falloc",
+            # falloc yonetici yetkisi ister; yoksa sifir doldurmaya dusup aria2'yi bloke ediyor (04.11 olculdu)
+            "--file-allocation=none",
             "--disk-cache=64M",
             f"--max-tries={self.max_tries}",
             "--retry-wait=3",
@@ -182,10 +183,13 @@ class Aria2Engine(Engine):
         return request.url.lower().startswith(("http://", "https://", "ftp://", "sftp://"))
 
     def build_options(self, download: Download) -> dict[str, Any]:
+        conn = self.connections
+        if download.max_conn:
+            conn = max(1, min(conn, download.max_conn))
         opts: dict[str, Any] = {
             "dir": download.directory,
-            "split": str(self.connections),
-            "max-connection-per-server": str(self.connections),
+            "split": str(conn),
+            "max-connection-per-server": str(conn),
             "continue": "true",
         }
         if download.filename:

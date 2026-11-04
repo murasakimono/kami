@@ -48,6 +48,7 @@ class DownloadManager:
         self.registry = registry or PluginRegistry()
         self.poll_interval = poll_interval
         self._live: dict[int, dict[str, Any]] = {}   # id -> {speed, connections}
+        self._retries: dict[int, int] = {}           # id -> otomatik yeniden deneme sayisi
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -169,6 +170,8 @@ class DownloadManager:
         d = self.store.get(download_id)
         if not d or d.status not in (Status.PAUSED, Status.ERROR):
             return
+        with self._lock:
+            self._retries.pop(d.id, None)
         if d.status == Status.PAUSED and d.gid:
             try:
                 self.engine.resume(d.gid)
@@ -253,6 +256,8 @@ class DownloadManager:
                     self._start_engine(self.store.update(d.id, gid="", status=Status.QUEUED))  # type: ignore[arg-type]
                 continue
             new_status = _ARIA2_TO_STATUS.get(s["status"], d.status)
+            if new_status == Status.ERROR and d.status != Status.ERROR and self._auto_retry(d, s):
+                continue
             if d.status == Status.PAUSED and new_status in (Status.ACTIVE, Status.WAITING):
                 new_status = Status.PAUSED  # pause istegi motora henuz yansimadi
             fields: dict[str, Any] = {"status": new_status}
@@ -274,11 +279,14 @@ class DownloadManager:
             if new_status in (Status.ACTIVE, Status.WAITING):
                 live[d.id] = {"speed": s["speed"], "connections": s["connections"]}
 
+            completing = new_status == Status.COMPLETE and d.status != Status.COMPLETE
+            if completing:
+                # tasima/son islem/temizlik COMPLETE yazilmadan once: disaridan bakan yarim hal gormesin
+                fields.update(self._after_complete(replace(d, **fields)))
             changed = any(getattr(d, k) != v for k, v in fields.items())
             if changed:
                 nd = self.store.update(d.id, **fields)
-                if new_status == Status.COMPLETE and d.status != Status.COMPLETE:
-                    nd = self._after_complete(nd)  # type: ignore[arg-type]
+                if completing:
                     self.events.emit("download.completed", download=nd)
                 elif new_status == Status.ERROR and d.status != Status.ERROR:
                     self.events.emit("download.failed", download=nd)
@@ -286,7 +294,46 @@ class DownloadManager:
         with self._lock:
             self._live = live
 
-    def _after_complete(self, d: Download) -> Download:
+    # aria2 hata kodlari: 1 bilinmeyen ("No URI available" dahil), 2 zaman asimi, 6 ag sorunu,
+    # 22 beklenmeyen HTTP durumu (429/503 gibi), 29 sunucu asiri yuklu
+    _RETRYABLE_CODES = {"1", "2", "6", "22", "29"}
+    _MAX_AUTO_RETRIES = 3
+
+    def _auto_retry(self, d: Download, s: dict[str, Any]) -> bool:
+        """Sunucu cok baglantiyi reddedince (429 vb.) baglanti sayisini dusurup kaldigi yerden devam et."""
+        code = str(s.get("error_code") or "")
+        if code not in self._RETRYABLE_CODES and "No URI available" not in (s.get("error") or ""):
+            return False
+        with self._lock:
+            n = self._retries.get(d.id, 0)
+            if n >= self._MAX_AUTO_RETRIES:
+                return False
+            self._retries[d.id] = n + 1
+        current = d.max_conn or int(getattr(self.engine, "connections", 16))
+        next_conn = 4 if current > 4 else 1
+        log.info("Otomatik yeniden deneme %s/%s (%s, kod %s): baglanti %s -> %s",
+                 n + 1, self._MAX_AUTO_RETRIES, d.filename or d.url, code, current, next_conn)
+        try:
+            self.engine.remove(d.gid)
+        except Exception:
+            pass
+        nd = self.store.update(d.id, gid="", status=Status.QUEUED, max_conn=next_conn,
+                               downloaded=s.get("completed", d.downloaded), size=s.get("total") or d.size)
+        self.events.emit("download.updated", download=nd)
+
+        def restart() -> None:
+            cur = self.store.get(d.id)
+            if cur and cur.status == Status.QUEUED and not cur.gid:
+                self._start_engine(cur)
+
+        t = threading.Timer(1.5 * (n + 1), restart)
+        t.daemon = True
+        t.start()
+        return True
+
+    def _after_complete(self, d: Download) -> dict[str, Any]:
+        """Tamamlanan indirme icin tasima + son islem + motor temizligi. Degisen alanlari dondurur."""
+        changes: dict[str, Any] = {}
         # Kategori baslangicta bilinmiyorduysa (ad sunucudan geldi) dosyayi dogru klasore tasi
         if not d.source.startswith("plugin") and self.settings.get("use_category_folders") and d.filename:
             base = self.base_dir()
@@ -294,7 +341,10 @@ class DownloadManager:
                 cat = category_for(d.filename)
                 target_dir = folder_for(base, cat, True)
                 if os.path.normcase(target_dir) != os.path.normcase(d.directory):
-                    d = self._move(d, target_dir, cat)
+                    moved = self._move(d, target_dir)
+                    if moved:
+                        changes.update(directory=target_dir, filename=moved, category=cat)
+                        d = replace(d, **changes)
         for pp in self.registry.postprocessors:
             try:
                 if pp.applies(d):
@@ -306,10 +356,12 @@ class DownloadManager:
                 self.engine.remove(d.gid)  # motorun sonuc listesinden temizle
             except Exception:
                 pass
-            d = self.store.update(d.id, gid="")  # type: ignore[assignment]
-        return d
+            changes["gid"] = ""
+        return changes
 
-    def _move(self, d: Download, target_dir: str, category: str) -> Download:
+    @staticmethod
+    def _move(d: Download, target_dir: str) -> str:
+        """Dosyayi tasir, yeni dosya adini dondurur (basarisizsa bos)."""
         try:
             os.makedirs(target_dir, exist_ok=True)
             base, ext = os.path.splitext(d.filename)
@@ -319,8 +371,7 @@ class DownloadManager:
                 target = os.path.join(target_dir, f"{base} ({n}){ext}")
                 n += 1
             os.replace(d.path, target)
-            return self.store.update(d.id, directory=target_dir, filename=os.path.basename(target),
-                                     category=category)  # type: ignore[return-value]
+            return os.path.basename(target)
         except OSError:
             log.exception("Dosya kategori klasorune tasinamadi: %s", d.path)
-            return d
+            return ""

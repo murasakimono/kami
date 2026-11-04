@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kami</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" aria-label="Kami">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M6 5h14l6 6v16H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M20 5v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M16 13v9m-4-4 4 4 4-4" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-name">Kami</span>
+    </div>
+    <form class="add" id="addForm" autocomplete="off">
+      <input id="addInput" type="text" spellcheck="false" data-i18n-placeholder="add_placeholder">
+      <button type="submit" class="btn primary" data-i18n="add_button"></button>
+    </form>
+    <button class="icon-btn" id="settingsBtn" data-i18n-title="settings" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" id="sidebar" aria-label="Filtreler">
+      <div class="nav-group" data-i18n-aria="group_status">
+        <button class="nav-item active" data-filter="all"><span data-i18n="filter_all"></span><b data-count="all"></b></button>
+        <button class="nav-item" data-filter="active"><span data-i18n="filter_active"></span><b data-count="active"></b></button>
+        <button class="nav-item" data-filter="paused"><span data-i18n="filter_paused"></span><b data-count="paused"></b></button>
+        <button class="nav-item" data-filter="complete"><span data-i18n="filter_complete"></span><b data-count="complete"></b></button>
+        <button class="nav-item" data-filter="error"><span data-i18n="filter_error"></span><b data-count="error"></b></button>
+      </div>
+      <div class="nav-sep"></div>
+      <div class="nav-group" data-i18n-aria="group_type">
+        <button class="nav-item" data-filter="cat:video"><i class="dot c-video"></i><span data-i18n="cat_video"></span><b data-count="cat:video"></b></button>
+        <button class="nav-item" data-filter="cat:music"><i class="dot c-music"></i><span data-i18n="cat_music"></span><b data-count="cat:music"></b></button>
+        <button class="nav-item" data-filter="cat:archive"><i class="dot c-archive"></i><span data-i18n="cat_archive"></span><b data-count="cat:archive"></b></button>
+        <button class="nav-item" data-filter="cat:program"><i class="dot c-program"></i><span data-i18n="cat_program"></span><b data-count="cat:program"></b></button>
+        <button class="nav-item" data-filter="cat:document"><i class="dot c-document"></i><span data-i18n="cat_document"></span><b data-count="cat:document"></b></button>
+        <button class="nav-item" data-filter="cat:other"><i class="dot c-other"></i><span data-i18n="cat_other"></span><b data-count="cat:other"></b></button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="link-btn" id="openDownloads" data-i18n="open_downloads"></button>
+      </div>
+    </nav>
+
+    <main class="main">
+      <section class="speed" aria-live="off">
+        <canvas id="speedCanvas" aria-hidden="true"></canvas>
+        <div class="speed-readout">
+          <div class="speed-value"><span id="speedNum">0</span><small id="speedUnit">KB/s</small></div>
+          <div class="speed-sub" id="activeCount"></div>
+        </div>
+      </section>
+
+      <div class="toolbar">
+        <button class="btn ghost" id="pauseAll" data-i18n="pause_all"></button>
+        <button class="btn ghost" id="resumeAll" data-i18n="resume_all"></button>
+        <span class="spacer"></span>
+        <button class="btn ghost" id="clearFinished" data-i18n="clear_finished"></button>
+      </div>
+
+      <ul class="list" id="list" role="list"></ul>
+      <div class="empty" id="empty" hidden>
+        <h2 data-i18n="empty_title"></h2>
+        <p id="emptyBody" data-i18n="empty_body"></p>
+      </div>
+    </main>
+  </div>
+
+  <footer class="statusbar">
+    <span id="engineStatus"></span>
+    <span id="bridgeStatus"></span>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <dialog id="settings" aria-labelledby="settingsTitle">
+    <form method="dialog" class="settings-form" id="settingsForm">
+      <header class="dialog-head">
+        <h2 id="settingsTitle" data-i18n="settings"></h2>
+        <button class="icon-btn" value="close" data-i18n-title="close" aria-label="close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+
+      <fieldset>
+        <legend data-i18n="s_general"></legend>
+        <label class="row"><span data-i18n="s_language"></span>
+          <select name="language"><option value="tr">Türkçe</option><option value="en">English</option></select>
+        </label>
+        <label class="row"><span data-i18n="s_theme"></span>
+          <select name="theme"><option value="dark" data-i18n="theme_dark"></option><option value="light" data-i18n="theme_light"></option></select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="s_downloads"></legend>
+        <div class="row dir-row">
+          <span data-i18n="s_dir"></span>
+          <div class="dir-ctl">
+            <code id="dirPath"></code>
+            <button type="button" class="btn ghost" id="dirChange" data-i18n="s_dir_change"></button>
+            <button type="button" class="btn ghost" id="dirReset" data-i18n="s_dir_reset"></button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" name="use_category_folders"><span data-i18n="s_catfolders"></span></label>
+        <label class="row"><span data-i18n="s_connections"></span><input type="number" name="connections" min="1" max="16"></label>
+        <label class="row"><span data-i18n="s_concurrent"></span><input type="number" name="max_concurrent" min="1" max="20"></label>
+        <label class="row"><span data-i18n="s_speedlimit"></span><input type="number" name="speed_limit_kib" min="0" step="256"></label>
+        <label class="row"><span data-i18n="s_tries"></span><input type="number" name="max_tries" min="0" max="50"></label>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="s_browser"></legend>
+        <label class="check"><input type="checkbox" name="capture_enabled"><span data-i18n="s_capture"></span></label>
+        <label class="row"><span data-i18n="s_minsize"></span><input type="number" name="capture_min_size_kib" min="0" step="64"></label>
+        <label class="row stack"><span data-i18n="s_exclude"></span><input type="text" name="capture_exclude_hosts" spellcheck="false"></label>
+        <label class="row stack"><span data-i18n="s_confirmext"></span><input type="text" name="confirm_extensions" spellcheck="false"></label>
+        <p class="hint" data-i18n="s_capture_hint"></p>
+      </fieldset>
+    </form>
+  </dialog>
+
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
