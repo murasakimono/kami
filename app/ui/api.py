@@ -53,6 +53,8 @@ class Api:
         url = (url or "").strip()
         if not url.lower().startswith(("http://", "https://", "ftp://")):
             return {"ok": False, "error": "bad_url"}
+        if self._manager.cloud.provider_for(url):
+            return self.cloud_list(url)
         from app.engines import ytdlp_engine as yt
         try:
             if yt.is_supported(url):
@@ -68,8 +70,28 @@ class Api:
             return {"ok": False, "error": str(exc)}
         return {"ok": True, "ids": [d.id for d in added]}
 
+    # ---------- bulut paylasimlari ----------
+    def cloud_list(self, url: str) -> dict[str, Any]:
+        from app.core.cloud import CloudError
+        try:
+            token, listing = self._manager.cloud.list(url.strip())
+        except CloudError as exc:
+            return {"ok": False, "error": exc.code, "detail": exc.detail}
+        return {"ok": True, "cloud": listing.public(token)}
+
+    def add_cloud(self, token: str, indexes: list) -> dict[str, Any]:
+        from app.core.cloud import CloudError
+        try:
+            added = self._manager.add_cloud(str(token), [int(i) for i in indexes or []])
+        except CloudError as exc:
+            return {"ok": False, "error": exc.code, "detail": exc.detail}
+        return {"ok": bool(added), "ids": [d.id for d in added],
+                "failed": int(getattr(self._manager, "cloud_failed", 0))}
+
     # ---------- medya (yt-dlp) ----------
     def media_probe(self, url: str, headers: dict | None = None) -> dict[str, Any]:
+        if self._manager.cloud.provider_for(url or ""):
+            return self.cloud_list(url)
         from app.engines import ytdlp_engine as yt
         try:
             info = yt.probe(url, headers=headers)

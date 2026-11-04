@@ -249,6 +249,9 @@ legend { padding: 0; margin-bottom: 8px; font-weight: 600; color: var(--accent);
 .m-entries li label span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-entries li label small { color: var(--muted); }
 .m-entries input { accent-color: var(--accent); }
+.c-tree { max-height: 360px; }
+.c-tree li label { padding-left: calc(10px + var(--d, 0) * 18px); }
+.c-dir label span { color: var(--muted); font-weight: 600; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg label { cursor: pointer; }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }

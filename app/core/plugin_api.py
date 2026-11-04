@@ -12,6 +12,7 @@ Eklenti register() icinde ctx uzerinden su parcalari kaydeder:
   - Engine:        aria2 disinda bir indirme motoru (yt-dlp, torrent ...)
   - PostProcessor: indirme bitince calisir (etiket gomme, vokal ayirma ...)
   - Tab:           arayuzde kendi sekmesi (HTML dosyasi + Python API nesnesi)
+  - CloudProvider: bulut paylasim linkini dosya agacina cevirir (app/core/cloud.py)
 """
 from __future__ import annotations
 
@@ -99,6 +100,7 @@ class PluginInfo:
     engines: list[str] = field(default_factory=list)
     postprocessors: list[str] = field(default_factory=list)
     tabs: list[str] = field(default_factory=list)
+    clouds: list[str] = field(default_factory=list)
 
 
 class PluginContext:
@@ -128,6 +130,11 @@ class PluginContext:
         self._registry.tabs.append(tab)
         self.info.tabs.append(tab.id)
 
+    def register_cloud(self, provider: Any) -> None:
+        """provider: app.core.cloud.CloudProvider"""
+        self._registry.clouds.append(provider)
+        self.info.clouds.append(provider.name)
+
 
 @dataclass
 class PluginRegistry:
@@ -135,4 +142,5 @@ class PluginRegistry:
     engines: list[Engine] = field(default_factory=list)
     postprocessors: list[PostProcessor] = field(default_factory=list)
     tabs: list[Tab] = field(default_factory=list)
+    clouds: list[Any] = field(default_factory=list)
     plugins: list[PluginInfo] = field(default_factory=list)

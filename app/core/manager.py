@@ -72,6 +72,8 @@ class DownloadManager:
         self.events = events
         self.settings = settings
         self.registry = registry or PluginRegistry()
+        from app.core.cloud import CloudService
+        self.cloud = CloudService(self.registry.clouds)
         self.poll_interval = poll_interval
         self._live: dict[int, dict[str, Any]] = {}   # id -> {speed, connections}
         self._retries: dict[int, int] = {}           # id -> otomatik yeniden deneme sayisi
@@ -157,7 +159,7 @@ class DownloadManager:
                 url=r.url, filename=filename, directory=directory, category=category,
                 status=Status.CONFIRM if need_confirm else Status.QUEUED,
                 size=r.size or 0, referer=r.referer, headers=r.headers, source=r.source,
-                page_url=r.page_url, max_conn=max_conn,
+                page_url=r.page_url, max_conn=max_conn, options=r.options,
             )
             self.events.emit("download.added", download=d)
             if need_confirm:
@@ -202,6 +204,47 @@ class DownloadManager:
             self.events.emit("download.failed", download=d)
         self.events.emit("download.updated", download=d)
         return d
+
+    # ---------- bulut paylasimlari ----------
+    def add_cloud(self, token: str, indexes: list[int]) -> list[Download]:
+        """Listelenmis paylasimdan secilen dosyalari kuyruga ekler (alt klasor yapisi korunur)."""
+        from app.core.cloud import CloudError
+        provider, listing = self.cloud.get(token)
+        root = ""
+        if listing.is_folder:
+            root = os.path.join(self.base_dir(), sanitize_filename(listing.title) or provider.name)
+        files = [listing.files[int(i)] for i in indexes if 0 <= int(i) < len(listing.files)]
+
+        def resolve(f):
+            try:
+                return f, provider.file_request(listing, f), None
+            except Exception as exc:  # tek dosyanin hatasi digerlerini durdurmasin
+                log.warning("Bulut dosya linki alinamadi (%s): %s", f.path, exc)
+                return f, None, exc
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as pool:   # Drive/Mediafire dosya basina istek atar
+            resolved = list(pool.map(resolve, files))
+        added: list[Download] = []
+        first_error = None
+        self.cloud_failed = sum(1 for _, res, _ in resolved if res is None)   # arayuz uyarisi icin
+        for f, res, exc in resolved:
+            if res is None:
+                first_error = first_error or exc
+                continue
+            url, headers, options = res
+            directory = ""
+            if root:
+                sub = [sanitize_filename(p) for p in f.folder.split("/") if p]
+                directory = os.path.join(root, *[p for p in sub if p])
+            added += self.add(DownloadRequest(
+                url=url, filename=f.name, headers=headers, size=f.size, source=f"plugin:{provider.name}",
+                directory=directory, page_url=listing.url, options=options))
+        if not added and first_error is not None:
+            if isinstance(first_error, CloudError):
+                raise first_error
+            raise CloudError("cloud_failed", str(first_error))
+        return added
 
     # ---------- medya (yt-dlp) ----------
     def default_media_options(self) -> dict[str, Any]:

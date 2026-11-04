@@ -97,6 +97,10 @@ class BridgeServer:
             )
             if req.source not in ("browser", "context_menu", "ui"):
                 req.source = "browser"
+            if req.source != "browser" and self.manager.cloud.provider_for(url):
+                # bulut paylasim linki (sag tik): Kami'de klasor/secim penceresi acilsin
+                self._media_choose(url, req.page_url, {})
+                return 200, {"ok": True, "accepted": True, "ids": [], "media": True}
             try:
                 added = self.manager.add(req)
             except PageLinkRejected:

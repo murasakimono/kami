@@ -182,6 +182,25 @@
     </form>
   </dialog>
 
+  <dialog id="cloud" aria-labelledby="cloudTitle">
+    <form method="dialog" class="settings-form" id="cloudForm">
+      <header class="dialog-head">
+        <h2 id="cloudTitle" data-i18n="c_title"></h2>
+        <button class="icon-btn" value="close" data-i18n-title="close" aria-label="close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="m-info"><div><div id="cName" class="m-name"></div><div id="cSub" class="hint"></div></div></div>
+      <fieldset>
+        <label class="check"><input type="checkbox" id="cAll" checked><span data-i18n="m_select_all"></span> <b id="cCount"></b></label>
+        <ul class="m-entries c-tree" id="cEntries"></ul>
+      </fieldset>
+      <div class="m-actions">
+        <button type="button" class="btn primary" id="cGo" data-i18n="add_button"></button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>

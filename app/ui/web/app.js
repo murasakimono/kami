@@ -276,11 +276,13 @@ function bindEvents() {
         toast(T("resolving"));
       const r = await api.add_url(u);
       if (r.ok && r.media) { input.value = ""; openMedia(r, { url: u }); continue; }
+      if (r.ok && r.cloud) { input.value = ""; openCloud(r.cloud); continue; }
       if (r.ok) ok++; else toast(T("err_" + r.error), true);
     }
     if (ok) { input.value = ""; toast(T("added")); tick(); }
   });
   bindMedia();
+  bindCloud();
 
   $("#sidebar").addEventListener("click", (e) => {
     const btn = e.target.closest(".nav-item");
@@ -332,12 +334,13 @@ const media = { info: null, ctx: null, pending: [], busy: false };
 const STD_HEIGHTS = [2160, 1440, 1080, 720, 480, 360];
 
 async function handleMediaRequest(req) {
-  if (media.busy || $("#media").open) { media.pending.push(req); return; }
+  if (media.busy || $("#media").open || $("#cloud").open) { media.pending.push(req); return; }
   media.busy = true;
   toast(T("resolving"));
   try {
     const r = await api.media_probe(req.url, req.headers || {});
-    if (r.ok) openMedia(r, req); else toast(T("err_" + r.error), true);
+    if (r.ok && r.cloud) openCloud(r.cloud);
+    else if (r.ok) openMedia(r, req); else toast(T("err_" + r.error), true);
   } finally { media.busy = false; }
 }
 
@@ -429,6 +432,76 @@ function bindMedia() {
     for (const [k, v] of Object.entries(remember)) api.set_setting(k, v);
   });
   $("#media").addEventListener("click", (e) => { if (e.target === $("#media")) $("#media").close(); });
+}
+
+// ---------- bulut paylasimi penceresi ----------
+const cloud = { data: null };
+
+function openCloud(c) {
+  cloud.data = c;
+  $("#cName").textContent = c.title;
+  const sub = [T("c_files", c.files.length)];
+  if (c.total) sub.push(fmtBytes(c.total));
+  if (c.note) sub.push(c.note);
+  $("#cSub").textContent = sub.join(" · ");
+  $("#cAll").checked = true;
+  // dosyalar yola gore siralanir; her yeni klasor icin bir baslik satiri
+  const order = c.files.map((f, i) => i).sort((a, b) => c.files[a].path.localeCompare(c.files[b].path));
+  const seen = new Set(), rows = [];
+  for (const i of order) {
+    const parts = c.files[i].path.split("/");
+    for (let d = 1; d < parts.length; d++) {
+      const dir = parts.slice(0, d).join("/");
+      if (seen.has(dir)) continue;
+      seen.add(dir);
+      rows.push(`<li class="c-dir" style="--d:${d - 1}"><label><input type="checkbox" data-dir="${escapeHtml(dir)}" checked>` +
+                `<span>📁 ${escapeHtml(parts[d - 1])}</span></label></li>`);
+    }
+    rows.push(`<li style="--d:${parts.length - 1}"><label><input type="checkbox" data-i="${i}" data-path="${escapeHtml(c.files[i].path)}" checked>` +
+              `<span>${escapeHtml(parts[parts.length - 1])}</span><small>${c.files[i].size ? fmtBytes(c.files[i].size) : ""}</small></label></li>`);
+  }
+  $("#cEntries").innerHTML = rows.join("");
+  syncCloud();
+  $("#cloud").showModal();
+}
+
+function syncCloud() {
+  const c = cloud.data; if (!c) return;
+  const sel = $$("#cEntries input[data-i]:checked").map((el) => c.files[Number(el.dataset.i)]);
+  const size = sel.reduce((a, f) => a + (f.size || 0), 0);
+  $("#cCount").textContent = `(${sel.length}/${c.files.length}${size ? " · " + fmtBytes(size) : ""})`;
+}
+
+function bindCloud() {
+  $("#cloudForm").addEventListener("change", (e) => {
+    const t = e.target;
+    if (t.id === "cAll") $$("#cEntries input").forEach((el) => { el.checked = t.checked; });
+    else if (t.dataset.dir !== undefined) {
+      const pre = t.dataset.dir + "/";
+      $$("#cEntries input").forEach((el) => {
+        const p = el.dataset.path || el.dataset.dir + "/";
+        if (p.startsWith(pre)) el.checked = t.checked;
+      });
+    }
+    syncCloud();
+  });
+  $("#cGo").addEventListener("click", async () => {
+    const idx = $$("#cEntries input[data-i]:checked").map((el) => Number(el.dataset.i));
+    if (!idx.length) return;
+    const btn = $("#cGo"); btn.disabled = true;
+    try {
+      const r = await api.add_cloud(cloud.data.token, idx);
+      if (!r.ok) { toast(T("err_" + (r.error || "cloud_failed")), true); return; }
+      $("#cloud").close();
+      if (r.failed) toast(T("c_partial", r.ids.length, r.failed), true); else toast(T("added"));
+      tick();
+    } finally { btn.disabled = false; }
+  });
+  $("#cloud").addEventListener("close", () => {
+    const next = media.pending.shift();
+    if (next) setTimeout(() => handleMediaRequest(next), 50);
+  });
+  $("#cloud").addEventListener("click", (e) => { if (e.target === $("#cloud")) $("#cloud").close(); });
 }
 
 // ---------- ayarlar ----------
