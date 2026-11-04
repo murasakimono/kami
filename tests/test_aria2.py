@@ -162,3 +162,52 @@ def test_recover_after_restart(tmp_path, http_server):
     finally:
         m2.stop()
         e2.shutdown()
+
+
+def test_probe(http_server):
+    from app.core.probe import probe
+    r = probe(http_server.base + "/big.bin")
+    assert r.ok and r.ranges and r.size == 24 * 1024 * 1024
+    r = probe(http_server.base + "/norange.bin")
+    assert r.ok and not r.ranges and r.size == 16 * 1024 * 1024
+    r = probe(http_server.base + "/watch?v=abc")
+    assert r.ok and r.is_html
+    r = probe(http_server.base + "/cd/%C3%96r%C3%BCmcek%20Kad%C4%B1n.mp4?token=1")
+    assert r.filename == "Örümcek Kadın.mp4"   # ham UTF-8 baslik duzgun cozulur
+    assert not probe(http_server.base + "/yok.bin").ok
+
+
+def test_page_link_rejected(env, http_server):
+    """youtube.com/watch gibi sayfa linki 'watch' adli HTML dosyasi olarak inmemeli."""
+    from app.core.manager import PageLinkRejected
+    mgr, settings, seen, tmp = env
+    with pytest.raises(PageLinkRejected):
+        mgr.add(DownloadRequest(url=http_server.base + "/watch?v=GtCWoKA7F7M", source="ui"))
+    with pytest.raises(PageLinkRejected):
+        mgr.add(DownloadRequest(url=http_server.base + "/watch?v=x", source="context_menu"))
+    assert mgr.store.list() == []
+
+
+def test_no_range_server_single_connection(env, http_server):
+    """Range desteklemeyen sunucu (notube.net gibi): tek baglanti, dogru dosya, ad ve kategori basliktan."""
+    mgr, settings, seen, tmp = env
+    [d] = mgr.add(DownloadRequest(url=http_server.base + "/cd/%C3%96r%C3%BCmcek%20Kad%C4%B1n.mp4?token=1&norange=1",
+                                  source="browser", size=2 * 1024 * 1024))
+    assert d.max_conn == 1 and d.filename == "Örümcek Kadın.mp4" and d.category == "video"
+    d = _wait(mgr, d.id, Status.COMPLETE)
+    assert os.path.basename(d.directory) == "Video" and os.path.isfile(d.path)
+
+
+def test_no_range_pause_resume_restarts_cleanly(env, http_server):
+    """Range yoksa duraklat/devam: aria2 hata vermeden bastan indirir, dosya bozulmaz."""
+    mgr, settings, seen, tmp = env
+    [d] = mgr.add(DownloadRequest(url=http_server.base + "/norange.bin"))
+    assert d.max_conn == 1
+    _wait(mgr, d.id, Status.ACTIVE)
+    time.sleep(0.8)
+    mgr.pause(d.id)
+    _wait(mgr, d.id, Status.PAUSED)
+    mgr.resume(d.id)
+    d = _wait(mgr, d.id, Status.COMPLETE, timeout=60)
+    assert _sha(d.path) == hashlib.sha256(http_server.handler.files["norange.bin"]).hexdigest()
+    assert "download.failed" not in seen

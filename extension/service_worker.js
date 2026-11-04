@@ -112,6 +112,9 @@ async function onMenuClicked(info, tab) {
   const res = await sendToKami({ url, referrer: pageUrl, pageUrl, source: "context_menu" });
   if (res.ok && res.accepted) {
     flashBadge(res.confirm ? "?" : "✓", res.confirm ? "#E8B86A" : "#7C4DFF");
+  } else if (res.ok) {
+    // Kami acik ama reddetti (orn. link bir web sayfasi): tarayiciya da indirtme
+    flashBadge("✕", "#F0626F");
   } else {
     // Kami kapali: kullanici bos donmesin, tarayici indirsin
     flashBadge("!", "#F0626F");

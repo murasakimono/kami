@@ -5,6 +5,7 @@ import hashlib
 import os
 import re
 import threading
+from urllib.parse import unquote
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -24,7 +25,7 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def _send(self, head_only: bool) -> None:
-        name = self.path.split("?", 1)[0].lstrip("/")
+        name = unquote(self.path.split("?", 1)[0].lstrip("/"))
         data = self.files.get(name.split("/")[-1]) if not name.startswith("cd/") else self.files.get(name[3:])
         if data is None:
             self.send_error(404)
@@ -52,7 +53,8 @@ class _Handler(BaseHTTPRequestHandler):
                     type(self).active_limited -= 1
 
     def _send_body(self, data: bytes, name: str, head_only: bool) -> None:
-        rng = self.headers.get("Range")
+        # norange.bin: notube.net gibi Range'i yok sayar, her zaman 200 + tum dosya
+        rng = None if name.startswith("norange") or "norange=1" in self.path else self.headers.get("Range")
         start, end = 0, len(data) - 1
         status = 200
         if rng and (m := _RANGE.match(rng)):
@@ -62,19 +64,23 @@ class _Handler(BaseHTTPRequestHandler):
         chunk = data[start:end + 1]
         self.send_response(status)
         self.send_header("Content-Length", str(len(chunk)))
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Content-Type", "application/octet-stream")
+        if rng is not None:
+            self.send_header("Accept-Ranges", "bytes")
+        is_page = name == "watch"
+        self.send_header("Content-Type", "text/html; charset=utf-8" if is_page else "application/octet-stream")
         if name.startswith("cd/"):
-            self.send_header("Content-Disposition", f'attachment; filename="{name[3:]}"')
+            # notube gibi ham UTF-8 ad (RFC disi ama yaygin)
+            self.send_header("Content-Disposition",
+                             'attachment; filename="' + name[3:].encode("utf-8").decode("latin-1") + '"')
         if status == 206:
             self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
         self.end_headers()
         if not head_only:
             try:
-                if name == "limited.bin":  # yavas sun ki baglantilar ust uste binsin
+                if name in ("limited.bin", "norange.bin"):  # yavas sun ki baglantilar/duraklatma ust uste binsin
                     for i in range(0, len(chunk), 256 * 1024):
                         self.wfile.write(chunk[i:i + 256 * 1024])
-                        time.sleep(0.02)
+                        time.sleep(0.05)
                     return
                 self.wfile.write(chunk)
             except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
@@ -91,7 +97,9 @@ class _Handler(BaseHTTPRequestHandler):
 def http_server():
     data = os.urandom(24 * 1024 * 1024)
     _Handler.files = {"big.bin": data, "video.mp4": data[: 3 * 1024 * 1024], "setup.exe": b"MZ" + data[:4096],
-                      "limited.bin": data[: 12 * 1024 * 1024]}
+                      "limited.bin": data[: 12 * 1024 * 1024], "norange.bin": data[: 16 * 1024 * 1024],
+                      "watch": b"<!DOCTYPE html><html><body>sayfa</body></html>",
+                      "Örümcek Kadın.mp4": data[: 2 * 1024 * 1024]}
     srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()

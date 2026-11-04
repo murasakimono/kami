@@ -52,7 +52,7 @@ def _mgr(tmp_path, engine):
     events = EventBus()
     seen = []
     events.on("*", lambda event, **kw: seen.append(event))
-    return DownloadManager(DownloadStore(tmp_path / "k.db"), engine, events, s), seen
+    return DownloadManager(DownloadStore(tmp_path / "k.db"), engine, events, s, prober=None), seen
 
 
 def _poll_until(mgr, did, status, timeout=15):

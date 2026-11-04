@@ -76,6 +76,8 @@ class Aria2Engine(Engine):
             "--min-split-size=1M",
             "--piece-length=1M",
             "--continue=true",
+            # sunucu devam etmeyi (Range) desteklemiyorsa hata verip durma, bastan indir
+            "--always-resume=false",
             "--auto-file-renaming=true",
             "--allow-overwrite=false",
             "--content-disposition-default-utf8=true",

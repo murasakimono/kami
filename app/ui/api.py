@@ -6,6 +6,7 @@ import os
 import subprocess
 from typing import TYPE_CHECKING, Any
 
+from app.core.manager import CaptureRejected
 from app.core.models import DownloadRequest, Status
 
 if TYPE_CHECKING:
@@ -44,7 +45,10 @@ class Api:
         url = (url or "").strip()
         if not url.lower().startswith(("http://", "https://", "ftp://")):
             return {"ok": False, "error": "bad_url"}
-        added = self._manager.add(DownloadRequest(url=url, filename=filename, source="ui"))
+        try:
+            added = self._manager.add(DownloadRequest(url=url, filename=filename, source="ui"))
+        except CaptureRejected as exc:
+            return {"ok": False, "error": str(exc)}
         return {"ok": True, "ids": [d.id for d in added]}
 
     def pause(self, download_id: int) -> None:

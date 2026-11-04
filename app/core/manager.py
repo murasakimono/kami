@@ -6,12 +6,13 @@ Akis:
 """
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import threading
 import time
 from dataclasses import replace
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 from app import paths
@@ -19,6 +20,7 @@ from app.core.categories import category_for, extension_of, filename_from_url, f
 from app.core.events import EventBus
 from app.core.models import Download, DownloadRequest, Status
 from app.core.plugin_api import Engine, PluginRegistry
+from app.core.probe import ProbeResult, probe
 from app.core.queue_store import DownloadStore
 from app.core.settings import Settings
 
@@ -34,13 +36,31 @@ _ARIA2_TO_STATUS = {
 }
 
 
+def _transition(fn):
+    """Kullanici islemleri ve durum dongusunun yazma adimi ayni kilitten gecer (yaris olmasin)."""
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        with self._state:
+            return fn(self, *args, **kwargs)
+    return wrapper
+
+
 class CaptureRejected(Exception):
     """Tarayici yakalamasi kurallara gore reddedildi -> tarayici kendisi indirsin."""
 
 
+class PageLinkRejected(CaptureRejected):
+    """Link bir dosya degil, web sayfasi (orn. youtube.com/watch). Aşama 2'de yt-dlp bunlari cozecek."""
+
+    def __init__(self) -> None:
+        super().__init__("page_link")
+
+
 class DownloadManager:
     def __init__(self, store: DownloadStore, engine: Engine, events: EventBus, settings: Settings,
-                 registry: PluginRegistry | None = None, poll_interval: float = 0.5) -> None:
+                 registry: PluginRegistry | None = None, poll_interval: float = 0.5,
+                 prober: Callable[..., ProbeResult] | None = probe) -> None:
+        self.prober = prober  # None = yoklama yok (testler)
         self.store = store
         self.engine = engine
         self.events = events
@@ -49,7 +69,8 @@ class DownloadManager:
         self.poll_interval = poll_interval
         self._live: dict[int, dict[str, Any]] = {}   # id -> {speed, connections}
         self._retries: dict[int, int] = {}           # id -> otomatik yeniden deneme sayisi
-        self._lock = threading.RLock()
+        self._lock = threading.RLock()     # _live / _retries
+        self._state = threading.RLock()    # durum gecisleri
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -103,6 +124,20 @@ class DownloadManager:
         requests = self._resolve(req)
         added: list[Download] = []
         for r in requests:
+            max_conn = 0
+            info = self._probe(r)
+            if info and info.ok:
+                if info.is_html and r.source in ("ui", "context_menu") and not info.filename \
+                        and not filename_from_url(r.url).lower().endswith((".htm", ".html")):
+                    raise PageLinkRejected()
+                if not info.ranges:
+                    max_conn = 1  # sunucu parcali indirmeyi desteklemiyor: bosuna 16 baglanti deneme
+                if not r.filename and info.filename:
+                    r = replace(r, filename=info.filename)
+                if not r.size and info.size > 1:
+                    r = replace(r, size=info.size)
+                if not r.mime and info.content_type:
+                    r = replace(r, mime=info.content_type)
             filename = sanitize_filename(r.filename) if r.filename else ""
             category = category_for(filename, r.url, r.mime)
             directory = r.directory or folder_for(
@@ -113,7 +148,7 @@ class DownloadManager:
                 url=r.url, filename=filename, directory=directory, category=category,
                 status=Status.CONFIRM if need_confirm else Status.QUEUED,
                 size=r.size or 0, referer=r.referer, headers=r.headers, source=r.source,
-                page_url=r.page_url,
+                page_url=r.page_url, max_conn=max_conn,
             )
             self.events.emit("download.added", download=d)
             if need_confirm:
@@ -122,6 +157,17 @@ class DownloadManager:
                 d = self._start_engine(d)
             added.append(d)
         return added
+
+    def _probe(self, r: DownloadRequest) -> ProbeResult | None:
+        if not self.prober or r.source.startswith("plugin") or not r.url.lower().startswith(("http://", "https://")):
+            return None
+        try:
+            # tarayici indirmesi bekletiliyor: kisa tut
+            return self.prober(r.url, headers=r.headers, referer=r.referer,
+                               timeout=4.0 if r.source == "browser" else 6.0)
+        except Exception:
+            log.exception("Link yoklanamadi: %s", r.url)
+            return None
 
     def _resolve(self, req: DownloadRequest) -> list[DownloadRequest]:
         for resolver in self.registry.resolvers:
@@ -147,6 +193,7 @@ class DownloadManager:
         return d
 
     # ---------- kullanici islemleri ----------
+    @_transition
     def confirm(self, download_id: int, accept: bool) -> None:
         d = self.store.get(download_id)
         if not d or d.status != Status.CONFIRM:
@@ -157,6 +204,7 @@ class DownloadManager:
             self.store.delete(d.id)
             self.events.emit("download.removed", download_id=d.id)
 
+    @_transition
     def pause(self, download_id: int) -> None:
         d = self.store.get(download_id)
         if not d or d.status not in (Status.ACTIVE, Status.WAITING, Status.QUEUED):
@@ -166,6 +214,7 @@ class DownloadManager:
         d = self.store.update(d.id, status=Status.PAUSED)
         self.events.emit("download.updated", download=d)
 
+    @_transition
     def resume(self, download_id: int) -> None:
         d = self.store.get(download_id)
         if not d or d.status not in (Status.PAUSED, Status.ERROR):
@@ -185,6 +234,7 @@ class DownloadManager:
             self.engine.remove(d.gid)
         self._start_engine(self.store.update(d.id, gid="", status=Status.QUEUED, error=""))  # type: ignore[arg-type]
 
+    @_transition
     def remove(self, download_id: int, delete_file: bool = False) -> None:
         d = self.store.get(download_id)
         if not d:
@@ -210,6 +260,7 @@ class DownloadManager:
             self._live.pop(d.id, None)
         self.events.emit("download.removed", download_id=d.id)
 
+    @_transition
     def clear_finished(self) -> None:
         for d in self.store.list([Status.COMPLETE]):
             self.store.delete(d.id)
@@ -248,51 +299,58 @@ class DownloadManager:
             return
         statuses = self.engine.status([d.gid for d in tracked])
         live: dict[int, dict[str, Any]] = {}
-        for d in tracked:
-            s = statuses.get(d.gid)
-            if not s or s.get("status") == "missing":
-                if d.status != Status.PAUSED:
-                    # motor bu isi bilmiyor (yeniden basladi vb.) -> yeniden kuyruga al
-                    self._start_engine(self.store.update(d.id, gid="", status=Status.QUEUED))  # type: ignore[arg-type]
-                continue
-            new_status = _ARIA2_TO_STATUS.get(s["status"], d.status)
-            if new_status == Status.ERROR and d.status != Status.ERROR and self._auto_retry(d, s):
-                continue
-            if d.status == Status.PAUSED and new_status in (Status.ACTIVE, Status.WAITING):
-                new_status = Status.PAUSED  # pause istegi motora henuz yansimadi
-            fields: dict[str, Any] = {"status": new_status}
-            if s["total"]:
-                fields["size"] = s["total"]
-            fields["downloaded"] = s["completed"]
-            if s["path"]:
-                directory, filename = os.path.split(s["path"])
-                if filename and filename != d.filename:
-                    fields["filename"] = filename
-                    if d.category == "other":
-                        fields["category"] = category_for(filename)
-                if directory and os.path.normcase(directory) != os.path.normcase(d.directory):
-                    fields["directory"] = directory
-            if new_status == Status.ERROR:
-                fields["error"] = s["error"] or f"aria2 hata kodu {s['error_code']}"
-            if new_status in (Status.COMPLETE, Status.ERROR) and not d.finished_at:
-                fields["finished_at"] = time.time()
-            if new_status in (Status.ACTIVE, Status.WAITING):
-                live[d.id] = {"speed": s["speed"], "connections": s["connections"]}
-
-            completing = new_status == Status.COMPLETE and d.status != Status.COMPLETE
-            if completing:
-                # tasima/son islem/temizlik COMPLETE yazilmadan once: disaridan bakan yarim hal gormesin
-                fields.update(self._after_complete(replace(d, **fields)))
-            changed = any(getattr(d, k) != v for k, v in fields.items())
-            if changed:
-                nd = self.store.update(d.id, **fields)
-                if completing:
-                    self.events.emit("download.completed", download=nd)
-                elif new_status == Status.ERROR and d.status != Status.ERROR:
-                    self.events.emit("download.failed", download=nd)
-                self.events.emit("download.updated", download=nd)
+        for old in tracked:
+            with self._state:
+                # motor sorgulanirken kullanici duraklatmis/silmis olabilir: guncel kayitla karar ver
+                d = self.store.get(old.id)
+                if not d or d.status != old.status or d.gid != old.gid:
+                    continue
+                self._apply_status(d, statuses.get(d.gid), live)
         with self._lock:
             self._live = live
+
+    def _apply_status(self, d: Download, s: dict[str, Any] | None, live: dict[int, dict[str, Any]]) -> None:
+        if not s or s.get("status") == "missing":
+            if d.status != Status.PAUSED:
+                # motor bu isi bilmiyor (yeniden basladi vb.) -> yeniden kuyruga al
+                self._start_engine(self.store.update(d.id, gid="", status=Status.QUEUED))  # type: ignore[arg-type]
+            return
+        new_status = _ARIA2_TO_STATUS.get(s["status"], d.status)
+        if new_status == Status.ERROR and d.status != Status.ERROR and self._auto_retry(d, s):
+            return
+        if d.status == Status.PAUSED and new_status in (Status.ACTIVE, Status.WAITING):
+            new_status = Status.PAUSED  # pause istegi motora henuz yansimadi
+        fields: dict[str, Any] = {"status": new_status}
+        if s["total"]:
+            fields["size"] = s["total"]
+        fields["downloaded"] = s["completed"]
+        if s["path"]:
+            directory, filename = os.path.split(s["path"])
+            if filename and filename != d.filename:
+                fields["filename"] = filename
+                if d.category == "other":
+                    fields["category"] = category_for(filename)
+            if directory and os.path.normcase(directory) != os.path.normcase(d.directory):
+                fields["directory"] = directory
+        if new_status == Status.ERROR:
+            fields["error"] = s["error"] or f"aria2 hata kodu {s['error_code']}"
+        if new_status in (Status.COMPLETE, Status.ERROR) and not d.finished_at:
+            fields["finished_at"] = time.time()
+        if new_status in (Status.ACTIVE, Status.WAITING):
+            live[d.id] = {"speed": s["speed"], "connections": s["connections"]}
+
+        completing = new_status == Status.COMPLETE and d.status != Status.COMPLETE
+        if completing:
+            # tasima/son islem/temizlik COMPLETE yazilmadan once: disaridan bakan yarim hal gormesin
+            fields.update(self._after_complete(replace(d, **fields)))
+        changed = any(getattr(d, k) != v for k, v in fields.items())
+        if changed:
+            nd = self.store.update(d.id, **fields)
+            if completing:
+                self.events.emit("download.completed", download=nd)
+            elif new_status == Status.ERROR and d.status != Status.ERROR:
+                self.events.emit("download.failed", download=nd)
+            self.events.emit("download.updated", download=nd)
 
     # aria2 hata kodlari: 1 bilinmeyen ("No URI available" dahil), 2 zaman asimi, 6 ag sorunu,
     # 22 beklenmeyen HTTP durumu (429/503 gibi), 29 sunucu asiri yuklu
@@ -322,9 +380,10 @@ class DownloadManager:
         self.events.emit("download.updated", download=nd)
 
         def restart() -> None:
-            cur = self.store.get(d.id)
-            if cur and cur.status == Status.QUEUED and not cur.gid:
-                self._start_engine(cur)
+            with self._state:
+                cur = self.store.get(d.id)
+                if cur and cur.status == Status.QUEUED and not cur.gid:
+                    self._start_engine(cur)
 
         t = threading.Timer(1.5 * (n + 1), restart)
         t.daemon = True
