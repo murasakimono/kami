@@ -311,6 +311,9 @@ class ShutdownWatcher:
             log.warning("Kuyruk bitti: bilgisayar KAPATILIYOR")
             self.do_shutdown()
 
+    def stop(self) -> None:
+        self._stop.set()
+
     def start(self) -> None:
         def loop() -> None:
             while not self._stop.wait(self.tick):

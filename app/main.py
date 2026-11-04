@@ -348,6 +348,9 @@ def main() -> int:
         hotkey.stop()
         tray.stop()
         scheduler.stop()
+        shutdown.stop()      # kapali veritabanina dokunmasin
+        follow.stop()
+        phone.stop()
         bridge.stop()
         debrid.stop()
         manager.stop()
