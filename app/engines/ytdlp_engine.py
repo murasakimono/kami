@@ -447,6 +447,7 @@ def probe(url: str, headers: dict[str, str] | None = None, timeout: float = 30.0
     heights = sorted({int(f["height"]) for f in info.get("formats") or []
                       if f.get("height") and f.get("vcodec") not in (None, "none")}, reverse=True)
     return {"kind": "video", "title": info.get("title") or url, "url": info.get("webpage_url") or url,
+            "categories": list(info.get("categories") or []),
             "single_url": "", "entries": [], "heights": heights,
             "duration": info.get("duration") or 0, "thumbnail": info.get("thumbnail") or "",
             "is_live": bool(info.get("is_live"))}

@@ -51,6 +51,16 @@ class Api:
         self._genius = None
         self._ai_events: list[str] = []
         self._follow = None                              # follow.FollowService
+        # Asama 6c (main baglar)
+        self._history = None
+        self._shutdown = None
+        self._watcher = None
+        self._phone = None
+        self._phone_key = None
+        self._ntfy = None
+        self._warns: list[dict[str, Any]] = []
+        self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
+        manager.events.on("ui.warn", lambda **kw: self._on_warn(kw))
 
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
@@ -59,6 +69,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now",
+        "batch_from_page", "batch_add", "ntfy_test", "ntfy_set_topic",
     })
 
     def job_start(self, name: str, args: list | None = None) -> dict[str, Any]:
@@ -110,6 +121,7 @@ class Api:
             rd_events, self._rd_events = self._rd_events, []
             torrents, self._torrent_inbox = self._torrent_inbox, []
             ai_events, self._ai_events = self._ai_events, []
+            warns, self._warns = self._warns, []
         rd = self._rd
         upd = None
         with self._inbox_lock:
@@ -117,6 +129,8 @@ class Api:
                 upd, self._update_shown = self._update_info, True
         return {
             "ai_events": ai_events,
+            "warns": warns,
+            "shutdown": self._shutdown.state() if self._shutdown else None,
             "ai_installing": dict(self._ai.installing) if self._ai else {},
             "update": upd,
             "rd_progress": rd.progress() if rd is not None and hasattr(rd, "progress") else [],
@@ -367,7 +381,23 @@ class Api:
         except Exception as exc:
             log.exception("Medya bilgisi alinamadi")
             return {"ok": False, "error": "media_unsupported", "detail": str(exc)}
-        return {"ok": True, "media": info, "defaults": self._manager.default_media_options()}
+        defaults = self._manager.default_media_options()
+        rule = None
+        if self._manager.settings.get("rules_enabled") and info.get("kind") == "video":
+            from app.core import rules
+            rule = rules.match(self._manager.settings.get("site_rules") or [], url, media=True, info=info)
+        if rule:
+            from app.core import rules
+            defaults = {**defaults, **rules.media_options(rule)}
+            with self._inbox_lock:
+                self._probe_rules[info.get("url") or url] = rule
+                self._probe_rules[url] = rule
+            if rule.get("auto"):   # kural: pencereyi atla, dogrudan indir
+                d = self._manager.add_media(info.get("url") or url, options=defaults, title=info.get("title") or "",
+                                            source="ui", headers=headers,
+                                            directory=rules.folder_path(rule, self._manager.base_dir()))
+                return {"ok": True, "ids": [d.id], "rule": rule.get("name")}
+        return {"ok": True, "media": info, "defaults": defaults, "rule": rule.get("name") if rule else ""}
 
     def add_media(self, items: list, options: dict, headers: dict | None = None,
                   page_url: str = "") -> dict[str, Any]:
@@ -379,7 +409,8 @@ class Api:
                 if not url.lower().startswith(("http://", "https://")):
                     continue
                 d = self._manager.add_media(url, options=options or {}, title=str(it.get("title") or ""),
-                                            source="ui", page_url=page_url, headers=headers)
+                                            source="ui", page_url=page_url, headers=headers,
+                                            directory=self._rule_dir_for(url, options or {}))
                 ids.append(d.id)
         except ValueError as exc:
             return {"ok": False, "error": "bad_time", "detail": str(exc)}
@@ -803,3 +834,167 @@ class Api:
         if not self._follow:
             return {"ok": False, "error": "unavailable"}
         return {"ok": True, "new": self._follow.check(str(fid) or None, force=True)}
+
+    # ---------- Asama 6c ----------
+    def _rule_dir_for(self, url: str, options: dict) -> str:
+        """Secim penceresinden gelen medya: probe'da eslesen kural, bicim degismediyse klasorunu uygular."""
+        with self._inbox_lock:
+            rule = self._probe_rules.get(url)
+        if not rule or (rule.get("format") and options.get("format") and options["format"] != rule["format"]):
+            return ""
+        from app.core import rules
+        return rules.folder_path(rule, self._manager.base_dir())
+
+    def _on_warn(self, kw: dict[str, Any]) -> None:
+        with self._inbox_lock:
+            self._warns.append(kw)
+
+    # site kurallari
+    def rules_get(self) -> list[dict[str, Any]]:
+        return self._manager.settings.get("site_rules") or []
+
+    def rules_set(self, rules_list: list) -> dict[str, Any]:
+        try:
+            self._manager.settings.set("site_rules", list(rules_list or []))
+        except (ValueError, TypeError) as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "rules": self._manager.settings.get("site_rules")}
+
+    # gecmis
+    def history_search(self, q: str = "") -> list[dict[str, Any]]:
+        return self._history.search(str(q or "")) if self._history else []
+
+    def history_clear(self) -> dict[str, Any]:
+        if self._history:
+            self._history.clear()
+        return {"ok": True}
+
+    def history_open(self, path: str) -> bool:
+        path = str(path or "")
+        if not self._history or not any(h["path"] == path for h in self._history.search("", 5000)):
+            return False
+        if os.path.exists(path):
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+            return True
+        return False
+
+    # kapatma
+    def shutdown_arm(self, on: bool) -> dict[str, Any]:
+        self._manager.settings.set("shutdown_when_done", bool(on))
+        if not on and self._shutdown:
+            self._shutdown.cancel()
+        return {"ok": True, **(self._shutdown.state() if self._shutdown else {})}
+
+    def shutdown_cancel(self) -> dict[str, Any]:
+        if self._shutdown:
+            self._shutdown.cancel()
+        return {"ok": True}
+
+    # inerken izle
+    def watch(self, download_id: int) -> dict[str, Any]:
+        if not self._watcher:
+            return {"ok": False, "error": "watch_unsupported"}
+        return self._watcher.start(int(download_id))
+
+    def watch_cancel(self, download_id: int) -> None:
+        if self._watcher:
+            self._watcher.cancel(int(download_id))
+
+    # telefondan gonder
+    def phone_info(self) -> dict[str, Any]:
+        from app.core.phone import lan_ip
+        s = self._manager.settings
+        key = self._phone_key.load() if self._phone_key else ""
+        return {"enabled": bool(s.get("phone_enabled")), "running": bool(self._phone and self._phone.running),
+                "ip": lan_ip(), "port": s.get("phone_port"), "key": key}
+
+    def phone_new_key(self) -> dict[str, Any]:
+        from app.core.phone import new_key
+        if not self._phone_key:
+            return {"ok": False}
+        self._phone_key.save(new_key())
+        return {"ok": True, **self.phone_info()}
+
+    def add_text(self, text: str, source: str = "phone") -> int:
+        """Telefondan / toplu listeden gelen metin: icindeki linkleri pencere acmadan kuyruga ekler."""
+        from app.core.automate import extract_links
+        n = 0
+        for link in extract_links(str(text or ""))[:200]:
+            if self._add_quiet(link, source):
+                n += 1
+        return n
+
+    def _add_quiet(self, link: str, source: str) -> bool:
+        from app.core.debrid import is_magnet, is_torrent_url
+        from app.engines import ytdlp_engine as yt
+        try:
+            if is_magnet(link) or is_torrent_url(link):
+                route = self._torrent_route()
+                if route == "rd":
+                    return bool(self.rd_add(link).get("ok"))
+                with self._inbox_lock:   # yerel/sor: Kami'de secim (dosya listesi) gerekir
+                    self._torrent_inbox.append({"src": link, "route": route})
+                return True
+            if self._rd_route(link) == "auto":
+                return bool(self.rd_add(link).get("ok"))
+            if self._manager.cloud.provider_for(link):
+                token, listing = self._manager.cloud.list(link)
+                return bool(self._manager.add_cloud(token, list(range(len(listing.files)))))
+            if yt.is_supported(link):
+                opts, directory = {}, ""
+                if self._manager.settings.get("rules_enabled"):
+                    from app.core import rules
+                    rule = rules.match(self._manager.settings.get("site_rules") or [], link, media=True,
+                                       info={"categories": []})
+                    if rule:
+                        opts = rules.media_options(rule)
+                        directory = rules.folder_path(rule, self._manager.base_dir())
+                self._manager.add_media(link, options=opts, source=source, directory=directory)
+                return True
+            from app.core.models import DownloadRequest
+            return bool(self._manager.add(DownloadRequest(url=link, source=source)))
+        except Exception as exc:
+            log.warning("Link eklenemedi (%s): %s", source, type(exc).__name__)
+            return False
+
+    # toplu link listesi
+    def batch_parse(self, text: str) -> dict[str, Any]:
+        from app.core.automate import expand_numbered, extract_links
+        links: list[str] = []
+        for line in str(text or "").splitlines():
+            for x in expand_numbered(line.strip()) if "[" in line else [line]:
+                links += extract_links(x)
+        return {"ok": True, "links": list(dict.fromkeys(links))[:5000]}
+
+    def batch_from_page(self, url: str) -> dict[str, Any]:
+        from app.core.automate import fetch_page_links
+        url = str(url or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            return {"ok": False, "error": "bad_url"}
+        try:
+            return {"ok": True, "links": fetch_page_links(url)[:5000]}
+        except Exception as exc:
+            return {"ok": False, "error": "page_fetch", "detail": type(exc).__name__}
+
+    def batch_add(self, links: list) -> dict[str, Any]:
+        n = sum(1 for link in list(links or [])[:5000] if self._add_quiet(str(link), "batch"))
+        return {"ok": n > 0, "added": n, "total": len(links or [])}
+
+    # ntfy
+    def ntfy_status(self) -> dict[str, Any]:
+        return {"has_topic": bool(self._ntfy and self._ntfy.load())}
+
+    def ntfy_set_topic(self, topic: str) -> dict[str, Any]:
+        import re
+        topic = str(topic or "").strip()
+        if not self._ntfy or not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", topic):
+            return {"ok": False, "error": "ntfy_topic"}
+        self._ntfy.save(topic)
+        return {"ok": True}
+
+    def ntfy_test(self) -> dict[str, Any]:
+        from app.core.automate import ntfy_send
+        s = self._manager.settings
+        ok = ntfy_send(s.get("ntfy_server"), self._ntfy.load() if self._ntfy else "", "Kami", "Test bildirimi ✓",
+                       "bell")
+        return {"ok": ok}

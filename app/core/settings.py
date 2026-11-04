@@ -77,6 +77,27 @@ DEFAULTS: dict[str, Any] = {
     "social_cookies": True,        # Instagram/X/TikTok oturum cerezlerini eklentiden al (hikaye/ozel)
     "follow_enabled": True,        # kanal/liste takibi
     "follow_interval_min": 60,     # kontrol araligi (dk)
+    # Asama 6c: kullanim
+    "rules_enabled": True,         # site kurallari (rules.py)
+    "site_rules": [],              # bos liste ilk acilista rules.DEFAULT_RULES ile doldurulur
+    "rules_seeded": False,
+    "auto_extract": False,         # arsiv inince ac (7-Zip varsa her bicim, yoksa sadece zip)
+    "auto_extract_delete": False,  # acildiysa arsivi (ve parcalarini) sil
+    "music_move": False,           # muzigi muzik klasorune tasi (arsivci kapaliyken)
+    "disk_warn": True,             # dosya diske sigmayacaksa indirme baslamadan uyar
+    "shutdown_when_done": False,   # kuyruk bitince bilgisayari KAPAT (tek seferlik, 60 sn iptal edilebilir)
+    "link_refresh": True,          # suresi dolan RD/bulut linkini yenileyip kaldigi yerden devam
+    "phone_enabled": False,        # telefondan gonder (yerel ag, gizli anahtar)
+    "phone_port": 47390,
+    "history_enabled": True,       # gecmis + arama
+    "history_warn": True,          # daha once indirilen linkte uyar
+    "ntfy_enabled": False,         # telefona bildirim (ntfy; konu DPAPI'de)
+    "ntfy_server": "https://ntfy.sh",
+    "ntfy_each": False,            # her indirme bitince
+    "ntfy_queue": True,            # kuyruk bitince
+    "ntfy_errors": True,           # hata olunca
+    "watch_min_mb": 20,            # inerken izle: oynatici acilmadan once bastan inmis olmasi gereken MB
+    "watch_player": "screenbox",   # screenbox | default
 }
 
 
@@ -148,9 +169,18 @@ def _coerce(key: str, value: Any) -> Any:
             raise ValueError("torrent_port")
         elif key == "follow_interval_min":
             v = max(10, min(24 * 60, v))
+        elif key == "phone_port" and not (1024 <= v <= 65535):
+            raise ValueError("phone_port")
+        elif key == "watch_min_mb":
+            v = max(2, min(500, v))
         elif v < 0:
             v = 0
         return v
+    if key == "site_rules":
+        from app.core.rules import clean_rule
+        if not isinstance(value, list):
+            raise ValueError("site_rules")
+        return [clean_rule(r) for r in value if isinstance(r, dict)][:50]
     if isinstance(default, list):
         if isinstance(value, str):
             value = [x.strip() for x in value.replace("\n", ",").split(",")]
@@ -163,6 +193,10 @@ def _coerce(key: str, value: Any) -> Any:
         raise ValueError("whisper_lang")
     if key == "uvr_format" and str(value) not in ("mp3", "flac", "wav"):
         raise ValueError("uvr_format")
+    if key == "watch_player" and str(value) not in ("screenbox", "default"):
+        raise ValueError("watch_player")
+    if key == "ntfy_server" and not str(value).startswith(("https://", "http://")):
+        raise ValueError("ntfy_server")
     if key in ("schedule_start", "schedule_stop"):
         from app.core.extras import _hm
         _hm(value)   # gecersizse ValueError

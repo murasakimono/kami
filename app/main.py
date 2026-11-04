@@ -268,6 +268,54 @@ def main() -> int:
                            notify=api._on_ai_event)
     api._follow = follow
     follow.start()
+
+    # ---- Asama 6c: gecmis, bitince isler, kapatma, link yenileme, izle, telefon, ntfy, kurallar
+    from app.core import automate
+    from app.core.linkrefresh import LinkRefresher
+    from app.core.phone import PhoneServer, new_key
+    from app.core.watch import Watcher, play as _play
+    if not settings.get("rules_seeded"):
+        from app.core.rules import DEFAULT_RULES
+        if not settings.get("site_rules"):
+            settings.set("site_rules", DEFAULT_RULES)
+        settings.set("rules_seeded", True)
+    history = automate.History(paths.DATA_DIR / "history.db")
+    manager.history = history
+    manager.link_refresher = LinkRefresher(manager)
+    ntfy_topic = TokenStore(paths.DATA_DIR / "ntfy_topic.bin")
+    post.after.append(automate.AfterActions(manager, history, ntfy_topic.load, media_post.music_dir))
+
+    def queue_done() -> None:
+        if settings.get("ntfy_enabled") and settings.get("ntfy_queue"):
+            automate.ntfy_send(settings.get("ntfy_server"), ntfy_topic.load(), "Kami", "Kuyruk bitti ✓", "tada")
+
+    shutdown = automate.ShutdownWatcher(
+        manager, busy_extra=lambda: bool(ai._cancel), on_queue_done=queue_done)
+    shutdown.start()
+    watcher = Watcher(manager, media_post.set_extra,
+                      player=lambda p: _play(p, settings.get("watch_player") or "screenbox"))
+    phone_key = TokenStore(paths.DATA_DIR / "phone_key.bin")
+    phone = PhoneServer(int(settings.get("phone_port")), phone_key.load,
+                        lambda text: api.add_text(text, "phone"))
+
+    def phone_apply() -> None:
+        if settings.get("phone_enabled"):
+            if not phone_key.load():
+                phone_key.save(new_key())
+            phone.port = int(settings.get("phone_port"))
+            phone.start()
+        else:
+            phone.stop()
+
+    phone_apply()
+    settings.on_change(lambda k, v: phone_apply() if k in ("phone_enabled", "phone_port") else None)
+    api._history, api._shutdown, api._watcher = history, shutdown, watcher
+    api._phone, api._phone_key, api._ntfy = phone, phone_key, ntfy_topic
+
+    def tray_warn(**kw) -> None:
+        if kw.get("kind") == "disk" and not winwin.is_foreground(front._hwnd()):
+            tray.notify("Kami", f"Disk dolacak: {kw.get('name', '')[:80]}")
+    events.on("ui.warn", tray_warn)
     post.start()
 
     def update_loop() -> None:

@@ -143,7 +143,7 @@ def test_supports_uses_public_domains():
 def test_unrestrict_link_and_folder_fallback():
     svc, _, queued, _ = make()
     assert svc.add_link("https://1fichier.com/abc") == 1
-    assert queued[-1] == ([{"url": "https://dl.rd/abc.bin", "filename": "abc.bin", "size": 1000}], "")
+    assert queued[-1] == ([{"url": "https://dl.rd/abc.bin", "filename": "abc.bin", "size": 1000, "src": "https://1fichier.com/abc"}], "")
     # klasor linki: unrestrict/link basarisiz -> unrestrict/folder -> her dosya
     assert svc.add_link("https://mega.nz/folder/XYZ#k") == 2
     assert [f["filename"] for f in queued[-1][0]] == ["a1.bin", "b2.bin"]

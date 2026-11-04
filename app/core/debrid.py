@@ -318,7 +318,8 @@ class DebridService:
             if not links:
                 raise exc from None
             items = [self.client.unrestrict(x) for x in links]
-        return [{"url": it["download"], "filename": it.get("filename") or "", "size": int(it.get("filesize") or 0)}
+        return [{"url": it["download"], "filename": it.get("filename") or "", "size": int(it.get("filesize") or 0),
+                 "src": it.get("link") or link}
                 for it in items if it.get("download")]
 
     def add_link(self, link: str) -> int:
@@ -360,7 +361,7 @@ class DebridService:
         return self._queue_finished(info)
 
     def queue_download(self, item: dict[str, Any]) -> int:
-        return self._enqueue([{"url": item["download"], "filename": item.get("filename") or "",
+        return self._enqueue([{"url": item["download"], "filename": item.get("filename") or "", "src": item.get("link") or "",
                                "size": int(item.get("filesize") or 0)}], "")
 
     # ---- hesap listesi
@@ -477,7 +478,7 @@ class DebridService:
             if len(links) == len(selected):    # link sirasi = secili dosya sirasi; klasor yapisini koru
                 rel = str(selected[i].get("path") or "").strip("/")
             files.append({"url": u["download"], "filename": u.get("filename") or "",
-                          "size": int(u.get("filesize") or 0), "rel": rel})
+                          "size": int(u.get("filesize") or 0), "rel": rel, "src": link})
         folder = (info.get("filename") or "") if len(files) > 1 else ""
         for f in files:    # torrent kok klasoru zaten 'folder': Album/Album/... olmasin
             if folder and f["rel"].startswith(folder + "/"):

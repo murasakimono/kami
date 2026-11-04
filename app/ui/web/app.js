@@ -70,6 +70,7 @@ const ICONS = {
   folder: '<svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   open: '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   remove: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  watch: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   mtools: '<svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16.5" cy="16" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   hash: '<svg viewBox="0 0 24 24"><path d="M9 4 7 20M17 4l-2 16M4 9h16M3 15h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
@@ -83,7 +84,8 @@ function actionsFor(d) {
       return `<button data-act="confirm-yes" class="yes">${T("confirm_yes")}</button>` +
              `<button data-act="confirm-no">${T("confirm_no")}</button>`;
     case "active": case "waiting": case "queued":
-      return b("pause", ICONS.pause, T("pause")) + b("remove", ICONS.remove, T("remove"), "danger");
+      return (canWatch(d) ? b("watch", ICONS.watch, T("watch_btn")) : "") +
+             b("pause", ICONS.pause, T("pause")) + b("remove", ICONS.remove, T("remove"), "danger");
     case "paused":
       return b("resume", ICONS.resume, T("resume")) + b("remove", ICONS.remove, T("remove"), "danger");
     case "error":
@@ -332,6 +334,7 @@ function bindEvents() {
       "confirm-no": () => api.confirm(id, false),
       "hash": () => openHash(id),
       "mtools": () => openMediaTools(id),
+      "watch": () => startWatch(id),
     };
     if (calls[act]) { await calls[act](); tick(); }
   });

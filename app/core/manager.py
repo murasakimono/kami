@@ -151,8 +151,9 @@ class DownloadManager:
                     r = replace(r, mime=info.content_type)
             filename = sanitize_filename(r.filename) if r.filename else ""
             category = category_for(filename, r.url, r.mime)
-            directory = r.directory or folder_for(
+            directory = r.directory or self._rule_dir(r, filename) or folder_for(
                 self.base_dir(), category, bool(self.settings.get("use_category_folders")))
+            self._precheck(r, directory)
             need_confirm = confirm if confirm is not None else (
                 r.source in ("browser", "context_menu") and self.needs_confirm(filename, r.url))
             from app.core.extras import norm_hash
@@ -162,7 +163,8 @@ class DownloadManager:
                 status=Status.CONFIRM if need_confirm else Status.QUEUED,
                 size=r.size or 0, referer=r.referer, headers=r.headers, source=r.source,
                 page_url=r.page_url, max_conn=max_conn, options=r.options,
-                extra={"checksum": checksum} if checksum else {},
+                extra={**({"checksum": checksum} if checksum else {}),
+                       **({"refresh": r.extra["refresh"]} if (r.extra or {}).get("refresh") else {})},
             )
             self.events.emit("download.added", download=d)
             if need_confirm:
@@ -242,7 +244,8 @@ class DownloadManager:
                 directory = os.path.join(root, *[p for p in sub if p])
             added += self.add(DownloadRequest(
                 url=url, filename=f.name, headers=headers, size=f.size, source=f"plugin:{provider.name}",
-                directory=directory, page_url=listing.url, options=options))
+                directory=directory, page_url=listing.url, options=options,
+                extra={"refresh": {"type": "cloud", "share": listing.url, "path": f.path}}))
         log.info("Bulut kuyruga eklendi (%s): %s | %d/%d dosya linki cozuldu",
                  provider.name, listing.title, len(files) - self.cloud_failed, len(files))
         if not added and first_error is not None:
@@ -260,8 +263,9 @@ class DownloadManager:
             rel = [sanitize_filename(p) for p in str(f.get("rel") or "").replace("\\", "/").split("/") if p]
             name = f.get("filename") or (rel[-1] if rel else "")
             directory = os.path.join(root, *[p for p in rel[:-1] if p]) if root else ""
+            ref = {"refresh": {"type": "rd", "link": f["src"]}} if f.get("src") else {}
             n += len(self.add(DownloadRequest(url=f["url"], filename=name, size=int(f.get("size") or 0),
-                                              source="plugin:realdebrid", directory=directory)))
+                                              source="plugin:realdebrid", directory=directory, extra=ref)))
         return n
 
     # ---------- yerel torrent (aria2 BitTorrent) ----------
@@ -302,7 +306,8 @@ class DownloadManager:
                 "start": "", "end": "", "no_playlist": True}
 
     def add_media(self, url: str, *, options: dict[str, Any] | None = None, title: str = "",
-                  source: str = "ui", page_url: str = "", headers: dict[str, str] | None = None) -> Download:
+                  source: str = "ui", page_url: str = "", headers: dict[str, str] | None = None,
+                  directory: str = "") -> Download:
         from app.engines.ytdlp_engine import _clean_headers, parse_time
         opts = self.default_media_options()
         for k, v in (options or {}).items():
@@ -316,13 +321,41 @@ class DownloadManager:
         if title and source == "extension":
             opts["out_title"] = title   # eklenti sadece yakalanan akis/dogrudan dosyada baslik yollar
         return self.add(DownloadRequest(url=url, filename=title, source=source, page_url=page_url,
-                                        kind="media", options=opts))[0]
+                                        kind="media", options=opts, directory=directory))[0]
+
+    # ---------- Asama 6c: site kurali klasoru, disk + tekrar indirme uyarisi ----------
+    history: Any = None   # automate.History (main baglar)
+
+    def _rule_dir(self, r: DownloadRequest, filename: str) -> str:
+        if not self.settings.get("rules_enabled") or r.kind == "media":
+            return ""
+        from app.core import rules
+        rule = rules.match(self.settings.get("site_rules") or [], r.url, r.page_url, media=False,
+                           filename=filename)
+        return rules.folder_path(rule, self.base_dir()) if rule else ""
+
+    def _precheck(self, r: DownloadRequest, directory: str) -> None:
+        """Uyarilar indirmeyi durdurmaz; arayuze olay gider (toast + tepsi)."""
+        if self.settings.get("disk_warn") and r.size:
+            from app.core.automate import disk_check
+            low = disk_check(directory or self.base_dir(), int(r.size))
+            if low:
+                self.events.emit("ui.warn", kind="disk", name=r.filename or r.url, **low)
+        if self.history is not None and self.settings.get("history_warn") and not r.source.startswith("plugin:"):
+            try:
+                prev = self.history.find(r.page_url or r.url) or self.history.find(r.url)
+            except Exception:
+                prev = None
+            if prev:
+                self.events.emit("ui.warn", kind="dup", name=prev["filename"] or r.url, when=prev["finished"],
+                                 exists=prev["exists"])
 
     def _add_media(self, r: DownloadRequest) -> Download:
         opts = dict(r.options)
         category = "music" if opts.get("format") == "mp3" else "video"
         directory = r.directory or folder_for(
             self.base_dir(), category, bool(self.settings.get("use_category_folders")))
+        self._precheck(r, directory)
         d = self.store.add(
             url=r.url, filename=sanitize_filename(r.filename) if r.filename else "", directory=directory,
             category=category, status=Status.QUEUED, referer=r.referer, headers={}, source=r.source,
@@ -594,7 +627,7 @@ class DownloadManager:
             return
         new_status = _ARIA2_TO_STATUS.get(s["status"], d.status)
         if new_status == Status.ERROR and d.status != Status.ERROR and d.kind != "torrent" \
-                and self._auto_retry(d, s):
+                and (self._refresh_link(d, s) or self._auto_retry(d, s)):
             return
         if d.status == Status.PAUSED and new_status in (Status.ACTIVE, Status.WAITING):
             new_status = Status.PAUSED  # pause istegi motora henuz yansimadi
@@ -669,6 +702,59 @@ class DownloadManager:
         t.daemon = True
         t.start()
         return True
+
+    # ---------- link yenileme (Asama 6c) ----------
+    # Suresi dolan gecici link (RD / bulut paylasimi): kaynaktan yeni link alinip AYNI dosyaya devam edilir
+    # (aria2 --continue + .aria2 kontrol dosyasi). 3 = 404, 22 = beklenmeyen HTTP (403/410), 24 = yetki.
+    link_refresher: Any = None          # linkrefresh.LinkRefresher (main baglar)
+    _REFRESH_CODES = {"3", "22", "24"}
+    _MAX_REFRESH = 2
+
+    def _refresh_link(self, d: Download, s: dict[str, Any]) -> bool:
+        if not self.link_refresher or not self.settings.get("link_refresh"):
+            return False
+        x = d.extra or {}
+        if not x.get("refresh") or int(x.get("refreshed", 0)) >= self._MAX_REFRESH:
+            return False
+        code = str(s.get("error_code") or "")
+        msg = str(s.get("error") or "")
+        if code not in self._REFRESH_CODES and not any(t in msg for t in ("403", "410", "expired")):
+            return False
+        try:
+            self.engine.remove(d.gid)
+        except Exception:
+            pass
+        nd = self.store.update(d.id, gid="", status=Status.QUEUED, downloaded=s.get("completed", d.downloaded),
+                               extra={**x, "refreshed": int(x.get("refreshed", 0)) + 1})
+        self.events.emit("download.updated", download=nd)
+
+        def work() -> None:
+            try:
+                new = self.link_refresher.refresh(nd)
+            except Exception:
+                log.exception("Link yenilenemedi")
+                new = None
+            with self._state:
+                cur = self.store.get(d.id)
+                if not cur or cur.status != Status.QUEUED or cur.gid:
+                    return
+                if not new:
+                    cur = self.store.update(d.id, status=Status.ERROR, error=msg or f"aria2 {code}")
+                    self.events.emit("download.failed", download=cur)
+                    self.events.emit("download.updated", download=cur)
+                    return
+                url, headers = new
+                log.info("Link yenilendi, kaldigi yerden devam: %s", cur.filename)
+                cur = self.store.update(d.id, url=url, headers=headers if headers is not None else cur.headers)
+                self._start_engine(cur)
+
+        if self.refresh_sync:
+            work()
+        else:
+            threading.Thread(target=work, name="kami-refresh", daemon=True).start()
+        return True
+
+    refresh_sync = False   # testler
 
     def _after_complete(self, d: Download) -> dict[str, Any]:
         """Tamamlanan indirme icin tasima + son islem + motor temizligi. Degisen alanlari dondurur."""

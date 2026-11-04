@@ -57,6 +57,12 @@ class PostComplete:
                 log.exception("Bitis sonrasi islem hatasi (#%s)", did)
 
     def failed(self, did: int) -> None:
+        for fn in list(self.after):
+            if hasattr(fn, "failed"):
+                try:
+                    fn.failed(did)
+                except Exception:
+                    log.exception("Hata sonrasi is")
         d = self.manager.store.get(did)
         if d and self.manager.settings.get("notify_on_error") and not self.focused():
             self.notify("Kami", self._t("Hata: ", "Failed: ") + (d.filename or d.url)[:120])

@@ -52,6 +52,8 @@
       <div class="nav-group">
         <button class="nav-item" data-view="rd"><i class="dot c-torrent"></i><span>Real-Debrid</span></button>
         <button class="nav-item" data-view="follow"><i class="dot c-video"></i><span data-i18n="v_follow"></span><b id="followCount"></b></button>
+        <button class="nav-item" data-view="history"><i class="dot c-other"></i><span data-i18n="v_history"></span></button>
+        <button class="nav-item" data-view="batch"><i class="dot c-archive"></i><span data-i18n="v_batch"></span></button>
       </div>
       <div class="sidebar-foot">
         <button class="link-btn" id="openDownloads" data-i18n="open_downloads"></button>
@@ -74,6 +76,7 @@
         <button class="btn ghost" id="speedToggle" data-i18n-title="speed_toggle_t"></button>
         <label class="tb-conc"><span data-i18n="tb_concurrent"></span>
           <select id="concSel"></select></label>
+        <button class="btn ghost" id="shutdownToggle" data-i18n-title="sd_title"></button>
         <button class="btn ghost" id="clearFinished" data-i18n="clear_finished"></button>
       </div>
 
@@ -95,6 +98,32 @@
         </form>
         <ul class="rd-list" id="followList"></ul>
         <p class="hint" id="followEmpty" data-i18n="fw_empty" hidden></p>
+      </section>
+
+      <section class="xview" id="historyView" data-i18n-aria="v_history">
+        <div class="rd-head"><h2 data-i18n="v_history"></h2><span class="spacer"></span>
+          <button type="button" class="btn ghost danger" id="historyClear" data-i18n="hs_clear"></button></div>
+        <div class="fw-add"><input id="historyQ" type="text" spellcheck="false" data-i18n-placeholder="hs_ph"></div>
+        <ul class="rd-list" id="historyList"></ul>
+        <p class="hint" id="historyEmpty" data-i18n="hs_empty" hidden></p>
+      </section>
+
+      <section class="xview" id="batchView" data-i18n-aria="v_batch">
+        <div class="rd-head"><h2 data-i18n="v_batch"></h2><span class="hint" data-i18n="bt_hint"></span></div>
+        <textarea id="batchText" rows="5" spellcheck="false" data-i18n-placeholder="bt_ph"></textarea>
+        <div class="fw-add">
+          <input id="batchPage" type="text" spellcheck="false" data-i18n-placeholder="bt_page_ph">
+          <button type="button" class="btn ghost" id="batchFetch" data-i18n="bt_fetch"></button>
+          <button type="button" class="btn ghost" id="batchParse" data-i18n="bt_parse"></button>
+        </div>
+        <div class="fw-add">
+          <input id="batchFilter" type="text" spellcheck="false" data-i18n-placeholder="bt_filter_ph">
+          <span class="hint" id="batchCount"></span>
+          <button type="button" class="btn ghost" id="batchAll" data-i18n="bt_all"></button>
+          <button type="button" class="btn ghost" id="batchNone" data-i18n="bt_none"></button>
+          <button type="button" class="btn primary" id="batchAdd" data-i18n="bt_add"></button>
+        </div>
+        <ul class="batch-list" id="batchList"></ul>
       </section>
 
       <section class="rd-view" id="rdView" aria-label="Real-Debrid">
@@ -270,6 +299,40 @@
       </fieldset>
 
       <fieldset>
+        <legend data-i18n="s_use"></legend>
+        <label class="check"><input type="checkbox" name="rules_enabled"><span data-i18n="s_rules"></span></label>
+        <div id="rulesBox" class="rules"></div>
+        <div class="row"><span class="hint" data-i18n="s_rules_hint"></span><button type="button" class="btn ghost" id="ruleAdd" data-i18n="s_rule_add"></button></div>
+        <label class="check"><input type="checkbox" name="auto_extract"><span data-i18n="s_extract"></span></label>
+        <label class="check"><input type="checkbox" name="auto_extract_delete"><span data-i18n="s_extract_del"></span></label>
+        <label class="check"><input type="checkbox" name="music_move"><span data-i18n="s_music_move"></span></label>
+        <label class="check"><input type="checkbox" name="disk_warn"><span data-i18n="s_disk_warn"></span></label>
+        <label class="check"><input type="checkbox" name="link_refresh"><span data-i18n="s_link_refresh"></span></label>
+        <label class="check"><input type="checkbox" name="history_enabled"><span data-i18n="s_history"></span></label>
+        <label class="check"><input type="checkbox" name="history_warn"><span data-i18n="s_history_warn"></span></label>
+        <label class="row"><span data-i18n="s_watch_mb"></span><input type="number" name="watch_min_mb" min="2" max="500"></label>
+        <label class="row"><span data-i18n="s_watch_player"></span>
+          <select name="watch_player"><option value="screenbox">Screenbox</option><option value="default" data-i18n="s_player_default"></option></select></label>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="s_phone"></legend>
+        <label class="check"><input type="checkbox" name="phone_enabled"><span data-i18n="s_phone_on"></span></label>
+        <label class="row"><span data-i18n="s_phone_port"></span><input type="number" name="phone_port" min="1024" max="65535"></label>
+        <div class="phone-box" id="phoneBox"></div>
+        <div class="row"><span class="hint" data-i18n="s_phone_hint"></span><button type="button" class="btn ghost" id="phoneNewKey" data-i18n="s_phone_newkey"></button></div>
+        <label class="check"><input type="checkbox" name="ntfy_enabled"><span data-i18n="s_ntfy"></span></label>
+        <label class="row"><span data-i18n="s_ntfy_server"></span><input type="text" name="ntfy_server" spellcheck="false"></label>
+        <div class="row"><span data-i18n="s_ntfy_topic"></span><span><span class="hint" id="ntfyState"></span>
+          <input type="password" id="ntfyTopic" spellcheck="false" autocomplete="off" data-i18n-placeholder="s_ntfy_ph">
+          <button type="button" class="btn ghost" id="ntfySave" data-i18n="save"></button>
+          <button type="button" class="btn ghost" id="ntfyTest" data-i18n="s_ntfy_test"></button></span></div>
+        <label class="check"><input type="checkbox" name="ntfy_each"><span data-i18n="s_ntfy_each"></span></label>
+        <label class="check"><input type="checkbox" name="ntfy_queue"><span data-i18n="s_ntfy_queue"></span></label>
+        <label class="check"><input type="checkbox" name="ntfy_errors"><span data-i18n="s_ntfy_errors"></span></label>
+      </fieldset>
+
+      <fieldset>
         <legend data-i18n="s_security"></legend>
         <label class="row"><span data-i18n="s_defender"></span>
           <select name="defender_mode">
@@ -331,6 +394,10 @@
         <button type="button" class="btn ghost" id="mtUvrBtn" data-i18n="mt_run"></button></div>
     </form>
   </dialog>
+
+  <div class="sd-bar" id="sdBar" role="alertdialog" hidden>
+    <span id="sdText"></span><button type="button" class="btn primary" id="sdCancel" data-i18n="sd_cancel"></button>
+  </div>
 
   <div class="drop-veil" id="dropVeil" hidden><div data-i18n="drop_here"></div></div>
 
@@ -432,5 +499,6 @@
   <script src="extras.js"></script>
   <script src="i18n6.js"></script>
   <script src="media6.js"></script>
+  <script src="use6.js"></script>
 </body>
 </html>
