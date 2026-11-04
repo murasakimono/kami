@@ -1,0 +1,11 @@
+{
+  "ext_name": { "message": "Kami" },
+  "ext_desc": { "message": "Tarayıcı indirmelerini Kami Download Manager'a aktarır: çok bağlantılı hızlı indirme, sağ tık menüsü." },
+  "menu_download": { "message": "Kami ile indir" },
+  "popup_connected": { "message": "Kami açık" },
+  "popup_offline": { "message": "Kami kapalı. İndirmeler tarayıcıda kalır." },
+  "popup_nohost": { "message": "Köprü kurulu değil. Kami klasöründe native_host\\kur_host.bat dosyasını çalıştırın." },
+  "popup_capture": { "message": "İndirmeleri otomatik devral" },
+  "popup_open": { "message": "Kami'yi aç" },
+  "popup_alt_hint": { "message": "Alt tuşuna basılı tutarak tıklarsan dosyayı tarayıcı indirir." }
+}

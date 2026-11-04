@@ -1,0 +1,11 @@
+{
+  "ext_name": { "message": "Kami" },
+  "ext_desc": { "message": "Hands browser downloads to Kami Download Manager: fast multi-connection downloads and a right-click menu." },
+  "menu_download": { "message": "Download with Kami" },
+  "popup_connected": { "message": "Kami is running" },
+  "popup_offline": { "message": "Kami is closed. Downloads stay in the browser." },
+  "popup_nohost": { "message": "The bridge isn't installed. Run native_host\\kur_host.bat in the Kami folder." },
+  "popup_capture": { "message": "Take over downloads automatically" },
+  "popup_open": { "message": "Open Kami" },
+  "popup_alt_hint": { "message": "Hold Alt while clicking to let the browser download the file." }
+}

@@ -11,3 +11,4 @@ bin/*.exe
 *.dat
 extension/*.pem
 .claude/settings.local.json
+native_host/com.metehan.kami.json

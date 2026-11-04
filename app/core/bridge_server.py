@@ -75,6 +75,9 @@ class BridgeServer:
         if path == "/v1/show":
             self.on_show()
             return 200, {"ok": True}
+        if path == "/v1/capture":  # eklenti acilir penceresindeki "otomatik devral" anahtari
+            self.manager.settings.set("capture_enabled", bool(body.get("enabled")))
+            return 200, {"ok": True, "capture_enabled": bool(self.manager.settings.get("capture_enabled"))}
         if path == "/v1/add":
             url = str(body.get("url") or "").strip()
             if not url.lower().startswith(("http://", "https://", "ftp://")):
