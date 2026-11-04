@@ -4,10 +4,19 @@
 
 const rd = { view: false, lastRefresh: 0, busy: false, ask: null };
 
+// Hata metni: bilinen kod -> anlasilir metin; rd_failed (bilinmeyen RD hatasi) -> metin + RD'nin ham hata adi
+function rdErr(code, detail) {
+  const c = code || "rd_failed";
+  const txt = T("err_" + c);
+  return c === "rd_failed" && detail ? `${txt} (${detail})` : txt;
+}
+
 // app.js'teki ekleme sonucunu ortak isler: "plain" (dogrudan aria2'ye eklendi) | "handled" | "error"
 function dispatchAdd(r, url, ctx) {
-  if (!r || !r.ok) { toast(T("err_" + ((r && r.error) || "rd_failed")), true); return "error"; }
+  if (!r || !r.ok) { toast(rdErr(r && r.error, r && r.detail), true); return "error"; }
   if (r.rd_ask) { askRd(url, ctx); return "handled"; }
+  if (r.torrent_ask) { askTorrent(r.torrent_ask); return "handled"; }
+  if (r.torrent_local) { openTorrentLocal(r.torrent_local); return "handled"; }
   if (r.rd) { rdResultToast(r); if (rd.view) rdRefresh(); return "handled"; }
   if (r.media) { openMedia(r, ctx && ctx.url ? ctx : { url }); return "handled"; }
   if (r.cloud) { openCloud(r.cloud); return "handled"; }
@@ -22,23 +31,57 @@ function rdResultToast(r) {
 }
 
 function rdEvent(ev) {
-  if (ev.kind === "error") toast(T("err_" + ev.error), true);
+  if (ev.kind === "error") toast((ev.name ? ev.name + ": " : "") + rdErr(ev.error, ev.detail), true);
   else if (ev.kind === "torrent") toast(T("rd_ev_torrent"));
   else if (ev.kind === "queued") toast(T("rd_ev_queued", ev.name, ev.count));
   if (rd.view) rdRefresh();
 }
 
 // ---------- "RD ile mi, dogrudan mi?" ----------
+// Ayni pencere iki is icin: RD destekli hoster (RD / dogrudan) ve torrent (RD / yerel torrent)
+function setAskTexts(torrent) {
+  $("#rdAskTitle").textContent = T(torrent ? "tor_ask_title" : "rd_ask_title");
+  $("#rdAsk .hint").textContent = T(torrent ? "tor_ask_body" : "rd_ask_body");
+  $("#rdAskRd").textContent = T(torrent ? "tor_ask_rd" : "rd_ask_rd");
+  $("#rdAskDirect").textContent = T(torrent ? "tor_ask_local" : "rd_ask_direct");
+}
+
 function askRd(url, ctx) {
   rd.ask = { url, ctx: ctx || {} };
+  setAskTexts(false);
   $("#rdAskUrl").textContent = url;
   $("#rdAsk").showModal();
+}
+
+function askTorrent(t) {
+  if ($("#rdAsk").open) return;
+  rd.ask = { torrent: t };
+  setAskTexts(true);
+  $("#rdAskUrl").textContent = t.name || t.src;
+  $("#rdAsk").showModal();
+}
+
+// Yerel torrent: magnet'te aria2 once metadata'yi alir (birkac sn, es azsa daha uzun) -> dosya secim penceresi
+async function openTorrentLocal(t) {
+  toast(T(t.token ? "resolving" : "tor_meta"), false, true);
+  let r;
+  try { r = await api.torrent_open(t.src || "", t.token || ""); } finally { toastDone(); }
+  if (!r || !r.ok) { toast(T("err_" + ((r && r.error) || "torrent_meta_failed")), true); return; }
+  openCloud(r.cloud);
 }
 
 async function rdAskAnswer(viaRd) {
   const a = rd.ask; rd.ask = null;
   $("#rdAsk").close();
   if (!a) return;
+  if (a.torrent) {
+    if (!viaRd) { openTorrentLocal(a.torrent); return; }
+    toast(T("resolving"), false, true);
+    let r;
+    try { r = await api.torrent_choose(a.torrent.src || "", a.torrent.token || "", "rd"); } finally { toastDone(); }
+    dispatchAdd(r, a.torrent.src, {});   // RD reddederse sadece sebep (yerele otomatik gecis YOK)
+    return;
+  }
   toast(T("resolving"), false, true);
   let r;
   try {
@@ -110,7 +153,7 @@ async function rdAction(btn) {
   if (kind === "qt") r = await api.rd_queue_torrent(btn.dataset.id);
   else if (kind === "qd") r = await api.rd_queue_download(rd.downloads[Number(btn.dataset.i)]);
   else r = await api.rd_delete(btn.dataset.kind, btn.dataset.id);
-  if (!r.ok) { toast(T("err_" + r.error), true); btn.disabled = false; return; }
+  if (!r.ok) { toast(rdErr(r.error, r.detail), true); btn.disabled = false; return; }
   if (kind !== "del") { toast(r.added ? T("rd_ev_added_n", r.added) : T("rd_ev_torrent")); tick(); }
   rdRefresh();
 }
@@ -145,7 +188,7 @@ function bindRd() {
     try {
       const r = await api.rd_add(text);
       toastDone();
-      if (r.ok) { $("#rdInput").value = ""; rdResultToast(r); tick(); } else toast(T("err_" + r.error), true);
+      if (r.ok) { $("#rdInput").value = ""; rdResultToast(r); tick(); } else toast(rdErr(r.error, r.detail), true);
     } finally { btn.disabled = false; rdRefresh(); }
   });
   $("#rdInput").addEventListener("keydown", (e) => {
@@ -154,8 +197,13 @@ function bindRd() {
   $("#rdPick").addEventListener("click", async () => {
     const r = await api.rd_pick_torrent();
     if (r.cancelled) return;
-    if (r.ok) rdResultToast(r); else toast(T("err_" + r.error), true);
+    if (r.ok) rdResultToast(r); else toast(rdErr(r.error, r.detail), true);
     rdRefresh();
+  });
+  $("#torrentPick").addEventListener("click", async () => {   // .torrent dosyasi -> RD / sor / yerel (ayara gore)
+    const r = await api.torrent_pick_file();
+    if (r.cancelled) return;
+    if (dispatchAdd(r, "", {}) === "plain") tick();
   });
   $("#rdRefresh").addEventListener("click", rdRefresh);
   $("#rdOpenSettings").addEventListener("click", () => { openSettings().then(() => $("#rdToken").focus()); });

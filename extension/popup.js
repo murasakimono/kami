@@ -1,5 +1,5 @@
 "use strict";
-const t = (k) => chrome.i18n.getMessage(k);
+const t = (k, subs) => chrome.i18n.getMessage(k, subs);
 const ask = (payload) => chrome.runtime.sendMessage({ type: "popup", payload });
 
 document.getElementById("captureLabel").textContent = t("popup_capture");
@@ -108,10 +108,17 @@ async function showTorrents(online) {
   box.hidden = false;
   document.getElementById("torrentsTitle").textContent = `${t("popup_torrents")} (${list.length})`;
   const ul = document.getElementById("torrentList");
-  const mark = (b, res) => {
+  const sendFns = [];
+  // Sonuc: buton ✓/✕ + altinda sebep (RD'nin reddi anlasilir metinle; ornek: telif engeli)
+  const mark = (b, res, resEl) => {
     const ok = res && res.ok && res.accepted;
     b.textContent = ok ? "✓" : "✕";
-    if (res && res.reason === "rd_no_token") document.getElementById("hint").textContent = t("popup_rd_notoken");
+    b.classList.toggle("bad", !ok);
+    if (resEl) {
+      resEl.hidden = false;
+      resEl.className = "res " + (ok ? "ok" : "err");
+      resEl.textContent = rdResultText(res);
+    }
   };
   for (const l of list) {
     const li = document.createElement("li");
@@ -122,23 +129,40 @@ async function showTorrents(online) {
     const acts = document.createElement("div"); acts.className = "acts";
     const b = document.createElement("button");
     b.textContent = t("popup_rd_send"); b.disabled = !online;
-    b.addEventListener("click", async () => {
-      b.disabled = true;
-      mark(b, await chrome.runtime.sendMessage({ type: "rd-send", url: l.url, pageUrl: tab.url }));
-    });
     acts.appendChild(b);
-    li.append(nm, acts, kd);
+    const res = document.createElement("div"); res.className = "res"; res.hidden = true;
+    li.append(nm, acts, kd, res);
     ul.appendChild(li);
+    const send = async () => {
+      b.disabled = true;
+      b.textContent = "…";
+      const r = await chrome.runtime.sendMessage({ type: "rd-send", url: l.url, pageUrl: tab.url });
+      mark(b, r, res);
+      return r;
+    };
+    b.addEventListener("click", send);
+    sendFns.push(send);
   }
   const all = document.getElementById("rdAll");
   all.textContent = t("popup_rd_all");
   all.hidden = list.length < 2; all.disabled = !online;
   all.addEventListener("click", async () => {
     all.disabled = true;
-    let res;
-    for (const l of list) res = await chrome.runtime.sendMessage({ type: "rd-send", url: l.url, pageUrl: tab.url });
-    mark(all, res);
+    let okN = 0;
+    for (const fn of sendFns) { const r = await fn(); if (r && r.ok && r.accepted) okN++; }
+    all.textContent = t("popup_rd_all_result", [String(okN), String(sendFns.length)]);
   });
+}
+
+// RD sonucu -> kisa metin (eklenti dili). Bilinmeyen RD hatasi: genel metin + RD'nin ham hata adi.
+function rdResultText(res) {
+  if (!res) return t("rd_err_rd_failed");
+  if (!res.ok) return t(res.error === "nohost" ? "rd_err_nohost" : "rd_err_offline");
+  if (res.accepted) return t(res.pending ? "rd_ok_pending" : res.kind === "queued" ? "rd_ok_queued" : "rd_ok_torrent");
+  const code = res.reason || "rd_failed";
+  const msg = t("rd_err_" + code);
+  if (!msg) return t("rd_err_rd_failed") + (res.detail ? ` (${res.detail})` : ` (${code})`);
+  return code === "rd_failed" && res.detail ? `${msg} (${res.detail})` : msg;
 }
 
 setupPage().then(refresh).then((online) => { showMedia(online); showTorrents(online); });

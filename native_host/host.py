@@ -48,8 +48,10 @@ def write_message(stream, payload: dict) -> None:
     stream.flush()
 
 
-def forward(msg: dict, info_path: Path | None = None, timeout: float = 5.0) -> dict:
+def forward(msg: dict, info_path: Path | None = None, timeout: float | None = None) -> dict:
     route = ROUTES.get(str(msg.get("type", "")))
+    if timeout is None:   # RD istegi RD'nin cevabini bekler (kopru en fazla 20 sn)
+        timeout = 25.0 if msg.get("type") == "rd" else 5.0
     if not route:
         return {"ok": False, "error": "unknown_type"}
     info_path = info_path or BRIDGE_INFO

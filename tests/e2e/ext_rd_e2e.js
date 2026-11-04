@@ -57,7 +57,7 @@ const PAGE = `<!doctype html><title>RD test</title><h1>Torrentler</h1>
     check("simgede 🧲 rozeti", badge === "🧲", JSON.stringify(badge));
 
     // dinamik sayfa: sonradan eklenen link de yakalanir
-    await page.evaluate(() => { document.getElementById("later").innerHTML = '<a href="magnet:?xt=urn:btih:abc&dn=Sonradan">x</a>'; });
+    await page.evaluate(() => { document.getElementById("later").innerHTML = '<a href="magnet:?xt=urn:btih:abc&dn=Telifli">Telifli</a>'; });
     await sleep(3000);
     list = await sw.evaluate((id) => chrome.storage.session.get(`tl:${id}`).then((g) => g[`tl:${id}`] || []), tabId);
     check("sonradan eklenen magnet yakalandi", list.length === 4, String(list.length));
@@ -84,6 +84,20 @@ const PAGE = `<!doctype html><title>RD test</title><h1>Torrentler</h1>
       const info = await pp.evaluate(() => ({ title: document.getElementById("torrentsTitle").textContent,
         n: document.querySelectorAll("#torrentList li").length, hidden: document.getElementById("torrents").hidden }));
       check("popup'ta torrent bolumu (4 link)", !info.hidden && info.n === 4, JSON.stringify(info));
+      // RD'ye gonder sonucu: basarili -> yesil metin; RD reddi -> ✕ + anlasilir sebep
+      const sendRes = async (name) => pp.evaluate(async (nm) => {
+        const li = [...document.querySelectorAll("#torrentList li")].find((x) => x.querySelector(".nm").textContent === nm);
+        li.querySelector("button").click();
+        for (let i = 0; i < 40 && li.querySelector(".res").hidden; i++) await new Promise((r) => setTimeout(r, 150));
+        const r = li.querySelector(".res");
+        return { btn: li.querySelector("button").textContent, cls: r.className, text: r.textContent };
+      }, name);
+      const ok = await sendRes("Big Buck Bunny");
+      check("popup: basarili gonderim gosteriliyor", ok.btn === "✓" && ok.cls.includes("ok") && /Real-Debrid/.test(ok.text), JSON.stringify(ok));
+      const bad = await sendRes("Telifli");
+      check("popup: RD reddi sebebiyle gosteriliyor (telif)", bad.btn === "✕" && bad.cls.includes("err") && /telif|copyright/i.test(bad.text), JSON.stringify(bad));
+      const tip = await sw.evaluate(() => chrome.action.getTitle({}));
+      check("simge ipucunda sebep", /telif|copyright/i.test(tip), JSON.stringify(tip));
       await pp.screenshot({ path: path.join(SHOTS, "popup_torrents.png") });
       await pp.close();
     } else check("popup acilamadi (openPopup)", false);

@@ -96,7 +96,7 @@ function actionsFor(d) {
 
 function metaFor(d) {
   const parts = [];
-  const st = `<span class="st-${d.status}">${d.status === "error" && d.error ? `${T("st_error")}: ${escapeHtml(d.error === "yt_bot" ? T("err_yt_bot") : d.error)}` : d.status === "confirm" ? T("confirm_q") : d.phase === "processing" ? T("phase_processing") : T("st_" + d.status)}</span>`;
+  const st = `<span class="st-${d.status}">${d.status === "error" && d.error ? `${T("st_error")}: ${escapeHtml(d.error === "yt_bot" ? T("err_yt_bot") : d.error)}` : d.status === "confirm" ? T("confirm_q") : d.phase === "processing" ? T("phase_processing") : d.phase === "seeding" ? T("phase_seeding") : T("st_" + d.status)}</span>`;
   parts.push(st);
   if (d.status === "complete" || d.status === "confirm") {
     if (d.size) parts.push(`<span>${fmtBytes(d.size)}</span>`);
@@ -230,6 +230,7 @@ async function tick() {
     (s.media_requests || []).forEach(handleMediaRequest);
     if ((s.clip_offers || []).length) showClipOffer(s.clip_offers[s.clip_offers.length - 1]);
     (s.rd_events || []).forEach(rdEvent);
+    (s.torrent_requests || []).forEach((t) => (t.route === "ask" ? askTorrent : openTorrentLocal)(t));
     if (rd.view && Date.now() - rd.lastRefresh > 5000) rdRefresh();
     state.history.push(s.total_speed); state.history.shift();
     const [num, unit] = splitBytes(s.total_speed);
@@ -573,7 +574,8 @@ function bindCloud() {
     if (!idx.length) return;
     const btn = $("#cGo"); btn.disabled = true;
     try {
-      const r = await api.add_cloud(cloud.data.token, idx);
+      const r = cloud.data.kind === "torrent" ? await api.torrent_add(cloud.data.token, idx)
+                                             : await api.add_cloud(cloud.data.token, idx);
       if (!r.ok) { toast(T("err_" + (r.error || "cloud_failed")), true); return; }
       $("#cloud").close();
       if (r.failed) toast(T("c_partial", r.ids.length, r.failed), true); else toast(T("added"));

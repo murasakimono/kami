@@ -44,7 +44,11 @@ class Aria2Engine(Engine):
     name = "aria2"
 
     def __init__(self, exe: Path, *, connections: int = 16, max_concurrent: int = 3,
-                 max_tries: int = 5, speed_limit_kib: int = 0, log_file: Path | None = None) -> None:
+                 max_tries: int = 5, speed_limit_kib: int = 0, log_file: Path | None = None,
+                 bt_port: int = 0, upload_limit_kib: int = 0, dht_file: Path | None = None) -> None:
+        self.bt_port = bt_port                  # 0 = aria2 varsayilani (6881-6999)
+        self.upload_limit_kib = upload_limit_kib
+        self.dht_file = dht_file
         self.exe = Path(exe)
         self.connections = connections
         self.max_concurrent = max_concurrent
@@ -95,6 +99,17 @@ class Aria2Engine(Engine):
         ]
         if self.speed_limit_kib:
             args.append(f"--max-overall-download-limit={self.speed_limit_kib}K")
+        # BitTorrent (yerel torrent): port, yukleme siniri, DHT tablosu kalici (magnet metadata'si hizli bulunsun)
+        if self.bt_port:
+            args += [f"--listen-port={self.bt_port}", f"--dht-listen-port={self.bt_port}"]
+        if self.upload_limit_kib:
+            args.append(f"--max-overall-upload-limit={self.upload_limit_kib}K")
+        if self.dht_file:
+            # dht.dat ilk calistirmada bos: giris noktasi olmadan magnet metadata'si bulunamiyor (04.11 olculdu)
+            args += [f"--dht-file-path={self.dht_file}", "--enable-dht=true", "--bt-enable-lpd=true",
+                     "--enable-peer-exchange=true", "--dht-entry-point=router.bittorrent.com:6881"]
+        # addTorrent ile verilen .torrent'i indirme klasorune <sha1>.torrent olarak kopyalamasin (biz data/'da tutuyoruz)
+        args.append("--rpc-save-upload-metadata=false")
         if self.log_file:
             args += [f"--log={self.log_file}", "--log-level=warn"]
         self._proc = subprocess.Popen(
@@ -212,8 +227,30 @@ class Aria2Engine(Engine):
             opts["header"] = headers
         return opts
 
+    def build_torrent_options(self, download: Download) -> dict[str, Any]:
+        o = download.options or {}
+        opts: dict[str, Any] = {"dir": download.directory, "continue": "true", "follow-torrent": "false"}
+        if o.get("select"):
+            opts["select-file"] = str(o["select"])
+            # parca sinirindaki komsu (secilmeyen) dosyalar kismen yaziliyor; bitince silinsin
+            opts["bt-remove-unselected-file"] = "true"
+        # paylasim: kapali -> indirme biter bitmez durur; acik -> oran 1.0'a kadar (aria2 varsayilani)
+        if o.get("extra_trackers"):
+            from app.core.torrent import PUBLIC_TRACKERS
+            opts["bt-tracker"] = PUBLIC_TRACKERS
+        if o.get("stop_seeding", True):
+            opts["seed-time"] = "0"
+        else:
+            opts["seed-ratio"] = "1.0"
+        return opts
+
     def start(self, download: Download) -> str:
         with self._lock:
+            if download.kind == "torrent":
+                import base64
+                data = Path(download.options["torrent_file"]).read_bytes()
+                return self.call("aria2.addTorrent", base64.b64encode(data).decode("ascii"), [],
+                                 self.build_torrent_options(download))
             return self.call("aria2.addUri", [download.url], self.build_options(download))
 
     def pause(self, gid: str) -> None:
@@ -238,7 +275,7 @@ class Aria2Engine(Engine):
             pass
 
     _KEYS = ["gid", "status", "totalLength", "completedLength", "downloadSpeed",
-             "connections", "errorCode", "errorMessage", "files", "dir"]
+             "connections", "errorCode", "errorMessage", "files", "dir", "seeder", "uploadSpeed"]
 
     def status(self, gids: list[str]) -> dict[str, dict[str, Any]]:
         results = self.multicall([("aria2.tellStatus", [g, self._KEYS]) for g in gids])
@@ -258,6 +295,8 @@ class Aria2Engine(Engine):
                 "error_code": r.get("errorCode", "0"),
                 "error": r.get("errorMessage", ""),
                 "path": path,
+                "seeder": r.get("seeder") == "true",
+                "upload_speed": int(r.get("uploadSpeed", 0) or 0),
             }
         return out
 

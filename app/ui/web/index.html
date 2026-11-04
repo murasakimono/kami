@@ -22,6 +22,7 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM7 5.5H5.5v15h13v-15H17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         <span data-i18n="paste_short"></span>
       </button>
+      <button type="button" class="btn" id="torrentPick" data-i18n-title="tor_pick">.torrent</button>
       <button type="submit" class="btn primary" data-i18n="add_button"></button>
     </form>
     <button class="icon-btn" id="settingsBtn" data-i18n-title="settings" aria-haspopup="dialog">
@@ -187,6 +188,14 @@
           </select>
         </label>
         <p class="hint" data-i18n="s_rd_hint"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="s_torrent"></legend>
+        <label class="check"><input type="checkbox" name="torrent_stop_seeding"><span data-i18n="s_tor_stopseed"></span></label>
+        <label class="row"><span data-i18n="s_tor_uplimit"></span><input type="number" name="torrent_upload_limit_kib" min="0" step="64"></label>
+        <label class="row"><span data-i18n="s_tor_port"></span><input type="number" name="torrent_port" min="0" max="65535"></label>
+        <p class="hint" data-i18n="s_tor_hint"></p>
       </fieldset>
     </form>
   </dialog>

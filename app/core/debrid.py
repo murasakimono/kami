@@ -56,6 +56,55 @@ def host_of(url: str) -> str:
         return ""
 
 
+# RD API hata listesi (api.real-debrid.com, "error_code") -> Kami kodu (arayuzde err_<kod> metni).
+_RD_CODES: dict[int, str] = {
+    -1: "rd_service", 25: "rd_service", 37: "rd_service",
+    5: "rd_slow", 34: "rd_slow",
+    8: "rd_bad_token",
+    9: "rd_denied", 10: "rd_denied", 11: "rd_denied", 14: "rd_locked", 15: "rd_denied", 20: "rd_premium",
+    16: "rd_unsupported",
+    17: "rd_hoster_down", 18: "rd_hoster_limit", 19: "rd_hoster_down",
+    21: "rd_too_many",
+    22: "rd_ip",
+    23: "rd_traffic", 36: "rd_traffic",
+    24: "rd_unavailable",
+    26: "rd_torrent_big", 29: "rd_torrent_big",
+    27: "rd_bad_torrent", 30: "rd_bad_torrent",
+    28: "rd_not_allowed",
+    33: "rd_already",
+    35: "rd_infringing",
+}
+_RD_NAMES: dict[str, str] = {
+    "bad_token": "rd_bad_token", "bad_token_type": "rd_bad_token",
+    "permission_denied": "rd_denied", "account_locked": "rd_locked", "not_premium": "rd_premium",
+    "hoster_not_free": "rd_premium", "hoster_unsupported": "rd_unsupported", "unsupported_hoster": "rd_unsupported",
+    "hoster_in_maintenance": "rd_hoster_down", "hoster_unavailable": "rd_hoster_down",
+    "hoster_limit_reached": "rd_hoster_limit", "too_many_active_downloads": "rd_too_many",
+    "ip_not_allowed": "rd_ip", "traffic_exhausted": "rd_traffic", "fair_usage_limit": "rd_traffic",
+    "file_unavailable": "rd_unavailable", "unavailable_file": "rd_unavailable",
+    "torrent_too_big": "rd_torrent_big", "upload_too_big": "rd_torrent_big",
+    "torrent_file_invalid": "rd_bad_torrent", "upload_error": "rd_bad_torrent",
+    "file_not_allowed": "rd_not_allowed", "torrent_already_active": "rd_already",
+    "infringing_file": "rd_infringing", "slow_down": "rd_slow", "too_many_requests": "rd_slow",
+    "service_unavailable": "rd_service", "internal_error": "rd_service", "disabled_endpoint": "rd_service",
+}
+
+
+def rd_error_code(name: str, error_code: Any = None, status: int = 0) -> str:
+    """RD hata adi / numarasi -> Kami kodu. Bilinmeyen -> rd_failed (detay olarak ham ad gosterilir)."""
+    code = _RD_NAMES.get(str(name or "").lower())
+    if not code:
+        try:
+            code = _RD_CODES.get(int(error_code))
+        except (TypeError, ValueError):
+            code = None
+    if not code and status == 401:
+        code = "rd_bad_token"
+    if not code and status == 403:
+        code = "rd_denied"
+    return code or "rd_failed"
+
+
 # ---------------------------------------------------------------- token deposu (DPAPI)
 class TokenStore:
     def __init__(self, path: Path) -> None:
@@ -114,16 +163,9 @@ class RealDebridClient:
         except ValueError:
             raise DebridError("rd_failed", f"http_{r.status_code}") from None
         if r.status_code >= 400:
-            name = str(data.get("error") or f"http_{r.status_code}") if isinstance(data, dict) else f"http_{r.status_code}"
-            if r.status_code == 401 or name in ("bad_token", "bad_token_type"):
-                raise DebridError("rd_bad_token", name)
-            if r.status_code == 403 or name in ("permission_denied", "not_premium", "account_locked"):
-                raise DebridError("rd_denied", name)
-            if name in ("hoster_unsupported", "hoster_not_free", "unsupported_hoster"):
-                raise DebridError("rd_unsupported", name)
-            if name in ("file_unavailable", "hoster_unavailable", "unavailable_file"):
-                raise DebridError("rd_unavailable", name)
-            raise DebridError("rd_failed", name)
+            d = data if isinstance(data, dict) else {}
+            name = str(d.get("error") or f"http_{r.status_code}")
+            raise DebridError(rd_error_code(name, d.get("error_code"), r.status_code), name)
         return data
 
     # hesap
@@ -363,7 +405,7 @@ class DebridService:
                     return    # sonra tekrar
                 log.warning("RD torrent %s: %s %s", tid, exc.code, exc.detail)
                 self._drop(tid)
-                self.notify({"kind": "error", "error": exc.code})
+                self.notify({"kind": "error", "error": exc.code, "detail": exc.detail})
 
     def _step(self, tid: str) -> None:
         info = self.client.torrent_info(tid)

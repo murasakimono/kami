@@ -67,6 +67,9 @@ def main() -> int:
         max_tries=settings.get("max_tries"),
         speed_limit_kib=settings.get("speed_limit_kib"),
         log_file=paths.DATA_DIR / "aria2.log",
+        bt_port=settings.get("torrent_port"),
+        upload_limit_kib=settings.get("torrent_upload_limit_kib"),
+        dht_file=paths.DATA_DIR / "dht.dat",
     )
     engine.start_service()
     registry = load_plugins(paths.PLUGINS_DIR, events, settings)
@@ -81,6 +84,8 @@ def main() -> int:
     debrid = DebridService(TokenStore(paths.DATA_DIR / "rd_token.bin"), paths.DATA_DIR / "rd_pending.json")
     debrid.enqueue = manager.add_debrid_files
     manager.debrid = debrid
+    from app.core.torrent import TorrentService
+    manager.torrents = TorrentService(engine, paths.DATA_DIR / "torrents")
 
     window_ref: dict = {}
 
@@ -113,6 +118,8 @@ def main() -> int:
                 engine.set_global(max_overall_download_limit=f"{int(value)}K")
             elif key == "max_tries":
                 engine.set_global(max_tries=value)
+            elif key == "torrent_upload_limit_kib":
+                engine.set_global(max_overall_upload_limit=f"{int(value)}K")
         except Exception:
             log.exception("Ayar motora uygulanamadi: %s", key)
 

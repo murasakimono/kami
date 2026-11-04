@@ -35,6 +35,8 @@ class Api:
         if getattr(manager, "debrid", None) is not None:
             manager.debrid.notify = self._on_rd_event
         manager.events.on("media.choose", self._on_media_choose)
+        self._torrent_inbox: list[dict[str, Any]] = []   # magnet isleyicisinden gelenler (sor / yerel)
+        manager.events.on("torrent.request", lambda src: self._on_torrent_request(src))
 
     def _set_window(self, window) -> None:
         self._window = window
@@ -46,8 +48,10 @@ class Api:
             inbox, self._media_inbox = self._media_inbox, []
             offers, self._clip_offers = self._clip_offers, []
             rd_events, self._rd_events = self._rd_events, []
+            torrents, self._torrent_inbox = self._torrent_inbox, []
         return {
             "rd_events": rd_events,
+            "torrent_requests": torrents,
             "media_requests": inbox,
             "clip_offers": offers,
             "items": [d.to_public() for d in items],
@@ -102,11 +106,13 @@ class Api:
         """Dosya linki -> aria2. yt-dlp'nin tanidigi sayfa linki -> {media: bilgi} (arayuz secim penceresi acar).
         Magnet -> Real-Debrid. RD destekli hoster linki -> rd_mode'a gore (direct=True: RD'siz)."""
         url = (url or "").strip()
-        from app.core.debrid import is_magnet
+        from app.core.debrid import is_magnet, is_torrent_url
         if is_magnet(url):
-            return self.rd_add(url)
+            return self.torrent_source(url)
         if not url.lower().startswith(("http://", "https://", "ftp://")):
             return {"ok": False, "error": "bad_url"}
+        if is_torrent_url(url) and not direct:
+            return self.torrent_source(url)
         if not direct:
             routed = self._rd_routed(url)
             if routed is not None:
@@ -145,6 +151,107 @@ class Api:
             return {"ok": False, "error": exc.code, "detail": exc.detail}
         return {"ok": bool(added), "ids": [d.id for d in added],
                 "failed": int(getattr(self._manager, "cloud_failed", 0))}
+
+    # ---------- torrent: Real-Debrid / yerel ----------
+    def _torrent_route(self) -> str:
+        """'rd' | 'ask' | 'local'. RD ayari (rd_mode) ile ayni mantik; token yoksa ya da Kapali ise yerel.
+        RD reddederse (orn. telif engeli) yerele OTOMATIK GECILMEZ: sadece sebep gosterilir."""
+        rd = self._rd
+        mode = self._manager.settings.get("rd_mode")
+        if rd is None or mode == "off" or not rd.has_token():
+            return "local"
+        return "rd" if mode == "auto" else "ask"
+
+    def torrent_source(self, src: str = "", token: str = "") -> dict[str, Any]:
+        """Magnet / .torrent linki (src) ya da dosyadan okunmus torrent (token) -> ayara gore RD / sor / yerel."""
+        route = self._torrent_route()
+        if route == "rd":
+            return self.torrent_choose(src, token, "rd")
+        name = ""
+        if token:
+            try:
+                name = self._manager.torrents.get(token)[0].name
+            except Exception:
+                pass
+        payload = {"src": src, "token": token, "name": name}
+        return {"ok": True, "torrent_ask" if route == "ask" else "torrent_local": payload}
+
+    def torrent_choose(self, src: str, token: str, target: str) -> dict[str, Any]:
+        if target != "rd":
+            return self.torrent_open(src, token)
+        if token:
+            from app.core.debrid import DebridError
+            try:
+                _, path = self._manager.torrents.get(token)
+                self._rd.add_torrent_bytes(path.read_bytes())
+            except DebridError as exc:
+                return self._rd_err(exc)
+            except Exception as exc:
+                return {"ok": False, "error": getattr(exc, "code", "rd_failed")}
+            return {"ok": True, "rd": True, "torrents": 1, "added": 0}
+        return self.rd_add(src)
+
+    def torrent_open(self, src: str = "", token: str = "") -> dict[str, Any]:
+        """Yerel torrent: dosya listesi (magnet'te aria2 metadata'yi indirir; es yoksa ~3 dk sonra hata)."""
+        from app.core.debrid import is_magnet
+        from app.core.torrent import TorrentError
+        svc = self._manager.torrents
+        try:
+            if token:
+                meta, _ = svc.get(token)
+            elif is_magnet(src):
+                token, meta = svc.from_magnet(src.strip())
+            elif src.lower().startswith(("http://", "https://")):
+                try:
+                    data = self._fetch_torrent(src)
+                except Exception as exc:
+                    log.warning(".torrent indirilemedi: %s", type(exc).__name__)
+                    return {"ok": False, "error": "torrent_fetch"}
+                token, meta = svc.from_bytes(data)
+            else:
+                return {"ok": False, "error": "bad_url"}
+        except TorrentError as exc:
+            log.warning("Torrent acilamadi: %s %s", exc.code, exc.detail)
+            return {"ok": False, "error": exc.code, "detail": exc.detail}
+        return {"ok": True, "cloud": svc.public(token, meta)}
+
+    def torrent_add(self, token: str, indexes: list) -> dict[str, Any]:
+        from app.core.torrent import TorrentError
+        try:
+            d = self._manager.add_torrent(str(token), [int(i) for i in indexes or []])
+        except TorrentError as exc:
+            return {"ok": False, "error": exc.code}
+        return {"ok": True, "ids": [d.id]}
+
+    def torrent_pick_file(self) -> dict[str, Any]:
+        """.torrent dosyasi sec -> ayara gore RD / sor / yerel."""
+        from app.core.torrent import TorrentError
+        if not self._window:
+            return {"ok": False, "error": "bad_torrent"}
+        import webview
+        dialog = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        res = self._window.create_file_dialog(dialog, allow_multiple=False, file_types=("Torrent (*.torrent)",))
+        if not res:
+            return {"ok": False, "cancelled": True}
+        try:
+            with open(res[0], "rb") as f:
+                token, _ = self._manager.torrents.from_bytes(f.read(10 * 1024 * 1024 + 1))
+        except (OSError, TorrentError):
+            return {"ok": False, "error": "bad_torrent"}
+        return self.torrent_source("", token)
+
+    def _on_torrent_request(self, src: str) -> None:
+        """Windows magnet isleyicisi (kopru): ayara gore RD'ye gonder ya da Kami'de sor / dosya listesi ac."""
+        route = self._torrent_route()
+        if route == "rd":
+            def work() -> None:
+                r = self.rd_add(src)
+                self._on_rd_event({"kind": "torrent", "name": ""} if r.get("ok") else
+                                  {"kind": "error", "error": r.get("error"), "detail": r.get("detail", "")})
+            threading.Thread(target=work, name="kami-magnet-rd", daemon=True).start()
+            return
+        with self._inbox_lock:
+            self._torrent_inbox.append({"src": src, "route": route})
 
     # ---------- medya (yt-dlp) ----------
     def media_probe(self, url: str, headers: dict | None = None, direct: bool = False) -> dict[str, Any]:
@@ -247,9 +354,8 @@ class Api:
         if rd is None or mode == "off" or not (url or "").lower().startswith(("http://", "https://")) \
                 or not rd.has_token():
             return ""
-        from app.core.debrid import is_torrent_url
-        try:
-            return mode if (is_torrent_url(url) or rd.supports(url)) else ""
+        try:   # magnet/.torrent burada degil: torrent_source (RD / yerel torrent secimi)
+            return mode if rd.supports(url) else ""
         except Exception:
             log.exception("RD destek kontrolu")
             return ""

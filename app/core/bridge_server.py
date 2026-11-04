@@ -28,6 +28,7 @@ APP_VERSION = "0.1.0"
 
 
 class BridgeServer:
+    RD_WAIT = 20.0   # saniye; native host'un rd zaman asimi (host.py) bundan uzun olmali
     def __init__(self, manager: DownloadManager, info_path: Path,
                  on_show: Callable[[], None] | None = None) -> None:
         self.manager = manager
@@ -146,7 +147,7 @@ class BridgeServer:
         return 404, {"ok": False, "error": "not_found"}
 
     def _rd(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        """Is arka planda yapilir (RD cevaplari yavas olabilir); sonuc Kami'de bildirim olarak gorunur."""
+        """RD'ye ekler; sonuc hem cevapta (eklenti popup/rozet) hem Kami'de bildirim olarak doner."""
         import base64
         from app.core.debrid import DebridError, is_magnet
         rd = getattr(self.manager, "debrid", None)
@@ -154,6 +155,11 @@ class BridgeServer:
         raw = str(body.get("torrent_b64") or "")
         if not raw and not (is_magnet(url) or url.lower().startswith(("http://", "https://"))):
             return 400, {"ok": False, "error": "bad_url"}
+        if body.get("source") == "magnet" and is_magnet(url):
+            # Windows magnet: isleyicisi -> RD / yerel torrent secimi Kami'de (rd_mode ayari)
+            self.manager.events.emit("torrent.request", src=url)
+            self.on_show()
+            return 200, {"ok": True, "accepted": True}
         notify = rd.notify if rd else (lambda ev: None)
         if rd is None or not rd.has_token():
             notify({"kind": "error", "error": "rd_no_token"})
@@ -164,26 +170,38 @@ class BridgeServer:
         except ValueError:
             return 400, {"ok": False, "error": "bad_torrent"}
 
+        result: dict[str, Any] = {}
+
         def work() -> None:
             try:
                 if data:
                     rd.add_torrent_bytes(data)
-                    notify({"kind": "torrent", "name": str(body.get("name") or "")})
+                    ev = {"kind": "torrent", "name": str(body.get("name") or "")}
                 elif is_magnet(url):
                     rd.add_magnet(url)
-                    notify({"kind": "torrent", "name": ""})
+                    ev = {"kind": "torrent", "name": ""}
                 else:
                     n = rd.add_link(url)
-                    notify({"kind": "queued", "name": "", "count": n})
+                    ev = {"kind": "queued", "name": "", "count": n}
+                result.update(accepted=True, kind=ev["kind"])
             except DebridError as exc:
                 log.warning("RD istegi basarisiz: %s %s", exc.code, exc.detail)
-                notify({"kind": "error", "error": exc.code})
+                ev = {"kind": "error", "error": exc.code, "detail": exc.detail}
+                result.update(accepted=False, reason=exc.code, detail=exc.detail)
             except Exception:
                 log.exception("RD istegi hatasi")
-                notify({"kind": "error", "error": "rd_failed"})
+                ev = {"kind": "error", "error": "rd_failed"}
+                result.update(accepted=False, reason="rd_failed", detail="")
+            notify(ev)
 
-        threading.Thread(target=work, name="kami-rd-req", daemon=True).start()
-        return 200, {"ok": True, "accepted": True}
+        # Eklenti sonucu gostersin diye RD cevabini bekleriz (cogu 1-3 sn); gecikirse "isleniyor" doner,
+        # sonuc yine Kami'de bildirim olarak gorunur.
+        t = threading.Thread(target=work, name="kami-rd-req", daemon=True)
+        t.start()
+        t.join(self.RD_WAIT)
+        if not result:
+            return 200, {"ok": True, "accepted": True, "pending": True}
+        return 200, {"ok": True, **dict(result)}
 
     def _cloud_url(self, url: str, page_url: str) -> str:
         """Link ya da sayfasi bir bulut eklentisine uyuyorsa o link (eklenti cozuculeri yt-dlp'den once)."""

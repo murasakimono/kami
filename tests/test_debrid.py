@@ -220,7 +220,7 @@ def test_manager_add_debrid_files_keeps_structure(tmp_path):
 
 
 def test_api_routing_modes(tmp_path):
-    """rd_mode: ask -> rd_ask, auto -> RD'den gecer, off/direct -> RD'ye dokunulmaz; magnet her zaman RD."""
+    """rd_mode: ask -> rd_ask, auto -> RD'den gecer, off/direct -> RD'ye dokunulmaz; magnet ayni mantikla RD/yerel."""
     from app.core.events import EventBus
     from app.core.manager import DownloadManager
     from app.core.plugin_api import PluginRegistry
@@ -254,9 +254,16 @@ def test_api_routing_modes(tmp_path):
     assert "rd_ask" not in api.add_url(link) and not api.link_supported("https://1fichier.com/?zz")
     settings.set("rd_mode", "ask")
     assert "rd_ask" not in api.add_url(link, direct=True)  # "Dogrudan (RD'siz)"
-    assert api.add_url("magnet:?xt=urn:btih:abc")["torrents"] == 1
+    mag = "magnet:?xt=urn:btih:abc"
+    assert api.add_url(mag)["torrent_ask"]["src"] == mag   # Sor: "Real-Debrid / Yerel torrent"
+    assert api.torrent_choose(mag, "", "rd")["torrents"] == 1
+    settings.set("rd_mode", "auto")
+    assert api.add_url(mag)["torrents"] == 1               # Otomatik: RD
+    settings.set("rd_mode", "off")
+    assert api.add_url(mag)["torrent_local"]["src"] == mag  # Kapali: yerel
+    settings.set("rd_mode", "ask")
     svc.tokens.clear()                                    # token yoksa RD hic devreye girmez
     assert "rd_ask" not in api.add_url(link)
-    assert api.add_url("magnet:?xt=urn:btih:abc")["error"] == "rd_no_token"
+    assert "torrent_local" in api.add_url(mag)
     with pytest.raises(ValueError):
         settings.set("rd_mode", "bazen")

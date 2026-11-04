@@ -71,10 +71,14 @@ async function sendToKami({ url, filename = "", referrer = "", pageUrl = "", siz
   });
 }
 
-function flashBadge(text, color) {
+function flashBadge(text, color, ms = 2500, title = "") {
   chrome.action.setBadgeBackgroundColor({ color });
   chrome.action.setBadgeText({ text });
-  setTimeout(() => chrome.action.setBadgeText({ text: "" }), 2500);
+  if (title) chrome.action.setTitle({ title: `Kami — ${title}` });
+  setTimeout(() => {
+    chrome.action.setBadgeText({ text: "" });
+    if (title) chrome.action.setTitle({ title: "" });   // manifest varsayilanina don
+  }, ms);
 }
 
 // ---------- Alt + tik = tarayici indirsin ----------
@@ -239,9 +243,18 @@ async function sendRd(url, pageUrl = "") {
     } catch (_) { /* olmazsa Kami linki kendisi indirmeyi dener */ }
   }
   const res = await native(msg);
-  if (res.ok && res.accepted) flashBadge("✓", "#7C4DFF");
-  else flashBadge(res.ok ? "✕" : "!", "#F0626F");
+  // Rozet + simge ipucu (sag tikta popup yok): basarili mor ✓, RD reddi kirmizi ✕ ve sebebi ipucunda
+  if (res.ok && res.accepted) flashBadge("✓", "#7C4DFF", 4000, rdText(res));
+  else flashBadge(res.ok ? "✕" : "!", "#F0626F", 8000, rdText(res));
   return res;
+}
+
+function rdText(res) {
+  const g = (k) => chrome.i18n.getMessage(k);
+  if (!res.ok) return g(res.error === "nohost" ? "rd_err_nohost" : "rd_err_offline");
+  if (res.accepted) return g(res.pending ? "rd_ok_pending" : res.kind === "queued" ? "rd_ok_queued" : "rd_ok_torrent");
+  const code = res.reason || "rd_failed";
+  return (g("rd_err_" + code) || g("rd_err_rd_failed")) + (res.detail && (code === "rd_failed" || !g("rd_err_" + code)) ? ` (${res.detail})` : "");
 }
 
 // ---------- medyayi Kami'ye gonder (yt-dlp) ----------

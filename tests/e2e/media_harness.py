@@ -46,6 +46,9 @@ class FakeDebrid:
 
     def add_magnet(self, m):
         self.calls.append({"kind": "magnet", "value": m})
+        if "Telifli" in m:   # RD'nin telif reddi (eklenti popup'ta sebebi gostermeli)
+            from app.core.debrid import DebridError
+            raise DebridError("rd_infringing", "infringing_file")
 
     def add_torrent_bytes(self, data):
         self.calls.append({"kind": "torrent", "value": data[:40].decode("latin-1"), "size": len(data)})

@@ -38,7 +38,11 @@ DEFAULTS: dict[str, Any] = {
     "ytdlp_autoupdate": True,
     "ytdlp_last_update": 0,
     # Real-Debrid (token burada DEGIL: data/rd_token.bin, DPAPI)
-    "rd_mode": "ask",              # RD destekli hoster linki: auto | ask | off (dogrudan indirme her zaman secenek)
+    "rd_mode": "ask",              # RD destekli hoster + magnet/.torrent: auto | ask | off
+    # Yerel torrent (aria2)
+    "torrent_stop_seeding": True,  # indirme bitince paylasimi durdur (kapali: oran 1.0'a kadar paylas)
+    "torrent_upload_limit_kib": 0, # 0 = sinirsiz (KiB/s, toplam)
+    "torrent_port": 0,             # 0 = otomatik (6881-6999); degisiklik Kami yeniden acilinca gecerli
 }
 
 
@@ -106,6 +110,8 @@ def _coerce(key: str, value: Any) -> Any:
             v = max(1, min(16, v))
         elif key == "max_concurrent":
             v = max(1, min(20, v))
+        elif key == "torrent_port" and not (v == 0 or 1024 <= v <= 65535):
+            raise ValueError("torrent_port")
         elif v < 0:
             v = 0
         return v

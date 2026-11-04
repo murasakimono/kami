@@ -261,6 +261,35 @@ class DownloadManager:
                                               source="plugin:realdebrid", directory=directory)))
         return n
 
+    # ---------- yerel torrent (aria2 BitTorrent) ----------
+    torrents: Any = None   # TorrentService (main.py baglar)
+
+    def add_torrent(self, token: str, indexes: list[int]) -> Download:
+        """Listelenmis torrentten secilen dosyalar (indexes: dolgu dosyalari haric gorunen liste sirasi)."""
+        from app.core.torrent import TorrentError
+        meta, path = self.torrents.get(token)
+        visible = [i for i, f in enumerate(meta.files) if not f.get("pad")]
+        sel = sorted({visible[int(i)] for i in indexes if 0 <= int(i) < len(visible)})
+        if not sel:
+            raise TorrentError("torrent_none")
+        name = sanitize_filename(meta.name) or meta.infohash
+        category = "other" if meta.multi else category_for(name)
+        directory = self.base_dir() if meta.multi else folder_for(
+            self.base_dir(), category, bool(self.settings.get("use_category_folders")))
+        d = self.store.add(
+            url=f"magnet:?xt=urn:btih:{meta.infohash}", filename=name, directory=directory, category=category,
+            status=Status.QUEUED, size=sum(meta.files[i]["size"] for i in sel), source="plugin:torrent",
+            kind="torrent", options={
+                "torrent_file": str(path),
+                # hepsi seciliyse select-file verilmez (aria2 dolgu dosyalarini kendisi yonetir)
+                "select": "" if len(sel) == len(visible) else ",".join(str(i + 1) for i in sel),
+                "stop_seeding": bool(self.settings.get("torrent_stop_seeding")),
+                "extra_trackers": not meta.private,
+            })
+        log.info("Yerel torrent eklendi: %s (%d/%d dosya)", name, len(sel), len(visible))
+        self.events.emit("download.added", download=d)
+        return self._start_engine(d)
+
     # ---------- medya (yt-dlp) ----------
     def default_media_options(self) -> dict[str, Any]:
         s = self.settings
@@ -503,7 +532,8 @@ class DownloadManager:
             else:
                 info = live.get(d.id)
                 if info and d.status in (Status.ACTIVE, Status.WAITING):
-                    d = replace(d, speed=info["speed"], connections=info["connections"])
+                    d = replace(d, speed=info["speed"], connections=info["connections"],
+                                phase=info.get("phase", ""))
             out.append(d)
         return out
 
@@ -545,7 +575,8 @@ class DownloadManager:
                 self._start_engine(self.store.update(d.id, gid="", status=Status.QUEUED))  # type: ignore[arg-type]
             return
         new_status = _ARIA2_TO_STATUS.get(s["status"], d.status)
-        if new_status == Status.ERROR and d.status != Status.ERROR and self._auto_retry(d, s):
+        if new_status == Status.ERROR and d.status != Status.ERROR and d.kind != "torrent" \
+                and self._auto_retry(d, s):
             return
         if d.status == Status.PAUSED and new_status in (Status.ACTIVE, Status.WAITING):
             new_status = Status.PAUSED  # pause istegi motora henuz yansimadi
@@ -553,7 +584,7 @@ class DownloadManager:
         if s["total"]:
             fields["size"] = s["total"]
         fields["downloaded"] = s["completed"]
-        if s["path"]:
+        if s["path"] and d.kind != "torrent":   # torrentte ad = torrent adi (ilk dosya degil)
             directory, filename = os.path.split(s["path"])
             if filename and filename != d.filename:
                 fields["filename"] = filename
@@ -566,7 +597,9 @@ class DownloadManager:
         if new_status in (Status.COMPLETE, Status.ERROR) and not d.finished_at:
             fields["finished_at"] = time.time()
         if new_status in (Status.ACTIVE, Status.WAITING):
-            live[d.id] = {"speed": s["speed"], "connections": s["connections"]}
+            live[d.id] = {"speed": s["speed"], "connections": s["connections"],
+                          "phase": "seeding" if s.get("seeder") else "",
+                          "upload": s.get("upload_speed", 0)}
 
         completing = new_status == Status.COMPLETE and d.status != Status.COMPLETE
         if completing:
@@ -633,6 +666,12 @@ class DownloadManager:
                     if moved:
                         changes.update(directory=target_dir, filename=moved, category=cat)
                         d = replace(d, **changes)
+        if d.kind == "torrent" and d.path:   # secimli torrentte aria2 kontrol dosyasini birakiyor (04.11 olculdu)
+            try:
+                if os.path.isfile(d.path + ".aria2"):
+                    os.remove(d.path + ".aria2")
+            except OSError:
+                pass
         for pp in self.registry.postprocessors:
             try:
                 if pp.applies(d):
