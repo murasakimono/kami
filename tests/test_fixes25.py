@@ -9,7 +9,7 @@ from app.core import automate, lyrics, musicarchive, phone
 def _srv(added=1):
     got = []
 
-    def on_text(t):
+    def on_text(t, fmt=""):
         got.append(t)
         return {"added": added, "names": t.splitlines()}
     return phone.PhoneServer(0, lambda: "anahtar123", on_text), got
@@ -43,6 +43,47 @@ def test_phone_send_variants_and_messages():
     assert code == 401 and "X-Kami-Key" in r["message"]
     code, r = srv.handle_send(json.dumps({"text": yt, "key": "anahtar123"}), "application/json", "", "1")
     assert r["ok"]                                                            # tarayici: govdede anahtar
+
+
+def test_phone_format_field():
+    srv, got = _srv()
+    yt = "https://youtu.be/x"
+    fmts = []
+    srv.on_text = lambda t, fmt="": fmts.append(fmt) or {"added": 1, "names": [t], "asked": fmt in ("", "ask")}
+    _, r = srv.handle_send(json.dumps({"text": yt, "format": "MP3"}), "application/json", "anahtar123", "1")
+    assert fmts[-1] == "mp3" and "(MP3)" in r["message"]
+    _, r = srv.handle_send(json.dumps({"text": yt, "format": "Video"}), "application/json", "anahtar123", "1")
+    assert fmts[-1] == "mp4"
+    _, r = srv.handle_send(json.dumps({"text": yt}), "application/json", "anahtar123", "1")
+    assert fmts[-1] == "" and "seçim penceresi" in r["message"]
+
+
+def test_quiet_add_defaults_to_mp4_not_last_choice(tmp_path):
+    """EK (e): medya penceresinde son secim MP3 kalsa da telefon/toplu sessiz ekleme MP4 indirir."""
+    from app.core.events import EventBus
+    from app.core.manager import DownloadManager
+    from app.core.plugin_api import PluginRegistry
+    from app.core.queue_store import DownloadStore
+    from app.core.settings import Settings
+    from app.ui.api import Api
+
+    class Eng:
+        running = True
+
+        def start(self, d):
+            return "g%d" % d.id
+    s = Settings(tmp_path / "s.json")
+    s.set("download_dir", str(tmp_path / "dl"))
+    s.set("media_format", "mp3")                      # son secim MP3
+    m = DownloadManager(DownloadStore(tmp_path / "k.db"), Eng(), EventBus(), s, prober=None)
+    seen = []
+    m.add_media = lambda url, **kw: seen.append(kw["options"]) or None
+    api = Api(m, Eng(), PluginRegistry(), lambda: 0)
+    yt = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert api.add_text_detail(yt, "batch")["added"] == 1 and seen[-1]["format"] == "mp4"
+    assert api.add_text_detail(yt, "phone", "mp3")["added"] == 1 and seen[-1]["format"] == "mp3"
+    r = api.add_text_detail(yt, "phone", "")            # format yok: Kami'de sor
+    assert r["asked"] and api._media_inbox[-1]["url"] == yt and len(seen) == 2
 
 
 def test_phone_describe_hides_key():

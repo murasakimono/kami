@@ -127,6 +127,19 @@ def find_links(body: Any, raw: str = "") -> list[str]:
     return list(dict.fromkeys(found))
 
 
+_FMT = {"mp4": "mp4", "video": "mp4", "mp3": "mp3", "ses": "mp3", "audio": "mp3", "muzik": "mp3", "müzik": "mp3",
+        "sor": "ask", "ask": "ask", "seç": "ask", "sec": "ask"}
+
+
+def find_format(body: Any) -> str:
+    """Govdedeki istege bagli "format" alani -> mp4 | mp3 | ask ('' = yok)."""
+    if isinstance(body, dict):
+        for k, v in body.items():
+            if str(k).lower() in ("format", "bicim", "biçim", "tur", "tür"):
+                return _FMT.get(str(v).strip().lower(), "")
+    return ""
+
+
 def describe(body: Any, ctype: str, n: int) -> str:
     """Log + hata mesaji icin govde ozeti (anahtar gizli)."""
     def red(v: Any) -> Any:
@@ -198,8 +211,9 @@ class PhoneServer:
             return 200, {"ok": False, "added": 0, "error": "no_link",
                          "message": f"✕ Link bulunamadı: gelen içerik {preview}. Kestirme'ye \"Girdideki URL'leri Al\" "
                                     "adımını ekleyip gövdeye o URL'leri koy."}
+        fmt = find_format(body)
         try:
-            res = self.on_text("\n".join(links))
+            res = self.on_text("\n".join(links), fmt)
         except Exception:
             log.exception("Telefondan gelen link eklenemedi")
             return 500, {"ok": False, "error": "internal", "message": "✕ Kami linki ekleyemedi (log'a bak)."}
@@ -211,7 +225,12 @@ class PhoneServer:
                          "message": f"✕ Link eklenemedi: {links[0][:120]}"}
         names = (res.get("names") if isinstance(res, dict) else None) or links
         more = f" (+{added - 1})" if added > 1 else ""
-        return 200, {"ok": True, "added": added, "error": "", "message": f"✓ Kuyruğa eklendi: {names[0][:120]}{more}"}
+        if isinstance(res, dict) and res.get("asked"):
+            return 200, {"ok": True, "added": added, "error": "", "asked": True,
+                         "message": f"✓ Kami'de MP4/MP3 seçim penceresi açıldı: {names[0][:120]}{more}"}
+        tag = {"mp3": " (MP3)", "mp4": " (MP4)"}.get(fmt, "")
+        return 200, {"ok": True, "added": added, "error": "",
+                     "message": f"✓ Kuyruğa eklendi{tag}: {names[0][:120]}{more}"}
 
     def start(self) -> bool:
         if self._srv:

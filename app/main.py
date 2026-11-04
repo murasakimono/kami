@@ -296,7 +296,7 @@ def main() -> int:
                       player=lambda p: _play(p, settings.get("watch_player") or "screenbox"))
     phone_key = TokenStore(paths.DATA_DIR / "phone_key.bin")
     phone = PhoneServer(int(settings.get("phone_port")), phone_key.load,
-                        lambda text: api.add_text_detail(text, "phone"),
+                        lambda text, fmt="": api.add_text_detail(text, "phone", fmt),
                         status=api.phone_status_items, control=api.phone_control)
 
     def phone_apply() -> None:

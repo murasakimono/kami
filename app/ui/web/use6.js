@@ -42,6 +42,9 @@ Object.assign(I18N.tr, {
     `<li>Eylem ekle: <b>URL'nin İçeriğini Al</b> (Get Contents of URL): URL = yukarıdaki /send adresi. ` +
     `"Daha Fazla Göster": Yöntem <b>POST</b>; Üstbilgiler: <code>X-Kami-Key</code> = anahtar; İstek Gövdesi <b>JSON</b>: ` +
     `alan <code>text</code> (Metin) = önceki adımın <b>URL'ler</b> çıktısı.</li>` +
+    `<li>(İsteğe bağlı) Bu adımdan ÖNCE <b>Menüden Seç</b> (Choose from Menu): "Video (MP4)" / "Ses (MP3)"; her seçenekte ` +
+    `<b>Metin</b> eylemi ile <code>mp4</code> ya da <code>mp3</code> yaz ve JSON gövdesine ikinci alan <code>format</code> = o metin ekle. ` +
+    `<code>format</code> yoksa ya da <code>sor</code> ise Kami bilgisayarda MP4/MP3 seçim penceresini açar.</li>` +
     `<li>Eylem ekle: <b>Sonucu Göster</b> (Show Result) — Kami'nin cevabı ("✓ Kuyruğa eklendi …") görünür.</li>` +
     `<li>İlk çalıştırmada iOS "yerel ağdaki aygıtlara bağlan" izni sorarsa <b>İzin Ver</b>.</li></ol>` +
     `Kestirmesiz: Safari'de <code>http://${ips[0]}:${port}/</code> (gönderme + indirme durumu).`,
@@ -92,6 +95,9 @@ Object.assign(I18N.en, {
     `<li>Add action: <b>Get URLs from Input</b> — input: Shortcut Input.</li>` +
     `<li>Add action: <b>Get Contents of URL</b>: URL = the /send address above. "Show More": Method <b>POST</b>; ` +
     `Headers: <code>X-Kami-Key</code> = key; Request Body <b>JSON</b>: field <code>text</code> (Text) = the <b>URLs</b> from the previous step.</li>` +
+    `<li>(Optional) BEFORE that step add <b>Choose from Menu</b>: "Video (MP4)" / "Audio (MP3)"; in each branch a <b>Text</b> action ` +
+    `with <code>mp4</code> or <code>mp3</code>, and add a second JSON field <code>format</code> = that text. ` +
+    `Without <code>format</code> (or with <code>ask</code>) Kami opens the MP4/MP3 chooser on the computer.</li>` +
     `<li>Add action: <b>Show Result</b> — Kami's reply ("✓ Queued …") appears.</li>` +
     `<li>If iOS asks to connect to devices on the local network the first time, tap <b>Allow</b>.</li></ol>` +
     `Without a shortcut: Safari at <code>http://${ips[0]}:${port}/</code> (send + download status).`,

@@ -969,15 +969,24 @@ class Api:
         """Telefondan / toplu listeden gelen metin: icindeki linkleri pencere acmadan kuyruga ekler."""
         return self.add_text_detail(text, source)["added"]
 
-    def add_text_detail(self, text: str, source: str = "phone") -> dict[str, Any]:
+    def add_text_detail(self, text: str, source: str = "phone", fmt: str = "") -> dict[str, Any]:
+        """fmt (telefon): mp4 | mp3 | ask. Telefonda medya linki + format yok/ask -> Kami'de secim penceresi."""
         from app.core.automate import extract_links
-        names = []
+        from app.engines import ytdlp_engine as yt
+        names, asked = [], False
         for link in extract_links(str(text or ""))[:200]:
-            if self._add_quiet(link, source):
+            if source == "phone" and fmt in ("", "ask") and yt.is_supported(link) \
+                    and not self._manager.cloud.provider_for(link):
+                self._on_media_choose(link)
+                self._manager.events.emit("ui.attention", reason="media_choose")
                 names.append(link)
-        return {"added": len(names), "names": names}
+                asked = True
+                continue
+            if self._add_quiet(link, source, fmt if fmt in ("mp4", "mp3") else ""):
+                names.append(link)
+        return {"added": len(names), "names": names, "asked": asked}
 
-    def _add_quiet(self, link: str, source: str) -> bool:
+    def _add_quiet(self, link: str, source: str, fmt: str = "") -> bool:
         from app.core.debrid import is_magnet, is_torrent_url
         from app.engines import ytdlp_engine as yt
         try:
@@ -994,13 +1003,17 @@ class Api:
                 token, listing = self._manager.cloud.list(link)
                 return bool(self._manager.add_cloud(token, list(range(len(listing.files)))))
             if yt.is_supported(link):
-                opts, directory = {}, ""
-                if self._manager.settings.get("rules_enabled"):
+                # Sessiz eklemede "son secim" (medya penceresi MP3'te kalmis olabilir) KULLANILMAZ: varsayilan MP4;
+                # MP3 sadece acikca istenirse (telefon format=mp3) ya da muzik kurali gercekten eslesirse.
+                opts, directory = {"format": fmt or "mp4"}, ""
+                if fmt == "mp3":
+                    opts["audio_kbps"] = self._manager.settings.get("media_audio_kbps") or 320
+                if not fmt and self._manager.settings.get("rules_enabled"):
                     from app.core import rules
                     rule = rules.match(self._manager.settings.get("site_rules") or [], link, media=True,
                                        info={"categories": []})
                     if rule:
-                        opts = rules.media_options(rule)
+                        opts = {"format": "mp4", **rules.media_options(rule)}
                         directory = rules.folder_path(rule, self._manager.base_dir())
                 self._manager.add_media(link, options=opts, source=source, directory=directory)
                 return True

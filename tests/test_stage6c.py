@@ -236,7 +236,7 @@ def test_phone_server_key_and_add():
     from app.core.phone import PhoneServer
     got = []
     port = _free_port()
-    srv = PhoneServer(port, lambda: "dogru-anahtar-123", lambda t: got.append(t) or 1)
+    srv = PhoneServer(port, lambda: "dogru-anahtar-123", lambda t, fmt="": got.append(t) or 1)
     assert srv.start()
     try:
         def post(key, body):
