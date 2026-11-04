@@ -1,6 +1,7 @@
 """Python <-> JS koprusu. JS tarafinda pywebview.api.<metot> olarak cagrilir."""
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 import subprocess
@@ -35,6 +36,8 @@ class Api:
         self._update_shown = False
         self._media_inbox: list[dict[str, Any]] = []   # eklentiden "Kami'de sec" istekleri
         self._inbox_lock = threading.Lock()
+        self._jobs: dict[str, dict[str, Any]] = {}       # arka plan isleri (job_start / job_result)
+        self._job_ids = itertools.count(1)
         self._clip_offers: list[str] = []               # pano izleyicinin buldugu linkler
         self._clip_watcher = None
         self._rd_events: list[dict[str, Any]] = []      # RD bildirimleri (arka plan torrentleri, kopru)
@@ -43,6 +46,49 @@ class Api:
         manager.events.on("media.choose", self._on_media_choose)
         self._torrent_inbox: list[dict[str, Any]] = []   # magnet isleyicisinden gelenler (sor / yerel)
         manager.events.on("torrent.request", lambda src: self._on_torrent_request(src))
+
+    # ---------- arka plan isleri ----------
+    # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
+    JOB_METHODS = frozenset({
+        "add_url", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
+        "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
+        "rd_delete", "check_update", "hash_file", "make_report", "firewall_allow",
+    })
+
+    def job_start(self, name: str, args: list | None = None) -> dict[str, Any]:
+        import time as _t
+        name = str(name or "")
+        if name not in self.JOB_METHODS:
+            return {"ok": False, "error": "bad_job"}
+        fn = getattr(self, name)
+        with self._inbox_lock:
+            jid = f"j{next(self._job_ids)}"
+            self._jobs[jid] = {"state": "running", "name": name, "t": _t.monotonic()}
+            for k in [k for k, v in self._jobs.items() if v["state"] != "running" and _t.monotonic() - v["t"] > 600]:
+                del self._jobs[k]   # unutulmus sonuclar
+
+        def run() -> None:
+            try:
+                res, state = fn(*(args or [])), "done"
+            except Exception as exc:
+                log.exception("Arka plan isi hatasi: %s", name)
+                res, state = {"ok": False, "error": type(exc).__name__}, "done"
+            with self._inbox_lock:
+                self._jobs[jid] = {"state": state, "result": res, "name": name, "t": _t.monotonic()}
+
+        threading.Thread(target=run, name=f"kami-job-{name}", daemon=True).start()
+        return {"ok": True, "job": jid}
+
+    def job_result(self, job: str) -> dict[str, Any]:
+        """running | done (+result, bir kez verilir) | lost."""
+        with self._inbox_lock:
+            j = self._jobs.get(str(job))
+            if not j:
+                return {"state": "lost"}
+            if j["state"] == "running":
+                return {"state": "running"}
+            self._jobs.pop(str(job), None)
+            return {"state": "done", "result": j.get("result")}
 
     def _set_window(self, window) -> None:
         self._window = window
@@ -77,12 +123,12 @@ class Api:
 
     # ---------- pano ----------
     def link_supported(self, url: str) -> bool:
-        """Ag kullanmadan: bulut eklentisi, yt-dlp ozel cikarici ya da bilinen dosya uzantisi."""
+        """Ag kullanmadan (<100 ms): bulut eklentisi, RD hoster (onbellek), yt-dlp ozel cikarici, dosya uzantisi."""
         from app.core.categories import EXT_TO_CATEGORY, extension_of
         from urllib.parse import unquote, urlparse
         if self._manager.cloud.provider_for(url):
             return True
-        if self._rd_route(url):
+        if self._rd_route(url, wait=False):
             return True
         if extension_of(unquote(urlparse(url).path)) in EXT_TO_CATEGORY:
             return True
@@ -388,7 +434,7 @@ class Api:
     def _rd(self):
         return getattr(self._manager, "debrid", None)
 
-    def _rd_route(self, url: str) -> str:
+    def _rd_route(self, url: str, wait: bool = True) -> str:
         """'' | 'auto' | 'ask': token varsa ve link RD destekli hoster (ya da .torrent) ise ayara gore."""
         rd = self._rd
         mode = self._manager.settings.get("rd_mode")
@@ -396,7 +442,7 @@ class Api:
                 or not rd.has_token():
             return ""
         try:   # magnet/.torrent burada degil: torrent_source (RD / yerel torrent secimi)
-            return mode if rd.supports(url) else ""
+            return mode if rd.supports(url, wait=wait) else ""
         except Exception:
             log.exception("RD destek kontrolu")
             return ""

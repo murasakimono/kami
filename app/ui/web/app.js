@@ -291,7 +291,7 @@ function bindEvents() {
     for (const u of urls) {
       toast(T("resolving"), false, true);    // yavas servislerde (Pixeldrain ~20 sn) cevap gelene kadar kalir
       let r;
-      try { r = await api.add_url(u); } finally { toastDone(); }
+      try { r = await slow("add_url", u); } finally { toastDone(); }
       const how = dispatchAdd(r, u, { url: u });   // rd.js: RD sorusu / medya / bulut penceresi
       if (how === "plain") ok++;
       else if (how === "handled") input.value = "";
@@ -435,7 +435,7 @@ async function handleMediaRequest(req) {
   toast(T("resolving"), false, true);
   try {
     let r;
-    try { r = await api.media_probe(req.url, req.headers || {}); } finally { toastDone(); }
+    try { r = await slow("media_probe", req.url, req.headers || {}); } finally { toastDone(); }
     dispatchAdd(r, req.url, { ...req, headers: req.headers || {} });
   } finally { media.busy = false; }
 }
@@ -587,7 +587,7 @@ function bindCloud() {
     const btn = $("#cGo"); btn.disabled = true;
     try {
       const r = cloud.data.kind === "torrent" ? await api.torrent_add(cloud.data.token, idx)
-                                             : await api.add_cloud(cloud.data.token, idx);
+                                             : await slow("add_cloud", cloud.data.token, idx);
       if (!r.ok) { toast(T("err_" + (r.error || "cloud_failed")), true); return; }
       $("#cloud").close();
       if (r.failed) toast(T("c_partial", r.ids.length, r.failed), true); else toast(T("added"));
@@ -627,7 +627,7 @@ async function refreshFirewall() {
 
 function bindSettings() {
   $("#fwAllow").addEventListener("click", async () => {
-    await api.firewall_allow();
+    await slow("firewall_allow");
     setTimeout(refreshFirewall, 4000); setTimeout(refreshFirewall, 12000);   // UAC onayi sonrasi
   });
   const form = $("#settingsForm");
@@ -653,6 +653,19 @@ function bindSettings() {
     $("#dirPath").textContent = (await api.get_settings())._effective_download_dir;
   });
   $("#settings").addEventListener("click", (e) => { if (e.target === $("#settings")) $("#settings").close(); });
+}
+
+// Ag/uzun isler: Python hemen is kimligi doner (job_start), sonuc job_result ile beklenir -> api cagrisi
+// hicbir zaman uzun sure acik kalmaz (defter 24: IPv6 yuzunden 42 sn bekleyen cagrilar).
+async function slow(name, ...args) {
+  const j = await api.job_start(name, args);
+  if (!j || !j.ok) return { ok: false, error: (j && j.error) || "job_failed" };
+  for (let wait = 60; ; wait = Math.min(wait * 1.5, 400)) {
+    await new Promise((r) => setTimeout(r, wait));
+    const r = await api.job_result(j.job);
+    if (r.state === "done") return r.result;
+    if (r.state === "lost") return { ok: false, error: "job_lost" };
+  }
 }
 
 // ---------- baslangic ----------

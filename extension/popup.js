@@ -11,8 +11,19 @@ let pageTab = null;
 async function setupPage() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const b = document.getElementById("page");
-  if (!tab || !/^https?:/i.test(tab.url || "")) { b.hidden = true; return; }
+  if (!tab || !/^https?:/i.test(tab.url || "")) {   // brave://, chrome://, Web Store, dosya: icerik betigi yok
+    const note = document.getElementById("restricted");
+    note.textContent = t("popup_restricted");
+    note.hidden = false;
+    return;
+  }
+  if (/^https:\/\/(chrome\.google\.com\/webstore|chromewebstore\.google\.com)\//i.test(tab.url)) {
+    const note = document.getElementById("restricted");
+    note.textContent = t("popup_restricted");
+    note.hidden = false;
+  }
   pageTab = tab;
+  b.hidden = false;
   const site = kamiCloudSite(tab.url);
   if (site && site.kind === "share") {
     // iki satir: ana metin + altta kucuk site adi (tek satirda tasiyordu)
@@ -31,7 +42,7 @@ async function setupPage() {
 }
 
 async function refresh() {
-  const res = await ask({ type: "ping" });
+  const res = await ask({ type: "ping" }).catch(() => null);
   const status = document.getElementById("status");
   const text = document.getElementById("statusText");
   const capture = document.getElementById("capture");
@@ -68,8 +79,8 @@ const nameOf = (u) => { try { const x = new URL(u); return decodeURIComponent(x.
 async function showMedia(online) {
   const box = document.getElementById("media");
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab) return;
-  const list = await chrome.runtime.sendMessage({ type: "get-media", tabId: tab.id }) || [];
+  if (!tab || !pageTab) return;   // kisitli sayfa: medya bolumu gosterme
+  const list = await chrome.runtime.sendMessage({ type: "get-media", tabId: tab.id }).catch(() => []) || [];
   box.hidden = false;
   document.getElementById("mediaTitle").textContent = t("popup_media");
   const empty = document.getElementById("mediaEmpty");
@@ -102,7 +113,7 @@ async function showMedia(online) {
 async function showTorrents(online) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
-  const list = await chrome.runtime.sendMessage({ type: "get-torrents", tabId: tab.id }) || [];
+  const list = await chrome.runtime.sendMessage({ type: "get-torrents", tabId: tab.id }).catch(() => []) || [];
   if (!list.length) return;
   const box = document.getElementById("torrents");
   box.hidden = false;
@@ -165,4 +176,4 @@ function rdResultText(res) {
   return code === "rd_failed" && res.detail ? `${msg} (${res.detail})` : msg;
 }
 
-setupPage().then(refresh).then((online) => { showMedia(online); showTorrents(online); });
+setupPage().catch(() => {}).then(refresh).then((online) => { showMedia(online); showTorrents(online); });

@@ -5,6 +5,8 @@
   <style>
     :root { color-scheme: light dark; --accent: #6B3FE0; --btn: #6B3FE0; --muted: #675F78; --bg: #FFFFFF; --text: #1D1726; --line: #DED8EA; }
     @media (prefers-color-scheme: dark) { :root { --accent: #9D6BFF; --btn: #7C4DFF; --muted: #9A91AB; --bg: #15111C; --text: #E7E2EF; --line: #2A2236; } }
+    [hidden] { display: none !important; }   /* .media / #page display:grid hidden'i eziyordu (bos mor buton) */
+    .note { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--line); color: var(--text); font-size: 12px; }
     body { margin: 0; width: 280px; background: var(--bg); color: var(--text);
            font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
     .wrap { padding: 14px 16px 16px; display: grid; gap: 12px; }
@@ -43,7 +45,8 @@
     <div class="head"><img src="icons/32.png" alt="">Kami</div>
     <div class="status" id="status"><i></i><span id="statusText">…</span></div>
     <label><input type="checkbox" id="capture" disabled><span id="captureLabel"></span></label>
-    <button id="page" disabled></button>
+    <p class="note" id="restricted" hidden></p>
+    <button id="page" disabled hidden></button>
     <button id="open" class="sec" disabled></button>
     <div class="media" id="media" hidden>
       <h3 id="mediaTitle"></h3>

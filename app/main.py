@@ -65,7 +65,14 @@ def main() -> int:
 
     import webview  # GUI yalnizca gerektiginde yuklensin
 
+    # IPv6'si olmayan agda her AAAA adresi 21 sn bekletiyordu (RD 42 sn). IPv4 once; IPv6 hic yoksa aria2'de kapat.
     settings = Settings()
+    from app.core import net
+    net.prefer_ipv4()
+    no_v6 = not settings.get("aria2_ipv6") or not net.ipv6_works()
+    if no_v6:
+        log.info("aria2: IPv6 kapali (ayar ya da IPv6 yok)")
+
     events = EventBus()
     bt_port = settings.get("torrent_port") or settings.get("torrent_port_last")
     if not bt_port:   # otomatik: bir kez sec, sonra hep ayni port (DHT dugumu + guvenlik duvari)
@@ -86,6 +93,7 @@ def main() -> int:
         bt_port=bt_port,
         upload_limit_kib=settings.get("torrent_upload_limit_kib"),
         dht_file=paths.DATA_DIR / "dht.dat",
+        disable_ipv6=no_v6,
     )
     engine.start_service()
     registry = load_plugins(paths.PLUGINS_DIR, events, settings)
@@ -96,6 +104,9 @@ def main() -> int:
     media = ytdlp_engine.MediaRunner(engine, max_concurrent=settings.get("max_concurrent"),
                                      connections_getter=lambda: int(settings.get("connections")))
     manager = DownloadManager(store, engine, events, settings, registry, media=media)
+    # yt-dlp importu + ~1800 cikarici regex'inin ilk derlenmesi ~0.6 sn: pano kontrolu (link_supported) hep <10 ms olsun
+    threading.Thread(target=ytdlp_engine.is_supported, args=("https://kami.invalid/isinma",),
+                     name="kami-ytdlp-warm", daemon=True).start()
     from app.core.debrid import DebridService, TokenStore
     debrid = DebridService(TokenStore(paths.DATA_DIR / "rd_token.bin"), paths.DATA_DIR / "rd_pending.json")
     debrid.enqueue = manager.add_debrid_files

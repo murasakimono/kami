@@ -225,6 +225,7 @@ class DebridService:
         self.notify: Callable[[dict[str, Any]], None] = lambda ev: None         # arayuze bildirim
         self._domains: set[str] = set()
         self._domains_at = 0.0
+        self._domains_busy = threading.Lock()
         self._lock = threading.Lock()
         self._pending: dict[str, dict[str, Any]] = self._load_pending()
         self._live: dict[str, dict[str, Any]] = {}     # tid -> son torrent_info ozeti (kaydedilmez)
@@ -268,21 +269,38 @@ class DebridService:
             return {"has_token": True, "ok": False, "error": exc.code}
 
     # ---- hoster destegi
-    def domains(self) -> set[str]:
-        if time.time() - self._domains_at > self.DOMAINS_TTL or not self._domains:
-            try:
-                self._domains = {d.lower() for d in self.client.domains()}
-                self._domains_at = time.time()
-            except DebridError as exc:
-                log.warning("RD hoster listesi alinamadi: %s", exc.detail or exc.code)
-                self._domains_at = time.time() - self.DOMAINS_TTL + 300   # 5 dk sonra tekrar dene
+    def domains(self, wait: bool = True) -> set[str]:
+        """RD hoster listesi (6 sa onbellek). wait=False: asla aga cikmaz; eskiyse arka planda yeniler."""
+        stale = time.time() - self._domains_at > self.DOMAINS_TTL or not self._domains
+        if stale and not wait:
+            self.refresh_domains_async()
+            return self._domains
+        if stale:
+            self._refresh_domains()
         return self._domains
 
-    def supports(self, url: str) -> bool:
+    def _refresh_domains(self) -> None:
+        try:
+            self._domains = {d.lower() for d in self.client.domains()}
+            self._domains_at = time.time()
+        except DebridError as exc:
+            log.warning("RD hoster listesi alinamadi: %s", exc.detail or exc.code)
+            self._domains_at = time.time() - self.DOMAINS_TTL + 300   # 5 dk sonra tekrar dene
+
+    def refresh_domains_async(self) -> None:
+        if self._domains_busy.acquire(blocking=False):
+            def run() -> None:
+                try:
+                    self._refresh_domains()
+                finally:
+                    self._domains_busy.release()
+            threading.Thread(target=run, name="kami-rd-domains", daemon=True).start()
+
+    def supports(self, url: str, wait: bool = True) -> bool:
         h = host_of(url)
         if not h:
             return False
-        doms = self.domains()
+        doms = self.domains(wait)
         return any(h == d or h.endswith("." + d) for d in doms)
 
     # ---- yapistir-gec
@@ -383,6 +401,8 @@ class DebridService:
             log.exception("rd_pending yazilamadi")
 
     def start(self) -> None:
+        if self.has_token():
+            self.refresh_domains_async()   # pano kontrolu (link_supported) aga cikmadan cevap verebilsin
         self._thread = threading.Thread(target=self._loop, name="kami-rd", daemon=True)
         self._thread.start()
 

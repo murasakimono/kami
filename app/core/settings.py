@@ -60,6 +60,8 @@ DEFAULTS: dict[str, Any] = {
     "checksum_verify": True,       # site/link SHA256 verdiyse indirme bitince dogrula
     "update_check": True,          # GitHub Releases'ta yeni surum var mi (gunde bir)
     "update_last": 0,
+    # Ag: bazi sunucularin IPv6 adresi bu agda cevapsiz (RD: 21 sn x adres). Kapali = aria2 sadece IPv4.
+    "aria2_ipv6": False,           # degisiklik Kami yeniden acilinca gecerli
 }
 
 

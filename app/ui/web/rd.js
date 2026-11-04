@@ -72,7 +72,7 @@ function magnetName(src) {
 async function openTorrentLocal(t) {
   toast(T("resolving"), false, true);
   let r;
-  try { r = await api.torrent_open(t.src || "", t.token || ""); } finally { toastDone(); }
+  try { r = await slow("torrent_open", t.src || "", t.token || ""); } finally { toastDone(); }
   if (!r || !r.ok) { toast(T("err_" + ((r && r.error) || "torrent_meta_failed")), true); return; }
   if (r.cloud) { openCloud(r.cloud); return; }
   const jid = r.meta_job;
@@ -134,16 +134,16 @@ async function rdAskAnswer(viaRd) {
     if (!viaRd) { openTorrentLocal(a.torrent); return; }
     toast(T("resolving"), false, true);
     let r;
-    try { r = await api.torrent_choose(a.torrent.src || "", a.torrent.token || "", "rd"); } finally { toastDone(); }
+    try { r = await slow("torrent_choose", a.torrent.src || "", a.torrent.token || "", "rd"); } finally { toastDone(); }
     dispatchAdd(r, a.torrent.src, {});   // RD reddederse sadece sebep (yerele otomatik gecis YOK)
     return;
   }
   toast(T("resolving"), false, true);
   let r;
   try {
-    if (viaRd) r = await api.rd_add(a.url);
-    else if (a.ctx.headers !== undefined) r = await api.media_probe(a.url, a.ctx.headers || {}, true);  // eklentiden
-    else r = await api.add_url(a.url, "", true);
+    if (viaRd) r = await slow("rd_add", a.url);
+    else if (a.ctx.headers !== undefined) r = await slow("media_probe", a.url, a.ctx.headers || {}, true);  // eklentiden
+    else r = await slow("add_url", a.url, "", true);
   } finally { toastDone(); }
   if (dispatchAdd(r, a.url, a.ctx) === "plain") { toast(T("added")); tick(); }
 }
@@ -172,12 +172,12 @@ async function rdRefresh() {
   if (rd.busy) return;
   rd.busy = true; rd.lastRefresh = Date.now();
   try {
-    const st = await api.rd_status();
+    const st = await slow("rd_status");
     $("#rdNoToken").hidden = !!st.has_token;
     $("#rdBody").hidden = !st.has_token;
     if (!st.has_token) { $("#rdUser").textContent = ""; return; }
     $("#rdUser").textContent = st.ok ? T("rd_user", st.username, st.type, st.premium_days) : T("err_" + st.error);
-    const l = await api.rd_lists();
+    const l = await slow("rd_lists");
     if (!l.ok) { $("#rdTorrents").innerHTML = `<li class="rd-empty">${escapeHtml(T("err_" + l.error))}</li>`; return; }
     rd.downloads = l.downloads;
     $("#rdTorrents").innerHTML = l.torrents.map((t) => {
@@ -206,9 +206,9 @@ async function rdAction(btn) {
   }
   btn.disabled = true;
   let r;
-  if (kind === "qt") r = await api.rd_queue_torrent(btn.dataset.id);
-  else if (kind === "qd") r = await api.rd_queue_download(rd.downloads[Number(btn.dataset.i)]);
-  else r = await api.rd_delete(btn.dataset.kind, btn.dataset.id);
+  if (kind === "qt") r = await slow("rd_queue_torrent", btn.dataset.id);
+  else if (kind === "qd") r = await slow("rd_queue_download", rd.downloads[Number(btn.dataset.i)]);
+  else r = await slow("rd_delete", btn.dataset.kind, btn.dataset.id);
   if (!r.ok) { toast(rdErr(r.error, r.detail), true); btn.disabled = false; return; }
   if (kind !== "del") { toast(r.added ? T("rd_ev_added_n", r.added) : T("rd_ev_torrent")); tick(); }
   rdRefresh();
@@ -216,7 +216,7 @@ async function rdAction(btn) {
 
 // ---------- ayarlar: token ----------
 async function rdSettingsState() {
-  const st = await api.rd_status();
+  const st = await slow("rd_status");
   $("#rdTokenState").textContent = !st.has_token ? T("s_rd_none")
     : st.ok ? T("s_rd_saved", st.username, st.premium_days) : T("err_" + st.error);
   $("#rdTokenClear").hidden = !st.has_token;
@@ -228,7 +228,7 @@ async function rdSaveToken() {
   el.value = "";                       // token arayuzde kalmasin
   if (!value) return;
   $("#rdTokenState").textContent = T("resolving");
-  const r = await api.rd_set_token(value);
+  const r = await slow("rd_set_token", value);
   if (!r.ok) { $("#rdTokenState").textContent = T("err_" + r.error); return; }
   rdSettingsState();
   if (rd.view) rdRefresh();
@@ -242,7 +242,7 @@ function bindRd() {
     const btn = $("#rdSend"); btn.disabled = true;
     toast(T("resolving"), false, true);
     try {
-      const r = await api.rd_add(text);
+      const r = await slow("rd_add", text);
       toastDone();
       if (r.ok) { $("#rdInput").value = ""; rdResultToast(r); tick(); } else toast(rdErr(r.error, r.detail), true);
     } finally { btn.disabled = false; rdRefresh(); }

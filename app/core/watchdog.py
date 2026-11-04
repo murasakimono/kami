@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 import inspect
 import logging
+import os
 import sys
 import threading
 import time
@@ -17,7 +18,7 @@ from typing import Callable
 
 log = logging.getLogger("kami.watchdog")
 
-SLOW_CALL_SEC = 2.0
+SLOW_CALL_SEC = float(os.environ.get("KAMI_SLOW_SEC") or 2.0)   # olcum icin: KAMI_SLOW_SEC=0.05
 UI_STALL_SEC = 8.0
 
 

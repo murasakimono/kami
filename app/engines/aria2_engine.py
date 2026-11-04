@@ -45,7 +45,9 @@ class Aria2Engine(Engine):
 
     def __init__(self, exe: Path, *, connections: int = 16, max_concurrent: int = 3,
                  max_tries: int = 5, speed_limit_kib: int = 0, log_file: Path | None = None,
-                 bt_port: int = 0, upload_limit_kib: int = 0, dht_file: Path | None = None) -> None:
+                 bt_port: int = 0, upload_limit_kib: int = 0, dht_file: Path | None = None,
+                 disable_ipv6: bool = False) -> None:
+        self.disable_ipv6 = disable_ipv6        # agda IPv6 yoksa (net.ipv6_works) her AAAA icin 21 sn beklemesin
         self.bt_port = bt_port                  # 0 = aria2 varsayilani (6881-6999)
         self.upload_limit_kib = upload_limit_kib
         self.dht_file = dht_file
@@ -112,6 +114,8 @@ class Aria2Engine(Engine):
                      "--bt-tracker-connect-timeout=10", "--bt-tracker-timeout=15", "--bt-max-peers=80"]
         # addTorrent ile verilen .torrent'i indirme klasorune <sha1>.torrent olarak kopyalamasin (biz data/'da tutuyoruz)
         args.append("--rpc-save-upload-metadata=false")
+        if self.disable_ipv6:
+            args.append("--disable-ipv6=true")
         if self.log_file:
             args += [f"--log={self.log_file}", "--log-level=warn"]
         self._proc = subprocess.Popen(

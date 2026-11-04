@@ -95,33 +95,94 @@
   "popup_rd_notoken": {
     "message": "Kami'de Real-Debrid token'ı yok (Ayarlar)."
   },
-  "popup_rd_all_result": { "message": "Gönderildi: $1 / $2" },
-  "rd_ok_torrent": { "message": "Real-Debrid'e eklendi; hazır olunca Kami indirir." },
-  "rd_ok_queued": { "message": "Real-Debrid'den geçirildi, Kami'de sıraya girdi." },
-  "rd_ok_pending": { "message": "Gönderildi; Real-Debrid geç cevap veriyor, sonuç Kami'de görünecek." },
-  "rd_err_offline": { "message": "Kami açık değil." },
-  "rd_err_nohost": { "message": "Kami bağlayıcısı kurulu değil (native host)." },
-  "rd_err_bad_url": { "message": "Geçerli bir link değil." },
-  "rd_err_bad_torrent": { "message": "Geçerli bir .torrent dosyası değil." },
-  "rd_err_rd_no_token": { "message": "Kami'de Real-Debrid token'ı yok (Ayarlar)." },
-  "rd_err_rd_bad_token": { "message": "Real-Debrid token'ı geçersiz." },
-  "rd_err_rd_network": { "message": "Real-Debrid'e bağlanılamadı." },
-  "rd_err_rd_failed": { "message": "Real-Debrid işlemi başarısız." },
-  "rd_err_rd_infringing": { "message": "Real-Debrid bu içeriği telif engeli nedeniyle kabul etmiyor (RD'nin kendi engeli)." },
-  "rd_err_rd_too_many": { "message": "Real-Debrid'de çok fazla etkin indirme var." },
-  "rd_err_rd_traffic": { "message": "Real-Debrid trafik / adil kullanım sınırı doldu." },
-  "rd_err_rd_premium": { "message": "Bu işlem Real-Debrid premium üyelik istiyor." },
-  "rd_err_rd_denied": { "message": "Real-Debrid reddetti (izin / hesap)." },
-  "rd_err_rd_locked": { "message": "Real-Debrid hesabı kilitli." },
-  "rd_err_rd_unsupported": { "message": "Bu hoster Real-Debrid'de desteklenmiyor." },
-  "rd_err_rd_unavailable": { "message": "Dosya hosterda bulunamadı." },
-  "rd_err_rd_hoster_down": { "message": "Hoster bakımda ya da erişilemiyor." },
-  "rd_err_rd_hoster_limit": { "message": "Bu hoster için Real-Debrid günlük sınırı doldu." },
-  "rd_err_rd_ip": { "message": "Real-Debrid bu IP'ye izin vermiyor (VPN/proxy?)." },
-  "rd_err_rd_torrent_big": { "message": "Torrent Real-Debrid için çok büyük." },
-  "rd_err_rd_bad_torrent": { "message": "Geçerli bir .torrent dosyası değil." },
-  "rd_err_rd_not_allowed": { "message": "Real-Debrid bu dosya türüne izin vermiyor." },
-  "rd_err_rd_already": { "message": "Bu torrent Real-Debrid hesabında zaten etkin." },
-  "rd_err_rd_slow": { "message": "Real-Debrid'e çok sık istek gitti; biraz bekle." },
-  "rd_err_rd_service": { "message": "Real-Debrid şu an yanıt vermiyor." }
+  "popup_rd_all_result": {
+    "message": "Gönderildi: $1 / $2"
+  },
+  "rd_ok_torrent": {
+    "message": "Real-Debrid'e eklendi; hazır olunca Kami indirir."
+  },
+  "rd_ok_queued": {
+    "message": "Real-Debrid'den geçirildi, Kami'de sıraya girdi."
+  },
+  "rd_ok_pending": {
+    "message": "Gönderildi; Real-Debrid geç cevap veriyor, sonuç Kami'de görünecek."
+  },
+  "rd_err_offline": {
+    "message": "Kami açık değil."
+  },
+  "rd_err_nohost": {
+    "message": "Kami bağlayıcısı kurulu değil (native host)."
+  },
+  "rd_err_bad_url": {
+    "message": "Geçerli bir link değil."
+  },
+  "rd_err_bad_torrent": {
+    "message": "Geçerli bir .torrent dosyası değil."
+  },
+  "rd_err_rd_no_token": {
+    "message": "Kami'de Real-Debrid token'ı yok (Ayarlar)."
+  },
+  "rd_err_rd_bad_token": {
+    "message": "Real-Debrid token'ı geçersiz."
+  },
+  "rd_err_rd_network": {
+    "message": "Real-Debrid'e bağlanılamadı."
+  },
+  "rd_err_rd_failed": {
+    "message": "Real-Debrid işlemi başarısız."
+  },
+  "rd_err_rd_infringing": {
+    "message": "Real-Debrid bu içeriği telif engeli nedeniyle kabul etmiyor (RD'nin kendi engeli)."
+  },
+  "rd_err_rd_too_many": {
+    "message": "Real-Debrid'de çok fazla etkin indirme var."
+  },
+  "rd_err_rd_traffic": {
+    "message": "Real-Debrid trafik / adil kullanım sınırı doldu."
+  },
+  "rd_err_rd_premium": {
+    "message": "Bu işlem Real-Debrid premium üyelik istiyor."
+  },
+  "rd_err_rd_denied": {
+    "message": "Real-Debrid reddetti (izin / hesap)."
+  },
+  "rd_err_rd_locked": {
+    "message": "Real-Debrid hesabı kilitli."
+  },
+  "rd_err_rd_unsupported": {
+    "message": "Bu hoster Real-Debrid'de desteklenmiyor."
+  },
+  "rd_err_rd_unavailable": {
+    "message": "Dosya hosterda bulunamadı."
+  },
+  "rd_err_rd_hoster_down": {
+    "message": "Hoster bakımda ya da erişilemiyor."
+  },
+  "rd_err_rd_hoster_limit": {
+    "message": "Bu hoster için Real-Debrid günlük sınırı doldu."
+  },
+  "rd_err_rd_ip": {
+    "message": "Real-Debrid bu IP'ye izin vermiyor (VPN/proxy?)."
+  },
+  "rd_err_rd_torrent_big": {
+    "message": "Torrent Real-Debrid için çok büyük."
+  },
+  "rd_err_rd_bad_torrent": {
+    "message": "Geçerli bir .torrent dosyası değil."
+  },
+  "rd_err_rd_not_allowed": {
+    "message": "Real-Debrid bu dosya türüne izin vermiyor."
+  },
+  "rd_err_rd_already": {
+    "message": "Bu torrent Real-Debrid hesabında zaten etkin."
+  },
+  "rd_err_rd_slow": {
+    "message": "Real-Debrid'e çok sık istek gitti; biraz bekle."
+  },
+  "rd_err_rd_service": {
+    "message": "Real-Debrid şu an yanıt vermiyor."
+  },
+  "popup_restricted": {
+    "message": "Bu sayfada yakalama yok (tarayıcının kendi sayfası). Kami'yi açmak için aşağıdaki butonu kullan."
+  }
 }

@@ -53,7 +53,7 @@ async function openHash(id) {
   $("#hashExpected").value = (d && d.extra && d.extra.checksum) || "";
   $("#hashResult").textContent = "";
   $("#hashDlg").showModal();
-  const r = await api.hash_file(id, "");
+  const r = await slow("hash_file", id, "");
   if (hashDlg.id !== id) return;
   if (!r.ok) { $("#hashValue").textContent = T("err_" + r.error); return; }
   $("#hashValue").textContent = r.sha256;
@@ -68,7 +68,7 @@ function bindHash() {
   $("#hashCheck").addEventListener("click", async () => {
     const v = $("#hashExpected").value.trim();
     if (!v) return;
-    const r = await api.hash_file(hashDlg.id, v);
+    const r = await slow("hash_file", hashDlg.id, v);
     if (!r.ok) { $("#hashResult").textContent = T("err_" + r.error); $("#hashResult").style.color = ""; return; }
     $("#hashValue").textContent = r.sha256;
     showHashResult(r.match);
@@ -193,7 +193,7 @@ async function refreshDesktop() {
 function bindAppSettings() {
   $("#updateNow").addEventListener("click", async () => {
     $("#updateState").textContent = T("update_checking");
-    const r = await api.check_update();
+    const r = await slow("check_update");
     if (!r.ok) $("#updateState").textContent = T("update_err");
     else if (r.available) { $("#updateState").textContent = T("update_avail", r.version); showUpdate(r); }
     else $("#updateState").textContent = r.none ? T("update_none_yet") : T("update_latest");
@@ -202,7 +202,7 @@ function bindAppSettings() {
   $("#reportBtn").addEventListener("click", async () => {
     const btn = $("#reportBtn"); btn.disabled = true;
     try {
-      const r = await api.make_report();
+      const r = await slow("make_report");
       toast(r.ok ? T("report_done") : T("report_err"), !r.ok);
     } finally { btn.disabled = false; }
   });
