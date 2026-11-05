@@ -172,9 +172,18 @@ function bindDrop() {
 function showUpdate(u) {
   if (!u || !u.version) return;
   const a = $("#updateLink");
-  a.textContent = T("update_avail", u.version);
+  a.textContent = T("update_avail", u.version) + (u.asset ? " · " + T("update_install") : "");
   a.hidden = false;
+  a.dataset.install = u.asset ? "1" : "";
   toast(T("update_avail", u.version));
+}
+
+async function installUpdate() {
+  if (!confirm(T("update_confirm"))) return;
+  toast(T("update_downloading"), false, true);
+  let r;
+  try { r = await slow("install_update"); } finally { toastDone(); }
+  toast(r.ok ? T("update_started") : T("update_err") + (r.detail ? ` (${r.detail})` : ""), !r.ok);
 }
 
 // ---------- Ayarlar ek parcalari ----------
@@ -198,7 +207,7 @@ function bindAppSettings() {
     else if (r.available) { $("#updateState").textContent = T("update_avail", r.version); showUpdate(r); }
     else $("#updateState").textContent = r.none ? T("update_none_yet") : T("update_latest");
   });
-  $("#updateLink").addEventListener("click", () => api.open_release());
+  $("#updateLink").addEventListener("click", () => ($("#updateLink").dataset.install ? installUpdate() : api.open_release()));
   $("#reportBtn").addEventListener("click", async () => {
     const btn = $("#reportBtn"); btn.disabled = true;
     try {

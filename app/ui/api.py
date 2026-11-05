@@ -68,7 +68,7 @@ class Api:
     JOB_METHODS = frozenset({
         "add_url", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
-        "rd_delete", "check_update", "hash_file", "make_report", "firewall_allow",
+        "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
@@ -664,6 +664,24 @@ class Api:
                     self._update_shown = False
                 self._update_info = res
         return {"ok": "error" not in res, "current": extras.APP_VERSION, **res}
+
+    def install_update(self) -> dict[str, Any]:
+        """Yeni surum kurulumunu indir + sessiz calistir (Kami'yi kurulum kapatir, sonra yeniden acar).
+        Ayarlar ve gecmis %LOCALAPPDATA%\\Kami\\data'da: kurulum onlara dokunmaz."""
+        from app import paths
+        from app.core import extras
+        info = self._update_info or extras.check_update()
+        if not info.get("available") or not info.get("asset"):
+            return {"ok": False, "error": "no_update"}
+        try:
+            exe = extras.download_update(info, paths.USER_DIR / "updates")
+        except Exception as exc:
+            log.warning("Guncelleme indirilemedi: %s", exc)
+            return {"ok": False, "error": "download_failed", "detail": str(exc)[:200]}
+        log.info("Guncelleme kuruluyor: %s", exe)
+        subprocess.Popen([str(exe), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], close_fds=True)
+        # kurulum da Kami.exe --quit cagirir; yine de kendimiz kapanalim (dosyalar kilitli kalmasin)
+        return {"ok": True, "path": str(exe)}
 
     def open_release(self) -> bool:
         from app.core import extras

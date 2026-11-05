@@ -340,7 +340,8 @@ class PhoneServer:
                 return self._send(code, obj)
 
         try:
-            self._srv = ThreadingHTTPServer(("0.0.0.0", self.port), H)
+            from app.core.net import ExclusiveHTTPServer
+            self._srv = ExclusiveHTTPServer.make(("0.0.0.0", self.port), H)
         except OSError as exc:
             log.warning("Telefon sunucusu acilamadi (port %s): %s", self.port, exc)
             self._srv = None

@@ -115,7 +115,7 @@ class Settings:
         with self._lock:
             if self.path.exists():
                 try:
-                    stored = json.loads(self.path.read_text(encoding="utf-8"))
+                    stored = json.loads(self.path.read_text(encoding="utf-8-sig"))
                     if isinstance(stored, dict):
                         for k, v in stored.items():
                             if k in DEFAULTS:

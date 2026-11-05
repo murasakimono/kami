@@ -156,25 +156,76 @@ def _ver(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in re.findall(r"\d+", v or "")[:4]) or (0,)
 
 
+def _gh() -> str:
+    import shutil
+    return shutil.which("gh") or ""
+
+
+def _gh_latest(repo: str) -> dict | None:
+    """Ozel repo: anonim API 404 verir -> girisli GitHub CLI (gh) ile oku. Yoksa None."""
+    import json as _json
+    import subprocess
+    gh = _gh()
+    if not gh:
+        return None
+    try:
+        r = subprocess.run([gh, "api", f"repos/{repo}/releases/latest"], capture_output=True, text=True,
+                           timeout=20, creationflags=0x08000000)
+        return _json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
 def check_update(current: str = APP_VERSION, repo: str = GITHUB_REPO) -> dict[str, Any]:
-    """GitHub Releases'taki son surum. {'available': bool, 'version', 'url', 'notes'} ya da {'error'}."""
+    """GitHub Releases'taki son surum. {'available': bool, 'version', 'url', 'notes', 'asset'} ya da {'error'}.
+    Repo ozelse (anonim 404) girisli `gh` ile denenir."""
     import requests
     try:
         r = requests.get(f"https://api.github.com/repos/{repo}/releases/latest", timeout=10,
                          headers={"Accept": "application/vnd.github+json", "User-Agent": "Kami-updater"})
     except requests.RequestException as exc:
         return {"available": False, "error": type(exc).__name__}
-    if r.status_code == 404:
+    j = r.json() if r.status_code == 200 else (_gh_latest(repo) if r.status_code == 404 else None)
+    if j is None and r.status_code == 404:
         return {"available": False, "version": "", "none": True}
-    if r.status_code != 200:
+    if j is None:
         return {"available": False, "error": f"http_{r.status_code}"}
-    j = r.json()
     tag = str(j.get("tag_name") or "")
     url = str(j.get("html_url") or "")
     if not url.startswith(f"https://github.com/{repo}/"):
         url = f"https://github.com/{repo}/releases"
+    asset = next((a for a in j.get("assets") or [] if re.fullmatch(r"Kami-Setup-[\d.]+\.exe", a.get("name", ""))), {})
     return {"available": _ver(tag) > _ver(current), "version": tag.lstrip("v"), "url": url,
-            "notes": str(j.get("body") or "")[:600]}
+            "notes": str(j.get("body") or "")[:600], "asset": asset.get("name", ""), "tag": tag,
+            "asset_url": asset.get("browser_download_url", "")}
+
+
+def download_update(info: dict[str, Any], dest_dir: Path, repo: str = GITHUB_REPO) -> Path:
+    """Kurulum dosyasini indir (herkese acik: dogrudan; ozel repo: gh release download). -> yol"""
+    import subprocess
+    import requests
+    name = str(info.get("asset") or "")
+    if not re.fullmatch(r"Kami-Setup-[\d.]+\.exe", name):
+        raise ValueError("asset")
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    out = dest_dir / name
+    url = str(info.get("asset_url") or "")
+    if url.startswith(f"https://github.com/{repo}/releases/download/"):
+        r = requests.get(url, timeout=600, stream=True)
+        if r.status_code == 200:
+            with open(out, "wb") as f:
+                for chunk in r.iter_content(1 << 20):
+                    f.write(chunk)
+            return out
+    gh = _gh()
+    if not gh:
+        raise RuntimeError("gh_missing")
+    r2 = subprocess.run([gh, "release", "download", str(info.get("tag") or ""), "--repo", repo, "--pattern", name,
+                         "--dir", str(dest_dir), "--clobber"], capture_output=True, text=True, timeout=900,
+                        creationflags=0x08000000)
+    if r2.returncode != 0 or not out.is_file():
+        raise RuntimeError("download_failed: " + (r2.stderr or "")[-200:])
+    return out
 
 
 # ---------------------------------------------------------------- sorun paketi

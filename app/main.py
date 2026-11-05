@@ -29,6 +29,20 @@ def _setup_logging() -> None:
     root.addHandler(handler)
     if sys.stderr:
         root.addHandler(logging.StreamHandler())
+    # Paketli (konsolsuz) Kami'de cokme izsiz kalmasin: yakalanmayan istisnalar + yerel cokmeler log'a
+    sys.excepthook = lambda t, v, tb: logging.getLogger("kami").critical("Yakalanmayan hata", exc_info=(t, v, tb))
+    threading.excepthook = lambda a: logging.getLogger("kami").critical(
+        "Thread hatasi (%s)", a.thread.name if a.thread else "?", exc_info=(a.exc_type, a.exc_value, a.exc_traceback))
+    try:
+        import faulthandler
+        global _FAULT_FILE
+        _FAULT_FILE = open(paths.DATA_DIR / "crash.log", "a", encoding="utf-8")   # noqa: SIM115
+        faulthandler.enable(_FAULT_FILE)
+    except Exception:
+        pass
+
+
+_FAULT_FILE = None
 
 
 def _magnet_arg(argv: list[str]) -> str:
@@ -42,8 +56,27 @@ def _magnet_arg(argv: list[str]) -> str:
 
 
 def main() -> int:
+    paths.setup_frozen()
     paths.ensure_dirs()
     _setup_logging()
+    if "--setup" in sys.argv[1:]:   # Inno Setup: native host + magnet kaydi / kaldirma (pencere acilmaz)
+        from app.core import setup_tasks
+        return setup_tasks.run(sys.argv[1:])
+    if "--quit" in sys.argv[1:]:    # kurulum/kaldirma: calisan Kami'yi duzgun kapat, kapanana kadar bekle
+        import json as _json
+        import time as _time
+        try:
+            pid = int(_json.loads(paths.BRIDGE_INFO_PATH.read_text(encoding="utf-8")).get("pid") or 0)
+        except (OSError, ValueError):
+            pid = 0
+        if call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/quit"):
+            from app.core.winwin import pid_alive
+            for _ in range(100):   # en fazla 10 sn
+                if not pid or not pid_alive(pid):
+                    break
+                _time.sleep(0.1)
+            _time.sleep(1.5)       # aria2 (--stop-with-process) Kami'den hemen sonra kapanir: bin\ kilitli kalmasin
+        return 0
     magnet = _magnet_arg(sys.argv[1:])
 
     # Tek ornek: zaten calisiyorsa onu one getir ve cik
@@ -180,6 +213,7 @@ def main() -> int:
         except Exception:
             log.exception("Pencere kapatilamadi")
 
+    bridge.on_quit = quit_app   # Kami.exe --quit (kurulum/kaldirma/guncelleme)
     tray = desktop.Tray(show_window, pause_all, resume_all, quit_app, lambda: settings.get("language"))
     if settings.get("tray_enabled"):
         tray.start()
@@ -361,5 +395,15 @@ def main() -> int:
     return 0
 
 
+def _main_logged() -> int:
+    try:
+        return main()
+    except SystemExit:
+        raise
+    except BaseException:
+        logging.getLogger("kami").critical("Kami baslatilamadi / coktu", exc_info=True)
+        raise
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_main_logged())

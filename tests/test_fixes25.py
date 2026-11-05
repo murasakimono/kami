@@ -160,3 +160,41 @@ def test_ai_needs_repair_stamp(tmp_path, monkeypatch):
     assert not aitools.needs_repair("whisper")
     assert "av>=11,<19" in aitools._spec("whisper") and "audioread>=3" in aitools._spec("uvr")
     assert aitools.JOBS["lyrics"] == ("uvr", "whisper")
+
+
+# ---------- paketleme ----------
+def test_exclusive_port_not_shared():
+    """Windows SO_REUSEADDR: ikinci Kami ayni kopru portunu acip istekleri calmasin."""
+    from http.server import BaseHTTPRequestHandler
+    import pytest
+    from app.core.net import ExclusiveHTTPServer
+    a = ExclusiveHTTPServer.make(("127.0.0.1", 0), BaseHTTPRequestHandler)
+    try:
+        with pytest.raises(OSError):
+            ExclusiveHTTPServer.make(("127.0.0.1", a.server_address[1]), BaseHTTPRequestHandler)
+    finally:
+        a.server_close()
+
+
+def test_migrate_legacy_data_copies_not_moves(tmp_path, monkeypatch):
+    import sqlite3
+    from app import paths
+    old, new = tmp_path / "old", tmp_path / "new"
+    old.mkdir()
+    (old / "settings.json").write_text("{}", encoding="utf-8")
+    (old / "rd_token.bin").write_bytes(b"x")
+    (old / "bridge.json").write_text("{}", encoding="utf-8")
+    with sqlite3.connect(old / "history.db") as c:
+        c.execute("create table t(a)")
+        c.execute("insert into t values (1)")
+    (old / "models").mkdir()
+    monkeypatch.delenv("KAMI_DATA_DIR", raising=False)
+    monkeypatch.setattr(paths, "DATA_DIR", new)
+    monkeypatch.setattr(paths, "LEGACY_DATA", [old])
+    assert paths.migrate_legacy_data() == str(old)
+    assert (new / "settings.json").is_file() and (new / "rd_token.bin").is_file()
+    assert not (new / "bridge.json").exists() and not (new / "models").exists()
+    with sqlite3.connect(new / "history.db") as c:
+        assert c.execute("select a from t").fetchone() == (1,)
+    assert (old / "settings.json").is_file()                  # eski veri yerinde
+    assert paths.migrate_legacy_data() == ""                   # ikinci kez kopyalamaz

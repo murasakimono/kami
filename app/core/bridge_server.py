@@ -30,10 +30,11 @@ from app.core.extras import APP_VERSION  # noqa: E402
 class BridgeServer:
     RD_WAIT = 20.0   # saniye; native host'un rd zaman asimi (host.py) bundan uzun olmali
     def __init__(self, manager: DownloadManager, info_path: Path,
-                 on_show: Callable[[], None] | None = None) -> None:
+                 on_show: Callable[[], None] | None = None, on_quit: Callable[[], None] | None = None) -> None:
         self.manager = manager
         self.info_path = info_path
         self.on_show = on_show or (lambda: None)
+        self.on_quit = on_quit or (lambda: None)
         self.token = secrets.token_urlsafe(32)
         self.httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -44,10 +45,11 @@ class BridgeServer:
 
     def start(self) -> None:
         handler = _make_handler(self)
-        try:
-            self.httpd = ThreadingHTTPServer(("127.0.0.1", PREFERRED_PORT), handler)
+        from app.core.net import ExclusiveHTTPServer
+        try:   # port paylasimsiz: ikinci bir Kami ayni portu acip istekleri calamasin
+            self.httpd = ExclusiveHTTPServer.make(("127.0.0.1", PREFERRED_PORT), handler)
         except OSError:
-            self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            self.httpd = ExclusiveHTTPServer.make(("127.0.0.1", 0), handler)
         self.httpd.daemon_threads = True
         self._thread = threading.Thread(target=self.httpd.serve_forever, name="kami-bridge", daemon=True)
         self._thread.start()
@@ -77,6 +79,9 @@ class BridgeServer:
                          "sites": sites}
         if path == "/v1/show":
             self.on_show()
+            return 200, {"ok": True}
+        if path == "/v1/quit":   # kurulum/kaldirma/guncelleme: Kami.exe --quit (dosyalar kilitli kalmasin)
+            threading.Timer(0.2, self.on_quit).start()
             return 200, {"ok": True}
         if path == "/v1/capture":  # eklenti acilir penceresindeki "otomatik devral" anahtari
             self.manager.settings.set("capture_enabled", bool(body.get("enabled")))

@@ -1,0 +1,22 @@
+Kami kuruldu. Tarayici eklentisini Brave'e yukle (bir kerelik):
+
+1) Daha once Kami eklentisini Projeler\kami\extension klasorunden yuklediysen:
+   brave://extensions sayfasinda eski "Kami" eklentisini KALDIR (ayni kimlik; ikisi birlikte olmaz).
+
+2) Brave'de adres cubuguna yaz:  brave://extensions
+
+3) Sag ustte "Gelistirici modu"nu ac.
+
+4) "Paketlenmemis oge yukle" -> su klasoru sec:
+      %LOCALAPPDATA%\Programs\Kami\extension
+   (Kurulumu baska klasore yaptiysan: <kurulum klasoru>\extension)
+
+5) Kami eklenti simgesine tikla: "Kami acik (0.8.x)" yazmali.
+   Yazmiyorsa Kami'yi bir kez kapatip ac (tepsi simgesi > Cikis).
+
+Notlar
+- Ayarlar ve gecmis %LOCALAPPDATA%\Kami\data klasorunde; guncelleme ve kaldirma bunlari silmez
+  (kaldirirken ayrica sorulur).
+- Gelistirme klasorundeki (Projeler\kami\data) ayarlar ilk acilista KOPYALANIR; eskisi yerinde kalir.
+- Whisper / UVR5 ilk kullanimda sorulup ayrica iner (modeller kuruluma dahil degil).
+- Guncellemeler: Ayarlar > Hakkinda > Simdi denetle (GitHub Releases).

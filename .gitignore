@@ -12,3 +12,5 @@ bin/*.exe
 extension/*.pem
 .claude/settings.local.json
 native_host/com.metehan.kami.json
+updates/
+build_out/

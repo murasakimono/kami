@@ -132,3 +132,17 @@ class WindowFront:
                     log.info("Pencere one getirilemedi (Windows izin vermedi ya da pencere yok)")
             except Exception:
                 log.exception("Pencere one getirme hatasi")
+
+
+def pid_alive(pid: int) -> bool:
+    """Surec hala calisiyor mu (kurulum --quit beklemesi icin)."""
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    h = k32.OpenProcess(0x1000, False, int(pid))   # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        return bool(k32.GetExitCodeProcess(h, ctypes.byref(code))) and code.value == 259   # STILL_ACTIVE
+    finally:
+        k32.CloseHandle(h)

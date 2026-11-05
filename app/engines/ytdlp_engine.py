@@ -541,6 +541,21 @@ def start_self_update(min_interval_h: float, settings) -> None:
     last = float(settings.get("ytdlp_last_update") or 0)
     if time.time() - last < min_interval_h * 3600:
         return
+    from app import paths
+    if paths.FROZEN:   # kurulu Kami: pip yok -> PyPI tekerlegi data/pylib'e
+        _update_done.clear()
+
+        def work_frozen() -> None:
+            try:
+                ver = update_pylib(paths.PYLIB_DIR)
+                log.info("yt-dlp guncelleme (kurulu): %s", ver or "zaten guncel")
+                settings.set("ytdlp_last_update", time.time())
+            except Exception:
+                log.exception("yt-dlp guncellenemedi")
+            finally:
+                _update_done.set()
+        threading.Thread(target=work_frozen, name="kami-ytdlp-update", daemon=True).start()
+        return
     uv = shutil.which("uv")
     if not uv:
         log.info("uv bulunamadi, yt-dlp guncellemesi atlandi")
@@ -563,3 +578,62 @@ def start_self_update(min_interval_h: float, settings) -> None:
             _update_done.set()
 
     threading.Thread(target=work, name="kami-ytdlp-update", daemon=True).start()
+
+
+def _installed_version(pylib) -> str:
+    vf = pylib / "yt_dlp" / "version.py"
+    if vf.is_file():
+        m = re.search(r"__version__\s*=\s*['\"]([^'\"]+)", vf.read_text(encoding="utf-8"))
+        if m:
+            return m.group(1)
+    try:
+        from importlib.metadata import version
+        return version("yt-dlp")
+    except Exception:
+        return ""
+
+
+def update_pylib(pylib) -> str:
+    """Kurulu Kami icin: PyPI'deki son yt-dlp (+ yt-dlp-ejs) saf-Python tekerlegini SHA256 dogrulayip
+    data/pylib'e acar (bir sonraki yt-dlp yuklemesinde kullanilir). Yeni surum ya da '' (guncel)."""
+    import hashlib
+    import io
+    import sys as _sys
+    import zipfile
+
+    import requests
+    meta = requests.get("https://pypi.org/pypi/yt-dlp/json", timeout=20).json()
+    latest = meta["info"]["version"]
+    if _ver_tuple(latest) <= _ver_tuple(_installed_version(pylib)):
+        return ""
+    tmp = pylib.parent / "pylib.new"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    for pkg, info in (("yt-dlp", meta), ("yt-dlp-ejs", None)):
+        info = info or requests.get(f"https://pypi.org/pypi/{pkg}/json", timeout=20).json()
+        wheel = next((f for f in info["urls"] if f["filename"].endswith("-py3-none-any.whl")), None)
+        if not wheel:
+            if pkg == "yt-dlp":
+                raise RuntimeError("yt-dlp tekerlegi yok")
+            continue
+        data = requests.get(wheel["url"], timeout=120).content
+        if hashlib.sha256(data).hexdigest() != wheel["digests"]["sha256"]:
+            raise RuntimeError(f"{pkg}: SHA256 uyusmuyor")
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            for n in z.namelist():   # sadece paket klasorleri (zip-slip korumali)
+                if ".." in n or n.startswith("/") or ".dist-info/" in n and pkg != "yt-dlp":
+                    continue
+                z.extract(n, tmp)
+    old = pylib.parent / "pylib.old"
+    shutil.rmtree(old, ignore_errors=True)
+    if pylib.exists():
+        pylib.rename(old)
+    tmp.rename(pylib)
+    shutil.rmtree(old, ignore_errors=True)
+    if str(pylib) not in _sys.path and "yt_dlp" not in _sys.modules:
+        _sys.path.insert(0, str(pylib))
+    return latest
+
+
+def _ver_tuple(v: str) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", v or "")) or (0,)

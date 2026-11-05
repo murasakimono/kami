@@ -16,8 +16,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-BRIDGE_INFO = Path(os.environ.get("KAMI_BRIDGE_INFO") or ROOT / "data" / "bridge.json")  # e2e testleri icin
+if getattr(sys, "frozen", False):   # kurulu Kami: kami_host.exe; veri %LOCALAPPDATA%\Kami\data
+    _DATA = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Kami" / "data"
+else:
+    _DATA = Path(__file__).resolve().parent.parent / "data"
+BRIDGE_INFO = Path(os.environ.get("KAMI_BRIDGE_INFO") or _DATA / "bridge.json")  # e2e testleri icin
 MAX_IN = 8 * 1024 * 1024        # tarayicidan gelen tek mesaj icin makul ust sinir
 ROUTES = {"ping": "/v1/ping", "add": "/v1/add", "show": "/v1/show", "set_capture": "/v1/capture",
           "media": "/v1/media", "cookies": "/v1/cookies", "rd": "/v1/rd"}

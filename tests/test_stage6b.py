@@ -164,10 +164,11 @@ def test_ai_queue_missing_tool_and_run(tmp_path, monkeypatch, mgr):  # noqa: F81
     r = q.submit("whisper", 1)
     assert r == {"ok": False, "error": "tool_missing", "tool": "whisper", "size_gb": 3.0}
     monkeypatch.setattr(aitools, "installed", lambda n: True)
+    monkeypatch.setattr(aitools, "needs_repair", lambda n: False)   # testte gercek kurulum/onarim calismasin
     (tmp_path / "v.mp4").write_bytes(b"x")
     seen = {}
 
-    def fake_run(args, on_msg, cancel):
+    def fake_run(args, on_msg, cancel, tool=""):
         seen["args"] = args
         on_msg({"p": 0.5})
         (tmp_path / "v.srt").write_text("1\n", encoding="utf-8")

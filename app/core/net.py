@@ -44,3 +44,24 @@ def ipv6_works(timeout: float = 1.5) -> bool:
             if s is not None:
                 s.close()
     return False
+
+
+class ExclusiveHTTPServer:
+    """Mixin degil fabrika: ThreadingHTTPServer'i Windows'ta PORT PAYLASIMSIZ acar.
+    http.server SO_REUSEADDR kullanir; Windows'ta bu, baska bir surecin (ör. ikinci Kami) AYNI portu acmasina ve
+    istekleri calmasina izin verir. Burada SO_EXCLUSIVEADDRUSE ile port doluysa OSError alinir."""
+
+    @staticmethod
+    def make(addr, handler):
+        import socket
+        from http.server import ThreadingHTTPServer
+
+        class _S(ThreadingHTTPServer):
+            allow_reuse_address = False
+            allow_reuse_port = False
+
+            def server_bind(self):
+                if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                super().server_bind()
+        return _S(addr, handler)

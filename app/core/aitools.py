@@ -1,6 +1,8 @@
-"""Agir medya araclari: Whisper altyazi + UVR5 vokal ayirma (GPU). Ilk kullanimda paket + model iner, ONCE SORULUR.
+r"""Agir medya araclari: Whisper altyazi + UVR5 vokal ayirma (GPU). Ilk kullanimda paket + model iner, ONCE SORULUR.
 
-- Paketler uygulamanin Python ortamina `uv pip install` ile kurulur (paketleme asamasinda ayri karar).
+- Gelistirmede paketler uygulamanin .venv'ine `uv pip install` ile kurulur. KURULU Kami.exe'de ayri bir ortam:
+  %LOCALAPPDATA%\Kami\tools\venv (paketle gelen bin\uv.exe ile Python 3.12 + paketler; modeller kuruluma girmez).
+  Gelistirme .venv'inde araclar zaten kuruluysa o kullanilir (7 GB tekrar inmesin).
 - Isler tek kuyrukta sirayla (GPU bellegi 6 GB: ayni anda iki model calismasin), ALT SURECTE calisir
   (app.tools.*_run); arayuz surecine torch/CUDA yuklenmez, cokse de Kami ayakta kalir.
 - Durum download.extra'ya yazilir: ai_whisper / ai_uvr = queued | running | done | error, ai_*_p (0-1), sonuclar.
@@ -47,8 +49,24 @@ WHISPER_MODELS = ["large-v3-turbo", "large-v3", "medium", "small"]
 NO_WINDOW = 0x08000000
 
 
-def python_exe() -> str:
+LEGACY_VENV = paths.Path.home() / "Projeler" / "kami" / ".venv"
+
+
+def _venv_has(venv, module: str) -> bool:
+    return (venv / "Scripts" / "python.exe").is_file() and (venv / "Lib" / "site-packages" / module).is_dir()
+
+
+def tools_venv(name: str = ""):
+    """Kurulu Kami: araclarin Python ortami (once kendi ortami, yoksa araclari kurulu gelistirme .venv'i)."""
+    if name and not _venv_has(paths.TOOLS_ENV, TOOLS[name]["module"]) and _venv_has(LEGACY_VENV, TOOLS[name]["module"]):
+        return LEGACY_VENV
+    return paths.TOOLS_ENV
+
+
+def python_exe(name: str = "") -> str:
     """pythonw ile calisiyorsak ayni klasordeki python.exe (stdout borusu icin; pencere acilmaz)."""
+    if paths.FROZEN:
+        return str(tools_venv(name) / "Scripts" / "python.exe")
     exe = sys.executable
     d, b = os.path.split(exe)
     if b.lower() in ("pythonw.exe", "kami.exe"):
@@ -59,6 +77,8 @@ def python_exe() -> str:
 
 
 def installed(name: str) -> bool:
+    if paths.FROZEN:
+        return _venv_has(tools_venv(name), TOOLS[name]["module"])
     try:
         return importlib.util.find_spec(TOOLS[name]["module"]) is not None
     except (ImportError, ValueError):
@@ -66,6 +86,8 @@ def installed(name: str) -> bool:
 
 
 def _stamp_path(name: str):
+    if paths.FROZEN and tools_venv(name) == LEGACY_VENV:   # gelistirme ortami: onun damgasi
+        return paths.Path.home() / "Projeler" / "kami" / "data" / "models" / name / ".kami_ok"
     return paths.DATA_DIR / "models" / name / ".kami_ok"
 
 
@@ -87,7 +109,7 @@ def selftest(name: str) -> dict:
     """Alt surecte app.tools.selftest: model indirmeden ice aktarma + kucuk ses cozme."""
     folder = os.path.join(models_dir(name), "_selftest")
     try:
-        r = subprocess.run([python_exe(), "-m", "app.tools.selftest", name, folder], cwd=str(paths.ROOT),
+        r = subprocess.run([python_exe(name), "-m", "app.tools.selftest", name, folder], cwd=str(paths.TOOLSRC_DIR),
                            capture_output=True, text=True, encoding="utf-8", errors="replace",
                            creationflags=NO_WINDOW, timeout=300,
                            env={**os.environ, "PYTHONIOENCODING": "utf-8"})
@@ -104,6 +126,10 @@ def selftest(name: str) -> dict:
 def models_dir(name: str) -> str:
     d = paths.DATA_DIR / "models" / name
     d.mkdir(parents=True, exist_ok=True)
+    if paths.FROZEN and not any(d.iterdir()):   # gelistirmede inmis modeller (GB'larca) tekrar inmesin
+        old = paths.Path.home() / "Projeler" / "kami" / "data" / "models" / name
+        if old.is_dir() and any(old.iterdir()):
+            return str(old)
     return str(d)
 
 
@@ -111,10 +137,23 @@ def install(name: str, on_line: Callable[[str], None] = lambda s: None) -> bool:
     """uv pip install (uv yoksa pip). Uzun surer (GB); cagiran arka planda calistirir."""
     t = TOOLS[name]
     uv = shutil.which("uv")
+    if paths.FROZEN:   # ayri araclar ortami: yoksa uv ile Python 3.12 venv olustur
+        uv = str(paths.BIN_DIR / "uv.exe") if (paths.BIN_DIR / "uv.exe").is_file() else uv
+        if not uv:
+            on_line("uv bulunamadi")
+            return False
+        if not (paths.TOOLS_ENV / "Scripts" / "python.exe").is_file():
+            on_line("Python ortami olusturuluyor...")
+            paths.TOOLS_ENV.parent.mkdir(parents=True, exist_ok=True)
+            r = subprocess.run([uv, "venv", "--python", "3.12", str(paths.TOOLS_ENV)], capture_output=True,
+                               text=True, creationflags=NO_WINDOW)
+            if r.returncode != 0:
+                log.warning("Araclar ortami olusturulamadi: %s", r.stderr[-300:])
+                return False
     if uv:
-        cmd = [uv, "pip", "install", "--python", python_exe()]
+        cmd = [uv, "pip", "install", "--python", python_exe(name)]
     else:
-        cmd = [python_exe(), "-m", "pip", "install"]
+        cmd = [python_exe(name), "-m", "pip", "install"]
     if t["extra_index"]:
         cmd += ["--extra-index-url", t["extra_index"], "--index-strategy", "unsafe-best-match"] if uv else \
             ["--extra-index-url", t["extra_index"]]
@@ -143,10 +182,10 @@ def install(name: str, on_line: Callable[[str], None] = lambda s: None) -> bool:
     return True
 
 
-def _run_json(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event) -> dict:
+def _run_json(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event, tool: str = "") -> dict:
     """Alt sureci calistir, JSON satirlarini ilet; son 'done'/'error' mesajini dondur."""
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "HF_HUB_DISABLE_TELEMETRY": "1"}
-    p = subprocess.Popen([python_exe(), "-m", *args], cwd=str(paths.ROOT), stdout=subprocess.PIPE,
+    p = subprocess.Popen([python_exe(tool), "-m", *args], cwd=str(paths.TOOLSRC_DIR), stdout=subprocess.PIPE,
                          stderr=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
                          creationflags=NO_WINDOW, env=env)
     last: dict = {"error": "no_output"}
@@ -293,7 +332,7 @@ class AiQueue:
         model = self.settings.get("whisper_model") or "large-v3-turbo"
         srt = os.path.splitext(path)[0] + (f".{lang}" if lang != "auto" else "") + ".srt"
         res = _run_json(["app.tools.whisper_run", path, srt, lang, model, models_dir("whisper")],
-                        lambda m: "p" in m and self.set_extra(did, ai_whisper_p=m["p"]), ev)
+                        lambda m: "p" in m and self.set_extra(did, ai_whisper_p=m["p"]), ev, "whisper")
         if "error" in res:
             self.set_extra(did, ai_whisper="cancelled" if res["error"] == "cancelled" else "error",
                            ai_whisper_err=str(res["error"])[:200])
@@ -315,7 +354,7 @@ class AiQueue:
         out_dir = os.path.join(os.path.dirname(path), "Ayrilmis")
         res = _run_json(["app.tools.uvr_run", path, out_dir, model, models_dir("uvr"),
                          self.settings.get("uvr_format") or "mp3"],
-                        lambda m: m.get("stage") == "separate" and self.set_extra(did, ai_uvr_p=0.3), ev)
+                        lambda m: m.get("stage") == "separate" and self.set_extra(did, ai_uvr_p=0.3), ev, "uvr")
         if "error" in res:
             self.set_extra(did, ai_uvr="cancelled" if res["error"] == "cancelled" else "error",
                            ai_uvr_err=str(res["error"])[:200])
@@ -335,7 +374,7 @@ class AiQueue:
         try:
             res = _run_json(["app.tools.uvr_run", path, tmp, self.settings.get("uvr_model") or UVR_MODELS[0],
                              models_dir("uvr"), "wav"],
-                            lambda m: m.get("stage") == "separate" and self.set_extra(did, ai_lyrics_p=0.2), ev)
+                            lambda m: m.get("stage") == "separate" and self.set_extra(did, ai_lyrics_p=0.2), ev, "uvr")
             if "error" in res:
                 raise _JobError(res["error"])
             vocal = next((f for f in res["done"] if "(Vokal)" in os.path.basename(f)), "")
@@ -345,7 +384,7 @@ class AiQueue:
             lang = lang or self.settings.get("whisper_lang") or "auto"
             res = _run_json(["app.tools.whisper_run", vocal, srt, lang,
                              self.settings.get("whisper_model") or "large-v3-turbo", models_dir("whisper")],
-                            lambda m: "p" in m and self.set_extra(did, ai_lyrics_p=0.5 + m["p"] / 2), ev)
+                            lambda m: "p" in m and self.set_extra(did, ai_lyrics_p=0.5 + m["p"] / 2), ev, "whisper")
             if "error" in res:
                 raise _JobError(res["error"])
             with open(srt, encoding="utf-8") as f:
