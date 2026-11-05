@@ -103,7 +103,7 @@ def selftest(name: str) -> dict:
     folder = os.path.join(models_dir(name), "_selftest")
     try:
         r = subprocess.run([python_exe(name), "-m", "app.tools.selftest", name, folder], cwd=str(paths.TOOLSRC_DIR),
-                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL,
                            creationflags=NO_WINDOW, timeout=300,
                            env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     except (OSError, subprocess.SubprocessError) as exc:
@@ -113,7 +113,7 @@ def selftest(name: str) -> dict:
             return json.loads(line)
         except ValueError:
             continue
-    return {"ok": False, "error": "no_output"}
+    return {"ok": False, "error": "no_output: " + ((r.stderr or "").strip().splitlines() or [""])[-1][:150]}
 
 
 def models_dir(name: str) -> str:
@@ -126,53 +126,88 @@ def models_dir(name: str) -> str:
     return str(d)
 
 
+LAST_ERROR: dict[str, str] = {}   # arac -> son kurulum hatasi (arayuz toast'ta gosterir)
+
+
+def _ilog(name: str, text: str) -> None:
+    """Kurulum cikisi: logging'den BAGIMSIZ, dogrudan DATA_DIR/install.log'a da yazilir (log kurulumu bozuk olsa bile iz kalir)."""
+    log.info("[kurulum %s] %s", name, text)
+    try:
+        import time
+        with open(paths.DATA_DIR / "install.log", "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [{name}] {text}\n")
+    except OSError:
+        pass
+
+
+def _fail(name: str, msg: str) -> bool:
+    LAST_ERROR[name] = msg[-200:]
+    _ilog(name, "HATA: " + msg)
+    return False
+
+
+def _run_logged(name: str, cmd: list[str], on_line: Callable[[str], None]) -> int:
+    """Komutu calistir; stdout+stderr her satiri log'a + on_line'a. stdin KAPALI (konsolsuz Kami'de gecersiz handle)."""
+    _ilog(name, "$ " + " ".join(cmd))
+    p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                         encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
+    tail: list[str] = []
+    for line in p.stdout or []:
+        line = line.rstrip()
+        if line.strip():
+            tail = (tail + [line.strip()])[-8:]
+            _ilog(name, line)
+            on_line(line)
+    rc = p.wait()
+    if rc != 0:
+        LAST_ERROR[name] = f"cikis {rc}: " + (tail[-1] if tail else "")
+    return rc
+
+
 def install(name: str, on_line: Callable[[str], None] = lambda s: None) -> bool:
-    """uv pip install (uv yoksa pip). Uzun surer (GB); cagiran arka planda calistirir."""
+    """uv pip install (uv yoksa pip). Uzun surer (GB); cagiran arka planda calistirir. Hata: LAST_ERROR[name] + install.log."""
+    LAST_ERROR.pop(name, None)
+    try:
+        return _install(name, on_line)
+    except Exception as exc:   # noqa: BLE001 - hicbir hata sessiz kalmasin
+        log.exception("Arac kurulumu istisna: %s", name)
+        return _fail(name, f"{type(exc).__name__}: {exc}")
+
+
+def _install(name: str, on_line: Callable[[str], None]) -> bool:
     t = TOOLS[name]
     uv = shutil.which("uv")
-    if paths.FROZEN:   # ayri araclar ortami: yoksa uv ile Python 3.12 venv olustur
+    if paths.FROZEN:   # ayri araclar ortami: yoksa uv ile Python 3.12 venv olustur (uv Python'u kendisi indirir)
         uv = str(paths.BIN_DIR / "uv.exe") if (paths.BIN_DIR / "uv.exe").is_file() else uv
         if not uv:
-            on_line("uv bulunamadi")
-            return False
+            return _fail(name, "uv.exe bulunamadi (bin klasoru)")
         env_dir = tool_env(name)
         if not (env_dir / "Scripts" / "python.exe").is_file():
             on_line("Python ortami olusturuluyor...")
             env_dir.parent.mkdir(parents=True, exist_ok=True)
-            r = subprocess.run([uv, "venv", "--python", "3.12", str(env_dir)], capture_output=True,
-                               text=True, creationflags=NO_WINDOW)
-            if r.returncode != 0:
-                log.warning("Araclar ortami olusturulamadi: %s", r.stderr[-300:])
-                return False
+            if _run_logged(name, [uv, "venv", "--python", "3.12", "--seed", str(env_dir)], on_line) != 0                     or not (env_dir / "Scripts" / "python.exe").is_file():
+                return _fail(name, "Python ortami olusturulamadi: " + LAST_ERROR.get(name, "python.exe yok"))
     if uv:
         cmd = [uv, "pip", "install", "--python", python_exe(name)]
     else:
         cmd = [python_exe(name), "-m", "pip", "install"]
     if t["extra_index"]:
-        cmd += ["--extra-index-url", t["extra_index"], "--index-strategy", "unsafe-best-match"] if uv else \
-            ["--extra-index-url", t["extra_index"]]
+        cmd += ["--extra-index-url", t["extra_index"], "--index-strategy", "unsafe-best-match"] if uv else             ["--extra-index-url", t["extra_index"]]
     cmd += t["packages"]
     log.info("Arac kuruluyor: %s", name)
-    try:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                             encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
-        for line in p.stdout or []:
-            on_line(line.rstrip())
-        ok = p.wait() == 0
-    except OSError:
-        log.exception("Kurulum baslatilamadi")
-        return False
+    ok = _run_logged(name, cmd, on_line) == 0
     importlib.invalidate_caches()
-    log.info("Arac kurulumu %s: %s", name, "tamam" if ok else "BASARISIZ")
-    if not (ok and installed(name)):
-        return False
+    if not ok:
+        return _fail(name, "paket kurulumu basarisiz: " + LAST_ERROR.get(name, ""))
+    if not installed(name):
+        return _fail(name, f"kurulum bitti ama '{t['module']}' modulu bulunamadi")
     on_line("selftest...")
     st = selftest(name)
-    log.info("Arac kendi kendine testi %s: %s", name, st)
+    _ilog(name, f"selftest: {st}")
     if not st.get("ok"):
-        on_line("selftest: " + str(st.get("error", ""))[:100])
-        return False
+        return _fail(name, "selftest: " + str(st.get("error", ""))[-150:])
     _stamp_path(name).write_text(_spec(name), encoding="utf-8")
+    LAST_ERROR.pop(name, None)
     return True
 
 
@@ -190,16 +225,18 @@ def _run_json(args: list[str], on_msg: Callable[[dict], None], cancel: threading
 def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event, tool: str,
               extra_env: dict) -> dict:
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "HF_HUB_DISABLE_TELEMETRY": "1", **extra_env}
-    p = subprocess.Popen([python_exe(tool), "-m", *args], cwd=str(paths.TOOLSRC_DIR), stdout=subprocess.PIPE,
-                         stderr=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
+    p = subprocess.Popen([python_exe(tool), "-m", *args], cwd=str(paths.TOOLSRC_DIR), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
                          creationflags=NO_WINDOW, env=env)
     last: dict = {"error": "no_output"}
+    noise = ""
     watcher = threading.Thread(target=lambda: (cancel.wait(), p.poll() is None and p.kill()), daemon=True)
     watcher.start()
     for line in p.stdout or []:
         try:
             msg = json.loads(line)
         except ValueError:
+            noise = line.strip()[-150:] or noise   # JSON olmayan satir (ör. Traceback son satiri) hata ipucu
             continue
         if "done" in msg or "error" in msg:
             last = msg
@@ -207,6 +244,9 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
     p.wait()
     if cancel.is_set():
         return {"error": "cancelled"}
+    if last == {"error": "no_output"} and noise:
+        log.warning("%s alt surec cikti: %s", tool, noise)
+        return {"error": "no_output: " + noise}
     return last
 
 
@@ -278,7 +318,7 @@ class AiQueue:
                     self.installing[name] = s.strip()[-120:]
             ok = install(name, line)
             self.installing.pop(name, None)
-            self.notify(f"{name}:{'installed' if ok else 'install_failed'}")
+            self.notify(f"{name}:installed" if ok else f"{name}:install_failed:{LAST_ERROR.get(name, '')}")
         threading.Thread(target=work, name=f"kami-install-{name}", daemon=True).start()
 
     # ---- isler
@@ -314,7 +354,7 @@ class AiQueue:
                     self.set_extra(did, **{f"ai_{kind}": "running", f"ai_{kind}_p": 0})
                     log.info("Arac onariliyor: %s", tool)
                     if not install(tool):
-                        self.set_extra(did, **{f"ai_{kind}": "error", f"ai_{kind}_err": "repair_failed"})
+                        self.set_extra(did, **{f"ai_{kind}": "error", f"ai_{kind}_err": "repair_failed: " + LAST_ERROR.get(tool, "")[:150]})
                         break
                 else:
                     broken = []

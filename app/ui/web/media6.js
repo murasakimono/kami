@@ -213,7 +213,7 @@ function onAiEvents(evs) {
   for (const ev of evs || []) {
     const [k, what, ...rest] = String(ev).split(":");
     if (k === "follow") { toast(T("fw_new", what, rest.join(":"))); if ($(".main").dataset.view === "follow") followRefresh(); continue; }
-    if (what === "installed" || what === "install_failed") { toast(T("ai_ev_" + what, k === "whisper" ? "Whisper" : "UVR5"), what !== "installed"); continue; }
+    if (what === "installed" || what === "install_failed") { toast(T("ai_ev_" + what, k === "whisper" ? "Whisper" : "UVR5") + (rest.length ? " — " + rest.join(":") : ""), what !== "installed"); continue; }
     if (what === "cpu") { toast(rest.join(":"), true); continue; }
     if (what === "done") toast(T("ai_ev_done", k, rest.join(":")));
   }
