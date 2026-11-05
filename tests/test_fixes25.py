@@ -154,7 +154,14 @@ def test_ai_needs_repair_stamp(tmp_path, monkeypatch):
     from app.core import aitools
     monkeypatch.setattr(aitools.paths, "DATA_DIR", tmp_path)
     monkeypatch.setattr(aitools, "installed", lambda n: True)
-    assert aitools.needs_repair("whisper")                  # damga yok: eski kurulum -> onar
+    monkeypatch.setattr(aitools, "selftest", lambda n: {"ok": False, "error": "x"})
+    assert aitools.needs_repair("whisper")                  # damga yok + saglik kontrolu basarisiz -> onar
+    monkeypatch.setattr(aitools, "selftest", lambda n: {"ok": True})
+    assert not aitools.needs_repair("whisper")              # saglam kurulum: yeniden kurma, sadece damgala
+    assert aitools._stamp_path("whisper").read_text(encoding="utf-8") == aitools._spec("whisper")
+    aitools._stamp_path("whisper").unlink()
+    monkeypatch.setattr(aitools, "selftest", lambda n: {"ok": False, "error": "x"})
+    assert aitools.needs_repair("whisper")
     aitools.models_dir("whisper")
     aitools._stamp_path("whisper").write_text(aitools._spec("whisper"), encoding="utf-8")
     assert not aitools.needs_repair("whisper")

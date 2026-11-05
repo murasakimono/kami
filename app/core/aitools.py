@@ -89,13 +89,24 @@ def _spec(name: str) -> str:
 
 
 def needs_repair(name: str) -> bool:
-    """Paket var ama bu surumun paket listesiyle kurulup kendi kendine testten gecmemis (eski/bozuk kurulum)."""
+    """Paket var ama bu surumun damgasi yok: ONCE saglik kontrolu (selftest). Saglamsa damgala, yeniden KURMA."""
     if not installed(name):
         return False
     try:
-        return _stamp_path(name).read_text(encoding="utf-8") != _spec(name)
+        if _stamp_path(name).read_text(encoding="utf-8") == _spec(name):
+            return False
     except OSError:
-        return True
+        pass
+    st = selftest(name)
+    _ilog(name, f"saglik kontrolu: {st}")
+    if st.get("ok"):
+        try:
+            _stamp_path(name).parent.mkdir(parents=True, exist_ok=True)
+            _stamp_path(name).write_text(_spec(name), encoding="utf-8")
+        except OSError:
+            pass
+        return False
+    return True
 
 
 def selftest(name: str) -> dict:
@@ -105,7 +116,7 @@ def selftest(name: str) -> dict:
         r = subprocess.run([python_exe(name), "-m", "app.tools.selftest", name, folder], cwd=str(paths.TOOLSRC_DIR),
                            capture_output=True, text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL,
                            creationflags=NO_WINDOW, timeout=300,
-                           env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                           env=_clean_env())
     except (OSError, subprocess.SubprocessError) as exc:
         return {"ok": False, "error": type(exc).__name__}
     for line in reversed((r.stdout or "").splitlines()):
@@ -146,11 +157,28 @@ def _fail(name: str, msg: str) -> bool:
     return False
 
 
+def _clean_env() -> dict:
+    """PyInstaller (_MEIPASS/_PYI_*, PATH'teki _internal) ve Python degiskenleri alt sureci bozmasin; uv onbellegi sabit."""
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(("_PYI", "PYTHON", "VIRTUAL_ENV", "UV_")) and k not in ("_MEIPASS2",)}
+    meipass = str(getattr(sys, "_MEIPASS", "") or "")
+    if meipass:
+        env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep) if p and not p.startswith(meipass))
+    local = paths.USER_DIR
+    if paths.FROZEN:
+        env["UV_CACHE_DIR"] = str(local / "uv-cache")
+    env["PYTHONIOENCODING"] = "utf-8"
+    for k in ("TEMP", "TMP"):   # gercek kullanici temp'i (PyInstaller _MEI temp'ine/baglama noktasina isaret etmesin)
+        env[k] = os.environ.get("TEMP") if os.path.isdir(os.environ.get("TEMP", "")) else str(local / "tmp")
+    return env
+
+
 def _run_logged(name: str, cmd: list[str], on_line: Callable[[str], None]) -> int:
     """Komutu calistir; stdout+stderr her satiri log'a + on_line'a. stdin KAPALI (konsolsuz Kami'de gecersiz handle)."""
     _ilog(name, "$ " + " ".join(cmd))
     p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                         encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
+                         encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
+                         env=_clean_env(), cwd=str(paths.USER_DIR) if paths.USER_DIR.is_dir() else None)
     tail: list[str] = []
     for line in p.stdout or []:
         line = line.rstrip()
@@ -224,7 +252,7 @@ def _run_json(args: list[str], on_msg: Callable[[dict], None], cancel: threading
 
 def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event, tool: str,
               extra_env: dict) -> dict:
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "HF_HUB_DISABLE_TELEMETRY": "1", **extra_env}
+    env = {**_clean_env(), "HF_HUB_DISABLE_TELEMETRY": "1", **extra_env}
     p = subprocess.Popen([python_exe(tool), "-m", *args], cwd=str(paths.TOOLSRC_DIR), stdin=subprocess.DEVNULL,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
                          creationflags=NO_WINDOW, env=env)
