@@ -51,6 +51,62 @@ def write_message(stream, payload: dict) -> None:
     stream.flush()
 
 
+def _hlog(text: str) -> None:
+    """host.log: Brave'in basLattigi host'un ortami/hatalari (DATA yazilamazsa %TEMP%). 200 KB'i asinca sifirlanir."""
+    import time
+    for d in (_DATA, Path(os.environ.get("TEMP") or "."),):
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            f = d / ("host.log" if d == _DATA else "kami_host.log")
+            if f.exists() and f.stat().st_size > 200_000:
+                f.unlink()
+            with open(f, "a", encoding="utf-8") as fh:
+                fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} pid={os.getpid()} {text}\n")
+            return
+        except OSError:
+            continue
+
+
+def _env_dump() -> str:
+    keys = ("LOCALAPPDATA", "USERPROFILE", "APPDATA", "TEMP", "USERNAME")
+    env = {k: os.environ.get(k) for k in keys}
+    env.update({k: v for k, v in os.environ.items() if k.startswith("KAMI_")})
+    parent = BRIDGE_INFO.parent
+    try:
+        listing = os.listdir(parent)
+    except OSError as exc:
+        listing = f"{exc!r}"
+    return (f"exe={sys.executable} cwd={os.getcwd()} env={env} info={BRIDGE_INFO} exists={BRIDGE_INFO.exists()} "
+            f"dir_list={listing}")
+
+
+def _read_registry() -> dict | None:
+    """Kami kopru bilgisini HKCU/Software/Kami/Bridge/Info (REG_SZ JSON) olarak da yazar: dosyaya bagimli olma."""
+    if os.name != "nt":
+        return None
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Kami\Bridge") as k:
+            return json.loads(winreg.QueryValueEx(k, "Info")[0])
+    except (OSError, ValueError, ImportError):
+        return None
+
+
+def _load_info(info_path: Path) -> dict:
+    try:
+        return json.loads(info_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        _hlog(f"bridge dosyasi okunamadi: {exc!r} errno={getattr(exc, 'errno', None)} "
+              f"winerror={getattr(exc, 'winerror', None)} path={info_path}")
+        if info_path == BRIDGE_INFO:
+            reg = _read_registry()
+            if reg and "port" in reg and "token" in reg:
+                _hlog("registry'den okundu")
+                return reg
+            _hlog("registry de bos")
+        raise
+
+
 def forward(msg: dict, info_path: Path | None = None, timeout: float | None = None) -> dict:
     route = ROUTES.get(str(msg.get("type", "")))
     if timeout is None:   # RD istegi RD'nin cevabini bekler (kopru en fazla 20 sn)
@@ -59,11 +115,11 @@ def forward(msg: dict, info_path: Path | None = None, timeout: float | None = No
         return {"ok": False, "error": "unknown_type"}
     info_path = info_path or BRIDGE_INFO
     try:
-        info = json.loads(info_path.read_text(encoding="utf-8"))
+        info = _load_info(info_path)
         port = int(info["port"])
         token = str(info["token"])
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        return {"ok": False, "error": "offline", "detail": f"bridge.json okunamadi ({info_path}): {type(exc).__name__}"}
+        return {"ok": False, "error": "offline", "detail": f"bridge.json okunamadi ({info_path}): {type(exc).__name__}: {str(exc)[:100]}"}
     body = {k: v for k, v in msg.items() if k != "type"}
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}{route}",
@@ -86,6 +142,7 @@ def forward(msg: dict, info_path: Path | None = None, timeout: float | None = No
 
 def main() -> int:
     _binary_stdio()
+    _hlog("basladi " + _env_dump())
     stdin, stdout = sys.stdin.buffer, sys.stdout.buffer
     # sendNativeMessage tek mesaj gonderir; connectNative ise surekli baglanti tutar. Ikisini de destekle.
     while True:

@@ -58,9 +58,29 @@ class BridgeServer:
         tmp = self.info_path.with_suffix(".tmp")
         tmp.write_text(json.dumps({"port": self.port, "token": self.token, "pid": os.getpid()}), encoding="utf-8")
         tmp.replace(self.info_path)
+        self._write_registry(True)
         log.info("Kopru dinliyor: 127.0.0.1:%s", self.port)
 
+    def _write_registry(self, on: bool) -> None:
+        """HKCU/Software/Kami/Bridge/Info: native host dosya okuyamazsa buradan alir (token dahil, sadece bu kullanici)."""
+        if os.name != "nt":
+            return
+        try:
+            import winreg
+            if on:
+                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Kami\Bridge") as k:
+                    winreg.SetValueEx(k, "Info", 0, winreg.REG_SZ,
+                                      json.dumps({"port": self.port, "token": self.token, "pid": os.getpid()}))
+            else:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Kami\Bridge", 0, winreg.KEY_ALL_ACCESS) as k:
+                    cur = json.loads(winreg.QueryValueEx(k, "Info")[0])
+                    if cur.get("pid") == os.getpid():
+                        winreg.DeleteValue(k, "Info")
+        except (OSError, ValueError):
+            pass
+
     def stop(self) -> None:
+        self._write_registry(False)
         if self.httpd:
             self.httpd.shutdown()
             self.httpd.server_close()
