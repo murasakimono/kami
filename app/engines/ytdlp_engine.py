@@ -175,6 +175,14 @@ def _register_downloader() -> None:
         def available(cls, path=None):
             return True
 
+        @classmethod
+        def can_download(cls, info_dict, path=None):
+            # YouTube (googlevideo): cok baglantili aria2 YAVAS (05.11 olculdu: 29 MB ses yerel 6 sn, aria2 -x16 17 sn,
+            # -x2 161 sn) -> yt-dlp'nin kendi parcali HTTP indiricisi kullanilir
+            if "googlevideo.com" in str(info_dict.get("url") or ""):
+                return False
+            return super().can_download(info_dict, path)
+
         def _call_downloader(self, tmpfilename, info_dict):
             job: MediaJob | None = self.params.get("kami_job")
             if job is None:

@@ -12,6 +12,7 @@ import logging
 import os
 import secrets
 import threading
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -256,14 +257,20 @@ def _make_handler(server: BridgeServer):
             return hmac.compare_digest(token.encode(), server.token.encode())
 
         def _dispatch(self, body: dict[str, Any]) -> None:
+            route = self.path.split("?", 1)[0]
             if not self._authorized():
+                log.warning("Kopru %s reddedildi (token yok/yanlis)", route)
                 self._reply(403, {"ok": False, "error": "forbidden"})
                 return
             try:
-                code, payload = server.handle(self.path.split("?", 1)[0], body)
+                code, payload = server.handle(route, body)
             except Exception as exc:
                 log.exception("Kopru istegi hata verdi")
                 code, payload = 500, {"ok": False, "error": str(exc)}
+            if route != "/v1/ping":   # eklentiden gelen istekler izlenebilsin (cerez/token yazilmaz; URL'den sadece host)
+                host = urllib.parse.urlsplit(str(body.get("url") or "")).netloc
+                log.info("Kopru %s %s -> %s %s", route, host, code,
+                         {k: payload[k] for k in ("accepted", "reason", "error", "media") if k in payload})
             self._reply(code, payload)
 
         def do_GET(self):
