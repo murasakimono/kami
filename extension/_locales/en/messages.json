@@ -20,6 +20,9 @@
   "popup_capture": {
     "message": "Take over downloads automatically"
   },
+  "popup_retry": {
+    "message": "Retry"
+  },
   "popup_open": {
     "message": "Open Kami"
   },

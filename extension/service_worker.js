@@ -8,16 +8,27 @@ const SKIP_SCHEMES = /^(blob:|data:|file:|chrome|brave|edge|about:|javascript:)/
 const ALT_BYPASS_MS = 4000;
 
 // ---------- native host ----------
-async function native(msg) {
+async function native1(msg) {
   try {
     const res = await chrome.runtime.sendNativeMessage(HOST, msg);
     if (res && res.ok && Array.isArray(res.sites)) chrome.storage.local.set({ kamiSites: res.sites });   // eklenti desenleri
-    return res || { ok: false, error: "empty" };
+    if (!res) return { ok: false, error: "offline", detail: "Host bos yanit verdi (lastError: " + (chrome.runtime.lastError && chrome.runtime.lastError.message || "yok") + ")" };
+    return res;
   } catch (e) {
-    // host kayitli degil ya da baslatilamadi
+    // host kayitli degil ya da baslatilamadi; GERCEK mesaj detail'de (popup gosterir)
     const text = String(e && e.message || e);
     return { ok: false, error: /not found|forbidden|Specified native messaging host/i.test(text) ? "nohost" : "offline", detail: text };
   }
+}
+
+// Kami acilirken/yeniden baslarken ilk deneme kacabilir: offline ise 3 kez daha dene (1.5 sn arayla)
+async function native(msg, retries = 3) {
+  let res = await native1(msg);
+  for (let i = 0; i < retries && !res.ok && res.error === "offline"; i++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    res = await native1(msg);
+  }
+  return res;
 }
 
 async function requestHeaders(url) {

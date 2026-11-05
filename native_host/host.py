@@ -54,19 +54,21 @@ def write_message(stream, payload: dict) -> None:
 def forward(msg: dict, info_path: Path | None = None, timeout: float | None = None) -> dict:
     route = ROUTES.get(str(msg.get("type", "")))
     if timeout is None:   # RD istegi RD'nin cevabini bekler (kopru en fazla 20 sn)
-        timeout = 25.0 if msg.get("type") == "rd" else 5.0
+        timeout = 25.0 if msg.get("type") == "rd" else 8.0
     if not route:
         return {"ok": False, "error": "unknown_type"}
     info_path = info_path or BRIDGE_INFO
     try:
         info = json.loads(info_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"ok": False, "error": "offline"}
+        port = int(info["port"])
+        token = str(info["token"])
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return {"ok": False, "error": "offline", "detail": f"bridge.json okunamadi ({info_path}): {type(exc).__name__}"}
     body = {k: v for k, v in msg.items() if k != "type"}
     req = urllib.request.Request(
-        f"http://127.0.0.1:{int(info['port'])}{route}",
+        f"http://127.0.0.1:{port}{route}",
         data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json", "X-Kami-Token": str(info["token"])},
+        headers={"Content-Type": "application/json", "X-Kami-Token": token},
         method="POST",
     )
     try:
@@ -77,8 +79,9 @@ def forward(msg: dict, info_path: Path | None = None, timeout: float | None = No
             return json.loads(exc.read())
         except ValueError:
             return {"ok": False, "error": f"http_{exc.code}"}
-    except (OSError, ValueError):
-        return {"ok": False, "error": "offline"}
+    except (OSError, ValueError) as exc:
+        return {"ok": False, "error": "offline",
+                "detail": f"Kami'ye baglanilamadi (127.0.0.1:{port}, pid {info.get('pid')}): {type(exc).__name__}: {str(exc)[:120]}"}
 
 
 def main() -> int:
@@ -93,7 +96,11 @@ def main() -> int:
             return 1
         if msg is None:
             return 0
-        write_message(stdout, forward(msg))
+        try:
+            res = forward(msg)
+        except Exception as exc:   # host cokmesin: eklenti nedenini gorsun
+            res = {"ok": False, "error": "offline", "detail": f"host hatasi: {type(exc).__name__}: {str(exc)[:120]}"}
+        write_message(stdout, res)
 
 
 if __name__ == "__main__":

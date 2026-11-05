@@ -41,6 +41,9 @@ async function setupPage() {
   });
 }
 
+document.getElementById("retry").textContent = t("popup_retry");
+document.getElementById("retry").addEventListener("click", () => { document.getElementById("statusText").textContent = "…"; refresh(); });
+
 async function refresh() {
   const res = await ask({ type: "ping" }).catch(() => null);
   const status = document.getElementById("status");
@@ -50,6 +53,8 @@ async function refresh() {
   document.getElementById("page").disabled = !(res && res.ok && pageTab);
   if (res && res.ok) {
     status.className = "status on";
+    document.getElementById("detail").hidden = true;
+    document.getElementById("retry").hidden = true;
     text.textContent = t("popup_connected") + (res.version ? ` (${res.version})` : "");
     capture.disabled = false;
     capture.checked = !!res.capture_enabled;
@@ -58,6 +63,10 @@ async function refresh() {
   } else {
     status.className = "status off";
     text.textContent = res && res.error === "nohost" ? t("popup_nohost") : t("popup_offline");
+    const det = document.getElementById("detail");   // gercek sebep (chrome.runtime.lastError)
+    det.textContent = (res && res.detail) || "yanit yok (service worker uyumuyor olabilir)";
+    det.hidden = false;
+    document.getElementById("retry").hidden = false;
     capture.disabled = true;
     open.disabled = true;
     return false;

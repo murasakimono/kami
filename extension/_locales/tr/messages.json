@@ -20,6 +20,9 @@
   "popup_capture": {
     "message": "İndirmeleri otomatik devral"
   },
+  "popup_retry": {
+    "message": "Tekrar dene"
+  },
   "popup_open": {
     "message": "Kami'yi aç"
   },

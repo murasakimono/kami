@@ -55,6 +55,19 @@ def _magnet_arg(argv: list[str]) -> str:
     return ""
 
 
+_MUTEX = None
+
+
+def _already_running_mutex() -> bool:
+    """True: ayni oturumda baska Kami zaten mutex'i tutuyor. Kendi mutex'imiz surec boyunca acik kalir."""
+    global _MUTEX
+    if os.name != "nt":
+        return False
+    import ctypes
+    _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, r"Local\KamiSingleInstance")
+    return ctypes.windll.kernel32.GetLastError() == 183   # ERROR_ALREADY_EXISTS
+
+
 def main() -> int:
     paths.setup_frozen()
     paths.ensure_dirs()
@@ -94,6 +107,17 @@ def main() -> int:
         if "--tray" not in sys.argv[1:]:
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/show")
         log.info("Kami zaten calisiyor; pencere one getirildi.")
+        return 0
+
+    # Kopru yanit vermese de (eski/farkli veri klasorlu kopya, takilmis kopya) ikinci kopya acilmasin: adli Windows mutex'i
+    if _already_running_mutex():
+        import ctypes
+        from app.core import winwin
+        hwnd = ctypes.windll.user32.FindWindowW(None, "Kami")
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 9)   # SW_RESTORE (tepsiye gizliyse de)
+            winwin.bring_to_front(hwnd)
+        log.warning("Baska bir Kami kopyasi calisiyor (mutex); o one getirildi, bu kopya kapaniyor.")
         return 0
 
     import webview  # GUI yalnizca gerektiginde yuklensin
