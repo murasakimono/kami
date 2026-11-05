@@ -252,30 +252,101 @@ def _run_json(args: list[str], on_msg: Callable[[dict], None], cancel: threading
 
 def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event, tool: str,
               extra_env: dict) -> dict:
+    """Alt sureci calistir. Argumanlar komut satirinda DEGIL, UTF-8 JSON dosyasinda gider (dosya adinda &, Turkce harf vb.)."""
+    import tempfile
     env = {**_clean_env(), "HF_HUB_DISABLE_TELEMETRY": "1", **extra_env}
-    p = subprocess.Popen([python_exe(tool), "-m", *args], cwd=str(paths.TOOLSRC_DIR), stdin=subprocess.DEVNULL,
-                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
-                         creationflags=NO_WINDOW, env=env)
-    last: dict = {"error": "no_output"}
-    noise = ""
-    watcher = threading.Thread(target=lambda: (cancel.wait(), p.poll() is None and p.kill()), daemon=True)
-    watcher.start()
-    for line in p.stdout or []:
+    fd, argfile = tempfile.mkstemp(prefix="kami_args_", suffix=".json", dir=env.get("TEMP") or None)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(args[1:], f, ensure_ascii=False)
+    try:
+        p = subprocess.Popen([python_exe(tool), "-m", args[0], "@" + argfile], cwd=str(paths.TOOLSRC_DIR),
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             encoding="utf-8", errors="replace", creationflags=NO_WINDOW, env=env)
+        last: dict = {"error": "no_output"}
+        noise: list[str] = []
+        watcher = threading.Thread(target=lambda: (cancel.wait(), p.poll() is None and p.kill()), daemon=True)
+        watcher.start()
+        for line in p.stdout or []:
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                if line.strip():
+                    noise = (noise + [line.strip()])[-6:]   # JSON olmayan satirlar (Traceback, stderr)
+                continue
+            if "done" in msg or "error" in msg:
+                last = msg
+            on_msg(msg)
+        rc = p.wait()
+    finally:
         try:
-            msg = json.loads(line)
-        except ValueError:
-            noise = line.strip()[-150:] or noise   # JSON olmayan satir (ör. Traceback son satiri) hata ipucu
-            continue
-        if "done" in msg or "error" in msg:
-            last = msg
-        on_msg(msg)
-    p.wait()
+            os.remove(argfile)
+        except OSError:
+            pass
     if cancel.is_set():
         return {"error": "cancelled"}
-    if last == {"error": "no_output"} and noise:
-        log.warning("%s alt surec cikti: %s", tool, noise)
-        return {"error": "no_output: " + noise}
+    if last == {"error": "no_output"}:
+        log.warning("%s alt surec cikis=%s, ciktisi: %s", tool, rc, " | ".join(noise))
+        tail = noise[-1][-150:] if noise else ""
+        return {"error": f"no_output (cikis {rc})" + (": " + tail if tail else "")}
     return last
+
+
+# ---- rozetler: durum diskteki gercek dosyalardan turetilir (Kami'nin kendi kaydi bos/yanlis olabilir)
+_DISK_CACHE: dict[str, tuple[float, list[str]]] = {}
+
+
+def _listdir_cached(d: str) -> list[str]:
+    import time
+    now = time.monotonic()
+    hit = _DISK_CACHE.get(d)
+    if hit and now - hit[0] < 5:
+        return hit[1]
+    try:
+        names = os.listdir(d)
+    except OSError:
+        names = []
+    _DISK_CACHE[d] = (now, names)
+    return names
+
+
+def _norm(name: str) -> str:
+    import unicodedata
+    return unicodedata.normalize("NFC", name).casefold()   # Turkce İ/ı ve birlesik nokta farklari esit sayilir
+
+
+def disk_state(path: str) -> dict:
+    """Dosyanin yaninda .srt/.lrc varsa Altyazi, Ayrilmis klasorunde (Vokal)/(Enstrumantal) varsa Vokal ayrilmis sayilir."""
+    out: dict = {}
+    if not path:
+        return out
+    d, fn = os.path.split(path)
+    stem = _norm(os.path.splitext(fn)[0])
+    for n in _listdir_cached(d):
+        nn = _norm(n)
+        if nn.startswith(stem + ".") and nn.endswith((".srt", ".lrc")) and nn != _norm(fn):
+            out["ai_whisper_srt"] = os.path.join(d, n)
+            break
+    sep = os.path.join(d, "Ayrilmis")
+    files = [os.path.join(sep, n) for n in _listdir_cached(sep)
+             if _norm(n).startswith(stem + " (") and _norm(n).endswith((".mp3", ".flac", ".wav"))]
+    if files:
+        out["ai_uvr_files"] = sorted(files)
+    return out
+
+
+def merge_disk_state(extra: dict, path: str) -> dict:
+    """extra'ya diskten turetilen ai_whisper/ai_uvr 'done' degerlerini ekler (calisan/siradaki isleri bozmaz)."""
+    ds = disk_state(path)
+    if not ds:
+        return extra
+    x = dict(extra or {})
+    if "ai_whisper_srt" in ds and x.get("ai_whisper") not in ("queued", "running"):
+        x.update(ai_whisper="done", ai_whisper_p=1, ai_whisper_srt=x.get("ai_whisper_srt") or ds["ai_whisper_srt"])
+        x.pop("ai_whisper_err", None)
+    if "ai_uvr_files" in ds and x.get("ai_uvr") not in ("queued", "running"):
+        x.update(ai_uvr="done", ai_uvr_p=1, ai_uvr_files=x.get("ai_uvr_files") or ds["ai_uvr_files"])
+        x.pop("ai_uvr_err", None)
+    return x
 
 
 def embed_subtitle(video: str, srt: str, lang: str) -> bool:

@@ -139,11 +139,23 @@ class Api:
             "torrent_requests": torrents,
             "media_requests": inbox,
             "clip_offers": offers,
-            "items": [d.to_public() for d in items],
+            "items": [self._public(d) for d in items],
             "total_speed": self._manager.total_speed(),
             "engine_ok": self._engine.running,
             "bridge_port": self._bridge_port(),
         }
+
+    @staticmethod
+    def _public(d) -> dict[str, Any]:
+        """Arayuz kaydi; biten medya dosyalarinda Altyazi/Vokal rozetleri diskteki gercek dosyalardan turetilir."""
+        pub = d.to_public()
+        if str(d.status) in ("complete", "Status.COMPLETE") or getattr(d.status, "value", "") == "complete":
+            try:
+                from app.core import aitools
+                pub["extra"] = aitools.merge_disk_state(pub.get("extra") or {}, d.path)
+            except Exception:
+                pass
+        return pub
 
     # ---------- pano ----------
     def link_supported(self, url: str) -> bool:

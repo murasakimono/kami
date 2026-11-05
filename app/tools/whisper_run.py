@@ -36,7 +36,8 @@ def ts(t: float) -> str:
 
 
 def main(argv: list[str]) -> int:
-    src, out, lang, model_name, models = argv[:5]
+    from app.tools import load_args
+    src, out, lang, model_name, models = load_args(argv)[:5]
     _cuda_dlls()
     from faster_whisper import WhisperModel
     model = device = None

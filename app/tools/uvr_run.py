@@ -15,7 +15,8 @@ def emit(**kw) -> None:
 
 
 def main(argv: list[str]) -> int:
-    src, out_dir, model, models, fmt = argv[:5]
+    from app.tools import load_args
+    src, out_dir, model, models, fmt = load_args(argv)[:5]
     from audio_separator.separator import Separator
     os.makedirs(out_dir, exist_ok=True)
     emit(stage="load")
