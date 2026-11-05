@@ -28,7 +28,7 @@ TOOLS: dict[str, dict[str, Any]] = {
     "whisper": {
         "module": "faster_whisper",
         # av<19: PyAV 19 av.open'dan metadata_errors'u kaldirdi, faster-whisper 1.2.1 hala kullaniyor (05.11 olculdu)
-        "packages": ["faster-whisper>=1.1", "av>=11,<19", "nvidia-cublas-cu12", "nvidia-cudnn-cu12>=9,<10"],
+        "packages": ["faster-whisper>=1.1", "av>=11,<19", "nvidia-cublas-cu12", "nvidia-cudnn-cu12==9.10.2.21"],
         "extra_index": "",
         "size_gb": 3.0,    # paketler ~1.4 GB + large-v3-turbo modeli ~1.6 GB
     },
@@ -49,24 +49,19 @@ WHISPER_MODELS = ["large-v3-turbo", "large-v3", "medium", "small"]
 NO_WINDOW = 0x08000000
 
 
-LEGACY_VENV = paths.Path.home() / "Projeler" / "kami" / ".venv"
+def tool_env(name: str):
+    """Kurulu Kami: arac basina AYRI ortam (LOCALAPPDATA/Kami/media-env/<arac>); repo .venv'e bagimlilik YOK."""
+    return paths.MEDIA_ENV / name
 
 
 def _venv_has(venv, module: str) -> bool:
     return (venv / "Scripts" / "python.exe").is_file() and (venv / "Lib" / "site-packages" / module).is_dir()
 
 
-def tools_venv(name: str = ""):
-    """Kurulu Kami: araclarin Python ortami (once kendi ortami, yoksa araclari kurulu gelistirme .venv'i)."""
-    if name and not _venv_has(paths.TOOLS_ENV, TOOLS[name]["module"]) and _venv_has(LEGACY_VENV, TOOLS[name]["module"]):
-        return LEGACY_VENV
-    return paths.TOOLS_ENV
-
-
 def python_exe(name: str = "") -> str:
     """pythonw ile calisiyorsak ayni klasordeki python.exe (stdout borusu icin; pencere acilmaz)."""
     if paths.FROZEN:
-        return str(tools_venv(name) / "Scripts" / "python.exe")
+        return str(tool_env(name) / "Scripts" / "python.exe")
     exe = sys.executable
     d, b = os.path.split(exe)
     if b.lower() in ("pythonw.exe", "kami.exe"):
@@ -78,7 +73,7 @@ def python_exe(name: str = "") -> str:
 
 def installed(name: str) -> bool:
     if paths.FROZEN:
-        return _venv_has(tools_venv(name), TOOLS[name]["module"])
+        return _venv_has(tool_env(name), TOOLS[name]["module"])
     try:
         return importlib.util.find_spec(TOOLS[name]["module"]) is not None
     except (ImportError, ValueError):
@@ -86,8 +81,6 @@ def installed(name: str) -> bool:
 
 
 def _stamp_path(name: str):
-    if paths.FROZEN and tools_venv(name) == LEGACY_VENV:   # gelistirme ortami: onun damgasi
-        return paths.Path.home() / "Projeler" / "kami" / "data" / "models" / name / ".kami_ok"
     return paths.DATA_DIR / "models" / name / ".kami_ok"
 
 
@@ -142,10 +135,11 @@ def install(name: str, on_line: Callable[[str], None] = lambda s: None) -> bool:
         if not uv:
             on_line("uv bulunamadi")
             return False
-        if not (paths.TOOLS_ENV / "Scripts" / "python.exe").is_file():
+        env_dir = tool_env(name)
+        if not (env_dir / "Scripts" / "python.exe").is_file():
             on_line("Python ortami olusturuluyor...")
-            paths.TOOLS_ENV.parent.mkdir(parents=True, exist_ok=True)
-            r = subprocess.run([uv, "venv", "--python", "3.12", str(paths.TOOLS_ENV)], capture_output=True,
+            env_dir.parent.mkdir(parents=True, exist_ok=True)
+            r = subprocess.run([uv, "venv", "--python", "3.12", str(env_dir)], capture_output=True,
                                text=True, creationflags=NO_WINDOW)
             if r.returncode != 0:
                 log.warning("Araclar ortami olusturulamadi: %s", r.stderr[-300:])
@@ -183,8 +177,19 @@ def install(name: str, on_line: Callable[[str], None] = lambda s: None) -> bool:
 
 
 def _run_json(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event, tool: str = "") -> dict:
-    """Alt sureci calistir, JSON satirlarini ilet; son 'done'/'error' mesajini dondur."""
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "HF_HUB_DISABLE_TELEMETRY": "1"}
+    """GPU ile calistir; hata verirse CPU'ya dus (CUDA_VISIBLE_DEVICES=-1) ve sonuca cpu_fallback=True yaz."""
+    res = _run_once(args, on_msg, cancel, tool, {})
+    if "error" in res and res["error"] != "cancelled" and not cancel.is_set():
+        log.warning("%s GPU'da basarisiz (%s); CPU'ya dusuluyor", tool, str(res["error"])[:120])
+        res = _run_once(args, on_msg, cancel, tool, {"CUDA_VISIBLE_DEVICES": "-1"})
+        if "done" in res:
+            res["cpu_fallback"] = True
+    return res
+
+
+def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event, tool: str,
+              extra_env: dict) -> dict:
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "HF_HUB_DISABLE_TELEMETRY": "1", **extra_env}
     p = subprocess.Popen([python_exe(tool), "-m", *args], cwd=str(paths.TOOLSRC_DIR), stdout=subprocess.PIPE,
                          stderr=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
                          creationflags=NO_WINDOW, env=env)
@@ -343,6 +348,8 @@ class AiQueue:
         if kind_of(path) == "video" and self.settings.get("whisper_embed"):
             out["ai_whisper_embedded"] = embed_subtitle(path, res["done"], res.get("lang", ""))
         self.set_extra(did, **out)
+        if res.get("cpu_fallback") or res.get("device") == "cpu":
+            self.notify("whisper:cpu:GPU kullanilamadi, islem CPU'da yapildi (yavas)")
         self.notify(f"whisper:done:{os.path.basename(path)}")
 
     def _do_uvr(self, did: int, ev: threading.Event) -> None:
@@ -360,6 +367,8 @@ class AiQueue:
                            ai_uvr_err=str(res["error"])[:200])
             return
         self.set_extra(did, ai_uvr="done", ai_uvr_p=1, ai_uvr_files=res["done"], ai_uvr_device=res.get("device", ""))
+        if res.get("cpu_fallback"):
+            self.notify("uvr:cpu:GPU kullanilamadi, islem CPU'da yapildi (yavas)")
         self.notify(f"uvr:done:{os.path.basename(path)}")
 
     def _do_lyrics(self, did: int, ev: threading.Event, lang: str = "") -> None:

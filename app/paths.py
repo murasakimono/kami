@@ -30,7 +30,8 @@ DATA_DIR = Path(os.environ["KAMI_DATA_DIR"]) if os.environ.get("KAMI_DATA_DIR") 
 PLUGINS_DIR = ROOT / "plugins"
 WEB_DIR = RES_DIR / "app" / "ui" / "web"
 TOOLSRC_DIR = RES_DIR / "toolsrc" if FROZEN else ROOT      # alt surec betikleri (app/tools/*.py) duz dosya olarak
-TOOLS_ENV = USER_DIR / "tools" / "venv"                     # kurulu Kami: Whisper/UVR icin ayri Python ortami
+# Whisper/UVR: repo .venv'den BAGIMSIZ, arac basina ayri ortam (media-env\whisper, media-env\uvr) -> cuDNN DLL catismasi yok
+MEDIA_ENV = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Kami" / "media-env"
 PYLIB_DIR = DATA_DIR / "pylib"                              # kurulu Kami: guncellenmis yt-dlp (PyPI tekerlegi)
 
 ARIA2_EXE = BIN_DIR / "aria2c.exe"

@@ -65,7 +65,7 @@ DEFAULTS: dict[str, Any] = {
     # Asama 6b: medya ekstralari
     "lyrics_auto": True,           # muzik inince LRCLIB'den soz (.lrc + MP3'e gom); yoksa Genius/AZLyrics linki
     "lyrics_embed": True,
-    "lyrics_ai": True,
+    "lyrics_ai": False,            # 0.8.1: varsayilan KAPALI (sormadan GB'lik UVR+Whisper calistirmasin)
     "acoustid_key": "",            # istege bagli AcoustID uygulama anahtari (acoustid.org/new-application); gizli degil             # soz bulunamazsa UVR vokal + Whisper ile yaziya dok (iki arac kuruluysa)
     "music_archive": False,        # MusicBrainz etiket + Sanatci/Album klasoru + kapak
     "music_dir": "",               # Muzik kutuphanesi klasoru; bos = Indirilenler\Muzik (Dopamine bu klasoru izler)
