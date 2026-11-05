@@ -75,6 +75,16 @@ def main() -> int:
     if "--setup" in sys.argv[1:]:   # Inno Setup: native host + magnet kaydi / kaldirma (pencere acilmaz)
         from app.core import setup_tasks
         return setup_tasks.run(sys.argv[1:])
+    if "--selfcheck-whisper" in sys.argv[1:]:   # once calisan Kami'nin ICINDE dene (gercek ortam), yoksa bu surecte
+        import json as _json
+        _i = sys.argv.index("--selfcheck-whisper") + 1
+        _file = sys.argv[_i] if _i < len(sys.argv) else ""
+        out = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/selfcheck-whisper", {"path": _file}, timeout=1800)
+        if out is None:
+            from app.core import aitools
+            out = {"ok": True, "local": True, "result": aitools.selfcheck_whisper(_file)}
+        (paths.DATA_DIR / "selfcheck.txt").write_text(_json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        return 0
     if "--quit" in sys.argv[1:]:    # kurulum/kaldirma: calisan Kami'yi duzgun kapat, kapanana kadar bekle
         import json as _json
         import time as _time

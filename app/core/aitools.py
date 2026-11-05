@@ -61,7 +61,7 @@ def _venv_has(venv, module: str) -> bool:
 def python_exe(name: str = "") -> str:
     """pythonw ile calisiyorsak ayni klasordeki python.exe (stdout borusu icin; pencere acilmaz)."""
     if paths.FROZEN:
-        return str(tool_env(name) / "Scripts" / "python.exe")
+        return fix_venv_home(name) or str(tool_env(name) / "Scripts" / "python.exe")
     exe = sys.executable
     d, b = os.path.split(exe)
     if b.lower() in ("pythonw.exe", "kami.exe"):
@@ -107,6 +107,65 @@ def needs_repair(name: str) -> bool:
             pass
         return False
     return True
+
+
+def _real_dir(path: str) -> str:
+    """Junction ise gercek hedef. realpath bu surecte junction'i acamayabilir (448): o zaman kardes dizinlerden
+    'cpython-3.12-...' icin 'cpython-3.12.<n>-...' (junction olmayan, en yuksek) secilir."""
+    real = os.path.realpath(path)
+    if real != path:
+        return real
+    try:
+        if not os.lstat(path).st_file_attributes & 0x400:   # REPARSE_POINT degil
+            return path
+    except (OSError, AttributeError):
+        return path
+    parent, base = os.path.split(path.rstrip(chr(92) + "/"))
+    pre, _, suf = base.partition("-windows-")
+    cands = []
+    for d in os.listdir(parent):
+        full = os.path.join(parent, d)
+        if d.startswith(pre + ".") and d.endswith("-windows-" + suf) and not os.lstat(full).st_file_attributes & 0x400:
+            cands.append(d)
+    return os.path.join(parent, sorted(cands)[-1]) if cands else path
+
+
+def _cfg_home(name: str) -> str:
+    try:
+        for ln in (tool_env(name) / "pyvenv.cfg").read_text(encoding="utf-8-sig").splitlines():
+            if ln.split("=", 1)[0].strip() == "home":
+                return ln.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def fix_venv_home(name: str) -> str:
+    """venv'in uv trampoline'i (Scripts/python.exe) icine junction yolu gomulu (cpython-3.12-... -> 3.12.N):
+    Kami sureci junction takibini yasakliyor (WinError 448) ve alt surec miras aliyor -> 'failed to spawn Python child process'.
+    Cozum: gercek dizindeki python.exe'nin kopyasini Scripts/kpython.exe olarak koy (pyvenv.cfg yaninda -> venv gibi calisir,
+    home gercek dizine cevrilir). DLL'ler icin home, alt surecin PATH'ine eklenir (_clean_env). Gercek python.exe yolunu doner."""
+    home = _cfg_home(name)
+    if not home:
+        return ""
+    try:
+        real = _real_dir(home)
+        src = os.path.join(real, "python.exe")
+        dst = tool_env(name) / "Scripts" / "kpython.exe"
+        if not os.path.isfile(src):
+            return ""
+        if not dst.is_file() or dst.stat().st_size != os.path.getsize(src):
+            shutil.copy2(src, dst)
+        if real != home:
+            cfg = tool_env(name) / "pyvenv.cfg"
+            lines = [f"home = {real}" if ln.split("=", 1)[0].strip() == "home" else ln
+                     for ln in cfg.read_text(encoding="utf-8-sig").splitlines()]
+            cfg.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+            log.info("pyvenv.cfg home gercek dizine cevrildi: %s", real)
+        return str(dst)
+    except OSError as exc:
+        log.warning("kpython hazirlanamadi: %s", exc)
+        return ""
 
 
 def selftest(name: str) -> dict:
@@ -168,6 +227,10 @@ def _clean_env() -> dict:
     if paths.FROZEN:
         env["UV_CACHE_DIR"] = str(local / "uv-cache")
     env["PYTHONIOENCODING"] = "utf-8"
+    if paths.FROZEN:   # kpython.exe: python312.dll gercek home'dan (bkz. fix_venv_home)
+        homes = [h for h in (_cfg_home(n) for n in TOOLS) if h and os.path.isdir(h)]
+        if homes:
+            env["PATH"] = os.pathsep.join([*homes, env.get("PATH", "")])
     for k in ("TEMP", "TMP"):   # gercek kullanici temp'i (PyInstaller _MEI temp'ine/baglama noktasina isaret etmesin)
         env[k] = os.environ.get("TEMP") if os.path.isdir(os.environ.get("TEMP", "")) else str(local / "tmp")
     return env
@@ -239,6 +302,55 @@ def _install(name: str, on_line: Callable[[str], None]) -> bool:
     return True
 
 
+def selfcheck_whisper(path: str = "") -> dict:
+    """Dosyasiz: dummy yol (beklenen FileNotFoundError = worker calisti). Dosyali: gercek altyazi (.srt) uretir."""
+    if path == "probe":
+        return _probe()
+    if path:
+        srt = os.path.splitext(path)[0] + ".srt"
+        args = ["app.tools.whisper_run", path, srt, "auto", "large-v3-turbo", models_dir("whisper")]
+    else:
+        args = ["app.tools.whisper_run", "C:" + chr(92) + "kami_yok.wav", "C:" + chr(92) + "kami_yok.srt", "auto", "small", models_dir("whisper")]
+    return _run_json(args, lambda m: None, threading.Event(), "whisper")
+
+
+def _probe() -> dict:
+    """Tanilama: Kami sureci icinden farkli alt surec varyantlarini dene."""
+    venv = tool_env("whisper")
+    cfg = (venv / "pyvenv.cfg").read_text(encoding="utf-8")
+    home = next((l.split("=", 1)[1].strip() for l in cfg.splitlines() if l.startswith("home")), "")
+    base = os.path.join(home, "python.exe")
+    vpy = str(venv / "Scripts" / "python.exe")
+    cases = {
+        "base_real": ([base, "-c", "print(1)"], str(paths.TOOLSRC_DIR), _clean_env()),
+        "venv_cwd_toolsrc": ([vpy, "-c", "print(1)"], str(paths.TOOLSRC_DIR), _clean_env()),
+        "venv_cwd_none": ([vpy, "-c", "print(1)"], None, _clean_env()),
+        "venv_cwd_venv": ([vpy, "-c", "print(1)"], str(venv), _clean_env()),
+        "venv_env_full": ([vpy, "-c", "print(1)"], str(venv), None),
+        "venv_flags0": ([vpy, "-c", "print(1)"], str(venv), _clean_env()),
+        "cmd": (["cmd", "/c", "echo 1"], None, _clean_env()),
+    }
+    out = {"home": home}
+    for k, (cmd, cwd, env) in cases.items():
+        try:
+            r = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                               creationflags=0 if k == "venv_flags0" else NO_WINDOW, timeout=60)
+            out[k] = f"rc={r.returncode} {(r.stdout or r.stderr).strip()[:120]}"
+        except Exception as exc:   # noqa: BLE001
+            out[k] = f"{type(exc).__name__}: {exc}"
+    return out
+
+
+def _diag_popen(tool: str, env: dict, argfile: str) -> None:
+    """Popen oncesi ortam dokumu (uv trampoline 'entity not found' avi)."""
+    exe = python_exe(tool)
+    cwd = str(paths.TOOLSRC_DIR)
+    must = {k: (k in env) for k in ("SystemRoot", "windir", "ComSpec", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "APPDATA")}
+    log.info("popen-diag %s: exe=%s exists=%s | cwd=%s exists=%s | argfile exists=%s | zorunlu=%s | PATH[:300]=%s | anahtarlar=%s",
+             tool, exe, os.path.exists(exe), cwd, os.path.isdir(cwd), os.path.isfile(argfile), must,
+             env.get("PATH", "")[:300], sorted(env))
+
+
 def _run_json(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event, tool: str = "") -> dict:
     """GPU ile calistir; hata verirse CPU'ya dus (CUDA_VISIBLE_DEVICES=-1) ve sonuca cpu_fallback=True yaz."""
     res = _run_once(args, on_msg, cancel, tool, {})
@@ -259,6 +371,7 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(args[1:], f, ensure_ascii=False)
     try:
+        _diag_popen(tool, env, argfile)
         p = subprocess.Popen([python_exe(tool), "-m", args[0], "@" + argfile], cwd=str(paths.TOOLSRC_DIR),
                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                              encoding="utf-8", errors="replace", creationflags=NO_WINDOW, env=env)

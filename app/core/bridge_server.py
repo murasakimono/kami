@@ -81,6 +81,11 @@ class BridgeServer:
         if path == "/v1/show":
             self.on_show()
             return 200, {"ok": True}
+        if path == "/v1/selfcheck-whisper":   # tanilama: Kami surecinin icinden alt surec yolunu dene
+            from app.core import aitools
+            res = aitools.selfcheck_whisper(str(body.get("path") or ""))
+            log.info("selfcheck-whisper (calisan Kami): %s", json.dumps(res, ensure_ascii=False))
+            return 200, {"ok": True, "result": res}
         if path == "/v1/quit":   # kurulum/kaldirma/guncelleme: Kami.exe --quit (dosyalar kilitli kalmasin)
             threading.Timer(0.2, self.on_quit).start()
             return 200, {"ok": True}
