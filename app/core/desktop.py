@@ -29,6 +29,11 @@ def autostart_command() -> str:
         exe = scripts / "pythonw.exe"
     if getattr(sys, "frozen", False):
         return f'"{sys.executable}" --tray'
+    # gelistirme kopyasi calistirilsa bile kurulu Kami varsa baslangic kaydi ona gitsin
+    # (yoksa PC acilisinda .venv'deki surum baslar, kurulu olanin yerine)
+    installed = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Kami" / "Kami.exe"
+    if installed.is_file():
+        return f'"{installed}" --tray'
     return f'"{exe}" "{paths.ROOT / "kami_open.pyw"}" --tray'
 
 
