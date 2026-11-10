@@ -23,7 +23,7 @@ from app import paths
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "0.9.2"
+APP_VERSION = "0.9.3"
 GITHUB_REPO = "murasakimono/kami"
 CREATE_NO_WINDOW = 0x08000000
 

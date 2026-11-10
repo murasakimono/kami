@@ -57,7 +57,7 @@ def find_ffprobe(ffmpeg: str) -> str:
 def probe(ffprobe: str, path: str) -> dict[str, Any]:
     """ffprobe ozeti: sure, goruntu codec'i, ses izleri, gomulu altyazilar, kapak."""
     out: dict[str, Any] = {"duration": 0.0, "vcodec": "", "width": 0, "height": 0, "audio": [], "subs": [], "cover": False,
-                           "fonts": []}
+                           "fonts": [], "tags": {}}
     if not ffprobe:
         return out
     try:
@@ -71,6 +71,13 @@ def probe(ffprobe: str, path: str) -> dict[str, Any]:
         out["duration"] = float((data.get("format") or {}).get("duration") or 0)
     except ValueError:
         pass
+    tg: dict[str, str] = {}   # muzik etiketleri: format + ses izi (ogg/opus sozleri izde tutar)
+    for src in [(data.get("format") or {}).get("tags") or {}] + [st.get("tags") or {} for st in data.get("streams") or [] if st.get("codec_type") == "audio"][:1]:
+        for k, v in src.items():
+            k = str(k).lower().split("-")[0]
+            if k in ("title", "artist", "album", "album_artist", "track", "date", "genre", "lyrics", "unsyncedlyrics", "syncedlyrics") and v and k not in tg:
+                tg[k] = str(v)
+    out["tags"] = tg
     for st in data.get("streams") or []:
         kind, codec = st.get("codec_type"), (st.get("codec_name") or "").lower()
         tags = st.get("tags") or {}
@@ -217,6 +224,7 @@ class MediaServer:
         res = {
             "ok": True, "key": key, "path": str(p), "kind": kind, "vcodec": info["vcodec"], "size": p.stat().st_size, "mode": mode, "title": title or p.stem,
             "duration": info["duration"], "width": info["width"], "height": info["height"],
+            "tags": {k: v for k, v in info.get("tags", {}).items() if "lyrics" not in k},
             "audio": info["audio"], "embedded_subs": info["subs"],
             "url": f"{self.base}/f/{key}" if a_ok else f"{self.base}/x/{key}",
             "direct_url": f"{self.base}/f/{key}",

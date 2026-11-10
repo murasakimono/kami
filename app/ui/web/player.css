@@ -211,3 +211,25 @@ body.pl-open #sunak { visibility: hidden; }
 .pl-ocr .po-act { display: flex; gap: 6px; margin-top: 10px; }
 .pl-ocr .po-act button { background: rgba(255,255,255,.07); color: #E9E4F5; border: 0; border-radius: 8px; padding: 5px 10px; font: 600 12px "Chakra Petch", sans-serif; cursor: pointer; }
 .pl-ocr .po-act button:hover { background: rgba(167,139,250,.3); }
+
+/* B7 mini oynatici */
+#player .pl-mini { display: none; }
+#player.mini .pl-top, #player.mini .pl-deck, #player.mini .pl-panel, #player.mini .pl-subs2, #player.mini .pl-lyr, #player.mini .pl-next, #player.mini #plDrawer { display: none !important; }
+#player.mini.is-audio .pl-audio { display: none; }
+#player.mini .pl-subs { bottom: 58px; left: 3%; right: 3%; }
+#player.mini .pl-subs span { font-size: 14px; }
+#player.mini .pl-mini { display: flex; position: absolute; left: 0; right: 0; bottom: 0; height: 56px; align-items: center; gap: 10px; padding: 0 10px; background: linear-gradient(0deg, rgba(5,4,8,.95), rgba(5,4,8,.75)); z-index: 20; }
+#player.mini.is-audio .pl-mini { top: 0; height: auto; background: radial-gradient(ellipse 80% 120% at 20% 50%, rgba(var(--pl-glow, 109, 40, 217), calc(.18 + var(--pl-beat) * .3)), #07060B 75%); }
+#player.mini:not(.is-audio) .pl-mini { opacity: 0; transition: opacity .2s; }
+#player.mini:not(.is-audio):hover .pl-mini { opacity: 1; }
+.pl-mini .pmi-cover { width: 44px; height: 44px; flex: none; background: #110E17 center / cover no-repeat; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+#player.mini.is-audio .pmi-cover { width: 92px; height: 92px; box-shadow: 0 0 18px rgba(var(--pl-glow, 109, 40, 217), .5); }
+.pl-mini .pmi-cover[hidden] { display: none; }
+.pl-mini .pmi-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; -webkit-app-region: drag; }
+.pl-mini .pmi-txt b { font: 700 13px "Chakra Petch", sans-serif; color: #EDE9F6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-mini .pmi-txt span { font: 600 15px/1.3 "Chakra Petch", sans-serif; color: #fff; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-shadow: 0 0 12px rgba(var(--pl-glow, 46, 230, 166), .6); }
+.pl-mini .pmi-btns { display: flex; gap: 2px; flex: none; }
+.pl-mini .pmi-btns button { width: 32px; height: 32px; border: 0; background: none; color: #C4B5FD; font-size: 15px; cursor: pointer; border-radius: 8px; }
+.pl-mini .pmi-btns button:hover { background: rgba(255,255,255,.08); color: #fff; }
+.pl-mini .pmi-play { color: #2EE6A6 !important; font-size: 18px !important; }
+.pl-mini .pmi-prog { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: linear-gradient(90deg, #6D28D9, #2EE6A6); }

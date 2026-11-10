@@ -4,7 +4,7 @@
 
 const PX = {
   queue: [], qi: -1, pending: null, nextShown: false, nextCancel: false, lib: null, libTab: "queue", libSeries: null,
-  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, assStyle: "orig", sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
+  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, assStyle: "orig", dictClick: true, lyrics: true, lrclib: true, karaoke: true, glow: true, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
 };
 const pxBase = (p) => String(p).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 const pxSave = () => { try { localStorage.setItem("kami.player", JSON.stringify(PX.cfg)); } catch { /* yok */ } };
@@ -253,6 +253,8 @@ window.plSettings = () => {
       <button class="pl-b" data-act="translate">${plL("Çevir", "Translate")}</button></div>
     <p class="px-hint">${plL("NLLB: bilgisayarında çalışır, tutarlı (ilk kullanımda ~1.4 GB iner). Google: hızlı, internet ister.", "NLLB: runs locally, consistent (~1.4 GB first time). Google: fast, needs internet.")}</p>
     <label class="px-rng"><span>${plL("Dil sırası", "Language order")}</span><input class="px-in" id="pxLangs" value="${escapeHtml(c.langs)}" placeholder="tr,en,ja" style="grid-column: span 2"></label>
+    ${pxBool("dictClick", plL("Kelimeye tıkla → sözlük", "Click a word → dictionary"))}
+    <p class="px-hint">${plL("Açıkken altyazıdaki kelimeye tıklayınca video durur ve anlamı açılır.", "When on, clicking a subtitle word pauses and shows its meaning.")}</p>
     <h4>${plL("Görüntü", "Picture")}</h4>
     ${seg("vid", "aspect", [["auto", plL("Otomatik", "Auto")], ["16/9", "16:9"], ["4/3", "4:3"], ["21/9", "21:9"], ["fill", plL("Doldur", "Fill")]])}
     ${rng("zoom", 100, 160, plL("Yakınlaştır / kırp", "Zoom / crop"))}${rng("bright", 50, 150, plL("Parlaklık", "Brightness"))}${rng("contrast", 50, 150, plL("Kontrast", "Contrast"))}${rng("sat", 0, 200, plL("Doygunluk", "Saturation"))}
@@ -262,17 +264,25 @@ window.plSettings = () => {
     <p class="px-hint">${plL("Gece modu patlamaları kısar, fısıltıları yükseltir. Ses kaydırıcısı %200'e kadar çıkar.", "Night mode tames explosions and lifts whispers. Volume goes up to 200%.")}</p>
     <div class="px-shift"><span>${plL("5.1 → kulaklık (diyalog öne)", "5.1 → headphones (dialogue first)")}</span><div class="px-seg" data-g="dialog" style="margin:0">${[["0", plL("Kapalı", "Off")], ["1", plL("Açık", "On")]].map(([v, l]) => `<button data-v="${v}" class="${(c.dialog ? "1" : "0") === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
     <label class="px-rng"><span>${plL("Sesi geciktir", "Delay audio")}</span><input type="range" data-ak="delay" min="0" max="1000" step="10" value="${c.delay}"><b>${c.delay} ms</b></label>
+    <h4>${plL("Müzik", "Music")}</h4>
+    ${pxBool("lyrics", plL("Şarkı sözü paneli", "Lyrics panel"))}
+    ${pxBool("lrclib", plL("Sözleri internette ara (LRCLIB)", "Search lyrics online (LRCLIB)"))}
+    ${pxBool("karaoke", plL("Karaoke dolgusu", "Karaoke fill"))}
+    ${pxBool("glow", plL("Kapak rengiyle parla", "Glow with cover color"))}
+    <p class="px-hint">${plL("Sıra: şarkının yanındaki .lrc / .txt → dosyanın içindeki sözler → LRCLIB. Bulunamazsa ✎ ile yapıştırabilirsin.", "Order: sidecar .lrc / .txt → embedded lyrics → LRCLIB. Otherwise paste with ✎.")}</p>
     <h4>${plL("Kısayollar", "Shortcuts")}</h4>
     <div class="px-keys">${pxKeysHtml()}</div>
     <button class="pl-b" data-act="keyreset">${plL("Varsayılana dön", "Reset to defaults")}</button>
-    <h4>Kami Player</h4>
+    <h4>${plL("Genel", "General")}</h4>
     <button class="pl-b" data-act="default">${plL("Varsayılan oynatıcı yap (Windows ayarları)", "Make default player (Windows settings)")}</button>`;
+  pxTabify(p);
   p.hidden = false;
   p.onclick = async (e) => {
     const b = e.target.closest("button"); if (!b) return;
     const segEl = b.closest(".px-seg");
     if (segEl) {
       const g = segEl.dataset.g, v = b.dataset.v;
+      if (segEl.dataset.b) { c[segEl.dataset.b] = v === "1"; pxSave(); pxBoolApply(segEl.dataset.b); segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); return; }
       if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v;
       else if (g === "ass") { c.assStyle = v; pxSave(); if (PL.open && PL.subIdx >= 0) plLoadSub(PL.subIdx); }
       else if (g === "dialog") { c.dialog = v === "1"; pxSave(); if (PL.open) { if (PL.mode === "direct" && plDialogMix()) PL.mode = "remux"; plModeUi(); plSeek(plNow(), !$("#plVideo").paused); } } else c[g][segEl.dataset.k] = segEl.dataset.k === "pos" ? +v : v;
@@ -302,6 +312,41 @@ window.plSettings = () => {
     pxSave(); pxApplyVideo();
   };
 };
+
+function pxBool(key, label) {
+  const on = PX.cfg[key] !== false;
+  return `<div class="px-shift"><span>${label}</span><div class="px-seg" data-b="${key}" style="margin:0">${[["0", plL("Kapalı", "Off")], ["1", plL("Açık", "On")]].map(([v, l]) => `<button data-v="${v}" class="${(on ? "1" : "0") === v ? "on" : ""}">${l}</button>`).join("")}</div></div>`;
+}
+function pxBoolApply(key) {
+  if (key === "dictClick") { const b = $("#plSubs"); if (b) b.dataset.h = ""; }
+  if (["lyrics", "lrclib", "glow"].includes(key) && PL.open && PL.info) window.plMusicStart?.(PL.info);
+}
+// h4 basliklarini sekmelere cevir (Altyazi | Goruntu | Ses | Muzik | Kisayollar | Genel); son sekme hatirlanir
+function pxTabify(p) {
+  const kids = [...p.children];
+  const tabs = [];
+  let sec = null;
+  for (const el of kids) {
+    if (el.tagName === "H4") {
+      sec = document.createElement("section"); sec.className = "px-sec"; sec.dataset.t = String(tabs.length);
+      tabs.push(el.textContent); el.replaceWith(sec);
+    } else if (sec) sec.appendChild(el);
+  }
+  const bar = document.createElement("nav");
+  bar.className = "px-tabs";
+  bar.innerHTML = tabs.map((t, i) => `<button data-tab="${i}">${escapeHtml(t)}</button>`).join("");
+  p.prepend(bar);
+  const show = (i) => {
+    i = Math.max(0, Math.min(tabs.length - 1, +i || 0));
+    PX.tab = i; try { localStorage.setItem("kami.ptab", String(i)); } catch { /* yok */ }
+    bar.querySelectorAll("button").forEach((b) => b.classList.toggle("on", +b.dataset.tab === i));
+    p.querySelectorAll(".px-sec").forEach((s) => { s.hidden = +s.dataset.t !== i; });
+  };
+  bar.addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) { e.stopPropagation(); show(b.dataset.tab); } });
+  let last = PX.tab;
+  if (last == null) { try { last = +localStorage.getItem("kami.ptab") || 0; } catch { last = 0; } }
+  show(last);
+}
 
 function pxApplyAll() { pxApplySub(); pxApplyVideo(); window.plApplyAudio(); }
 function pxApplySub() {

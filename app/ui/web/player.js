@@ -45,6 +45,7 @@ function plBuild() {
           <select class="pl-sel" id="plAud" title="${plL("Ses izi", "Audio track")}"></select>
           <select class="pl-sel" id="plRate" title="${plL("Hız", "Speed")}">${[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => `<option value="${r}" ${r === 1 ? "selected" : ""}>${r}×</option>`).join("")}</select>
           <label class="pl-vol" title="${plL("Ses (↑ ↓, M)", "Volume (↑ ↓, M)")}"><button class="pl-b" data-pl="mute" id="plMute">◢</button><input type="range" id="plVol" min="0" max="2" step="0.02" value="1"></label>
+          <button class="pl-b" data-pl="mini" title="${plL("Mini oynatıcı (B)", "Mini player (B)")}">▭</button>
           <button class="pl-b" data-pl="ocr" title="${plL("Ekrandaki yazıyı oku (O)", "Read on-screen text (O)")}">⌗</button>
           <button class="pl-b" data-pl="queue" title="${plL("Sıradakiler / kütüphane (Q)", "Queue / library (Q)")}">☰</button>
           <button class="pl-b" data-pl="settings" title="${plL("Altyazı, görüntü, ses ayarları", "Subtitle, picture, audio settings")}">⚙</button>
@@ -91,7 +92,7 @@ function plBuild() {
   el.addEventListener("click", (e) => {
     const b = e.target.closest("[data-pl]"); if (!b) return;
     ({ back: () => plSeek(plNow() - 10), fwd: () => plSeek(plNow() + 10), mute: () => { v.muted = !v.muted; plVolUi(); }, full: plFull,
-       prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), queue: () => window.plDrawer?.(), settings: () => window.plSettings?.(), ocr: () => plOcrStart() })[b.dataset.pl]?.();
+       prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), queue: () => window.plDrawer?.(), settings: () => window.plSettings?.(), ocr: () => plOcrStart(), mini: () => window.plMini?.() })[b.dataset.pl]?.();
   });
   $("#plVol").addEventListener("input", (e) => { v.muted = false; plSetVol(+e.target.value); });
   $("#plRate").addEventListener("change", (e) => { v.playbackRate = +e.target.value; });
@@ -190,6 +191,7 @@ function plStart(r) {
   if (PL.mode === "direct" && window.plDialogMix?.()) PL.mode = "remux";   // 5.1 diyalog karisimi ffmpeg ister
   if (resume) plSetSrcResume(resume); else plSetSrc(0);
   window.plOnStart?.(r);
+  window.plMusicStart?.(r);
   plMediaSession();
   plWake();
 }
@@ -510,6 +512,7 @@ function plSubDraw(t) {
 // Kelimeler ayri span (.w); bosluksuz yazilarda (Japonca/Cince) her karakter span, sunucu en uzun eslesmeyi bulur.
 const PL_CJK = /[぀-ヿ㐀-鿿豈-﫿ｦ-ﾟ]/;
 function plSubWords(text) {
+  if (plCfg().dictClick === false) return escapeHtml(text).replace(/\n/g, "<br>");   // sozluk modu kapali: duz yazi
   return text.split("\n").map((ln) => {
     let out = "", i = 0;
     for (const m of ln.matchAll(/[\p{L}\p{M}\p{N}'’\-]+/gu)) {
@@ -715,8 +718,10 @@ const PL_ACTIONS = {
   queue: ["Sıradakiler / kütüphane", "Queue / library", () => window.plDrawer?.()], settings: ["Ayarlar paneli", "Settings panel", () => window.plSettings?.()],
   info: ["Video bilgisi", "Video info", () => plInfo()],
   ocr: ["Ekrandaki yazıyı oku (OCR)", "Read on-screen text (OCR)", () => plOcrStart()],
+  mini: ["Mini oynatıcı", "Mini player", () => window.plMini?.()],
   close: ["Kapat / tam ekrandan çık", "Close / exit fullscreen", () => {
     if (plOcrClose()) return;
+    if (window.plMini && PL.mini) { window.plMini(false); return; }
     if (plDictClose()) return;
     if (window.plPanelClose?.()) return;
     if (PL.full) return plFull();
@@ -726,7 +731,7 @@ const PL_ACTIONS = {
 };
 const PL_KEYS_DEFAULT = { " ": "toggle", k: "toggle", f: "full", m: "mute", arrowleft: "back5", arrowright: "fwd5", j: "back10", l: "fwd10",
   arrowup: "volup", arrowdown: "voldown", ",": "frameback", ".": "framefwd", "[": "slower", "]": "faster", "\\": "rate1", z: "slower", x: "faster", r: "rate1", c: "subs",
-  g: "subminus", h: "subplus", n: "next", p: "prev", q: "queue", s: "settings", i: "info", o: "ocr", escape: "close" };
+  g: "subminus", h: "subplus", n: "next", p: "prev", q: "queue", s: "settings", i: "info", o: "ocr", b: "mini", escape: "close" };
 function plKeymap() { try { return { ...PL_KEYS_DEFAULT, ...JSON.parse(localStorage.getItem("kami.keys") || "{}") }; } catch { return { ...PL_KEYS_DEFAULT }; } }
 function plKey(e) {
   const altGr = e.getModifierState && e.getModifierState("AltGraph");

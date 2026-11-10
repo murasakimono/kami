@@ -76,7 +76,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
-        "library_get", "ocr_image", "ocr_translate",
+        "library_get", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -1145,6 +1145,60 @@ class Api:
         except Exception as exc:   # veritabani kilitli (kurulum suruyor) vb.
             return {"ok": False, "word": w, "error": str(exc)[:160], "installed": d.installed()}
 
+    # ---------- muzik modu sozleri (B7): yan .lrc/.txt -> gomulu etiket -> LRCLIB ----------
+    def player_lyrics(self, path: str, artist: str = "", title: str = "", album: str = "", duration: float = 0,
+                      online: bool = True) -> dict[str, Any]:
+        from pathlib import Path
+        from app.core import lyrics as ly
+        links = ly.search_links(str(artist or ""), str(title or "")) if title else {}
+        p = Path(str(path or ""))
+        if p.is_file():
+            for ext, src in ((".lrc", "lrc"), (".txt", "txt")):
+                q = p.with_suffix(ext)
+                if q.is_file():
+                    try:
+                        t = q.read_text(encoding="utf-8-sig", errors="replace")
+                    except OSError:
+                        continue
+                    if t.strip():
+                        lrc = ly.is_lrc(t)
+                        return {"ok": True, "synced": t if lrc else "", "plain": "" if lrc else t, "source": src, "links": links}
+            if self._media is not None:
+                from app.core.media_server import find_ffprobe, probe
+                tg = probe(find_ffprobe(self._media.ffmpeg()), str(p)).get("tags", {})
+                t = tg.get("syncedlyrics") or tg.get("lyrics") or tg.get("unsyncedlyrics") or ""
+                if t.strip():
+                    lrc = ly.is_lrc(t)
+                    return {"ok": True, "synced": t if lrc else "", "plain": "" if lrc else t, "source": "tag", "links": links}
+        if online and title:
+            try:
+                hit = ly.lrclib_find(str(artist or ""), str(title), str(album or ""), float(duration or 0))
+            except Exception:
+                hit = None
+            if hit:
+                return {"ok": True, "synced": hit.get("synced", ""), "plain": hit.get("plain", ""),
+                        "instrumental": bool(hit.get("instrumental")), "source": "lrclib", "links": links}
+        return {"ok": True, "synced": "", "plain": "", "source": "", "links": links}
+
+    def player_lyrics_save(self, path: str, text: str) -> dict[str, Any]:
+        """Yapistirilan sozu sarkinin yanina yazar (.lrc zamanliysa, degilse .txt); var olan dosyanin ustune yazar."""
+        from pathlib import Path
+        from app.core import lyrics as ly
+        p = Path(str(path or ""))
+        text = str(text or "").strip()
+        if not p.is_file() or not text or len(text) > 200_000:
+            return {"ok": False, "error": "bad_input"}
+        lrc = ly.is_lrc(text)
+        q = p.with_suffix(".lrc" if lrc else ".txt")
+        try:
+            q.write_text(text + "\n", encoding="utf-8")
+            other = p.with_suffix(".txt" if lrc else ".lrc")
+            if other.is_file() and not lrc:
+                pass   # zamanli .lrc onceliklidir; duz metin yalnizca .lrc yoksa okunur
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:160]}
+        return {"ok": True, "source": "lrc" if lrc else "txt", "path": str(q)}
+
     # ---------- ekran ustu OCR (B6) ----------
     def ocr_image(self, png_b64: str, lang: str = "") -> dict[str, Any]:
         from app.core import ocr
@@ -1206,6 +1260,37 @@ class Api:
         w = self._player_win
         if w is not None:   # pywebview cagrisi arayuz is parcacigini bekleyebilir: JS'i bekletme
             threading.Thread(target=w.toggle_fullscreen, name="kami-player-fs", daemon=True).start()
+
+    def player_mini(self, on: bool = True) -> dict[str, Any]:
+        """Mini oynatici: pencereyi kucult, ekranin sag altina al, hep ustte tut; kapatinca eski boyut/konum."""
+        w = self._player_win
+        if w is None:
+            return {"ok": False}
+
+        def run() -> None:
+            import webview
+            try:
+                if on:
+                    if not getattr(self, "_player_geo", None):
+                        self._player_geo = (w.width, w.height, w.x, w.y)
+                    sc = webview.screens[0] if webview.screens else None
+                    mw, mh = 460, 168
+                    w.resize(mw, mh)
+                    if sc is not None:
+                        w.move(sc.x + sc.width - mw - 24, sc.y + sc.height - mh - 64)
+                    w.on_top = True
+                else:
+                    w.on_top = False
+                    g = getattr(self, "_player_geo", None)
+                    self._player_geo = None
+                    if g:
+                        w.resize(max(640, g[0]), max(400, g[1]))
+                        w.move(g[2], g[3])
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("mini oynatici")
+        threading.Thread(target=run, name="kami-player-mini", daemon=True).start()
+        return {"ok": True}
 
     def _ensure_player(self) -> None:
         if self._player_win is None and self._make_player_window:

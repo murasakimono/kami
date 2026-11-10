@@ -102,7 +102,22 @@
 - **app/core/events.py** (53 satir)
   - class EventBus L23: on, emit
 - **app/core/extras.py** (290 satir)
-  - (ayristirilamadi: invalid non-printable character U+FEFF (<unknown>, line 1))
+  - def _hm L32
+  - def in_window L39
+  - class Scheduler L47: check, start, stop
+  - def should_scan L95
+  - def mpcmdrun L104
+  - def defender_scan L116
+  - def sha256_file L137
+  - def norm_hash L148
+  - def _ver L155
+  - def _gh L159
+  - def _gh_latest L164
+  - def check_update L179
+  - def download_update L203
+  - def mask L242
+  - def _tail L248
+  - def build_report L259
 - **app/core/firewall.py** (39 satir)
   - def has_rule L20
   - def request_rule L31
@@ -144,15 +159,15 @@
   - def write_mp3_tags L77
   - def write_generic_tags L113
   - def safe_name L134
-- **app/core/media_server.py** (626 satir)
+- **app/core/media_server.py** (634 satir)
   - def find_ffprobe L49
   - def probe L57
-  - def choose_mode L96
-  - def srt_to_vtt L110
-  - def read_text L118
-  - class MediaServer L128: start, stop, port, base, ffmpeg, encoder, register, register_url, _key_for, _find_subs, _find_ass, _cache_base, extract_sub, font, entry, stream_cmd, keyframe_before, thumb, spawn, done
-  - def _kill L423
-  - def _make_handler L432
+  - def choose_mode L103
+  - def srt_to_vtt L117
+  - def read_text L125
+  - class MediaServer L135: start, stop, port, base, ffmpeg, encoder, register, register_url, _key_for, _find_subs, _find_ass, _cache_base, extract_sub, font, entry, stream_cmd, keyframe_before, thumb, spawn, done
+  - def _kill L431
+  - def _make_handler L440
 - **app/core/mediapost.py** (119 satir)
   - class MediaPost L18: s, music_dir, set_extra, lyrics, lyrics_paste, archive, process, _has_subs
 - **app/core/models.py** (81 satir)
@@ -354,8 +369,8 @@
   - def _cuda_dlls L15
   - def ts L30
   - def main L38
-- **app/ui/api.py** (1403 satir)
-  - class Api L25: job_start, job_result, _set_window, get_state, _public, link_supported, _start_clipboard, read_clipboard, own_copy, add_url, cloud_list, add_cloud, _torrent_route, torrent_source, torrent_choose, torrent_open, torrent_meta, torrent_meta_cancel, firewall_status, firewall_allow, torrent_add, torrent_pick_file, _on_torrent_request, media_probe, add_media, _on_media_choose, pause, resume, remove, confirm, pause_all, resume_all, clear_finished, open_file, open_folder, open_downloads_dir, _rd, _rd_route, _rd_routed, _on_rd_event, _rd_err, rd_status, rd_set_token, rd_clear_token, _fetch_torrent, rd_add, rd_pick_torrent, rd_lists, rd_queue_torrent, rd_queue_download, rd_delete, reorder, hash_file, drop_torrent, check_update, install_update, open_release, make_report, desktop_status, get_settings, set_setting, choose_folder, plugins, plugin_set_enabled, plugin_reload, plugin_set, _on_ai_event, media_lyrics, media_lyrics_paste, media_archive, ai_status, ai_install, ai_run, ai_cancel, genius_status, genius_set_token, genius_clear, open_link, open_path, follow_list, follow_add, follow_update, follow_remove, follow_check_now, _rule_dir_for, _on_warn, rules_get, rules_set, history_search, history_clear, history_open, shutdown_arm, shutdown_cancel, player_open, player_open_path, player_siblings, _library_dirs, library_get, library_add_dir, library_remove_dir, _pl, playlist_get, playlist_save, playlist_delete, subtitle_translate, player_open_url, subtitle_sync, _dict, dict_status, dict_install, dict_lookup, ocr_image, ocr_translate, player_show, player_poll, player_fullscreen, _ensure_player, _play_request, player_default_apps, watch, watch_cancel, phone_info, phone_test, phone_status_items, phone_control, phone_new_key, add_text, add_text_detail, _add_quiet, batch_parse, batch_from_page, batch_add, ntfy_status, ntfy_set_topic, ntfy_test
+- **app/ui/api.py** (1488 satir)
+  - class Api L25: job_start, job_result, _set_window, get_state, _public, link_supported, _start_clipboard, read_clipboard, own_copy, add_url, cloud_list, add_cloud, _torrent_route, torrent_source, torrent_choose, torrent_open, torrent_meta, torrent_meta_cancel, firewall_status, firewall_allow, torrent_add, torrent_pick_file, _on_torrent_request, media_probe, add_media, _on_media_choose, pause, resume, remove, confirm, pause_all, resume_all, clear_finished, open_file, open_folder, open_downloads_dir, _rd, _rd_route, _rd_routed, _on_rd_event, _rd_err, rd_status, rd_set_token, rd_clear_token, _fetch_torrent, rd_add, rd_pick_torrent, rd_lists, rd_queue_torrent, rd_queue_download, rd_delete, reorder, hash_file, drop_torrent, check_update, install_update, open_release, make_report, desktop_status, get_settings, set_setting, choose_folder, plugins, plugin_set_enabled, plugin_reload, plugin_set, _on_ai_event, media_lyrics, media_lyrics_paste, media_archive, ai_status, ai_install, ai_run, ai_cancel, genius_status, genius_set_token, genius_clear, open_link, open_path, follow_list, follow_add, follow_update, follow_remove, follow_check_now, _rule_dir_for, _on_warn, rules_get, rules_set, history_search, history_clear, history_open, shutdown_arm, shutdown_cancel, player_open, player_open_path, player_siblings, _library_dirs, library_get, library_add_dir, library_remove_dir, _pl, playlist_get, playlist_save, playlist_delete, subtitle_translate, player_open_url, subtitle_sync, _dict, dict_status, dict_install, dict_lookup, player_lyrics, player_lyrics_save, ocr_image, ocr_translate, player_show, player_poll, player_fullscreen, player_mini, _ensure_player, _play_request, player_default_apps, watch, watch_cancel, phone_info, phone_test, phone_status_items, phone_control, phone_new_key, add_text, add_text_detail, _add_quiet, batch_parse, batch_from_page, batch_add, ntfy_status, ntfy_set_topic, ntfy_test
 
 ## Arayuz JS
 
@@ -367,12 +382,14 @@
 - **app/ui/web/i18n6.js** (100 satir)
 - **app/ui/web/media6.js** (231 satir)
   - VIEW_OPEN L6, showView L7, mtItem L33, aiLine L35, fillMediaTools L43, openMediaTools L74, runAi L81, bindMediaTools L99, followRefresh L132, bindFollow L147, refreshMediaSettings L180, bindMediaSettings L193, onAiEvents L212, STATE_HOOKS L224, onStateExtras L225
-- **app/ui/web/player-lib.js** (373 satir)
-  - PX L5, pxPrefSave L32, pxOfferTranslate L61, pxSync L69, pxTranslate L85, pxNextWatch L136, pxDrawerRender L172, pxDrawerClick L214, pxApplyAll L306, pxApplySub L307, pxApplyVideo L315, pxKeyName L330, pxKeysHtml L331, pxCaptureKey L338
+- **app/ui/web/player-lib.js** (418 satir)
+  - PX L5, pxPrefSave L32, pxOfferTranslate L61, pxSync L69, pxTranslate L85, pxNextWatch L136, pxDrawerRender L172, pxDrawerClick L214, pxBool L316, pxBoolApply L320, pxTabify L325, pxApplyAll L351, pxApplySub L352, pxApplyVideo L360, pxKeyName L375, pxKeysHtml L376, pxCaptureKey L383
+- **app/ui/web/player-music.js** (239 satir)
+  - PM L5, pmParseLrc L8, pmEnsureDom L25, pmMeta L43, pmShow L78, pmSrcName L106, pmPasteBox L110, pmLoop L136, pmGlow L178
 - **app/ui/web/player-shell.js** (58 satir)
   - STATE_HOOKS L8, escapeHtml L13, toast L16, slow L21, shellPoll L32, plIdle L53
-- **app/ui/web/player.js** (775 satir)
-  - PL L6, plBuild L18, plThumb L122, playerOpen L133, playerOpenPath L140, playerOpenUrl L151, plStart L161, plPos L197, plSetSrcResume L207, plMediaSession L216, plClose L227, plUrl L244, plSetSrc L251, plSeek L261, plFallback L272, plAudio L285, plModeUi L292, plTick L298, plDrawPos L309, plBufDraw L314, plEyeState L319, plToggle L325, plFull L329, plSetVol L337, plVolUi L345, plWake L352, plBlinkLoop L360, plAudioGraph L370, plBigEq L405, plEqDraw L416, plLoadSub L425, plAss L448, plAssDestroy L463, plAssSync L464, plShift L466, PL_LANG L473, plLang L475, plLangName L480, plParseVtt L484, plSubDraw L496, PL_CJK L511, plSubWords L512, plSubLang L526, plDictOpen L530, plDictRender L558, plDictPacks L574, plDictClose L590, plOcrStart L607, plOcrCrop L640, plOcrRun L656, plCfg L691, plOcrClose L692, PL_ACTIONS L703, PL_KEYS_DEFAULT L727, plKeymap L730, plKey L731, plFrame L738, plRate L743, plInfo L754
+- **app/ui/web/player.js** (780 satir)
+  - PL L6, plBuild L18, plThumb L123, playerOpen L134, playerOpenPath L141, playerOpenUrl L152, plStart L162, plPos L199, plSetSrcResume L209, plMediaSession L218, plClose L229, plUrl L246, plSetSrc L253, plSeek L263, plFallback L274, plAudio L287, plModeUi L294, plTick L300, plDrawPos L311, plBufDraw L316, plEyeState L321, plToggle L327, plFull L331, plSetVol L339, plVolUi L347, plWake L354, plBlinkLoop L362, plAudioGraph L372, plBigEq L407, plEqDraw L418, plLoadSub L427, plAss L450, plAssDestroy L465, plAssSync L466, plShift L468, PL_LANG L475, plLang L477, plLangName L482, plParseVtt L486, plSubDraw L498, PL_CJK L513, plSubWords L514, plSubLang L529, plDictOpen L533, plDictRender L561, plDictPacks L577, plDictClose L593, plOcrStart L610, plOcrCrop L643, plOcrRun L659, plCfg L694, plOcrClose L695, PL_ACTIONS L706, PL_KEYS_DEFAULT L732, plKeymap L735, plKey L736, plFrame L743, plRate L748, plInfo L759
 - **app/ui/web/plugins.js** (91 satir)
   - plField L19, refreshPlugins L41, bindPlugins L56
 - **app/ui/web/rd.js** (277 satir)
