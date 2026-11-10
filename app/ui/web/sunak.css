@@ -131,6 +131,7 @@ body.sunak.sk-drawer .sk-drawer-close {
 #sunak .sk-cmd form.add { flex: 1; display: flex; gap: 8px; margin: 0; max-width: none; }
 #sunak .sk-cmd form.add input { flex: 1; min-width: 0; height: 44px; background: transparent; border: 0; outline: none; color: var(--sk-text); font: 15px var(--font); box-shadow: none; }
 #sunak .sk-cmd form.add .btn { height: 44px; border: 0; background: #1C1528; color: var(--sk-lav); font: 600 14px var(--font); clip-path: var(--cut-s); border-radius: 0; padding: 0 14px; }
+#sunak .sk-cmd form.add .btn.sk-watch { color: #2EE6A6; }
 #sunak .sk-cmd form.add .btn.primary { background: var(--sk-royal); color: #fff; padding: 0 26px; }
 
 /* dok */

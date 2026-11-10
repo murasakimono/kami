@@ -99,7 +99,7 @@ DEFAULTS: dict[str, Any] = {
     "ntfy_queue": True,            # kuyruk bitince
     "ntfy_errors": True,           # hata olunca
     "watch_min_mb": 20,            # inerken izle: oynatici acilmadan once bastan inmis olmasi gereken MB
-    "watch_player": "screenbox",   # screenbox | default
+    "watch_player": "kami",        # kami (Kami Player) | screenbox | default
     "uvr_quality": "fast",         # fast (overlap 2 + fp16, ~3x) | balanced | best (overlap 8, gercek zamanli)
     "library_dirs": [],            # Kami Player kutuphanesi: taranan klasorler (indirme klasoru her zaman dahil)
 }
@@ -197,7 +197,7 @@ def _coerce(key: str, value: Any) -> Any:
         raise ValueError("whisper_lang")
     if key == "uvr_format" and str(value) not in ("mp3", "flac", "wav"):
         raise ValueError("uvr_format")
-    if key == "watch_player" and str(value) not in ("screenbox", "default"):
+    if key == "watch_player" and str(value) not in ("kami", "screenbox", "default"):
         raise ValueError("watch_player")
     if key == "ntfy_server" and not str(value).startswith(("https://", "http://")):
         raise ValueError("ntfy_server")

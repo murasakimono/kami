@@ -117,6 +117,7 @@ window.plPlayQueue = (paths, i = 0) => {
 };
 window.plOnStart = async (r) => {
   PX.nextShown = false; PX.nextCancel = false; $("#plNextCard").hidden = true;
+  if (!r.path) { PX.queue = []; PX.qi = -1; $("#plPrev").disabled = $("#plNext").disabled = true; pxApplyAll(); return; }   // uzak akis
   if (PX.pending && PX.pending.includes(r.path)) { PX.queue = PX.pending; PX.pending = null; }
   else if (!PX.queue.includes(r.path)) {
     try { PX.queue = await api.player_siblings(r.path); } catch { PX.queue = [r.path]; }

@@ -71,7 +71,7 @@ class Api:
         "add_url", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
-        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync",
+        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
         "library_get",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
@@ -1057,6 +1057,42 @@ class Api:
             return {"ok": False, "error": str(res["error"])[:200]}
         return {"ok": True, "path": res["done"], "engine": res.get("engine"),
                 "vtt": srt_to_vtt(Path(res["done"]).read_text(encoding="utf-8"))}
+
+    def player_open_url(self, url: str) -> dict[str, Any]:
+        """Indirmeden izle: hoster linki + RD token -> Real-Debrid linki; medya sitesi -> yt-dlp akisi; yoksa dogrudan URL."""
+        if not self._media:
+            return {"ok": False, "error": "player_unavailable"}
+        url = str(url or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            return {"ok": False, "error": "bad_url"}
+        from app.core.debrid import is_media_site
+        rd = self._rd
+        if rd is not None and rd.has_token() and not is_media_site(url):
+            try:
+                if rd.supports(url, wait=False):
+                    files = rd.unrestrict_files(url)
+                    vids = [f for f in files if f["filename"].lower().endswith((".mkv", ".mp4", ".avi", ".webm", ".mov", ".m4v", ".ts", ".mp3", ".flac", ".m4a"))]
+                    if vids:
+                        f = max(vids, key=lambda x: x["size"])
+                        return {**self._media.register_url([f["url"]], f["filename"] or url), "source": "rd"}
+            except Exception as exc:   # RD olmazsa yt-dlp / dogrudan dene
+                log.info("RD ile izlenemedi: %s", exc)
+        try:
+            from app.engines.ytdlp_engine import _ytdlp, _cookiefile
+            yt_dlp = _ytdlp()
+            opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True,
+                    "format": "bv*[height<=1080][vcodec^=avc1]+ba[acodec^=mp4a]/bv*[height<=1080]+ba/b[height<=1080]/b"}
+            with _cookiefile(url) as ck, yt_dlp.YoutubeDL({**opts, "cookiefile": ck} if ck else opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            fmts = info.get("requested_formats") or [info]
+            urls = [f["url"] for f in fmts if f.get("url")]
+            headers = (fmts[0].get("http_headers") or info.get("http_headers") or {})
+            if urls:
+                return {**self._media.register_url(urls[:2], info.get("title") or url, headers, info.get("duration") or 0),
+                        "source": "ytdlp", "webpage": url}
+        except Exception as exc:
+            log.info("yt-dlp ile izlenemedi: %s", str(exc)[:200])
+        return {**self._media.register_url([url], url.rsplit("/", 1)[-1][:120] or url), "source": "direct"}
 
     def subtitle_sync(self, video_path: str, text: str, lang: str = "") -> dict[str, Any]:
         """Altyaziyi sese hizala; videonun yanina <ad>[.dil].sync.srt yazar, oynatici VTT'yi alir."""

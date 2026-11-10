@@ -141,6 +141,17 @@ async function playerOpenPath(path) {
 }
 if (typeof STATE_HOOKS !== "undefined") STATE_HOOKS.push((s) => { const q = s.play_requests || []; if (q.length) playerOpenPath(q[q.length - 1]); });
 
+// indirmeden izle: yt-dlp akisi / Real-Debrid / dogrudan URL (arka plan isi; ag yavas olabilir)
+async function playerOpenUrl(url) {
+  if (!$("#player")) plBuild();
+  toast(plL("Bağlantı açılıyor…", "Opening link…"));
+  let r;
+  try { r = await slow("player_open_url", url); } catch (e) { r = { ok: false, error: String(e) }; }
+  if (!r || !r.ok) { toast(plL("İzlenemedi: ", "Can't stream: ") + (r?.error || "?"), true); return; }
+  plStart(r);
+  toast({ rd: "Real-Debrid", ytdlp: "yt-dlp", direct: plL("doğrudan", "direct") }[r.source] + plL(" ile oynatılıyor", " stream"));
+}
+
 function plStart(r) {
   const el = $("#player"), v = $("#plVideo");
   Object.assign(PL, { open: true, info: r, mode: r.mode, offset: 0, audio: 0, failed: 0, dur: r.duration || 0, cues: [], subIdx: -1, subShift: 0 });
@@ -208,6 +219,7 @@ function plMediaSession() {
 function plClose() {
   const v = $("#plVideo");
   clearInterval(PL.infoT); $("#plInfo")?.remove();
+  plAssDestroy();   // gizli videoda JASSUB yeniden boyutlanmaya calisip hata atmasin
   if (PL.info?.path) { const t = plNow(); plPos(PL.info.path, PL.dur && t > PL.dur - 30 ? null : t); }
 
   v.pause(); v.removeAttribute("src"); v.load();   // akis baglantisi kapanir -> sunucu ffmpeg'i oldurur

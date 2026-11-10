@@ -403,7 +403,15 @@ def main() -> int:
         manager, busy_extra=lambda: bool(ai._cancel), on_queue_done=queue_done)
     shutdown.start()
     watcher = Watcher(manager, media_post.set_extra,
-                      player=lambda p: _play(p, settings.get("watch_player") or "screenbox"))
+                      player=lambda p: _watch_play(p))
+
+    def _watch_play(p: str) -> str:
+        """Inerken izle: Kami Player (varsayilan) ya da Screenbox / Windows varsayilani."""
+        how = settings.get("watch_player") or "kami"
+        if how == "kami" and api._media:
+            play_request(p)
+            return "kami"
+        return _play(p, how)
     phone_key = TokenStore(paths.DATA_DIR / "phone_key.bin")
     phone = PhoneServer(int(settings.get("phone_port")), phone_key.load,
                         lambda text, fmt="": api.add_text_detail(text, "phone", fmt),
@@ -431,6 +439,7 @@ def main() -> int:
     try:
         media_srv.start()
         api._media = media_srv
+        media_srv.growing = watcher.head   # inerken izle: inmemis kisim istenirse bekle
         atexit.register(media_srv.stop)
     except OSError:
         log.exception("Medya sunucusu acilamadi")

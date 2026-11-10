@@ -140,6 +140,7 @@ class MediaServer:
         self.cache_dir = Path(tempfile.gettempdir()) / "kami_player"
         self._xlock = threading.Lock()
         self.httpd = None
+        self.growing = lambda path: None   # main: watcher.head (inerken izle) -> bastan inmis byte ya da None
 
     # ---------- yasam dongusu ----------
     def start(self) -> None:
@@ -235,6 +236,35 @@ class MediaServer:
                  (info["audio"][0]["codec"] if info["audio"] else "-"))
         return res
 
+    def register_url(self, urls: list[str], title: str, headers: dict[str, str] | None = None,
+                     duration: float = 0.0, kind: str = "video") -> dict[str, Any]:
+        """Indirmeden izle (yt-dlp akisi / Real-Debrid linki / dogrudan medya URL'si): ffmpeg kopyalayip parcali MP4 verir.
+        urls: [tek dosya] ya da [goruntu, ses] (ayri akislar ffmpeg'de birlesir). Ileri sarma -ss ile (HTTP Range)."""
+        if not self.ffmpeg():
+            return {"ok": False, "error": "no_ffmpeg"}
+        hdr = "".join(f"{k}: {v}\r\n" for k, v in (headers or {}).items() if k.lower() not in ("accept-encoding",))
+        info = probe(find_ffprobe(self.ffmpeg()), urls[0]) if len(urls) == 1 else {"duration": 0.0, "vcodec": "", "width": 0, "height": 0,
+                                                                                   "audio": [{"codec": "aac", "channels": 2, "lang": "", "title": "", "default": True}],
+                                                                                   "subs": [], "cover": False, "fonts": []}
+        if len(urls) > 1:
+            v = probe(find_ffprobe(self.ffmpeg()), urls[0])
+            info.update(vcodec=v["vcodec"], width=v["width"], height=v["height"], duration=v["duration"])
+        if duration and not info["duration"]:
+            info["duration"] = float(duration)
+        if not info["vcodec"] and not info["audio"]:
+            kind = kind or "video"
+        kind = "video" if info["vcodec"] else "audio"
+        mode = "transcode" if info["vcodec"] and info["vcodec"] not in OK_VCODEC else "remux"
+        key = secrets.token_urlsafe(9)
+        with self._lock:
+            self._files[key] = {"path": urls[0], "urls": urls, "headers": hdr, "kind": kind, "mode": mode, "info": info, "remote": True}
+        log.info("Oynatici (uzak): %s (%s, %s)", title[:80], kind, mode)
+        return {"ok": True, "key": key, "path": "", "remote": True, "kind": kind, "mode": mode, "title": title,
+                "vcodec": info["vcodec"], "size": 0, "duration": info["duration"], "width": info["width"], "height": info["height"],
+                "audio": info["audio"], "embedded": [], "fonts": [], "subs": [], "cover": "", "thumb_url": "",
+                "url": f"{self.base}/x/{key}", "direct_url": f"{self.base}/x/{key}", "stream_url": f"{self.base}/x/{key}",
+                "jassub": f"{self.base}/j/" if self.vendor_dir else ""}
+
     def _key_for(self, path: str) -> str:
         with self._lock:
             if path not in self._by_path:
@@ -313,10 +343,18 @@ class MediaServer:
     def stream_cmd(self, e: dict[str, Any], start: float, audio_index: int, dialog: bool = False) -> list[str]:
         ff = self.ffmpeg()
         cmd = [ff, "-hide_banner", "-loglevel", "error", "-nostdin"]
-        if start > 0:
-            cmd += ["-ss", f"{start:.3f}"]
-        cmd += ["-i", e["path"]]
-        if e["kind"] == "video":
+        inputs = e.get("urls") or [e["path"]]
+        for u in inputs:
+            if e.get("remote"):
+                cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+                if e.get("headers"):
+                    cmd += ["-headers", e["headers"]]
+            if start > 0:
+                cmd += ["-ss", f"{start:.3f}"]
+            cmd += ["-i", u]
+        if e["kind"] == "video" and len(inputs) > 1:   # ayri goruntu + ses akislari
+            cmd += ["-map", "0:v:0", "-map", "1:a:0"]
+        elif e["kind"] == "video":
             cmd += ["-map", "0:v:0", "-map", f"0:a:{audio_index}?"]
             if e["mode"] == "transcode":
                 cmd += self.encoder() + ["-pix_fmt", "yuv420p", "-g", "48"]
@@ -326,7 +364,7 @@ class MediaServer:
             else:
                 cmd += ["-c:v", "copy"]   # remux (ve 'direct' kaydin zorla akisi)
         else:
-            cmd += ["-map", f"0:a:{audio_index}", "-vn"]
+            cmd += ["-map", f"0:a:{audio_index}" if len(inputs) == 1 else "1:a:0", "-vn"]
         auds = e["info"].get("audio") or []
         ch = (auds[audio_index] if audio_index < len(auds) else {}).get("channels", 0)
         if dialog and ch >= 6:   # 5.1/7.1 -> stereo, merkez (diyalog) one: c2 = FC, c4/c5 = arka/yan
@@ -464,7 +502,7 @@ def _make_handler(server: MediaServer):
                         self._err(404)
                 elif route == "k":
                     t = float((q.get("t") or ["0"])[0] or 0)
-                    kf = server.keyframe_before(e, t) if e["kind"] == "video" else t   # arayuz sadece kopya akista sorar
+                    kf = server.keyframe_before(e, t) if e["kind"] == "video" and not e.get("remote") else t   # arayuz sadece kopya akista sorar
                     self._bytes(json.dumps({"t": kf}).encode(), "application/json", head)
                 elif route == "p":
                     data = server.thumb(key, e, float((q.get("t") or ["0"])[0] or 0)) if e["kind"] == "video" and server.ffmpeg() else b""
@@ -521,15 +559,27 @@ def _make_handler(server: MediaServer):
             self.end_headers()
             if head:
                 return
+            import time as _time
             with open(path, "rb") as f:
                 f.seek(start)
                 left = end - start + 1
+                pos = start
                 while left > 0:
-                    buf = f.read(min(CHUNK, left))
+                    avail = server.growing(path)
+                    waited = 0.0
+                    while avail is not None and pos >= avail and waited < 60:   # inerken izle: parca gelene kadar bekle
+                        _time.sleep(0.5)
+                        waited += 0.5
+                        avail = server.growing(path)
+                    n = min(CHUNK, left) if avail is None else max(0, min(CHUNK, left, avail - pos))
+                    if n <= 0:
+                        break
+                    buf = f.read(n)
                     if not buf:
                         break
                     self.wfile.write(buf)
                     left -= len(buf)
+                    pos += len(buf)
 
         def _stream(self, e: dict[str, Any], start: float, audio_index: int, head: bool, dialog: bool = False) -> None:
             if not server.ffmpeg():

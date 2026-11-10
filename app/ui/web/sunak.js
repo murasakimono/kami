@@ -1,7 +1,7 @@
 // Kami "Sunak" katmani. Eski DOM ve JS'e dokunmaz; ustune biner, durumu STATE_HOOKS ile alir.
 "use strict";
 
-const SK = { sel: null, page: 0, peak: 1, happyUntil: 0, prevStatus: new Map(), eye: null, orbit: 0, speedFrac: 0, built: false };
+const SK = { autoPlay: new Set(JSON.parse((() => { try { return localStorage.getItem("kami.autoplay") || "[]"; } catch { return "[]"; } })())), sel: null, page: 0, peak: 1, happyUntil: 0, prevStatus: new Map(), eye: null, orbit: 0, speedFrac: 0, built: false };
 const SK_RING_R = 132, SK_RING_C = 2 * Math.PI * SK_RING_R;
 const SK_STRIP_W = 162;   // 150 + bosluk
 
@@ -76,7 +76,14 @@ function skBuild() {
   document.body.prepend(root);
   // eski ekleme formu komut satirina tasinir (dinleyicileri onunla gelir)
   const form = $("#addForm");
-  if (form) { form.classList.add("add"); $("#skCmd").appendChild(form); }
+  if (form) {
+    form.classList.add("add"); $("#skCmd").appendChild(form);
+    const watch = document.createElement("button");   // indirmeden izle (yt-dlp / Real-Debrid / dogrudan)
+    watch.type = "button"; watch.className = "btn sk-watch"; watch.textContent = skL("İzle", "Watch");
+    watch.title = skL("İndirmeden Kami Player'da izle", "Stream in Kami Player without downloading");
+    watch.onclick = () => { const u = $("#addInput").value.trim(); if (u && typeof playerOpenUrl === "function") playerOpenUrl(u.split(/\s+/)[0]); else $("#addInput").focus(); };
+    form.querySelector('button[type="submit"]')?.before(watch);
+  }
   $("#addInput")?.setAttribute("placeholder", skL("Bağlantı yapıştır ya da dosyayı ruha bırak…", "Paste a link or drop a file on the spirit…"));
   skBind();
   if (window.KamiEye) {
@@ -230,6 +237,8 @@ function skRenderBar(d) {
   const btns = [];
   if (d.status === "confirm") { btns.push(B("confirm", "play", skL("Onayla", "Confirm"), "pri")); btns.push(B("reject", "x", skL("Reddet", "Reject"))); }
   if (["active", "waiting", "queued"].includes(d.status)) btns.push(B("pause", "pause", skL("Duraklat", "Pause")));
+  if (["active", "waiting", "queued", "paused"].includes(d.status) && ["video", "music"].includes(d.category))
+    btns.push(B("autoplay", "play", SK.autoPlay.has(d.id) ? skL("Bitince oynatılacak ✓", "Will play when done ✓") : skL("Bitince oynat", "Play when done"), SK.autoPlay.has(d.id) ? "ok" : ""));
   if (d.status === "paused") btns.push(B("resume", "play", skL("Sürdür", "Resume"), "pri"));
   if (d.status === "error") btns.push(B("resume", "retry", skL("Yeniden dene", "Retry"), "pri"));
   const media = d.status === "complete" && ["video", "music"].includes(d.category);
@@ -254,6 +263,7 @@ async function skBarAction(e) {
   try {
     if (act === "mtools") return openMediaTools(id);
     if (act === "play") return playerOpen(id);
+    if (act === "autoplay") { SK.autoPlay.has(id) ? SK.autoPlay.delete(id) : SK.autoPlay.add(id); skAutoSave(); return skRender(); }
     if (act === "remove") await api.remove(id, false);
     else if (act === "confirm") await api.confirm(id, true);
     else if (act === "reject") await api.confirm(id, false);
@@ -261,6 +271,8 @@ async function skBarAction(e) {
   } catch (err) { console.error(err); toast(String(err), true); }
   tick();
 }
+
+function skAutoSave() { try { localStorage.setItem("kami.autoplay", JSON.stringify([...SK.autoPlay])); } catch { /* yok */ } }
 
 function skDock(k) {
   if (k === "settings") { $("#settingsBtn")?.click(); return; }
@@ -291,7 +303,10 @@ function skState(s) {
   const active = its.filter((d) => d.status === "active");
   for (const d of its) {
     const p = SK.prevStatus.get(d.id);
-    if (p && p !== "complete" && d.status === "complete") { SK.happyUntil = Date.now() + 3000; }
+    if (p && p !== "complete" && d.status === "complete") {
+      SK.happyUntil = Date.now() + 3000;
+      if (SK.autoPlay.has(d.id)) { SK.autoPlay.delete(d.id); skAutoSave(); if (typeof playerOpen === "function") playerOpen(d.id); }   // bitince oynat
+    }
     SK.prevStatus.set(d.id, d.status);
   }
   const spd = s.total_speed || 0;
