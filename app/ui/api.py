@@ -60,6 +60,7 @@ class Api:
         self._phone_key = None
         self._ntfy = None
         self._media = None                               # media_server.MediaServer (P1 oynatici, main baglar)
+        self._play_inbox: list[str] = []                 # --play / surukle-birak / ikinci ornekten gelen dosyalar
         self._warns: list[dict[str, Any]] = []
         self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
         manager.events.on("ui.warn", lambda **kw: self._on_warn(kw))
@@ -124,12 +125,14 @@ class Api:
             torrents, self._torrent_inbox = self._torrent_inbox, []
             ai_events, self._ai_events = self._ai_events, []
             warns, self._warns = self._warns, []
+            plays, self._play_inbox = self._play_inbox, []
         rd = self._rd
         upd = None
         with self._inbox_lock:
             if self._update_info and not self._update_shown:   # yeni surum bilgisi arayuze bir kez
                 upd, self._update_shown = self._update_info, True
         return {
+            "play_requests": plays,
             "ai_events": ai_events,
             "warns": warns,
             "shutdown": self._shutdown.state() if self._shutdown else None,
@@ -991,6 +994,18 @@ class Api:
         if not self._media:
             return {"ok": False, "error": "player_unavailable"}
         return self._media.register(str(path or ""))
+
+    def _play_request(self, path: str) -> None:
+        with self._inbox_lock:
+            self._play_inbox.append(str(path))
+
+    def player_default_apps(self) -> bool:
+        """Windows Ayarlar > Varsayilan uygulamalar > Kami (varsayilan programla degistirilemez, kullanici secer)."""
+        try:
+            os.startfile("ms-settings:defaultapps?registeredAppUser=Kami")  # type: ignore[attr-defined]
+            return True
+        except OSError:
+            return False
 
     # inerken izle
     def watch(self, download_id: int) -> dict[str, Any]:

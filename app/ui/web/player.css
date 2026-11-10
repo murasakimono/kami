@@ -74,3 +74,6 @@
 
 body.pl-open #sunak { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) { #player .pl-spin { animation-duration: 2s; } }
+#player .pl-chip { position: absolute; left: 22px; bottom: 112px; height: 36px; padding: 0 14px; border: 0; background: #1C1528; color: #C4B5FD; font: 600 13px "Chakra Petch", sans-serif; cursor: pointer; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); animation: pl-in .25s ease-out; }
+#player .pl-chip:hover { background: #3B1580; color: #fff; }
+@keyframes pl-in { from { opacity: 0; transform: translateY(6px); } }

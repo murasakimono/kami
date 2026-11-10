@@ -97,6 +97,15 @@ async function playerOpen(id) {
   if (!r || !r.ok) { toast(plL("Oynatılamadı: ", "Can't play: ") + (r?.error || "?"), true); return; }
   plStart(r);
 }
+async function playerOpenPath(path) {
+  if (!$("#player")) plBuild();
+  let r;
+  try { r = await api.player_open_path(path); } catch (e) { r = { ok: false, error: String(e) }; }
+  if (!r || !r.ok) { toast(plL("Oynatılamadı: ", "Can't play: ") + (r?.error || "?"), true); return; }
+  plStart(r);
+}
+if (typeof STATE_HOOKS !== "undefined") STATE_HOOKS.push((s) => { const q = s.play_requests || []; if (q.length) playerOpenPath(q[q.length - 1]); });
+
 function plStart(r) {
   const el = $("#player"), v = $("#plVideo");
   Object.assign(PL, { open: true, info: r, mode: r.mode, offset: 0, audio: 0, failed: 0, dur: r.duration || 0, cues: [], subIdx: -1, subShift: 0 });
@@ -113,11 +122,47 @@ function plStart(r) {
   if (r.subs.length) { $("#plSub").value = "0"; plLoadSub(0); }
   plBlinkLoop();
   if (r.kind === "audio") PL.big?.ready.then(() => PL.big.start());
-  plSetSrc(0);
+  const saved = plPos(r.path);
+  const resume = saved && saved > 15 && (!PL.dur || saved < PL.dur - 30) ? saved : 0;
+  if (resume) plSetSrcResume(resume); else plSetSrc(0);
+  plMediaSession();
   plWake();
+}
+// kaldigin yerden devam: dosya yolu -> saniye (bu bilgisayarda, WebView2 depolamasinda)
+function plPos(path, t) {
+  try {
+    const all = JSON.parse(localStorage.getItem("kami.pos") || "{}");
+    if (t === undefined) return all[path] || 0;
+    if (t === null) delete all[path]; else all[path] = Math.round(t);
+    const keys = Object.keys(all); if (keys.length > 500) delete all[keys[0]];
+    localStorage.setItem("kami.pos", JSON.stringify(all));
+  } catch { /* depolama yoksa devam ozelligi sessizce kapali */ }
+  return 0;
+}
+async function plSetSrcResume(t) {
+  await plSeek(t, true);
+  const chip = document.createElement("button");
+  chip.className = "pl-chip"; chip.textContent = plL(`${fmtT(t)}'den devam · baştan başla`, `Resumed at ${fmtT(t)} · start over`);
+  chip.onclick = () => { plSeek(0, true); chip.remove(); };
+  $("#player").appendChild(chip);
+  setTimeout(() => chip.remove(), 6000);
+}
+// Windows medya paneli + klavyedeki medya tuslari (WebView2 navigator.mediaSession -> SMTC)
+function plMediaSession() {
+  const ms = navigator.mediaSession; if (!ms) return;
+  try {
+    ms.metadata = new MediaMetadata({ title: PL.info.title, artist: "Kami", artwork: PL.info.cover ? [{ src: PL.info.cover, sizes: "300x300", type: "image/jpeg" }] : [] });
+    ms.setActionHandler("play", () => $("#plVideo").play());
+    ms.setActionHandler("pause", () => $("#plVideo").pause());
+    ms.setActionHandler("seekbackward", () => plSeek(plNow() - 10));
+    ms.setActionHandler("seekforward", () => plSeek(plNow() + 10));
+    ms.setActionHandler("stop", plClose);
+  } catch { /* eski WebView2 */ }
 }
 function plClose() {
   const v = $("#plVideo");
+  if (PL.info?.path) { const t = plNow(); plPos(PL.info.path, PL.dur && t > PL.dur - 30 ? null : t); }
+
   v.pause(); v.removeAttribute("src"); v.load();   // akis baglantisi kapanir -> sunucu ffmpeg'i oldurur
   PL.open = false;
   $("#player").hidden = true;
@@ -182,6 +227,10 @@ function plModeUi() {
 function plTick() {
   if (!PL.open) return;
   const t = plNow();
+  if (PL.info.path && Math.abs(t - (PL.lastSave || 0)) > 5) {   // 5 sn'de bir konumu yaz; sona yakinsa sil
+    PL.lastSave = t;
+    plPos(PL.info.path, PL.dur && t > PL.dur - 30 ? null : t);
+  }
   $("#plCur").textContent = fmtT(t);
   if (!PL.seeking) plDrawPos(t);
   plSubDraw(t);

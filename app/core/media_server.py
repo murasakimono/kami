@@ -198,7 +198,7 @@ class MediaServer:
                 self._files[f"{key}-s{i}"] = {"path": s["path"], "kind": "sub"}
         a_ok = mode == "direct"
         res = {
-            "ok": True, "key": key, "kind": kind, "mode": mode, "title": title or p.stem,
+            "ok": True, "key": key, "path": str(p), "kind": kind, "mode": mode, "title": title or p.stem,
             "duration": info["duration"], "width": info["width"], "height": info["height"],
             "audio": info["audio"], "embedded_subs": info["subs"],
             "url": f"{self.base}/f/{key}" if a_ok else f"{self.base}/x/{key}",

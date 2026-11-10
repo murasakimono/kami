@@ -55,6 +55,17 @@ def _magnet_arg(argv: list[str]) -> str:
     return ""
 
 
+def _play_arg(argv: list[str]) -> str:
+    """Kami Player: Kami.exe --play "<dosya>" (dosya iliskilendirme) ya da dogrudan medya dosyasi yolu."""
+    from app.core.media_server import AUDIO_EXT, VIDEO_EXT
+    for i, a in enumerate(argv):
+        if a == "--play" and i + 1 < len(argv):
+            return argv[i + 1]
+        if not a.startswith("-") and os.path.splitext(a)[1].lower() in VIDEO_EXT | AUDIO_EXT and os.path.isfile(a):
+            return a
+    return ""
+
+
 _MUTEX = None
 
 
@@ -101,6 +112,7 @@ def main() -> int:
             _time.sleep(1.5)       # aria2 (--stop-with-process) Kami'den hemen sonra kapanir: bin\ kilitli kalmasin
         return 0
     magnet = _magnet_arg(sys.argv[1:])
+    play = _play_arg(sys.argv[1:])
 
     # Tek ornek: zaten calisiyorsa onu one getir ve cik
     if call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping"):
@@ -114,6 +126,10 @@ def main() -> int:
             res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/rd", {"url": magnet, "source": "magnet"},
                                         timeout=5.0)
             log.info("Magnet calisan Kami'ye iletildi: %s", bool(res and res.get("ok")))
+        if play:   # Gezgin'de cift tik: calisan Kami oynaticiyi acar (pencereyi de one getirir)
+            res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/play", {"path": os.path.abspath(play)}, timeout=5.0)
+            log.info("Oynatma calisan Kami'ye iletildi: %s", bool(res and res.get("ok")))
+            return 0
         if "--tray" not in sys.argv[1:]:
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/show")
         log.info("Kami zaten calisiyor; pencere one getirildi.")
@@ -227,6 +243,31 @@ def main() -> int:
         minimized=start_hidden,
     )
     api._set_window(window)
+
+    # ---- Kami Player: --play ile acilis, calisan ornege gelen istek, pencereye birakilan medya dosyasi
+    def play_request(path: str) -> None:
+        api._play_request(path)
+        show_window()
+
+    bridge.on_play = play_request
+    if play:
+        api._play_request(os.path.abspath(play))
+
+    def bind_drop() -> None:
+        try:
+            from webview.dom import DOMEventHandler
+            from app.core.media_server import AUDIO_EXT, VIDEO_EXT
+
+            def on_drop(e) -> None:
+                for f in (e.get("dataTransfer") or {}).get("files") or []:
+                    p = f.get("pywebviewFullPath") or ""
+                    if p and os.path.splitext(p)[1].lower() in VIDEO_EXT | AUDIO_EXT:
+                        api._play_request(p)
+                        break
+            window.dom.document.events.drop += DOMEventHandler(on_drop, True, False)
+        except Exception:
+            log.exception("Surukle-birak oynatma baglanamadi")
+    window.events.loaded += bind_drop
 
     from app.core import desktop, winwin
     from app.core.watchdog import UiWatchdog
