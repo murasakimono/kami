@@ -100,6 +100,7 @@ DEFAULTS: dict[str, Any] = {
     "ntfy_errors": True,           # hata olunca
     "watch_min_mb": 20,            # inerken izle: oynatici acilmadan once bastan inmis olmasi gereken MB
     "watch_player": "screenbox",   # screenbox | default
+    "library_dirs": [],            # Kami Player kutuphanesi: taranan klasorler (indirme klasoru her zaman dahil)
 }
 
 

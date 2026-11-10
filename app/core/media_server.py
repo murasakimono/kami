@@ -12,6 +12,7 @@ Yollar (hepsi /<token>/ altinda):
                         mod "remux": goruntu kopyalanir, ses AAC; mod "transcode": H.264 (NVENC varsa) + AAC
   GET /s/<key>          altyazi (SRT/VTT -> WebVTT)
   GET /c/<key>          gomulu kapak resmi (muzik)
+  GET /p/<key>?t=       ilerleme cubugu onizleme karesi (JPEG, 5 sn'lik dilimlere yuvarlanir, bellekte onbellek)
   GET /k/<key>?t=       t'den onceki en yakin anahtar kare zamani (remux'ta kopya akis anahtar kareden baslar)
 """
 from __future__ import annotations
@@ -125,6 +126,7 @@ class MediaServer:
         self._lock = threading.Lock()
         self._procs: set[subprocess.Popen] = set()
         self._encoder: str | None = None
+        self._thumbs: dict[tuple[str, int], bytes] = {}
         self.httpd = None
 
     # ---------- yasam dongusu ----------
@@ -205,6 +207,7 @@ class MediaServer:
             "direct_url": f"{self.base}/f/{key}",
             "stream_url": f"{self.base}/x/{key}",
             "cover": f"{self.base}/c/{key}" if info["cover"] else "",
+            "thumb_url": f"{self.base}/p/{key}" if kind == "video" else "",
             "subs": [{"label": s["label"], "url": f"{self.base}/s/{key}-s{i}"} for i, s in enumerate(subs)],
         }
         log.info("Oynatici: %s (%s, %s, %s/%s)", p.name, kind, mode, info["vcodec"] or "-",
@@ -284,6 +287,20 @@ class MediaServer:
         except Exception:
             return max(0.0, t)
 
+    def thumb(self, key: str, e: dict[str, Any], t: float) -> bytes:
+        slot = int(max(0.0, t) // 5)
+        ck = (key, slot)
+        if ck in self._thumbs:
+            return self._thumbs[ck]
+        r = subprocess.run([self.ffmpeg(), "-hide_banner", "-loglevel", "error", "-ss", str(slot * 5 + 2), "-i", e["path"],
+                            "-map", "0:v:0", "-frames:v", "1", "-vf", "scale=208:-2", "-q:v", "6", "-f", "image2", "-c:v", "mjpeg", "pipe:1"],
+                           capture_output=True, timeout=15, creationflags=NO_WINDOW)
+        data = r.stdout if r.returncode == 0 else b""
+        if len(self._thumbs) > 600:
+            self._thumbs.pop(next(iter(self._thumbs)))
+        self._thumbs[ck] = data
+        return data
+
     def spawn(self, cmd: list[str]) -> subprocess.Popen:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
                              creationflags=NO_WINDOW, bufsize=0)
@@ -355,6 +372,12 @@ def _make_handler(server: MediaServer):
                     t = float((q.get("t") or ["0"])[0] or 0)
                     kf = server.keyframe_before(e, t) if e["kind"] == "video" else t   # arayuz sadece kopya akista sorar
                     self._bytes(json.dumps({"t": kf}).encode(), "application/json", head)
+                elif route == "p":
+                    data = server.thumb(key, e, float((q.get("t") or ["0"])[0] or 0)) if e["kind"] == "video" and server.ffmpeg() else b""
+                    if data:
+                        self._bytes(data, "image/jpeg", head)
+                    else:
+                        self._err(404)
                 elif route == "c":
                     self._cover(e["path"], head)
                 else:

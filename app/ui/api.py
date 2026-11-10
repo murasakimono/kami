@@ -995,6 +995,51 @@ class Api:
             return {"ok": False, "error": "player_unavailable"}
         return self._media.register(str(path or ""))
 
+    def player_siblings(self, path: str) -> list[str]:
+        """Ayni klasordeki ayni turden medya: otomatik 'siradakiler' listesi."""
+        from app.core.library import siblings
+        return siblings(str(path or ""))
+
+    def _library_dirs(self) -> list[str]:
+        dirs = [str(self._manager.base_dir())] + [str(d) for d in (self._manager.settings.get("library_dirs") or [])]
+        return list(dict.fromkeys(d for d in dirs if d))
+
+    def library_get(self) -> dict[str, Any]:
+        from app.core.library import scan
+        res = scan(self._library_dirs())
+        res["dirs"] = self._library_dirs()
+        res["base"] = str(self._manager.base_dir())
+        return res
+
+    def library_add_dir(self) -> dict[str, Any]:
+        d = self.choose_folder()
+        if d:
+            cur = list(self._manager.settings.get("library_dirs") or [])
+            if d not in cur:
+                self._manager.settings.set("library_dirs", cur + [d])
+        return {"ok": bool(d), "dirs": self._library_dirs()}
+
+    def library_remove_dir(self, path: str) -> dict[str, Any]:
+        cur = [d for d in (self._manager.settings.get("library_dirs") or []) if d != path]
+        self._manager.settings.set("library_dirs", cur)
+        return {"ok": True, "dirs": self._library_dirs()}
+
+    def _pl(self):
+        if not getattr(self, "_playlists", None):
+            from app import paths
+            from app.core.library import Playlists
+            self._playlists = Playlists(paths.DATA_DIR / "playlists.json")
+        return self._playlists
+
+    def playlist_get(self) -> dict[str, list[str]]:
+        return self._pl().all()
+
+    def playlist_save(self, name: str, items: list) -> dict[str, list[str]]:
+        return self._pl().save(str(name), [str(x) for x in (items or [])])
+
+    def playlist_delete(self, name: str) -> dict[str, list[str]]:
+        return self._pl().delete(str(name))
+
     def _play_request(self, path: str) -> None:
         with self._inbox_lock:
             self._play_inbox.append(str(path))

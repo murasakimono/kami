@@ -31,16 +31,18 @@ function plBuild() {
       <button class="pl-x" id="plClose" title="${plL("Kapat (Esc)", "Close (Esc)")}">✕</button>
     </div>
     <div class="pl-deck">
-      <div class="pl-seek" id="plSeek"><i class="pl-buf" id="plBuf"></i><i class="pl-fill" id="plFill"></i><i class="pl-knob" id="plKnob"></i><span class="pl-tip" id="plTip"></span></div>
+      <div class="pl-seek" id="plSeek"><i class="pl-buf" id="plBuf"></i><i class="pl-fill" id="plFill"></i><i class="pl-knob" id="plKnob"></i><span class="pl-tip" id="plTip"><img id="plThumb" alt=""><b id="plTipT"></b></span></div>
       <div class="pl-row">
         <div class="pl-left"><span class="pl-time"><b id="plCur">0:00</b> / <span id="plDur">0:00</span></span>
-          <button class="pl-b" data-pl="back" title="-10 sn">−10</button><button class="pl-b" data-pl="fwd" title="+10 sn">+10</button></div>
+          <button class="pl-b" data-pl="prev" id="plPrev" title="${plL("Önceki (P)", "Previous (P)")}">⏮</button><button class="pl-b" data-pl="back" title="-10 sn">−10</button><button class="pl-b" data-pl="fwd" title="+10 sn">+10</button><button class="pl-b" data-pl="next" id="plNext" title="${plL("Sonraki (N)", "Next (N)")}">⏭</button></div>
         <div class="pl-eqw"><div class="pl-eq l" id="plEqL">${"<i></i>".repeat(7)}</div><button class="pl-eye" id="plEye" title="${plL("Oynat / duraklat (Boşluk)", "Play / pause (Space)")}"><span class="pl-iris"><img src="eye/iris.webp" alt=""></span><svg class="pl-ico pl-ico-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg><svg class="pl-ico pl-ico-pause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button><div class="pl-eq r" id="plEqR">${"<i></i>".repeat(7)}</div></div>
         <div class="pl-right">
           <select class="pl-sel" id="plSub" title="${plL("Altyazı (C)", "Subtitles (C)")}"></select>
           <select class="pl-sel" id="plAud" title="${plL("Ses izi", "Audio track")}"></select>
           <select class="pl-sel" id="plRate" title="${plL("Hız", "Speed")}">${[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => `<option value="${r}" ${r === 1 ? "selected" : ""}>${r}×</option>`).join("")}</select>
           <label class="pl-vol" title="${plL("Ses (↑ ↓, M)", "Volume (↑ ↓, M)")}"><button class="pl-b" data-pl="mute" id="plMute">◢</button><input type="range" id="plVol" min="0" max="1" step="0.02" value="1"></label>
+          <button class="pl-b" data-pl="queue" title="${plL("Sıradakiler / kütüphane (Q)", "Queue / library (Q)")}">☰</button>
+          <button class="pl-b" data-pl="settings" title="${plL("Altyazı, görüntü, ses ayarları", "Subtitle, picture, audio settings")}">⚙</button>
           <button class="pl-b" data-pl="full" title="${plL("Tam ekran (F)", "Fullscreen (F)")}">⛶</button>
         </div>
       </div>
@@ -53,7 +55,7 @@ function plBuild() {
   v.addEventListener("waiting", () => $("#plSpin").classList.add("on"));
   v.addEventListener("playing", () => { $("#plSpin").classList.remove("on"); plEyeState(); });
   v.addEventListener("pause", plEyeState);
-  v.addEventListener("ended", plEyeState);
+  v.addEventListener("ended", () => { plEyeState(); window.plOnEnded?.(); });
   v.addEventListener("loadedmetadata", () => {
     if (PL.mode === "direct" && isFinite(v.duration)) PL.dur = v.duration;
     $("#plDur").textContent = fmtT(PL.dur);
@@ -66,7 +68,8 @@ function plBuild() {
   $("#plClose").addEventListener("click", plClose);
   el.addEventListener("click", (e) => {
     const b = e.target.closest("[data-pl]"); if (!b) return;
-    ({ back: () => plSeek(plNow() - 10), fwd: () => plSeek(plNow() + 10), mute: () => { v.muted = !v.muted; plVolUi(); }, full: plFull })[b.dataset.pl]?.();
+    ({ back: () => plSeek(plNow() - 10), fwd: () => plSeek(plNow() + 10), mute: () => { v.muted = !v.muted; plVolUi(); }, full: plFull,
+       prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), queue: () => window.plDrawer?.(), settings: () => window.plSettings?.() })[b.dataset.pl]?.();
   });
   $("#plVol").addEventListener("input", (e) => { v.volume = +e.target.value; v.muted = false; plVolUi(); });
   $("#plRate").addEventListener("change", (e) => { v.playbackRate = +e.target.value; });
@@ -77,16 +80,29 @@ function plBuild() {
   const at = (e) => { const r = seek.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (PL.dur || 0); };
   seek.addEventListener("pointerdown", (e) => { PL.seeking = true; seek.setPointerCapture(e.pointerId); plDrawPos(at(e)); });
   seek.addEventListener("pointermove", (e) => {
-    const t = at(e), tip = $("#plTip"); tip.textContent = fmtT(t);
+    const t = at(e), tip = $("#plTip"); $("#plTipT").textContent = fmtT(t);
+    plThumb(t);
     tip.style.left = (e.clientX - seek.getBoundingClientRect().left) + "px";
     if (PL.seeking) plDrawPos(t);
   });
   seek.addEventListener("pointerup", (e) => { if (PL.seeking) { PL.seeking = false; plSeek(at(e)); } });
   el.addEventListener("mousemove", plWake);
   document.addEventListener("keydown", plKey, true);
+  window.plOnBuild?.();
   if (window.KamiEye) {
     PL.big = new KamiEye($("#plBig"), { assets: "eye/char/", eyeY: 0.38, mirrorFrame: true });
   }
+}
+
+// cubuk onizlemesi: 5 sn dilimleri, istekler 120 ms'de bir (sunucu onbellekli)
+function plThumb(t) {
+  const img = $("#plThumb"), u = PL.info?.thumb_url;
+  img.hidden = !u; if (!u) return;
+  const slot = Math.floor(t / 5);
+  if (slot === PL.thumbSlot) return;
+  PL.thumbSlot = slot;
+  clearTimeout(PL.thumbT);
+  PL.thumbT = setTimeout(() => { img.src = `${u}?t=${slot * 5}`; }, 120);
 }
 
 // ---------- acma / kapama ----------
@@ -125,6 +141,7 @@ function plStart(r) {
   const saved = plPos(r.path);
   const resume = saved && saved > 15 && (!PL.dur || saved < PL.dur - 30) ? saved : 0;
   if (resume) plSetSrcResume(resume); else plSetSrc(0);
+  window.plOnStart?.(r);
   plMediaSession();
   plWake();
 }
@@ -287,7 +304,9 @@ function plAudioGraph() {
     PL.ctx = new (window.AudioContext || window.webkitAudioContext)();
     PL.src = PL.ctx.createMediaElementSource($("#plVideo"));
     PL.an = PL.ctx.createAnalyser(); PL.an.fftSize = 512; PL.an.smoothingTimeConstant = 0.78;
-    PL.src.connect(PL.an); PL.an.connect(PL.ctx.destination);
+    PL.comp = PL.ctx.createDynamicsCompressor(); PL.gain = PL.ctx.createGain();
+    PL.src.connect(PL.comp); PL.comp.connect(PL.gain); PL.gain.connect(PL.an); PL.an.connect(PL.ctx.destination);
+    window.plApplyAudio?.();
     PL.bins = new Uint8Array(PL.an.frequencyBinCount);
     const N = 7, edges = [];   // logaritmik bantlar ~40 Hz .. 16 kHz
     for (let i = 0; i <= N; i++) edges.push(Math.round(Math.pow(PL.bins.length * 0.75, i / N)));
@@ -351,7 +370,7 @@ function plSubDraw(t) {
 
 // ---------- klavye ----------
 function plKey(e) {
-  if (!PL.open || e.target.matches("input[type=text], textarea")) return;
+  if (!PL.open || e.target.matches("input:not([type=range]), textarea")) return;
   const v = $("#plVideo"), k = e.key.toLowerCase();
   const map = {
     " ": plToggle, k: plToggle, f: plFull, m: () => { v.muted = !v.muted; plVolUi(); },
@@ -359,7 +378,8 @@ function plKey(e) {
     j: () => plSeek(plNow() - 10), l: () => plSeek(plNow() + 10),
     arrowup: () => { v.volume = Math.min(1, v.volume + 0.05); plVolUi(); }, arrowdown: () => { v.volume = Math.max(0, v.volume - 0.05); plVolUi(); },
     c: () => { const s = $("#plSub"); if (PL.info.subs.length) { s.value = PL.subIdx < 0 ? "0" : "-1"; plLoadSub(+s.value); } },
-    escape: () => { if (!document.fullscreenElement) plClose(); },
+    escape: () => { if (window.plPanelClose?.()) return; if (!document.fullscreenElement) plClose(); },
+    n: () => window.plQueueStep?.(1), p: () => window.plQueueStep?.(-1), q: () => window.plDrawer?.(),
   };
   if (map[k]) { e.preventDefault(); e.stopPropagation(); map[k](); plWake(); }
 }
