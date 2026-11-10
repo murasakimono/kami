@@ -58,19 +58,19 @@
 #player .pl-vol { display: flex; align-items: center; gap: 6px; }
 #player .pl-vol input { width: 90px; accent-color: #2EE6A6; }
 
-/* goz = oynat/duraklat; ekolayzir cubuklari tuvalde gozun iki yaninda */
-#player .pl-eqw { display: flex; align-items: center; gap: 10px; }
-#player .pl-eq { display: flex; align-items: center; gap: 4px; height: 40px; }
-#player .pl-eq i { width: 4px; height: 3px; background: linear-gradient(180deg, #2EE6A6, #6D28D9); transition: height .06s linear; }
-#player.paused .pl-eq i { background: #3A2E52; }
-/* goz = oynat/duraklat: bust karesinin goz bolgesi altigen pencerede */
-#player .pl-eye { position: relative; width: 96px; height: 84px; padding: 0; border: 0; cursor: pointer; overflow: hidden; background: #0B0910;
-  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
-#player .pl-eye canvas { position: absolute; width: 230px; height: 267px; left: calc(48px - 230px * 190 / 352); top: calc(42px - 267px * 252 / 409); pointer-events: none; transition: filter .2s; }
-#player .pl-eye::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(46, 230, 166, calc(.3 + var(--pl-beat))); clip-path: inherit; }
-#player.paused .pl-eye::after { box-shadow: inset 0 0 0 2px #6D28D9; }
-#player.paused .pl-eye canvas { filter: saturate(.75) brightness(.85); }
-#player .pl-eye:hover canvas { filter: brightness(1.2); }
+/* goz = oynat/duraklat: tek basina yuvarlak goz; uzerine gelince oynat/duraklat simgesine doner */
+#player .pl-eye { position: relative; width: 46px; height: 46px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; background: #050408;
+  box-shadow: 0 0 0 2px rgba(46, 230, 166, calc(.25 + var(--pl-beat) * .6)), 0 0 calc(6px + var(--pl-beat) * 22px) rgba(46, 230, 166, calc(.2 + var(--pl-beat) * .5)); }
+#player .pl-iris { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; transition: transform .12s ease-in, filter .2s; transform: scale(calc(1 + var(--pl-beat) * .08)); }
+#player .pl-iris img { width: 100%; height: 100%; display: block; }
+#player .pl-eye.blink .pl-iris { transform: scaleY(.06); }
+#player.paused .pl-iris { transform: scaleY(.45); filter: brightness(.7) saturate(.8); }
+#player.paused .pl-eye { box-shadow: 0 0 0 2px #6D28D9; }
+#player .pl-ico { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; fill: #fff; opacity: 0; transition: opacity .15s; pointer-events: none; filter: drop-shadow(0 0 4px #000); }
+#player .pl-eye:hover .pl-iris { filter: brightness(.45); }
+#player:not(.paused) .pl-eye:hover .pl-ico-pause, #player.paused .pl-eye:hover .pl-ico-play { opacity: 1; }
+#player .pl-eq { height: 28px; gap: 3px; }
+#player .pl-eq i { width: 3px; }
 
 body.pl-open #sunak { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) { #player .pl-spin { animation-duration: 2s; } }

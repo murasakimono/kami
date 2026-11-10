@@ -35,7 +35,7 @@ function plBuild() {
       <div class="pl-row">
         <div class="pl-left"><span class="pl-time"><b id="plCur">0:00</b> / <span id="plDur">0:00</span></span>
           <button class="pl-b" data-pl="back" title="-10 sn">−10</button><button class="pl-b" data-pl="fwd" title="+10 sn">+10</button></div>
-        <div class="pl-eqw"><div class="pl-eq l" id="plEqL">${"<i></i>".repeat(7)}</div><button class="pl-eye" id="plEye" title="${plL("Oynat / duraklat (Boşluk)", "Play / pause (Space)")}"><canvas id="plEyeC" width="352" height="409"></canvas></button><div class="pl-eq r" id="plEqR">${"<i></i>".repeat(7)}</div></div>
+        <div class="pl-eqw"><div class="pl-eq l" id="plEqL">${"<i></i>".repeat(7)}</div><button class="pl-eye" id="plEye" title="${plL("Oynat / duraklat (Boşluk)", "Play / pause (Space)")}"><span class="pl-iris"><img src="eye/iris.webp" alt=""></span><svg class="pl-ico pl-ico-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg><svg class="pl-ico pl-ico-pause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button><div class="pl-eq r" id="plEqR">${"<i></i>".repeat(7)}</div></div>
         <div class="pl-right">
           <select class="pl-sel" id="plSub" title="${plL("Altyazı (C)", "Subtitles (C)")}"></select>
           <select class="pl-sel" id="plAud" title="${plL("Ses izi", "Audio track")}"></select>
@@ -53,7 +53,7 @@ function plBuild() {
   v.addEventListener("waiting", () => $("#plSpin").classList.add("on"));
   v.addEventListener("playing", () => { $("#plSpin").classList.remove("on"); plEyeState(); });
   v.addEventListener("pause", plEyeState);
-  v.addEventListener("ended", () => { plEyeState(); PL.eye?.set({ mood: "happy" }); setTimeout(() => PL.eye?.set({ mood: "idle" }), 2500); });
+  v.addEventListener("ended", plEyeState);
   v.addEventListener("loadedmetadata", () => {
     if (PL.mode === "direct" && isFinite(v.duration)) PL.dur = v.duration;
     $("#plDur").textContent = fmtT(PL.dur);
@@ -85,7 +85,6 @@ function plBuild() {
   el.addEventListener("mousemove", plWake);
   document.addEventListener("keydown", plKey, true);
   if (window.KamiEye) {
-    PL.eye = new KamiEye($("#plEyeC"), { assets: "eye/assets/" });
     PL.big = new KamiEye($("#plBig"), { assets: "eye/char/", eyeY: 0.38, mirrorFrame: true });
   }
 }
@@ -112,7 +111,7 @@ function plStart(r) {
   $("#plAud").innerHTML = r.audio.map((a, i) => `<option value="${i}">${escapeHtml([a.lang, a.title, a.codec].filter(Boolean).join(" · ") || plL("Ses ", "Audio ") + (i + 1))}</option>`).join("");
   $("#plAud").hidden = r.audio.length < 2;
   if (r.subs.length) { $("#plSub").value = "0"; plLoadSub(0); }
-  PL.eye?.ready.then(() => PL.eye.start());
+  plBlinkLoop();
   if (r.kind === "audio") PL.big?.ready.then(() => PL.big.start());
   plSetSrc(0);
   plWake();
@@ -124,7 +123,7 @@ function plClose() {
   $("#player").hidden = true;
   document.body.classList.remove("pl-open");
   if (document.fullscreenElement) document.exitFullscreen();
-  PL.eye?.stop(); PL.big?.stop();
+  PL.big?.stop(); clearTimeout(PL.blinkT);
 }
 
 // ---------- kaynak / zaman ----------
@@ -199,7 +198,6 @@ function plBufDraw() {
 }
 function plEyeState() {
   const v = $("#plVideo"), st = v.paused ? "paused" : "playing";
-  PL.eye?.set({ playbackState: st, lid: v.paused ? 0.6 : 0 });   // duraklayinca goz kapanir
   PL.big?.set({ playbackState: st, isDownloading: false });
   $("#player").classList.toggle("paused", v.paused);
   plWake();
@@ -221,6 +219,16 @@ function plWake() {
   el.classList.remove("idle");
   clearTimeout(PL.hideT);
   PL.hideT = setTimeout(() => { if (!$("#plVideo").paused && PL.info?.kind === "video") el.classList.add("idle"); }, 2600);
+}
+
+// ---------- yuvarlak goz: ara ara kirpar (duraklatinca yari kapali durur, CSS) ----------
+function plBlinkLoop() {
+  clearTimeout(PL.blinkT);
+  PL.blinkT = setTimeout(() => {
+    const e = $("#plEye");
+    if (PL.open && e) { e.classList.add("blink"); setTimeout(() => e.classList.remove("blink"), 140); }
+    if (PL.open) plBlinkLoop();
+  }, 2600 + Math.random() * 3600);
 }
 
 // ---------- ekolayzir: AnalyserNode -> gozun iki yani ----------
@@ -257,7 +265,7 @@ function plAudioGraph() {
 function plEqDraw(lv) {
   const L = $$("#plEqL i"), R = $$("#plEqR i");
   for (let i = 0; i < 7; i++) {   // ic bantlar goze yakin: bas ortada, tiz disarida
-    const h = lv ? 3 + lv[i] * 34 : 3;
+    const h = lv ? 3 + lv[i] * 22 : 3;
     L[6 - i].style.height = R[i].style.height = h.toFixed(1) + "px";
   }
 }
