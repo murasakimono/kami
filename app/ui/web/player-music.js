@@ -69,6 +69,7 @@ window.plMusicStart = async (r) => {
   const tok = PM.token;
   const lyr = $("#plLyr"), au = $("#plAudio");
   pmGlow(r.kind === "audio" ? r.cover : "");
+  if (r.kind !== "audio") PM.meta = null;
   if (r.kind !== "audio" || pmCfg().lyrics === false) { lyr.hidden = true; au.classList.remove("has-lyr"); return; }
   const meta = pmMeta(r);
   PM.meta = meta;
@@ -215,37 +216,130 @@ function pmGlow(url) {
   img.src = url;
 }
 
-// ---------- mini oynatici (B7): kucuk, hep ustte; kapak + baslik + o anki soz satiri + kontroller ----------
-window.plMini = (on) => {
+// ---------- mini oynatici (B7): YouTube PiP gibi cercevesiz, hep ustte kart; surukle tasi, cift tik / ⤢ / Esc buyut ----------
+window.plMini = async (on) => {
   if (!window.KAMI_PLAYER_WINDOW || !PL.open) return;
   on = on == null ? !PL.mini : !!on;
+  if (on === !!PL.mini) return;
+  const v = $("#plVideo"), isVid = PL.info?.kind === "video";
+  if (on && PL.full) { PL.full = false; $("#player").classList.remove("full"); api.player_fullscreen(false); await new Promise((r) => setTimeout(r, 350)); }
   PL.mini = on;
   let bar = $("#plMini");
   if (!bar) {
     $("#player").insertAdjacentHTML("beforeend", `
       <div class="pl-mini" id="plMini"><div class="pmi-cover" id="pmiCover"></div>
         <div class="pmi-txt"><b id="pmiTitle"></b><span id="pmMiniLine"></span></div>
-        <div class="pmi-btns"><button data-m="prev" title="${plL("Önceki", "Previous")}">⏮</button><button data-m="toggle" class="pmi-play" title="${plL("Oynat / duraklat", "Play / pause")}">⏯</button><button data-m="next" title="${plL("Sonraki", "Next")}">⏭</button><button data-m="exit" title="${plL("Büyüt (Esc)", "Expand (Esc)")}">⤢</button></div>
+        <div class="pmi-btns"><button data-m="prev" title="${plL("Önceki", "Previous")}">⏮</button><button data-m="toggle" class="pmi-play" id="pmiPlay" title="${plL("Oynat / duraklat", "Play / pause")}">⏸</button><button data-m="next" title="${plL("Sonraki", "Next")}">⏭</button><button data-m="exit" title="${plL("Büyüt (Esc)", "Expand (Esc)")}">⤢</button></div>
         <i class="pmi-prog" id="pmiProg"></i></div>`);
     bar = $("#plMini");
-    ["click", "dblclick"].forEach((ev) => bar.addEventListener(ev, (e) => e.stopPropagation()));
     bar.addEventListener("click", (e) => {
+      e.stopPropagation();
       const b = e.target.closest("button[data-m]"); if (!b) return;
       ({ prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), toggle: () => plToggle(), exit: () => window.plMini(false) })[b.dataset.m]();
     });
-    bar.addEventListener("dblclick", () => window.plMini(false));
-    $("#plVideo").addEventListener("timeupdate", () => {
+    v.addEventListener("timeupdate", () => {
       if (!PL.mini) return;
       const p = $("#pmiProg"); if (p && PL.dur) p.style.width = Math.min(100, plNow() / PL.dur * 100).toFixed(2) + "%";
     });
+    ["play", "pause"].forEach((ev) => v.addEventListener(ev, () => { const b = $("#pmiPlay"); if (b) b.textContent = v.paused ? "▶" : "⏸"; }));
+    pmMiniDrag();
   }
   const r = PL.info || {};
-  $("#pmiTitle").textContent = (PM.meta && (PM.meta.artist ? PM.meta.artist + " — " : "") + PM.meta.title) || r.title || "";
+  $("#pmiTitle").textContent = (!isVid && PM.meta && PM.meta.title && (PM.meta.artist ? PM.meta.artist + " — " : "") + PM.meta.title) || r.title || "";
   $("#pmiCover").style.backgroundImage = r.cover ? `url("${r.cover}")` : "";
-  $("#pmiCover").hidden = !r.cover || r.kind !== "audio";
-  if (!PM.lines.length) $("#pmMiniLine").textContent = "";
-  $("#player").classList.toggle("mini", on);
+  $("#pmiCover").hidden = !r.cover || isVid;
+  $("#pmiPlay").textContent = v.paused ? "▶" : "⏸";
+  PM.miniI = PM.idx;
+  $("#pmMiniLine").textContent = PM.lines.length && PM.idx >= 0 ? PM.lines[PM.idx].text : (isVid ? "" : [PM.meta?.artist, PM.meta?.album].filter(Boolean).join(" · "));
   window.plPanelClose?.();
   if ($("#plDict")) $("#plDict").hidden = true;
-  api.player_mini(on);
+  $("#player").classList.toggle("mini", on);
+  $("#player").classList.toggle("mini-vid", on && isVid);
+  let res;
+  try { res = await api.player_mini(on, isVid ? "video" : "audio", v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 0); } catch (e) { res = { ok: false }; }
+  if (on && !res?.ok) { PL.mini = false; $("#player").classList.remove("mini", "mini-vid"); toast(plL("Mini oynatıcı açılamadı", "Mini player failed"), true); }
 };
+// cercevesiz pencerede tasima: fareyle surukle (pencere imlecin altinda kayar, screenX farki kullanilir)
+function pmMiniDrag() {
+  let drag = null, moved = false, acc = [0, 0], busy = false;
+  const flush = async () => {
+    if (busy || (!acc[0] && !acc[1])) return;
+    busy = true; const [dx, dy] = acc; acc = [0, 0];
+    try { await api.player_mini_move(dx, dy); } catch { /* yok */ }
+    busy = false; if (acc[0] || acc[1]) flush();
+  };
+  document.addEventListener("pointerdown", (e) => {
+    if (!PL.mini || e.button !== 0 || e.target.closest("button")) return;
+    drag = { x: e.screenX, y: e.screenY }; moved = false;
+  }, true);
+  document.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dx = e.screenX - drag.x, dy = e.screenY - drag.y;
+    if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    moved = true; drag = { x: e.screenX, y: e.screenY };
+    acc[0] += dx; acc[1] += dy; flush();
+  }, true);
+  document.addEventListener("pointerup", () => { drag = null; }, true);
+  document.addEventListener("click", (e) => { if (PL.mini && moved) { e.stopPropagation(); e.preventDefault(); moved = false; } }, true);
+  document.addEventListener("dblclick", (e) => { if (PL.mini && !e.target.closest("button")) { e.stopPropagation(); e.preventDefault(); window.plMini(false); } }, true);
+}
+
+// ---------- sarki gecisi (B7): bosluksuz (siradakini onceden hazirla, bitmeden hemen gec) / crossfade ----------
+// Crossfade: biten sarkinin kuyrugu ayri bir <audio> ile sessizlesirken siradaki ana oynaticida yukselir.
+const PG = { pre: null, preFor: "", xf: null, advanced: 0 };
+function pgNextPath() {
+  if (typeof PX === "undefined" || PX.qi < 0 || PX.qi >= PX.queue.length - 1 || PX.nextCancel) return "";
+  return PX.queue[PX.qi + 1];
+}
+const _pgOpen = window.playerOpenPath;
+window.playerOpenPath = async (path, queue) => {
+  if (PG.pre && PG.pre.path === path && PG.pre.r?.ok) {   // onceden kaydedildi: ffprobe beklemeden basla
+    const r = PG.pre.r; PG.pre = null;
+    if (queue && queue.length && typeof PX !== "undefined") PX.pending = queue;
+    plStart(r); return;
+  }
+  return _pgOpen(path, queue);
+};
+document.addEventListener("timeupdate", async (e) => {
+  if (e.target.id !== "plVideo" || !PL.open || PL.info?.kind !== "audio") return;
+  const v = e.target, left = (PL.dur || v.duration || 0) - plNow();
+  if (!isFinite(left) || left <= 0) return;
+  const next = pgNextPath();
+  if (!next) return;
+  if (left < 20 && PG.preFor !== PL.info.path) {   // siradakini hazirla
+    PG.preFor = PL.info.path;
+    try { const r = await api.player_open_path(next); PG.pre = { path: next, r }; } catch { PG.pre = null; }
+  }
+  const xf = +pmCfg().xfade || 0;
+  if (Date.now() - PG.advanced < 3000) return;
+  if (xf > 0 && left <= xf && !v.paused && PL.mode === "direct" && PL.info.direct_url) {
+    PG.advanced = Date.now();
+    pgCrossfade(v, left);
+  } else if (xf === 0 && left <= 0.32 && !v.paused) {
+    PG.advanced = Date.now();
+    window.plQueueStep?.(1);
+  }
+}, true);
+function pgCrossfade(v, left) {
+  const tail = new Audio(PL.info.direct_url);
+  tail.crossOrigin = "anonymous";
+  const vol0 = Math.min(1, v.muted ? 0 : v.volume * (PL.vol > 1 ? 1 : 1));
+  tail.volume = vol0;
+  tail.currentTime = plNow();
+  tail.play().catch(() => {});
+  PG.xf && clearInterval(PG.xf.t);
+  const dur = Math.max(1, left) * 1000, t0 = performance.now();
+  const target = v.volume;
+  window.plQueueStep?.(1);
+  const nv = $("#plVideo");
+  nv.volume = 0;
+  const t = setInterval(() => {
+    const k = Math.min(1, (performance.now() - t0) / dur);
+    tail.volume = Math.max(0, vol0 * (1 - k));
+    nv.volume = Math.min(target, target * k);
+    if (k >= 1) { clearInterval(t); tail.pause(); tail.src = ""; nv.volume = target; }
+  }, 50);
+  PG.xf = { t };
+}
+const _pgEnded = window.plOnEnded;
+window.plOnEnded = () => { if (Date.now() - PG.advanced < 3000) return; _pgEnded?.(); };

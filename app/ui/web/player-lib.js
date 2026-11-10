@@ -4,7 +4,7 @@
 
 const PX = {
   queue: [], qi: -1, pending: null, nextShown: false, nextCancel: false, lib: null, libTab: "queue", libSeries: null,
-  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, assStyle: "orig", ocrLang: "auto", dictClick: true, lyrics: true, lrclib: true, karaoke: true, glow: true, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
+  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, xfade: 0, assStyle: "orig", ocrLang: "auto", dictClick: true, lyrics: true, lrclib: true, karaoke: true, glow: true, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
 };
 const pxBase = (p) => String(p).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 const pxSave = () => { try { localStorage.setItem("kami.player", JSON.stringify(PX.cfg)); } catch { /* yok */ } };
@@ -151,7 +151,7 @@ window.plDrawer = (tab) => {
   if (!d) {
     d = document.createElement("aside"); d.id = "plDrawer"; d.hidden = true;
     d.innerHTML = `<div class="px-tabs">
-        <button data-tab="queue">${plL("Sıradakiler", "Queue")}</button><button data-tab="lib">${plL("Kütüphane", "Library")}</button><button data-tab="lists">${plL("Listeler", "Playlists")}</button>
+        <button data-tab="queue">${plL("Sıradakiler", "Queue")}</button><button data-tab="lib">${plL("Kütüphane", "Library")}</button><button data-tab="albums">${plL("Albümler", "Albums")}</button><button data-tab="lists">${plL("Listeler", "Playlists")}</button>
         <button class="px-x" data-tab="close">✕</button></div><div class="px-body" id="pxBody"></div>`;
     document.body.appendChild(d);
     d.addEventListener("click", pxDrawerClick);
@@ -189,6 +189,7 @@ async function pxDrawerRender() {
     PX.lists = lists;
     return;
   }
+  if (PX.libTab === "albums") { pxAlbums(body); return; }
   // kutuphane
   if (!PX.lib) { body.innerHTML = `<p class="px-empty">${plL("Taranıyor…", "Scanning…")}</p>`; try { PX.lib = typeof slow === "function" ? await slow("library_get") : await api.library_get(); } catch (e) { body.innerHTML = `<p class="px-empty">${escapeHtml(String(e))}</p>`; return; } }
   const L = PX.lib;
@@ -211,10 +212,39 @@ async function pxDrawerRender() {
     <div class="px-dirs">${L.dirs.map((d) => `<div><span title="${escapeHtml(d)}">${escapeHtml(d)}</span>${d === L.base ? `<small>${plL("indirme", "downloads")}</small>` : `<button class="pl-b" data-rmdir="${escapeHtml(d)}">✕</button>`}</div>`).join("")}
       <button class="pl-b" data-act="adddir">+ ${plL("Klasör ekle", "Add folder")}</button><button class="pl-b" data-act="rescan">${plL("Yeniden tara", "Rescan")}</button></div>`;
 }
+// ---------- albumler (B7): kapak izgarasi -> album sayfasi ----------
+async function pxAlbums(body) {
+  if (!PX.albums) {
+    body.innerHTML = `<p class="px-empty">${plL("Müzik taranıyor… (ilk sefer biraz sürebilir)", "Scanning music… (first time can take a while)")}</p>`;
+    let r;
+    try { r = await slow("library_albums"); } catch (e) { r = { ok: false, error: String(e) }; }
+    if (!r?.ok) { body.innerHTML = `<p class="px-empty">${escapeHtml(r?.error || "?")}</p>`; return; }
+    PX.albums = r.albums;
+    if (PX.libTab !== "albums") return;
+  }
+  const A = PX.albums;
+  const cover = (a, cls) => `<div class="${cls}" style="${a.cover ? `background-image:url('${a.cover}')` : ""}">${a.cover ? "" : "♪"}</div>`;
+  const name = (a) => a.single ? plL("Tekli parçalar", "Singles") : a.album;
+  if (PX.album != null && A[PX.album]) {
+    const a = A[PX.album];
+    PX.view = a.tracks.map((x) => x.path);
+    body.innerHTML = `<button class="px-back" data-act="aback">‹ ${plL("Albümler", "Albums")}</button>
+      <div class="px-ahead">${cover(a, "px-acover big")}<div><b>${escapeHtml(name(a))}</b><span>${escapeHtml(a.artist || "")}</span><small>${a.count} ${plL("parça", "tracks")}</small>
+        <div class="px-aacts"><button class="pl-b pri" data-act="aplay">▶ ${plL("Oynat", "Play")}</button><button class="pl-b" data-act="ashuf">⤮ ${plL("Karıştır", "Shuffle")}</button></div></div></div>
+      <div class="px-list">${a.tracks.map((x, i) => `<button class="px-row ${PL.open && PL.info?.path === x.path ? "cur" : ""}" data-play="${i}"><i>${x.track || i + 1}</i><span>${escapeHtml(x.title)}${a.single || (x.artist && x.artist !== a.artist) ? `<small> · ${escapeHtml(x.artist || "")}</small>` : ""}</span></button>`).join("")}</div>`;
+    return;
+  }
+  PX.album = null;
+  body.innerHTML = A.length ? `<div class="px-agrid">${A.map((a, i) => `<button class="px-acard" data-album="${i}">${cover(a, "px-acover")}<b>${escapeHtml(name(a))}</b><small>${escapeHtml(a.artist || "")} · ${a.count}</small></button>`).join("")}</div>
+      <button class="pl-b" data-act="rescan" style="margin-top:12px">${plL("Yeniden tara", "Rescan")}</button>`
+    : `<p class="px-empty">${plL("Kütüphane klasörlerinde müzik bulunamadı. Kütüphane sekmesinden klasör ekleyebilirsin.", "No music found. Add folders from the Library tab.")}</p>`;
+}
+
 async function pxDrawerClick(e) {
   const t = e.target.closest("button"); if (!t) return;
-  if (t.dataset.tab) { if (t.dataset.tab === "close") $("#plDrawer").hidden = true; else { PX.libTab = t.dataset.tab; PX.libSeries = null; pxDrawerRender(); } return; }
+  if (t.dataset.tab) { if (t.dataset.tab === "close") $("#plDrawer").hidden = true; else { PX.libTab = t.dataset.tab; PX.libSeries = null; PX.album = null; pxDrawerRender(); } return; }
   if (t.dataset.play != null) { plPlayQueue(PX.view, +t.dataset.play); return; }
+  if (t.dataset.album != null) { PX.album = +t.dataset.album; pxDrawerRender(); $("#pxBody").scrollTop = 0; return; }
   if (t.dataset.series) { PX.libSeries = t.dataset.series; pxDrawerRender(); return; }
   if (t.dataset.list) { const l = PX.lists[t.dataset.list]; if (l?.length) plPlayQueue(l, 0); return; }
   if (t.dataset.del) { await api.playlist_delete(t.dataset.del); pxDrawerRender(); return; }
@@ -222,7 +252,14 @@ async function pxDrawerClick(e) {
   const act = t.dataset.act;
   if (act === "back") { PX.libSeries = null; pxDrawerRender(); }
   if (act === "adddir") { const r = await api.library_add_dir(); if (r.ok) { PX.lib = null; pxDrawerRender(); } }
-  if (act === "rescan") { PX.lib = null; pxDrawerRender(); }
+  if (act === "rescan") { PX.lib = null; PX.albums = null; pxDrawerRender(); }
+  if (act === "aback") { PX.album = null; pxDrawerRender(); }
+  if (act === "aplay" || act === "ashuf") {
+    const a = PX.albums?.[PX.album]; if (!a) return;
+    let paths = a.tracks.map((x) => x.path);
+    if (act === "ashuf") paths = paths.map((p) => [Math.random(), p]).sort((x, y) => x[0] - y[0]).map((x) => x[1]);
+    plPlayQueue(paths, 0);
+  }
   if (act === "saveq") {
     const name = $("#pxName").value.trim(); if (!name) { $("#pxName").focus(); return; }
     await api.playlist_save(name, PX.queue); toast(plL("Liste kaydedildi", "Playlist saved")); PX.libTab = "lists"; pxDrawerRender();
@@ -271,6 +308,8 @@ window.plSettings = () => {
     ${pxBool("lrclib", plL("Sözleri internette ara (LRCLIB)", "Search lyrics online (LRCLIB)"))}
     ${pxBool("karaoke", plL("Karaoke dolgusu", "Karaoke fill"))}
     ${pxBool("glow", plL("Kapak rengiyle parla", "Glow with cover color"))}
+    <div class="px-shift"><span>${plL("Şarkı geçişi", "Track transition")}</span></div>
+    <div class="px-seg" data-g="xfade">${[[0, plL("Boşluksuz", "Gapless")], [3, "Crossfade 3 sn"], [6, "6 sn"], [10, "10 sn"]].map(([v, l]) => `<button data-v="${v}" class="${+c.xfade === v ? "on" : ""}">${l}</button>`).join("")}</div>
     <p class="px-hint">${plL("Sıra: şarkının yanındaki .lrc / .txt → dosyanın içindeki sözler → LRCLIB. Bulunamazsa ✎ ile yapıştırabilirsin.", "Order: sidecar .lrc / .txt → embedded lyrics → LRCLIB. Otherwise paste with ✎.")}</p>
     <h4>${plL("Kısayollar", "Shortcuts")}</h4>
     <div class="px-keys">${pxKeysHtml()}</div>
@@ -285,7 +324,7 @@ window.plSettings = () => {
     if (segEl) {
       const g = segEl.dataset.g, v = b.dataset.v;
       if (segEl.dataset.b) { c[segEl.dataset.b] = v === "1"; pxSave(); pxBoolApply(segEl.dataset.b); segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); return; }
-      if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v; else if (g === "ocr") c.ocrLang = v;
+      if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v; else if (g === "ocr") c.ocrLang = v; else if (g === "xfade") c.xfade = +v;
       else if (g === "ass") { c.assStyle = v; pxSave(); if (PL.open && PL.subIdx >= 0) plLoadSub(PL.subIdx); }
       else if (g === "dialog") { c.dialog = v === "1"; pxSave(); if (PL.open) { if (PL.mode === "direct" && plDialogMix()) PL.mode = "remux"; plModeUi(); plSeek(plNow(), !$("#plVideo").paused); } } else c[g][segEl.dataset.k] = segEl.dataset.k === "pos" ? +v : v;
       segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));

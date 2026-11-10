@@ -146,3 +146,113 @@ def pid_alive(pid: int) -> bool:
         return bool(k32.GetExitCodeProcess(h, ctypes.byref(code))) and code.value == 259   # STILL_ACTIVE
     finally:
         k32.CloseHandle(h)
+
+
+class _RECT(ctypes.Structure):
+    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+
+class _MONINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", _RECT), ("rcWork", _RECT), ("dwFlags", wintypes.DWORD)]
+
+
+class MiniWindow:
+    """Kami Player'i YouTube PiP'i gibi kucuk, cercevesiz, hep ustte bir karta cevirir; geri alinca eski haline doner.
+    Pencere stilini Win32 ile degistirir (GWL_STYLE), boyut/konum SetWindowPos ile (is parcacigindan guvenli)."""
+    GWL_STYLE = -16
+    FRAME = 0x00C00000 | 0x00040000 | 0x00020000 | 0x00010000 | 0x00080000   # CAPTION|THICKFRAME|MIN|MAX|SYSMENU
+    SWP_NOSIZE, SWP_NOZORDER, SWP_FRAMECHANGED, SWP_SHOWWINDOW, SWP_ASYNC = 0x1, 0x4, 0x20, 0x40, 0x4000
+
+    def __init__(self, title: str) -> None:
+        self.title = title
+        self.saved: tuple | None = None
+
+    def _hwnd(self) -> int:
+        return find_window(self.title)
+
+    @staticmethod
+    def _api():
+        u = user32
+        u.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+        u.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
+        u.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+        u.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+        u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        u.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(_RECT)]
+        u.MonitorFromWindow.restype = wintypes.HANDLE
+        u.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+        u.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_MONINFO)]
+        u.IsZoomed.argtypes = [wintypes.HWND]
+        u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        u.GetDpiForWindow.argtypes = [wintypes.HWND]
+        u.GetDpiForWindow.restype = wintypes.UINT
+        return u
+
+    def _work(self, hwnd: int) -> _RECT:
+        u = self._api()
+        mi = _MONINFO(); mi.cbSize = ctypes.sizeof(_MONINFO)
+        u.GetMonitorInfoW(u.MonitorFromWindow(hwnd, 2), ctypes.byref(mi))
+        return mi.rcWork
+
+    def _scale(self, hwnd: int) -> float:
+        try:
+            return (self._api().GetDpiForWindow(hwnd) or 96) / 96
+        except Exception:
+            return 1.0
+
+    def enter(self, width: int, height: int) -> bool:
+        if user32 is None:
+            return False
+        hwnd = self._hwnd()
+        if not hwnd:
+            return False
+        u = self._api()
+        if u.IsZoomed(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
+        if self.saved is None:
+            r = _RECT(); u.GetWindowRect(hwnd, ctypes.byref(r))
+            self.saved = (u.GetWindowLongPtrW(hwnd, self.GWL_STYLE), r.left, r.top, r.right - r.left, r.bottom - r.top)
+        style = self.saved[0]
+        u.SetWindowLongPtrW(hwnd, self.GWL_STYLE, style & ~self.FRAME)
+        k = self._scale(hwnd)
+        w, h = int(width * k), int(height * k)
+        wa = self._work(hwnd)
+        x, y = wa.right - w - int(16 * k), wa.bottom - h - int(16 * k)
+        u.SetWindowPos(hwnd, -1, x, y, w, h, self.SWP_FRAMECHANGED | self.SWP_SHOWWINDOW | self.SWP_ASYNC)   # HWND_TOPMOST
+        try:   # Windows 11: yuvarlak koseler
+            pref = ctypes.c_int(2)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(wintypes.HWND(hwnd), 33, ctypes.byref(pref), ctypes.sizeof(pref))
+        except Exception:
+            pass
+        return True
+
+    def resize(self, width: int, height: int) -> None:
+        hwnd = self._hwnd()
+        if not hwnd or self.saved is None:
+            return
+        u = self._api()
+        r = _RECT(); u.GetWindowRect(hwnd, ctypes.byref(r))
+        k = self._scale(hwnd)
+        w, h = int(width * k), int(height * k)
+        u.SetWindowPos(hwnd, -1, r.right - w, r.bottom - h, w, h, self.SWP_ASYNC)
+
+    def move(self, dx: int, dy: int) -> None:
+        hwnd = self._hwnd()
+        if not hwnd or self.saved is None:
+            return
+        u = self._api()
+        r = _RECT(); u.GetWindowRect(hwnd, ctypes.byref(r))
+        k = self._scale(hwnd)
+        u.SetWindowPos(hwnd, 0, r.left + int(dx * k), r.top + int(dy * k), 0, 0, self.SWP_NOSIZE | self.SWP_NOZORDER | self.SWP_ASYNC)
+
+    def leave(self) -> bool:
+        hwnd = self._hwnd()
+        if not hwnd or self.saved is None:
+            self.saved = None
+            return False
+        u = self._api()
+        style, x, y, w, h = self.saved
+        self.saved = None
+        u.SetWindowLongPtrW(hwnd, self.GWL_STYLE, style)
+        u.SetWindowPos(hwnd, -2, x, y, w, h, self.SWP_FRAMECHANGED | self.SWP_SHOWWINDOW | self.SWP_ASYNC)   # HWND_NOTOPMOST
+        return True

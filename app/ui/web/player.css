@@ -301,3 +301,46 @@ body.pl-open #sunak { visibility: hidden; }
 .pl-lyr .pm-l.on span { filter: drop-shadow(0 0 14px rgba(var(--pl-glow, 46, 230, 166), .5)); }
 .pl-lyr .pm-l { overflow-wrap: anywhere; }
 .pl-lyr .pm-list { position: relative; }
+
+/* ===== mini oynatici v2: cercevesiz pencerenin tamami ===== */
+#player.mini { background: #07060B !important; user-select: none; }
+#player.mini .pl-mini { display: flex; position: absolute; inset: 0; height: auto; align-items: center; gap: 12px; padding: 0 12px; z-index: 20; cursor: grab;
+  background: radial-gradient(ellipse 90% 140% at 15% 50%, rgba(var(--pl-glow, 109, 40, 217), calc(.22 + var(--pl-beat) * .3)), #07060B 72%); border: 1px solid rgba(255,255,255,.07); border-radius: 8px; }
+#player.mini .pmi-cover { width: 104px; height: 104px; border-radius: 6px; clip-path: none; box-shadow: 0 0 18px rgba(var(--pl-glow, 109, 40, 217), .45); }
+#player.mini .pmi-txt { -webkit-app-region: no-drag; font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; }
+#player.mini .pmi-txt b { font: 600 13px "Segoe UI", system-ui, sans-serif; color: #B9B2C9; }
+#player.mini .pmi-txt span { font: 600 16px/1.3 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: #fff; }
+#player.mini .pmi-btns { position: absolute; right: 8px; bottom: 8px; }
+#player.mini .pmi-btns button { width: 30px; height: 30px; font-size: 14px; }
+#player.mini .pmi-txt { padding-bottom: 26px; }
+/* video mini: pencerenin tamami video, kontroller fareyle gelir */
+#player.mini-vid .pl-mini { background: linear-gradient(0deg, rgba(5,4,8,.85) 0, rgba(5,4,8,0) 45%, rgba(5,4,8,0) 70%, rgba(5,4,8,.6) 100%); border: 0; opacity: 0; transition: opacity .2s; align-items: flex-start; padding-top: 8px; }
+#player.mini-vid:hover .pl-mini { opacity: 1; }
+#player.mini-vid .pmi-txt { padding-bottom: 0; }
+#player.mini-vid .pmi-txt b { color: #fff; text-shadow: 0 1px 3px #000; }
+#player.mini-vid .pmi-btns { left: 50%; right: auto; bottom: 50%; transform: translate(-50%, 50%); gap: 10px; }
+#player.mini-vid .pmi-btns button { width: 40px; height: 40px; font-size: 18px; background: rgba(0,0,0,.45); border-radius: 50%; }
+#player.mini-vid .pmi-btns button[data-m="exit"] { position: fixed; top: 6px; right: 6px; width: 30px; height: 30px; font-size: 14px; }
+#player.mini-vid #plVideo { object-fit: contain; }
+#player.mini .pmi-prog { height: 3px; border-radius: 0 0 0 8px; }
+#player.mini-vid .pmi-btns { inset: 0; left: 0; right: 0; bottom: 0; transform: none; display: flex; align-items: center; justify-content: center; gap: 12px; pointer-events: none; }
+#player.mini-vid .pmi-btns button { pointer-events: auto; }
+#player.mini-vid .pmi-btns button[data-m="exit"] { position: absolute; top: 6px; right: 6px; }
+
+/* B7 albumler: kapak izgarasi */
+.px-agrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 14px 12px; padding-top: 6px; }
+.px-acard { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; color: #EDE9F6; font-family: "Segoe UI", system-ui, sans-serif; }
+.px-acard b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.px-acard small { font-size: 11px; color: #8E86A3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.px-acover { aspect-ratio: 1; width: 100%; border-radius: 6px; background: #17111F center / cover no-repeat; display: grid; place-items: center; color: #4A3D63; font-size: 34px; box-shadow: 0 4px 14px rgba(0,0,0,.45); transition: transform .15s, box-shadow .15s; }
+.px-acard:hover .px-acover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.55), 0 0 0 1px rgba(167,139,250,.4); }
+.px-ahead { display: flex; gap: 14px; align-items: flex-end; margin: 8px 0 14px; font-family: "Segoe UI", system-ui, sans-serif; }
+.px-ahead > div:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.px-ahead b { font-size: 18px; color: #fff; font-weight: 700; }
+.px-ahead span { font-size: 13px; color: #B9B2C9; }
+.px-ahead small { font-size: 12px; color: #7E7593; }
+.px-acover.big { width: 132px; flex: none; font-size: 48px; }
+.px-aacts { display: flex; gap: 6px; margin-top: 8px; }
+.px-aacts .pl-b { height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: #1A1424; color: #C4B5FD; font: 600 12px "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+.px-aacts .pl-b.pri { background: #3B1580; color: #fff; }
+.px-row small { color: #7E7593; }

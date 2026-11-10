@@ -273,6 +273,13 @@ class MediaServer:
                 "url": f"{self.base}/x/{key}", "direct_url": f"{self.base}/x/{key}", "stream_url": f"{self.base}/x/{key}",
                 "jassub": f"{self.base}/j/" if self.vendor_dir else ""}
 
+    def asset_url(self, path: str, route: str = "f") -> str:
+        """Kutuphane kapaklari icin hafif kayit: f = dosyanin kendisi (resim), c = gomulu kapak."""
+        key = self._key_for(path)
+        with self._lock:
+            self._files.setdefault(key, {"path": path, "kind": "asset", "mode": "direct", "info": {}})
+        return f"{self.base}/{route}/{key}"
+
     def _key_for(self, path: str) -> str:
         with self._lock:
             if path not in self._by_path:

@@ -76,7 +76,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
-        "library_get", "ocr_image", "ocr_translate", "player_lyrics",
+        "library_get", "library_albums", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -1016,6 +1016,18 @@ class Api:
         res["base"] = str(self._manager.base_dir())
         return res
 
+    def library_albums(self) -> dict[str, Any]:
+        """Kutuphanedeki muzik: album kartlari (kapak, sanatci, parcalar)."""
+        from app import paths
+        from app.core.library import albums, scan
+        res = scan(self._library_dirs())
+        al = albums(res.get("items", []), paths.DATA_DIR / "albums_cache.json")
+        for g in al:
+            g["cover"] = (self._media.asset_url(g["cover_path"], "c") if g["cover_path"] else
+                          self._media.asset_url(g["cover_img"], "f") if g["cover_img"] else "") if self._media else ""
+            g.pop("cover_path", None); g.pop("cover_img", None)
+        return {"ok": True, "albums": al}
+
     def library_add_dir(self) -> dict[str, Any]:
         d = ""
         if self._player_win is not None:   # kutuphane oynatici penceresinden: iletisim kutusu orada acilsin
@@ -1267,36 +1279,30 @@ class Api:
         if w is not None:   # pywebview cagrisi arayuz is parcacigini bekleyebilir: JS'i bekletme
             threading.Thread(target=w.toggle_fullscreen, name="kami-player-fs", daemon=True).start()
 
-    def player_mini(self, on: bool = True) -> dict[str, Any]:
-        """Mini oynatici: pencereyi kucult, ekranin sag altina al, hep ustte tut; kapatinca eski boyut/konum."""
-        w = self._player_win
-        if w is None:
-            return {"ok": False}
-
-        def run() -> None:
-            import webview
-            try:
-                if on:
-                    if not getattr(self, "_player_geo", None):
-                        self._player_geo = (w.width, w.height, w.x, w.y)
-                    sc = webview.screens[0] if webview.screens else None
-                    mw, mh = 480, 200   # pencere cercevesi dahil (pencere en az 360x150)
-                    w.resize(mw, mh)
-                    if sc is not None:
-                        w.move(sc.x + sc.width - mw - 16, sc.y + sc.height - mh - 60)   # gorev cubugunun ustu
-                    w.on_top = True
+    def player_mini(self, on: bool = True, kind: str = "audio", aspect: float = 0) -> dict[str, Any]:
+        """Mini oynatici (YouTube PiP gibi): cercevesiz, hep ustte, ekranin sag alti. Video: 16:9 kart, muzik: ince kart."""
+        from app.core.winwin import MiniWindow
+        if not getattr(self, "_mini", None):
+            self._mini = MiniWindow("Kami Player")
+        try:
+            if on:
+                if kind == "video":
+                    ar = float(aspect or 0) if 0.4 < float(aspect or 0) < 3.5 else 16 / 9
+                    w = 480 if ar >= 1 else 300
+                    ok = self._mini.enter(w, int(w / ar))
                 else:
-                    w.on_top = False
-                    g = getattr(self, "_player_geo", None)
-                    self._player_geo = None
-                    if g:
-                        w.resize(max(640, g[0]), max(400, g[1]))
-                        w.move(g[2], g[3])
-            except Exception:
-                import logging
-                logging.getLogger(__name__).exception("mini oynatici")
-        threading.Thread(target=run, name="kami-player-mini", daemon=True).start()
-        return {"ok": True}
+                    ok = self._mini.enter(440, 132)
+            else:
+                ok = self._mini.leave()
+            return {"ok": bool(ok)}
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("mini oynatici")
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def player_mini_move(self, dx: int = 0, dy: int = 0) -> None:
+        if getattr(self, "_mini", None):
+            self._mini.move(int(dx), int(dy))
 
     def _ensure_player(self) -> None:
         if self._player_win is None and self._make_player_window:

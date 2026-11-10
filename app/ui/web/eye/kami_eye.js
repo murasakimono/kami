@@ -89,7 +89,8 @@
       if (!f || alpha <= 0) return;
       const img = this.img[f.name]; ctx.save(); ctx.globalAlpha = alpha;
       ctx.translate(ox, oy); if (f.flip) { ctx.translate(this.fw * k, 0); ctx.scale(-1, 1); }
-      ctx.drawImage(img, 0, 0, this.fw * k, this.fh * k); ctx.restore();
+      const ih = img.naturalHeight || this.fh, iw = img.naturalWidth || this.fw, cut = Math.ceil(ih * 0.008), sy = this.fh * k / ih;   // resimlerin ust kenarinda koyu bant var
+      ctx.drawImage(img, 0, cut, iw, ih - cut, 0, cut * sy, this.fw * k, (ih - cut) * sy); ctx.restore();
     }
 
     draw() {

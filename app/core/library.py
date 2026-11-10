@@ -153,3 +153,94 @@ class Playlists:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(self.path)
+
+
+# ---------- albumler (B7): muzik dosyalarinin etiketleri (mutagen, mtime ile onbellekli) ----------
+_IMG_NAMES = ("cover", "folder", "front", "album", "albumart")
+
+
+def _tags(path: str) -> list:
+    """-> [album, artist, albumartist, track, disc, title, has_cover]"""
+    import mutagen
+    alb = art = aart = title = ""
+    trk = disc = 0
+    pic = False
+    try:
+        f = mutagen.File(path, easy=True)
+        if f is not None and f.tags:
+            g = lambda k: str((f.tags.get(k) or [""])[0]).strip()
+            alb, art, aart, title = g("album"), g("artist"), g("albumartist"), g("title")
+            try:
+                trk = int(g("tracknumber").split("/")[0] or 0)
+            except ValueError:
+                trk = 0
+            try:
+                disc = int(g("discnumber").split("/")[0] or 0)
+            except ValueError:
+                disc = 0
+        raw = mutagen.File(path)
+        if raw is not None:
+            if getattr(raw, "pictures", None):
+                pic = True
+            elif raw.tags is not None:
+                keys = [str(k) for k in raw.tags.keys()]
+                pic = any(k.startswith("APIC") or k in ("covr", "metadata_block_picture", "WM/Picture") for k in keys)
+    except Exception:
+        pass
+    return [alb, art, aart, trk, disc, title, pic]
+
+
+def _split_name(stem: str) -> tuple[str, str]:
+    m = re.match(r"^\s*(.+?)\s+[-–—]\s+(.+?)\s*$", re.sub(r"\s*[\[(][^\])]*[\])]", "", stem))
+    return (m.group(1).strip(), m.group(2).strip()) if m else ("", stem.strip())
+
+
+def albums(items: list[dict[str, Any]], cache_path: Path) -> list[dict[str, Any]]:
+    """Ses dosyalarini albumlere grupla. Albumu olmayanlar sanatci basina 'Tekliler' karti olur."""
+    import json
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    out_cache: dict[str, Any] = {}
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for it in items:
+        if it.get("kind") != "audio":
+            continue
+        p = it["path"]
+        c = cache.get(p)
+        if not c or c[0] != it["mtime"]:
+            c = [it["mtime"]] + _tags(p)
+        out_cache[p] = c
+        _, alb, art, aart, trk, disc, title, pic = c
+        fa, ft = _split_name(it["name"])
+        artist = aart or art or fa
+        single = not alb
+        key = ((artist or "?").lower(), "" if single else alb.lower())
+        g = groups.setdefault(key, {"album": alb, "artist": artist, "single": single, "tracks": [], "cover_path": "", "folder": str(Path(p).parent)})
+        g["tracks"].append({"path": p, "title": title or ft or it["name"], "artist": art or fa, "track": trk, "disc": disc, "mtime": it["mtime"]})
+        if pic and not g["cover_path"]:
+            g["cover_path"] = p
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(out_cache, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+    res = []
+    for g in groups.values():
+        g["tracks"].sort(key=lambda t: (t["disc"], t["track"] or 9999, t["title"].lower()) if not g["single"] else (-t["mtime"],))
+        g["cover_img"] = ""
+        if not g["cover_path"]:   # klasorde kapak resmi
+            folder = Path(g["tracks"][0]["path"]).parent
+            try:
+                imgs = [q for q in folder.iterdir() if q.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
+            except OSError:
+                imgs = []
+            imgs.sort(key=lambda q: (q.stem.lower() not in _IMG_NAMES, q.name.lower()))
+            if imgs and not g["single"]:
+                g["cover_img"] = str(imgs[0])
+        g["count"] = len(g["tracks"])
+        g["mtime"] = max(t["mtime"] for t in g["tracks"])
+        res.append(g)
+    res.sort(key=lambda g: (g["single"], -g["mtime"]))
+    return res
