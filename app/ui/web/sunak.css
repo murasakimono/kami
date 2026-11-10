@@ -1,0 +1,153 @@
+/* Kami "Sunak" arayuzu. Eski duzenin (styles.css) ustune biner; eski gorunumler cekmece olarak acilir. */
+@font-face { font-family: "Chakra Petch"; font-weight: 400; src: url(fonts/ChakraPetch-Regular.ttf) format("truetype"); }
+@font-face { font-family: "Chakra Petch"; font-weight: 500; src: url(fonts/ChakraPetch-Medium.ttf) format("truetype"); }
+@font-face { font-family: "Chakra Petch"; font-weight: 600; src: url(fonts/ChakraPetch-SemiBold.ttf) format("truetype"); }
+@font-face { font-family: "Chakra Petch"; font-weight: 700; src: url(fonts/ChakraPetch-Bold.ttf) format("truetype"); }
+@font-face { font-family: "Damnation"; src: url(fonts/Damnation.ttf) format("truetype"); }
+
+body.sunak {
+  --sk-bg: #08070C; --sk-coal: #110E17; --sk-plum: #1C1228; --sk-line: #4A3D63; --sk-royal: #6D28D9;
+  --sk-violet: #8B5CF6; --sk-lav: #C4B5FD; --sk-text: #EDE9F6; --sk-mute: #A39BB5;
+  --sk-em: #2EE6A6; --sk-em2: #0FA37A; --sk-err: #FF4D6A; --sk-warn: #F5B94A;
+  --font: "Chakra Petch", "Segoe UI", sans-serif;
+  --cut: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  --cut-s: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  background: radial-gradient(ellipse 55% 50% at 32% 30%, #1E1230 0%, var(--sk-bg) 70%) fixed, var(--sk-bg);
+  color: var(--sk-text); font-family: var(--font); overflow: hidden;
+}
+body.sunak > .topbar { display: none; }
+body.sunak > .layout, body.sunak > .statusbar { display: none; }
+
+/* eski gorunumler cekmece olarak: liste, takip, gecmis, toplu, Real-Debrid */
+body.sunak.sk-drawer > .layout {
+  display: flex; position: fixed; z-index: 40; inset: 18px 96px 18px 18px;
+  background: rgba(13, 10, 19, .97); box-shadow: 0 0 0 1px var(--sk-line), 0 24px 70px rgba(0, 0, 0, .6);
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+}
+body.sunak.sk-drawer:not(.sk-list) > .layout > .sidebar { display: none; }
+body.sunak.sk-drawer .speed { display: none; }
+.sk-drawer-close { display: none; }
+body.sunak.sk-drawer .sk-drawer-close {
+  display: flex; position: fixed; z-index: 41; top: 26px; right: 108px; width: 40px; height: 34px; align-items: center; justify-content: center;
+  border: 0; background: var(--sk-plum); color: var(--sk-lav); clip-path: var(--cut-s); cursor: pointer;
+}
+
+#sunak { position: fixed; inset: 0; display: flex; gap: 16px; padding: 12px 18px 16px; box-sizing: border-box; }
+#sunak .sk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+#sunak .sk-head { display: flex; align-items: center; gap: 12px; height: 52px; flex: 0 0 52px; }
+#sunak .sk-logo {
+  font-family: "Damnation", serif; font-size: 38px; line-height: 1.3; padding-top: 4px; letter-spacing: 1px;
+  background: linear-gradient(180deg, #fff 0%, #E4DBFF 30%, #7C4DFF 52%, #2A1650 58%, #D9CCFF 74%, #9D7BFF 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 10px rgba(124, 77, 255, .55));
+}
+#sunak .sk-status { margin-left: auto; font-size: 13px; color: var(--sk-mute); display: flex; gap: 14px; }
+#sunak .sk-status b { color: var(--sk-em); font-weight: 600; }
+#sunak .sk-status b.bad { color: var(--sk-err); }
+
+/* ust bolum: ruh + hiz */
+#sunak .sk-top { display: flex; align-items: center; gap: 38px; padding-left: 8px; min-height: 0; flex: 0 0 auto; }
+#sunak .sk-altar { position: relative; width: 300px; height: 300px; flex: 0 0 300px; }
+#sunak .sk-altar svg.sk-ring { position: absolute; inset: 0; overflow: visible; }
+#sunak .sk-ring-fill { transition: stroke-dashoffset .6s cubic-bezier(.3, .9, .3, 1); }
+#sunak .sk-altar.full .sk-ring-fill { filter: drop-shadow(0 0 6px rgba(46, 230, 166, .9)); animation: sk-glow 1.6s ease-in-out infinite; }
+#sunak .sk-altar.slow .sk-ring-tip { animation: sk-shiver .18s steps(2) infinite; }
+@keyframes sk-glow { 50% { opacity: .65; } }
+@keyframes sk-shiver { 50% { transform: translate(1px, -1px); } }
+#sunak .sk-eye { position: absolute; left: 52px; top: 38px; width: 196px; height: 228px; cursor: pointer; border-radius: 0; }
+#sunak .sk-eye-mask { position: absolute; left: 22px; top: 22px; width: 256px; height: 256px; border-radius: 50%; overflow: hidden; }
+#sunak .sk-eye-mask canvas { position: absolute; left: 50%; top: 50%; width: 248px; height: 288px; transform: translate(-50%, -46%); }
+#sunak .sk-altar.drop .sk-eye-mask { box-shadow: 0 0 0 3px var(--sk-em), 0 0 40px rgba(46, 230, 166, .6); }
+#sunak .sk-altar.swallow .sk-eye-mask { animation: sk-swallow .6s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes sk-swallow { 30% { transform: scale(.9); } 60% { transform: scale(1.06); box-shadow: 0 0 60px rgba(46, 230, 166, .8); } }
+
+#sunak .sk-speed { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#sunak .sk-speed-num { font-weight: 700; font-size: 72px; line-height: .95; letter-spacing: -1px; }
+#sunak .sk-speed-num small { font-size: 24px; font-weight: 500; color: var(--sk-mute); letter-spacing: 0; margin-left: 6px; }
+#sunak .sk-speed-sub { font-size: 17px; font-weight: 500; color: var(--sk-lav); }
+#sunak .sk-speed-cnt { font-size: 14px; color: var(--sk-mute); }
+#sunak .sk-spark { width: 320px; height: 64px; margin-top: 8px; }
+#sunak .sk-mood { font-size: 13px; color: var(--sk-mute); margin-top: 4px; }
+
+/* seritler */
+#sunak .sk-strips { display: flex; align-items: center; gap: 10px; min-height: 0; }
+#sunak .sk-arrow { width: 36px; height: 120px; flex: 0 0 36px; border: 0; cursor: pointer; background: var(--sk-plum); }
+#sunak .sk-arrow.on { background: var(--sk-royal); }
+#sunak .sk-arrow.prev { clip-path: polygon(100% 0, 100% 100%, 0 50%); }
+#sunak .sk-arrow.next { clip-path: polygon(0 0, 100% 50%, 0 100%); }
+#sunak .sk-track-wrap { flex: 1; min-width: 0; overflow: hidden; padding: 10px 2px 8px; }
+#sunak .sk-track { display: flex; gap: 12px; transition: transform .38s cubic-bezier(.2, .8, .2, 1); }
+#sunak .sk-strip {
+  flex: 0 0 150px; height: 244px; padding: 0; border: 0; background: transparent; cursor: pointer; position: relative;
+  transition: transform .25s, filter .25s; color: var(--sk-text); font-family: var(--font); text-align: left;
+}
+#sunak .sk-strip.sel { transform: translateY(-6px); filter: drop-shadow(0 0 12px rgba(124, 77, 255, .8)); }
+#sunak .sk-strip.slosh .sk-liquid { animation: sk-slosh .9s ease-out; }
+@keyframes sk-slosh { 20% { transform: skewY(-4deg); } 45% { transform: skewY(3deg); } 70% { transform: skewY(-1.5deg); } }
+#sunak .sk-paper {
+  position: absolute; inset: 0; background: #110D17;
+  clip-path: path("M0 0 H150 V226 C144 232 140 238 133 236 C126 234 122 226 114 229 C106 232 104 241 96 240 C88 239 86 230 78 231 C70 232 66 241 58 240 C50 239 47 229 39 230 C31 231 28 240 20 239 C12 238 7 230 0 232 Z");
+}
+#sunak .sk-liquid { position: absolute; left: 0; right: 0; bottom: 0; transition: height .8s cubic-bezier(.3, .9, .3, 1); transform-origin: 50% 100%; }
+#sunak .sk-wave { position: absolute; left: 0; width: 300px; animation: sk-wave 2.6s linear infinite; }
+#sunak .sk-wave.back { animation-duration: 4.2s; animation-direction: reverse; }
+#sunak .sk-strip.calm .sk-wave { animation-duration: 7s; }
+@keyframes sk-wave { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+#sunak .sk-bubble { position: absolute; bottom: 0; width: 5px; height: 5px; border-radius: 50%; background: rgba(220, 255, 245, .7); animation: sk-bub 2.8s ease-in infinite; }
+@keyframes sk-bub { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: .9; } 100% { transform: translateY(-150px); opacity: 0; } }
+#sunak .sk-strip.burst .sk-liquid { animation: sk-burst .9s ease-out; }
+@keyframes sk-burst { 40% { filter: brightness(1.6); transform: scaleY(1.04); } }
+#sunak .sk-band { position: relative; height: 20px; background: linear-gradient(180deg, #6D28D9, #3B1580); border-bottom: 2px solid #A78BFA; }
+#sunak .sk-strip-body { position: relative; padding: 10px 11px 0; display: flex; flex-direction: column; gap: 6px; }
+#sunak .sk-kind { font-size: 11px; font-weight: 600; color: var(--sk-lav); letter-spacing: .4px; text-transform: uppercase; }
+#sunak .sk-name { font-size: 14px; font-weight: 600; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; word-break: break-word; }
+#sunak .sk-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+#sunak .sk-tag { font-size: 10px; font-weight: 700; padding: 2px 6px; background: rgba(8, 7, 12, .75); color: var(--sk-lav); clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px); }
+#sunak .sk-tag.ok { color: var(--sk-em); }
+#sunak .sk-foot { position: absolute; left: 11px; right: 11px; bottom: 30px; display: flex; flex-direction: column; }
+#sunak .sk-pct { font-weight: 700; font-size: 28px; color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, .7); }
+#sunak .sk-sub { font-size: 11px; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, .8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sunak .sk-dots { display: flex; justify-content: center; gap: 6px; margin-top: -4px; }
+#sunak .sk-dots i { width: 10px; height: 4px; background: #2B2238; transition: width .2s, background .2s; }
+#sunak .sk-dots i.vis { background: #6D5A8C; }
+#sunak .sk-dots i.sel { width: 22px; background: var(--sk-em); }
+#sunak .sk-empty { flex: 1; height: 244px; display: flex; align-items: center; justify-content: center; color: var(--sk-mute); font-size: 15px; border: 1px dashed var(--sk-line); clip-path: var(--cut); }
+
+/* secili indirme cubugu */
+#sunak .sk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 14px; background: linear-gradient(90deg, #16101F, #0E0B14); clip-path: var(--cut); border-left: 3px solid var(--sk-em); min-height: 58px; box-sizing: border-box; }
+#sunak .sk-bar.err { border-left-color: var(--sk-err); }
+#sunak .sk-bar.wait { border-left-color: var(--sk-line); }
+#sunak .sk-bar-name { font-weight: 700; font-size: 15px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sunak .sk-bar-info { font-size: 13px; color: var(--sk-mute); flex: 1 1 180px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sunak .sk-btn { height: 38px; padding: 0 14px; border: 0; background: #1C1528; color: var(--sk-text); font: 600 13px var(--font); clip-path: var(--cut-s); display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+#sunak .sk-btn:hover { background: #2A1F3B; }
+#sunak .sk-btn.pri { background: #3B1580; color: #fff; }
+#sunak .sk-btn.ai { color: var(--sk-lav); }
+#sunak .sk-btn.ok { color: var(--sk-em); }
+#sunak .sk-btn.danger { background: transparent; color: #FF8296; }
+#sunak .sk-btn svg { width: 15px; height: 15px; }
+
+/* komut satiri: eski #addForm buraya tasinir */
+#sunak .sk-cmd { padding: 6px 6px 6px 16px; background: #0D0A13; clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); box-shadow: inset 0 0 0 1px #3A2E52; display: flex; align-items: center; gap: 10px; }
+#sunak .sk-cmd > span { font-weight: 700; color: var(--sk-violet); font-size: 18px; }
+#sunak .sk-cmd form.add { flex: 1; display: flex; gap: 8px; margin: 0; max-width: none; }
+#sunak .sk-cmd form.add input { flex: 1; min-width: 0; height: 44px; background: transparent; border: 0; outline: none; color: var(--sk-text); font: 15px var(--font); box-shadow: none; }
+#sunak .sk-cmd form.add .btn { height: 44px; border: 0; background: #1C1528; color: var(--sk-lav); font: 600 14px var(--font); clip-path: var(--cut-s); border-radius: 0; padding: 0 14px; }
+#sunak .sk-cmd form.add .btn.primary { background: var(--sk-royal); color: #fff; padding: 0 26px; }
+
+/* dok */
+#sunak .sk-dock { flex: 0 0 64px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+#sunak .sk-dock button { position: relative; width: 60px; height: 56px; border: 0; background: #120E19; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--sk-lav); }
+#sunak .sk-dock button:hover, #sunak .sk-dock button.on { background: #2A1650; }
+#sunak .sk-dock button.ai { color: var(--sk-em); }
+#sunak .sk-dock svg { width: 22px; height: 22px; }
+#sunak .sk-dock b { position: absolute; top: 6px; right: 9px; min-width: 16px; height: 16px; font: 700 10px var(--font); background: var(--sk-em); color: #08070C; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+
+body.sunak :focus-visible { outline: 2px solid var(--sk-em); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  #sunak .sk-wave, #sunak .sk-bubble, #sunak .sk-altar.full .sk-ring-fill, #sunak .sk-altar.slow .sk-ring-tip { animation: none; }
+  #sunak .sk-track, #sunak .sk-liquid { transition: none; }
+}
+@media (max-height: 760px) {
+  #sunak .sk-altar { transform: scale(.82); transform-origin: left center; margin-right: -54px; }
+  #sunak .sk-strip { height: 210px; }
+}
