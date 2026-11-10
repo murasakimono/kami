@@ -393,3 +393,15 @@ body.pl-open #sunak { visibility: hidden; }
 #player .pl-panel:not([hidden]) { animation: pe-pop .18s ease-out; backdrop-filter: blur(10px); }
 @keyframes pe-pop { from { opacity: 0; transform: translateY(6px) scale(.985); } }
 #player .pl-chip { border-radius: 8px; }
+/* kinetik dinamik tipografi */
+#player .pl-subs.kinetic > span { display: inline-block; font-weight: var(--sub-weight, 500); transform: scale(var(--sub-scale, 1)); transition: font-weight .1s ease, transform .1s ease, text-shadow .1s ease;
+  text-shadow: 0 2px 4px #000, 0 0 calc(var(--sub-glow, 0) * 1px) rgba(0, 255, 163, .8), 0 0 calc(var(--sub-glow, 0) * 2px) rgba(124, 58, 237, .55); }
+#player .pl-subs.kinetic.extreme-loud > span { font-family: "Damnation", "Death Mohawk", Impact, sans-serif; letter-spacing: .04em; color: #fff; }
+#player .pl-subs.kinetic.shake > span { animation: pe-shake .09s linear infinite; }
+.pm-vpaste { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 40; width: min(560px, 90vw); display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 12px;
+  background: rgba(13,10,19,.97); border: 1px solid rgba(167,139,250,.4); box-shadow: 0 10px 40px rgba(0,0,0,.6); color: #EDE9F6; font: 14px "Segoe UI", system-ui, sans-serif; }
+.pm-vpaste textarea { height: 40vh; resize: vertical; border-radius: 8px; background: #0B0910; color: #EDE9F6; border: 1px solid #3A2E52; padding: 10px; font: 13px/1.5 Consolas, monospace; }
+.pm-vpaste div { display: flex; gap: 6px; }
+.pm-vpaste .pl-b { height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: #1A1424; color: #C4B5FD; font: 600 13px "Segoe UI", sans-serif; cursor: pointer; }
+.pm-vpaste .pl-b.pri { background: #3B1580; color: #fff; }
+#player .pl-subs.kinetic.extreme-loud.trch > span { font-family: Impact, "Arial Black", sans-serif; }

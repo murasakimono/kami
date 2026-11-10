@@ -288,27 +288,39 @@ setTimeout(() => {
   document.body.appendChild(chip);
   setTimeout(() => chip.remove(), 15000);
 }, 1500);
-// ---------- B9 kinetik altyazi: ses genligi esigi asinca (bagirma/patlama) altyazi titrer, dusunce durur ----------
+// ---------- B9 kinetik altyazi: sese gore dinamik tipografi ----------
+// fisilti: ince + kucuk; normal: standart; bagirma/patlama: titreme + agresif font (extreme-loud) + neon golge patlamasi.
+// rAF icinde yalnizca CSS degiskenleri ve tek bir sinif degisir (yeniden cizim yok).
 (function peKinetic() {
   const buf = new Uint8Array(1024);
-  let avg = 0.05;
+  let avg = 0.05, sm = 0, on = false;
   const loop = () => {
     requestAnimationFrame(loop);
     const b = $("#plSubs");
     if (!b) return;
-    if (!peCfg().kinetic || !PL.an || !PL.open || $("#plVideo").paused) { b.classList.remove("shake"); return; }
+    const act = peCfg().kinetic && PL.an && PL.open && !$("#plVideo").paused;
+    if (!act) { if (on) { on = false; b.classList.remove("kinetic", "shake", "extreme-loud"); } return; }
+    if (!on) { on = true; b.classList.add("kinetic"); }
     PL.an.getByteTimeDomainData(buf);
     let sum = 0; for (let i = 0; i < buf.length; i++) { const x = (buf[i] - 128) / 128; sum += x * x; }
     const rms = Math.sqrt(sum / buf.length);
-    avg = avg * 0.995 + rms * 0.005;   // ortalama ses duzeyi (sessiz/gurultulu filmlere uyum)
+    avg = avg * 0.995 + rms * 0.005;
+    sm = sm * 0.7 + rms * 0.3;                       // titremeyi onlemek icin yumusatilmis genlik
+    const rel = avg > 0.002 ? sm / avg : 1;          // filmin ortalama sesine gore (0.3 fisilti .. 1 normal .. 2.6+ bagirma)
     const loud = rms > Math.max(0.22, avg * 2.6);
+    const k = Math.max(0, Math.min(1, (rel - 0.35) / 0.65));   // 0 fisilti -> 1 normal
+    b.style.setProperty("--sub-weight", String(Math.round(300 + 200 * k + (loud ? 300 : 0))));
+    b.style.setProperty("--sub-scale", (0.95 + 0.05 * k + (loud ? 0.06 : 0)).toFixed(3));
+    b.style.setProperty("--sub-glow", Math.min(48, Math.max(0, (rel - 1) * 14)).toFixed(1));
+    b.style.setProperty("--shk", Math.min(1, (rms - avg) * 3).toFixed(2));
     b.classList.toggle("shake", loud);
-    if (loud) b.style.setProperty("--shk", Math.min(1, (rms - avg) * 3).toFixed(2));
+    b.classList.toggle("extreme-loud", loud);
+    if (loud) b.classList.toggle("trch", /[ıİşŞğĞçÇöÖüÜ]/.test(b.textContent));   // Damnation'da Turkce harf yok: Impact'e dus
   };
   requestAnimationFrame(loop);
 })();
 const _peVid = window.pxExtraVideoHtml;
-window.pxExtraVideoHtml = () => _peVid() + `<div class="px-shift"><span>${plL("Kinetik altyazı (yüksek seste titrer)", "Kinetic subtitles")}</span></div>${peSeg("kinetic", [[0, plL("Kapalı", "Off")], [1, plL("Açık", "On")]], peCfg().kinetic ? 1 : 0)}`;
+window.pxExtraVideoHtml = () => _peVid() + `<div class="px-shift"><span>${plL("Kinetik altyazı (sese göre kalınlık, bağırmada titreme + agresif font, neon gölge)", "Kinetic subtitles")}</span></div>${peSeg("kinetic", [[0, plL("Kapalı", "Off")], [1, plL("Açık", "On")]], peCfg().kinetic ? 1 : 0)}`;
 document.addEventListener("click", (e) => {
   const seg = e.target.closest?.('#plPanel .px-xseg[data-x="kinetic"]'); const b = e.target.closest?.("button");
   if (seg && b) { PX.cfg.kinetic = b.dataset.v === "1"; pxSave(); }

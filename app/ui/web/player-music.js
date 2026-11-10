@@ -69,6 +69,7 @@ window.plMusicStart = async (r) => {
   const tok = PM.token;
   const lyr = $("#plLyr"), au = $("#plAudio");
   pmGlow(r.kind === "audio" ? r.cover : "");
+  if (r.kind === "video") pmVideoLyrics(r, tok);
   if (r.kind !== "audio") PM.meta = null;
   if (r.kind !== "audio" || pmCfg().lyrics === false) { lyr.hidden = true; au.classList.remove("has-lyr"); return; }
   const meta = pmMeta(r);
@@ -343,3 +344,48 @@ function pgCrossfade(v, left) {
 }
 const _pgEnded = window.plOnEnded;
 window.plOnEnded = () => { if (Date.now() - PG.advanced < 3000) return; _pgEnded?.(); };
+
+// ---------- muzik klipleri (video): sozler altyazi izi olarak (yan .lrc / gomulu / LRCLIB), yapistirilabilir ----------
+function pmLrcToVtt(lrc, dur) {
+  const L = pmParseLrc(lrc).filter((l) => l.text);
+  const ts = (t) => { t = Math.max(0, t); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = (t % 60).toFixed(3).padStart(6, "0"); return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${s}`; };
+  return "WEBVTT\n\n" + L.map((l, i) => `${ts(l.t)} --> ${ts(Math.min(L[i + 1] ? L[i + 1].t : l.t + 5, l.t + 8, dur || 1e9))}\n${l.text}`).join("\n\n");
+}
+function pmAddLyricTrack(lrc, src, select) {
+  const vtt = pmLrcToVtt(lrc, PL.dur);
+  const url = "data:text/vtt;charset=utf-8," + encodeURIComponent(vtt);
+  PL.subList = (PL.subList || []).filter((x) => !x.lyrics);
+  PL.subList.push({ label: plL("Şarkı sözleri", "Lyrics") + (src ? " · " + src : ""), url, raw: "", lang: "", lyrics: true });
+  const sel = $("#plSub");
+  sel.innerHTML = `<option value="-1">${plL("Altyazı yok", "No subtitles")}</option>` + PL.subList.map((x, i) => `<option value="${i}">${escapeHtml(x.label)}</option>`).join("");
+  sel.hidden = false;
+  if (select) { sel.value = String(PL.subList.length - 1); plLoadSub(PL.subList.length - 1); } else sel.value = String(PL.subIdx ?? -1);
+}
+async function pmVideoLyrics(r, tok) {
+  if (pmCfg().lyrics === false || !r.path) return;
+  const meta = pmMeta(r);
+  const musicish = (r.duration || 0) < 15 * 60 && /\s[-–—]\s/.test(String(r.tags?.title || r.title || ""));
+  let res;
+  try { res = await slow("player_lyrics", r.path, meta.artist, meta.title, meta.album, r.duration || 0, musicish && pmCfg().lrclib !== false); } catch { return; }
+  if (tok !== PM.token || !res?.synced) return;
+  pmAddLyricTrack(res.synced, pmSrcName(res.source), !(PL.subIdx >= 0));
+}
+window.pmPasteVideoLyrics = () => {
+  if (!PL.open || !PL.info?.path) return;
+  $("#pmVPaste")?.remove();
+  const box = document.createElement("div");
+  box.id = "pmVPaste"; box.className = "pm-vpaste";
+  box.innerHTML = `<b>${plL("Şarkı sözlerini yapıştır", "Paste lyrics")}</b><textarea spellcheck="false" placeholder="${plL("LRCLIB'den kopyaladığın zamanlı sözler ([00:12.34] satır)", "Timed LRC lines from LRCLIB")}"></textarea>
+    <div><button class="pl-b pri" data-a="ok">${plL("Kaydet ve göster", "Save & show")}</button><button class="pl-b" data-a="no">${plL("Vazgeç", "Cancel")}</button></div>`;
+  ["click", "dblclick", "keydown", "pointerdown"].forEach((ev) => box.addEventListener(ev, (e) => e.stopPropagation()));
+  $("#player").appendChild(box);
+  const ta = box.querySelector("textarea"); ta.focus();
+  box.querySelector("[data-a=no]").onclick = () => box.remove();
+  box.querySelector("[data-a=ok]").onclick = async () => {
+    const t = ta.value.trim();
+    if (!/^\s*\[\d{1,3}:\d{2}/m.test(t)) { toast(plL("Zamanlı satır bulunamadı ([01:23.45] biçimi gerekir)", "No timed lines found"), true); return; }
+    try { await api.player_lyrics_save(PL.info.path, t); } catch { /* yalnizca bu oturum */ }
+    pmAddLyricTrack(t, plL("yapıştırılan", "pasted"), true);
+    box.remove(); toast(plL("Sözler altyazı olarak eklendi", "Lyrics added as subtitles"));
+  };
+};
