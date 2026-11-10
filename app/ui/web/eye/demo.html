@@ -1,14 +1,14 @@
 <!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Kami goz motoru - deneme</title>
 <style>body{margin:0;background:radial-gradient(ellipse at 50% 40%,#1E1230,#08070C 70%);color:#EDE9F6;font:15px "Segoe UI",sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:14px}
-canvas{width:520px;height:520px;cursor:pointer}.b{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:760px}
+canvas{cursor:pointer}.b{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:760px}
 button{height:40px;padding:0 16px;border:0;background:#1C1528;color:#EDE9F6;font:600 14px "Segoe UI",sans-serif;cursor:pointer;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
 button.on{background:#6D28D9}p{color:#A39BB5;margin:0}</style></head><body>
-<canvas id="c" width="1040" height="1040"></canvas>
+<canvas id="c" width="704" height="818" style="width:352px;height:409px"></canvas>
 <p>Fareyi gezdir: goz izler. Ruhun ustune gel: gozunu kapatir.</p>
 <div class="b" id="b"></div>
 <script src="kami_eye.js"></script><script>
 const eye=new KamiEye(document.getElementById('c'),{assets:'assets/'});
-const S={Bekliyor:{},'İndiriyor':{isDownloading:true,downloadSpeed:.4},'Tam hız':{isDownloading:false,downloadSpeed:1},Bitti:{mood:'happy'},Hata:{isError:true},Kilitlendi:{mood:'locked'},Uyku:{mood:'sleep'},'Müzik':{playbackState:'playing'}};
+const S={Bekliyor:{},'İndiriyor':{isDownloading:true,downloadSpeed:.4},'Tam hız':{downloadSpeed:1},Bitti:{mood:'happy'},Hata:{isError:true},Kilitlendi:{mood:'locked'},'Yana bak':{mood:'alert'},Uyku:{mood:'sleep'},'Müzik':{playbackState:'playing'}};
 const base={isDownloading:false,downloadSpeed:0,isError:false,mood:'idle',playbackState:'idle',levels:null,progress:0};
 let prog=0,cur='Bekliyor';
 for(const n of Object.keys(S)){const x=document.createElement('button');x.textContent=n;x.onclick=()=>{cur=n;eye.set({...base,...S[n]});document.querySelectorAll('button').forEach(k=>k.classList.toggle('on',k===x));};b.append(x);}
