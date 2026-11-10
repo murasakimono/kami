@@ -60,7 +60,11 @@ class Api:
         self._phone_key = None
         self._ntfy = None
         self._media = None                               # media_server.MediaServer (P1 oynatici, main baglar)
-        self._play_inbox: list[str] = []                 # --play / surukle-birak / ikinci ornekten gelen dosyalar
+        self._play_inbox: list[str] = []                 # (eski) Sunak ici oynatici kuyrugu
+        self._player_q: list[dict[str, Any]] = []        # Kami Player penceresine giden istekler
+        self._player_win = None                          # pywebview penceresi (kapaninca None)
+        self._make_player_window = None                  # main: pencere fabrikasi
+        self._front_player = None                        # main: pencereyi one getir (Win32)
         self._warns: list[dict[str, Any]] = []
         self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
         manager.events.on("ui.warn", lambda **kw: self._on_warn(kw))
@@ -1013,7 +1017,14 @@ class Api:
         return res
 
     def library_add_dir(self) -> dict[str, Any]:
-        d = self.choose_folder()
+        d = ""
+        if self._player_win is not None:   # kutuphane oynatici penceresinden: iletisim kutusu orada acilsin
+            import webview
+            dialog = getattr(getattr(webview, "FileDialog", None), "FOLDER", None) or webview.FOLDER_DIALOG
+            res = self._player_win.create_file_dialog(dialog, directory=str(self._manager.base_dir()))
+            d = res[0] if res else ""
+        else:
+            d = self.choose_folder()
         if d:
             cur = list(self._manager.settings.get("library_dirs") or [])
             if d not in cur:
@@ -1108,9 +1119,47 @@ class Api:
             return {"ok": False, "error": str(res["error"])[:200]}
         return {"ok": True, "path": res["done"], "vtt": srt_to_vtt(Path(res["done"]).read_text(encoding="utf-8"))}
 
-    def _play_request(self, path: str) -> None:
+    # ---------- Kami Player penceresi (ayri pywebview penceresi; main baglar) ----------
+    def player_show(self, req: dict | None = None) -> dict[str, Any]:
+        """Sunak / Gezgin / surukle-birak -> Kami Player penceresi: {id} | {path} | {url} | {library: True}."""
+        req = req or {}
+        item: dict[str, Any] = {}
+        if req.get("id") is not None:
+            d = self._manager.store.get(int(req["id"]))
+            if not d or not d.path or not os.path.isfile(d.path):
+                return {"ok": False, "error": "not_found"}
+            item["path"] = d.path
+        elif req.get("path"):
+            item["path"] = str(req["path"])
+        elif req.get("url"):
+            item["url"] = str(req["url"])
+        if req.get("queue"):
+            item["queue"] = [str(x) for x in req["queue"]]
+        if req.get("library"):
+            item["library"] = True
         with self._inbox_lock:
-            self._play_inbox.append(str(path))
+            self._player_q.append(item)
+        self._ensure_player()
+        return {"ok": True}
+
+    def player_poll(self) -> list[dict[str, Any]]:
+        with self._inbox_lock:
+            q, self._player_q = self._player_q, []
+        return q
+
+    def player_fullscreen(self, on: bool = True) -> None:
+        w = self._player_win
+        if w is not None:   # pywebview cagrisi arayuz is parcacigini bekleyebilir: JS'i bekletme
+            threading.Thread(target=w.toggle_fullscreen, name="kami-player-fs", daemon=True).start()
+
+    def _ensure_player(self) -> None:
+        if self._player_win is None and self._make_player_window:
+            self._player_win = self._make_player_window()
+        elif self._player_win is not None and self._front_player:
+            self._front_player()
+
+    def _play_request(self, path: str) -> None:
+        self.player_show({"path": str(path)})
 
     def player_default_apps(self) -> bool:
         """Windows Ayarlar > Varsayilan uygulamalar > Kami (varsayilan programla degistirilemez, kullanici secer)."""

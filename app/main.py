@@ -232,7 +232,7 @@ def main() -> int:
     events.on("ui.attention", lambda reason: show_window())
 
     api = Api(manager, engine, registry, lambda: bridge.port)
-    start_hidden = "--tray" in sys.argv[1:]
+    start_hidden = "--tray" in sys.argv[1:] or bool(play)   # Gezgin'den dosya: sadece Kami Player penceresi
     window = webview.create_window(
         "Kami",
         url=str(paths.WEB_DIR / "index.html"),
@@ -246,14 +246,9 @@ def main() -> int:
 
     # ---- Kami Player: --play ile acilis, calisan ornege gelen istek, pencereye birakilan medya dosyasi
     def play_request(path: str) -> None:
-        api._play_request(path)
-        show_window()
+        api._play_request(path)   # Kami Player penceresi acilir / one gelir (Sunak tepside kalabilir)
 
-    bridge.on_play = play_request
-    if play:
-        api._play_request(os.path.abspath(play))
-
-    def bind_drop() -> None:
+    def bind_drop(win) -> None:
         try:
             from webview.dom import DOMEventHandler
             from app.core.media_server import AUDIO_EXT, VIDEO_EXT
@@ -264,10 +259,30 @@ def main() -> int:
                     if p and os.path.splitext(p)[1].lower() in VIDEO_EXT | AUDIO_EXT:
                         api._play_request(p)
                         break
-            window.dom.document.events.drop += DOMEventHandler(on_drop, True, False)
+            win.dom.document.events.drop += DOMEventHandler(on_drop, True, False)
         except Exception:
             log.exception("Surukle-birak oynatma baglanamadi")
-    window.events.loaded += bind_drop
+    window.events.loaded += lambda: bind_drop(window)
+
+    # ---- Kami Player: ayri pencere (ayni surec, ayni api); kapaninca yok olur, istekte yeniden kurulur
+    player_front = WindowFront("Kami Player")
+
+    def make_player_window():
+        w = webview.create_window("Kami Player", url=str(paths.WEB_DIR / "player.html"), js_api=api,
+                                  width=1280, height=760, min_size=(640, 400), background_color="#050408",
+                                  text_select=False)
+
+        def closed() -> None:
+            api._player_win = None
+        w.events.closed += closed
+        w.events.loaded += lambda: bind_drop(w)
+        return w
+    api._make_player_window = make_player_window
+    api._front_player = player_front.request
+
+    bridge.on_play = play_request
+    if play:
+        api._play_request(os.path.abspath(play))
 
     from app.core import desktop, winwin
     from app.core.watchdog import UiWatchdog

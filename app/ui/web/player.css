@@ -15,7 +15,7 @@
 #player .pl-audio { display: none; position: absolute; inset: 0 0 120px; align-items: center; justify-content: center; gap: 56px; }
 #player.is-audio .pl-audio { display: flex; }
 #player.is-audio { background: radial-gradient(ellipse 50% 55% at 50% 48%, rgba(109, 40, 217, calc(.18 + var(--pl-beat) * .35)) 0%, #050408 70%); }
-#player .pl-audio canvas { height: min(62vh, 520px); aspect-ratio: 760 / 614; filter: drop-shadow(0 0 calc(10px + var(--pl-beat) * 40px) rgba(46, 230, 166, calc(.15 + var(--pl-beat) * .5))); }
+#player .pl-audio canvas { height: min(62vh, 520px); aspect-ratio: 403 / 614; filter: drop-shadow(0 0 calc(10px + var(--pl-beat) * 40px) rgba(46, 230, 166, calc(.15 + var(--pl-beat) * .5))); }
 #player .pl-cover { width: min(34vh, 300px); aspect-ratio: 1; background: #110E17 center / cover no-repeat; clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); box-shadow: 0 0 0 1px #4A3D63; }
 #player .pl-cover[hidden] { display: none; }
 
@@ -155,3 +155,15 @@ body.pl-open #sunak { visibility: hidden; }
 .px-keys { display: flex; flex-direction: column; gap: 3px; }
 .px-keys div { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #C4B5FD; }
 .px-keys .pl-b { min-width: 86px; }
+#player .pl-bigeq { display: flex; align-items: center; gap: 5px; height: min(40vh, 300px); }
+#player .pl-bigeq i { width: 5px; height: 4%; background: linear-gradient(180deg, #2EE6A6, #6D28D9); border-radius: 0; transition: height .07s linear; opacity: .85; }
+#player.paused .pl-bigeq i { background: #3A2E52; }
+#player .pl-empty { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; text-align: center;
+  background: radial-gradient(ellipse 50% 50% at 50% 45%, rgba(109, 40, 217, .16), transparent 70%); }
+#player .pl-empty[hidden] { display: none; }
+#player .pl-empty div { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+#player .pl-empty b { font: 400 54px "Damnation", serif; background: linear-gradient(180deg, #fff 0%, #E4DBFF 30%, #7C4DFF 52%, #2A1650 58%, #D9CCFF 74%, #9D7BFF 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 10px rgba(124, 77, 255, .5)); }
+#player .pl-empty span { color: #A39BB5; font-size: 14px; }
+#player.is-empty .pl-deck, #player.is-empty .pl-top { display: none; }
+#player .pl-x { width: 34px; height: 30px; font-size: 18px; }

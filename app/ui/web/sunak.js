@@ -22,6 +22,11 @@ const skIcon = {
   retry: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5"/></svg>',
 };
 
+// Kami Player artik ayri pencere: istekler Python kuyruguna gider, pencere acilir / one gelir
+function playerOpen(id) { return api.player_show({ id }); }
+function playerOpenUrl(url) { return api.player_show({ url }); }
+function playerLibrary() { return api.player_show({ library: true }); }
+
 const skTr = () => state.lang !== "en";
 const skL = (tr, en) => (skTr() ? tr : en);
 const skPct = (d) => (d.status === "complete" ? 100 : d.size ? Math.min(100, Math.floor((d.downloaded / d.size) * 100)) : 0);
@@ -64,15 +69,18 @@ function skBuild() {
     <div class="sk-cmd" id="skCmd"><span>›</span></div>
   </div>
   <nav class="sk-dock" id="skDock">
+    <button data-sk="library" title="${skL("Kütüphane (Kami Player)", "Library (Kami Player)")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l4 1-3 14-4-1z"/></svg></button>
     <button data-sk="list" title="${skL("Liste", "List")}">${skIcon.list}</button>
     <button data-sk="rd" title="Real-Debrid">${skIcon.rd}</button>
     <button data-sk="follow" title="${skL("Takip", "Follow")}">${skIcon.follow}<b id="skFollowN" hidden></b></button>
     <button data-sk="history" title="${skL("Geçmiş", "History")}">${skIcon.hist}</button>
     <button data-sk="batch" title="${skL("Toplu", "Batch")}">${skIcon.batch}</button>
     <button data-sk="ai" class="ai" title="${skL("AI altyazı / vokal", "AI subtitle / vocals")}">${skIcon.sub}</button>
+    <button data-sk="fx" title="${skL("Arka plan efektleri aç / kapat", "Background effects on / off")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg></button>
     <button data-sk="settings" title="${skL("Ayarlar", "Settings")}">${skIcon.gear}</button>
   </nav>
-  <button class="sk-drawer-close" id="skClose" aria-label="${skL("kapat", "close")}">${skIcon.x}</button>`;
+  <div class="sk-backdrop" id="skBackdrop"></div>
+  <button class="sk-drawer-close" id="skClose" aria-label="${skL("kapat", "close")}">${skIcon.x}<span>${skL("Kapat", "Close")}</span></button>`;
   document.body.prepend(root);
   // eski ekleme formu komut satirina tasinir (dinleyicileri onunla gelir)
   const form = $("#addForm");
@@ -81,7 +89,7 @@ function skBuild() {
     const watch = document.createElement("button");   // indirmeden izle (yt-dlp / Real-Debrid / dogrudan)
     watch.type = "button"; watch.className = "btn sk-watch"; watch.textContent = skL("İzle", "Watch");
     watch.title = skL("İndirmeden Kami Player'da izle", "Stream in Kami Player without downloading");
-    watch.onclick = () => { const u = $("#addInput").value.trim(); if (u && typeof playerOpenUrl === "function") playerOpenUrl(u.split(/\s+/)[0]); else $("#addInput").focus(); };
+    watch.onclick = () => { const u = $("#addInput").value.trim(); if (u) playerOpenUrl(u.split(/\s+/)[0]); else $("#addInput").focus(); };
     form.querySelector('button[type="submit"]')?.before(watch);
   }
   $("#addInput")?.setAttribute("placeholder", skL("Bağlantı yapıştır ya da dosyayı ruha bırak…", "Paste a link or drop a file on the spirit…"));
@@ -108,6 +116,7 @@ function skBind() {
   $("#skBar").addEventListener("click", skBarAction);
   $("#skDock").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) skDock(b.dataset.sk); });
   $("#skClose").addEventListener("click", skCloseDrawer);
+  $("#skBackdrop").addEventListener("click", skCloseDrawer);   // cekmece disina tiklayinca kapanir
   document.addEventListener("keydown", (e) => {
     if (e.target.matches("input, textarea, select") || document.querySelector("dialog[open]")) return;
     if (e.key === "Escape") skCloseDrawer();
@@ -210,23 +219,38 @@ function skPatchStrips(track, its) {
   if (track.querySelector(".sk-empty")) track.innerHTML = "";
   const frag = [];
   for (const d of its) {
-    const key = [d.status, skPct(d), d.id === SK.sel, d.filename, d.speed > 0 ? Math.round(d.speed / 65536) : 0, JSON.stringify(d.extra?.ai_whisper ?? "") + (d.extra?.ai_whisper_p ?? "") + (d.extra?.ai_uvr ?? "") + (d.extra?.ai_uvr_p ?? "")].join("|");
-    let el = old.get(d.id);
-    if (!el || el.dataset.key !== key) {
-      const t = document.createElement("template"); t.innerHTML = skStripHtml(d).trim();
-      const nu = t.content.firstChild;
-      if (el) {   // ayni seritte sadece sivi yuksekligi degisirse eski sivi elemanini koru: yukseklik gecisi kayar
-        const oldLiq = el.querySelector(".sk-liquid"), newLiq = nu.querySelector(".sk-liquid");
-        if (oldLiq && newLiq && el.dataset.status === d.status) { oldLiq.style.height = newLiq.style.height; newLiq.replaceWith(oldLiq); }
-        if (el.dataset.status !== d.status) nu.classList.add(d.status === "complete" ? "burst" : "slosh");
+    const id = String(d.id);
+    let el = old.get(id);
+    const t = document.createElement("template"); t.innerHTML = skStripHtml(d).trim();
+    const nu = t.content.firstChild;
+    if (el && el.dataset.status === d.status) {
+      // ayni durum: canli elemani YERINDE guncelle (yeniden kurulursa sivi gecisi kesilir, ziplar)
+      const liq = el.querySelector(".sk-liquid"), nliq = nu.querySelector(".sk-liquid");
+      if (liq && nliq && liq.style.height !== nliq.style.height) {
+        if (!liq.querySelector(".sk-wave") && nliq.querySelector(".sk-wave")) liq.innerHTML = nliq.innerHTML;   // dalga yeni basladi
+        liq.style.height = nliq.style.height;
       }
-      nu.dataset.key = key; nu.dataset.status = d.status;
+      for (const sel of [".sk-strip-body", ".sk-foot"]) {
+        const a = el.querySelector(sel), b2 = nu.querySelector(sel);
+        if (a && b2 && a.innerHTML !== b2.innerHTML) a.innerHTML = b2.innerHTML;
+      }
+      el.classList.toggle("sel", d.id === SK.sel);
+      el.classList.toggle("calm", d.status !== "active");
+      el.title = nu.title;
+    } else {
+      if (el) nu.classList.add(d.status === "complete" ? "burst" : "slosh");
+      nu.dataset.status = d.status;
+      if (el) {   // durum degisti: sivi eski yuksekligi korusun, sonra yeni yukseklige aksin
+        const h = nu.querySelector(".sk-liquid")?.style.height, oh = el.querySelector(".sk-liquid")?.style.height;
+        if (oh && h) { nu.querySelector(".sk-liquid").style.height = oh; requestAnimationFrame(() => requestAnimationFrame(() => { const q = nu.querySelector(".sk-liquid"); if (q) q.style.height = h; })); }
+      }
       el = nu;
     }
     frag.push(el);
-    old.delete(d.id);
+    old.delete(id);
   }
-  track.replaceChildren(...frag);
+  const cur = [...track.children];
+  if (cur.length !== frag.length || frag.some((x, i) => x !== cur[i])) track.replaceChildren(...frag);   // sadece sira/uye degisince
 }
 
 function skRenderBar(d) {
@@ -276,6 +300,8 @@ function skAutoSave() { try { localStorage.setItem("kami.autoplay", JSON.stringi
 
 function skDock(k) {
   if (k === "settings") { $("#settingsBtn")?.click(); return; }
+  if (k === "library") { playerLibrary(); return; }
+  if (k === "fx") { fxToggle(!FX.on); toast(FX.on ? skL("Arka plan efektleri açık", "Background effects on") : skL("Arka plan efektleri kapalı", "Background effects off")); return; }
   if (k === "ai") { const d = state.items.find((x) => x.id === SK.sel); if (d) openMediaTools(d.id); else toast(skL("Önce bir video ya da şarkı seç", "Select a video or song first")); return; }
   document.body.classList.add("sk-drawer");
   document.body.classList.toggle("sk-list", k === "list");
@@ -304,8 +330,8 @@ function skState(s) {
   for (const d of its) {
     const p = SK.prevStatus.get(d.id);
     if (p && p !== "complete" && d.status === "complete") {
-      SK.happyUntil = Date.now() + 3000;
-      if (SK.autoPlay.has(d.id)) { SK.autoPlay.delete(d.id); skAutoSave(); if (typeof playerOpen === "function") playerOpen(d.id); }   // bitince oynat
+      SK.happyUntil = Date.now() + 4000;
+      if (SK.autoPlay.has(d.id)) { SK.autoPlay.delete(d.id); skAutoSave(); playerOpen(d.id); }   // bitince oynat
     }
     SK.prevStatus.set(d.id, d.status);
   }
@@ -359,5 +385,66 @@ function skFrame(t) {
   requestAnimationFrame(skFrame);
 }
 
+// ---------- arka plan: suzulen muskalar, yukselen kivilcimlar, yerde sis, ruh isiklari (hepsi dusuk opaklik) ----------
+const FX = { on: (() => { try { return localStorage.getItem("kami.fx") !== "0"; } catch { return true; } })(), parts: [], last: 0 };
+function fxInit() {
+  const c = document.createElement("canvas");
+  c.id = "skFx"; document.body.prepend(c);
+  const fog = document.createElement("div"); fog.id = "skFog"; document.body.prepend(fog);
+  const resize = () => { c.width = innerWidth; c.height = innerHeight; };
+  resize(); addEventListener("resize", resize);
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const spawn = (kind) => {
+    const W = c.width, H = c.height;
+    if (kind === "talisman") return { kind, x: rnd(0, W), y: rnd(-60, H), vx: rnd(-6, 6), vy: rnd(-10, -4), r: rnd(0, 6.28), vr: rnd(-0.3, 0.3), s: rnd(0.6, 1.1), a: rnd(0.05, 0.11) };
+    if (kind === "ember") return { kind, x: rnd(0, W), y: H + 10, vx: rnd(-8, 8), vy: rnd(-40, -18), life: rnd(4, 9), t: 0, s: rnd(1, 2.4), g: Math.random() < 0.3 };
+    return { kind: "wisp", x: rnd(0, W), y: rnd(H * 0.2, H * 0.8), vx: rnd(-14, 14), vy: rnd(-6, 6), life: rnd(6, 11), t: 0, s: rnd(10, 20) };
+  };
+  for (let i = 0; i < 7; i++) FX.parts.push(spawn("talisman"));
+  const ctx = c.getContext("2d");
+  const loop = (now) => {
+    requestAnimationFrame(loop);
+    if (!FX.on || document.hidden || document.body.classList.contains("pl-open")) { if (FX.drawn) { ctx.clearRect(0, 0, c.width, c.height); FX.drawn = false; } return; }
+    const dt = Math.min(0.05, (now - FX.last) / 1000 || 0); FX.last = now;
+    if (dt < 1 / 40) return;   // ~30 fps yeter, pil dostu
+    const W = c.width, H = c.height;
+    // kivilcim yogunlugu indirme hiziyla artar
+    const rate = 0.6 + (SK.speedFrac || 0) * 4;
+    if (Math.random() < rate * dt) FX.parts.push(spawn("ember"));
+    if (Math.random() < 0.06 * dt && FX.parts.filter((p) => p.kind === "wisp").length < 3) FX.parts.push(spawn("wisp"));
+    ctx.clearRect(0, 0, W, H); FX.drawn = true;
+    FX.parts = FX.parts.filter((p) => {
+      p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt;
+      if (p.kind === "talisman") {
+        p.r += p.vr * dt;
+        if (p.y < -80) { Object.assign(p, spawn("talisman"), { y: H + 60 }); }
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.scale(p.s, p.s); ctx.globalAlpha = p.a;
+        ctx.fillStyle = "#C4B5FD"; ctx.fillRect(-11, -26, 22, 52);
+        ctx.fillStyle = "#6D28D9"; ctx.fillRect(-11, -26, 22, 5);
+        ctx.strokeStyle = "#4C1D95"; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(0, 18); ctx.moveTo(-6, -8); ctx.lineTo(6, -2); ctx.moveTo(-6, 4); ctx.lineTo(6, 10); ctx.stroke();
+        ctx.restore();
+        return true;
+      }
+      p.t += dt;
+      const k = p.t / p.life, fade = Math.sin(Math.min(1, k) * Math.PI);
+      if (p.kind === "ember") {
+        ctx.globalAlpha = 0.22 * fade; ctx.fillStyle = p.g ? "#2EE6A6" : "#A78BFA";
+        ctx.beginPath(); ctx.arc(p.x + Math.sin(p.t * 2 + p.x) * 6, p.y, p.s, 0, 6.28); ctx.fill();
+      } else {
+        const gr = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.s * 2.2);
+        gr.addColorStop(0, "rgba(196,181,253,.9)"); gr.addColorStop(0.35, "rgba(139,92,246,.35)"); gr.addColorStop(1, "rgba(139,92,246,0)");
+        ctx.globalAlpha = 0.16 * fade; ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(p.x, p.y, p.s * 2.2, 0, 6.28); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      return p.t < p.life;
+    });
+  };
+  requestAnimationFrame(loop);
+  document.body.classList.toggle("fx-off", !FX.on);
+}
+function fxToggle(on) { FX.on = on; document.body.classList.toggle("fx-off", !on); try { localStorage.setItem("kami.fx", on ? "1" : "0"); } catch { /* yok */ } }
+
 skBuild();
+fxInit();
 STATE_HOOKS.push(skState);

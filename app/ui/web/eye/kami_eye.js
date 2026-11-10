@@ -50,8 +50,8 @@
     _wanted() {
       const T = this.target;
       if (T.lid >= 0.5 || T.mood === 'sleep') return { name: 'sleep', flip: false };
+      if (T.mood === 'happy') return { name: 'done', flip: false };   // bitis sevinci hatadan once (kisa surer)
       if (T.isError) return { name: 'error', flip: false };
-      if (T.mood === 'happy') return { name: 'done', flip: false };
       if (T.mood === 'locked') return { name: 'lock', flip: false };
       if (T.mood === 'alert') return { name: 'alert', flip: T.mouseX < 0 };
       if ((T.downloadSpeed || 0) > 0.85) return { name: 'speed', flip: false };

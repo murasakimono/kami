@@ -4,7 +4,7 @@
 
 const PX = {
   queue: [], qi: -1, pending: null, nextShown: false, nextCancel: false, lib: null, libTab: "queue", libSeries: null,
-  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
+  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, assStyle: "orig", sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
 };
 const pxBase = (p) => String(p).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 const pxSave = () => { try { localStorage.setItem("kami.player", JSON.stringify(PX.cfg)); } catch { /* yok */ } };
@@ -239,6 +239,8 @@ window.plSettings = () => {
   const rng = (key, min, max, label) => `<label class="px-rng"><span>${label}</span><input type="range" data-vk="${key}" min="${min}" max="${max}" value="${c.vid[key]}"><b>${c.vid[key]}%</b></label>`;
   p.innerHTML = `
     <h4>${plL("Altyazı", "Subtitles")}</h4>
+    <div class="px-shift"><span>${plL("ASS altyazı", "ASS subtitles")}</span><div class="px-seg" data-g="ass" style="margin:0">${[["orig", plL("Orijinal stil", "Original style")], ["kami", plL("Kami stili", "Kami style")]].map(([v, l]) => `<button data-v="${v}" class="${c.assStyle === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
+    <p class="px-hint">${plL("Orijinal stilde renk, boyut ve konum dosyadan gelir; aşağıdaki ayarlar Kami stilinde ve düz altyazılarda geçerli.", "Original style keeps the file's look; settings below apply to Kami style and plain subtitles.")}</p>
     ${seg("sub", "size", [["s", "S"], ["m", "M"], ["l", "L"], ["xl", "XL"]])}
     ${seg("sub", "color", [["#ffffff", plL("Beyaz", "White")], ["#ffe066", plL("Sarı", "Yellow")], ["#2EE6A6", plL("Zümrüt", "Emerald")], ["#C4B5FD", plL("Lavanta", "Lavender")]])}
     ${seg("sub", "bg", [["none", plL("Gölge", "Shadow")], ["semi", plL("Yarı saydam", "Semi")], ["solid", plL("Koyu", "Solid")]])}
@@ -272,6 +274,7 @@ window.plSettings = () => {
     if (segEl) {
       const g = segEl.dataset.g, v = b.dataset.v;
       if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v;
+      else if (g === "ass") { c.assStyle = v; pxSave(); if (PL.open && PL.subIdx >= 0) plLoadSub(PL.subIdx); }
       else if (g === "dialog") { c.dialog = v === "1"; pxSave(); if (PL.open) { if (PL.mode === "direct" && plDialogMix()) PL.mode = "remux"; plModeUi(); plSeek(plNow(), !$("#plVideo").paused); } } else c[g][segEl.dataset.k] = segEl.dataset.k === "pos" ? +v : v;
       segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
       pxSave(); pxApplyAll();

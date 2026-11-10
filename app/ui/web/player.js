@@ -22,14 +22,17 @@ function plBuild() {
     <video id="plVideo" playsinline preload="auto"></video>
     <div class="pl-audio" id="plAudio">
       <div class="pl-cover" id="plCover"></div>
-      <canvas id="plBig" width="760" height="614"></canvas>
+      <div class="pl-bigeq l" id="plBigEqL">${"<i></i>".repeat(16)}</div>
+      <canvas id="plBig" width="403" height="614"></canvas>
+      <div class="pl-bigeq r" id="plBigEqR">${"<i></i>".repeat(16)}</div>
     </div>
+    <div class="pl-empty" id="plEmpty" hidden><div><b>Kami Player</b><span>${plL("Bir video ya da şarkı sürükleyip bırak, ya da kütüphaneden seç.", "Drop a video or song here, or pick one from the library.")}</span><button class="pl-b" data-pl="queue">${plL("Kütüphaneyi aç", "Open library")}</button></div></div>
     <div class="pl-subs2" id="plSubs2"></div>
     <div class="pl-subs" id="plSubs"></div>
     <div class="pl-spin" id="plSpin"></div>
     <div class="pl-top">
       <div class="pl-title"><b id="plTitle"></b><span id="plMode"></span></div>
-      <button class="pl-x" id="plClose" title="${plL("Kapat (Esc)", "Close (Esc)")}">✕</button>
+      ${window.KAMI_PLAYER_WINDOW ? "" : `<button class="pl-x" id="plClose" title="${plL("Kapat (Esc)", "Close (Esc)")}">‹</button>`}
     </div>
     <div class="pl-deck">
       <div class="pl-seek" id="plSeek"><i class="pl-buf" id="plBuf"></i><i class="pl-fill" id="plFill"></i><i class="pl-knob" id="plKnob"></i><span class="pl-tip" id="plTip"><img id="plThumb" alt=""><b id="plTipT"></b></span></div>
@@ -63,8 +66,9 @@ function plBuild() {
     if (PL.info.kind === "video" && PL.mode === "direct") setTimeout(() => { if (PL.open && !v.videoWidth) plFallback("novideo"); }, 1500);
   });
   v.addEventListener("error", () => plFallback("error"));
-  v.addEventListener("click", plToggle);
+  v.addEventListener("click", () => { clearTimeout(PL.clickT); PL.clickT = setTimeout(plToggle, 240); });
   v.addEventListener("dblclick", (e) => {
+    clearTimeout(PL.clickT);   // cift tik videoyu durdurmasin
     const x = e.clientX / innerWidth;
     if (x < 0.3) plSeek(plNow() - 10); else if (x > 0.7) plSeek(plNow() + 10); else plFull();
   });
@@ -82,7 +86,7 @@ function plBuild() {
     }
   });
   $("#plEye").addEventListener("click", plToggle);
-  $("#plClose").addEventListener("click", plClose);
+  $("#plClose")?.addEventListener("click", plClose);
   el.addEventListener("click", (e) => {
     const b = e.target.closest("[data-pl]"); if (!b) return;
     ({ back: () => plSeek(plNow() - 10), fwd: () => plSeek(plNow() + 10), mute: () => { v.muted = !v.muted; plVolUi(); }, full: plFull,
@@ -132,8 +136,9 @@ async function playerOpen(id) {
   if (!r || !r.ok) { toast(plL("Oynatılamadı: ", "Can't play: ") + (r?.error || "?"), true); return; }
   plStart(r);
 }
-async function playerOpenPath(path) {
+async function playerOpenPath(path, queue) {
   if (!$("#player")) plBuild();
+  if (queue && queue.length && typeof PX !== "undefined") PX.pending = queue;
   let r;
   try { r = await api.player_open_path(path); } catch (e) { r = { ok: false, error: String(e) }; }
   if (!r || !r.ok) { toast(plL("Oynatılamadı: ", "Can't play: ") + (r?.error || "?"), true); return; }
@@ -154,10 +159,12 @@ async function playerOpenUrl(url) {
 
 function plStart(r) {
   const el = $("#player"), v = $("#plVideo");
+  window.plIdle?.(false);
   Object.assign(PL, { open: true, info: r, mode: r.mode, offset: 0, audio: 0, failed: 0, dur: r.duration || 0, cues: [], subIdx: -1, subShift: 0 });
   el.hidden = false; el.classList.toggle("is-audio", r.kind === "audio");
   document.body.classList.add("pl-open");
   $("#plTitle").textContent = r.title;
+  if (window.KAMI_PLAYER_WINDOW) document.title = r.title + " — Kami Player";
   plModeUi();
   $("#plCover").style.backgroundImage = r.cover ? `url("${r.cover}")` : "";
   $("#plCover").hidden = !r.cover;
@@ -197,7 +204,7 @@ function plPos(path, t) {
   return 0;
 }
 async function plSetSrcResume(t) {
-  await plSeek(t, true);
+  if (PL.mode === "direct") plSetSrc(t); else await plSeek(t, true);
   const chip = document.createElement("button");
   chip.className = "pl-chip"; chip.textContent = plL(`${fmtT(t)}'den devam · baştan başla`, `Resumed at ${fmtT(t)} · start over`);
   chip.onclick = () => { plSeek(0, true); chip.remove(); };
@@ -224,6 +231,8 @@ function plClose() {
 
   v.pause(); v.removeAttribute("src"); v.load();   // akis baglantisi kapanir -> sunucu ffmpeg'i oldurur
   PL.open = false;
+  $("#plSpin").classList.remove("on");
+  if (window.KAMI_PLAYER_WINDOW) { window.plIdle?.(true); if (document.title) document.title = "Kami Player"; PL.big?.stop(); clearTimeout(PL.blinkT); return; }
   $("#player").hidden = true;
   document.body.classList.remove("pl-open");
   if (document.fullscreenElement) document.exitFullscreen();
@@ -308,7 +317,7 @@ function plBufDraw() {
 }
 function plEyeState() {
   const v = $("#plVideo"), st = v.paused ? "paused" : "playing";
-  PL.big?.set({ playbackState: st, isDownloading: false });
+  PL.big?.set({ playbackState: "idle", isDownloading: false });   // muzikte figur ziplamaz
   $("#player").classList.toggle("paused", v.paused);
   plWake();
 }
@@ -317,6 +326,10 @@ function plToggle() {
   if (v.paused) v.play().then(plAudioGraph).catch(() => {}); else v.pause();
 }
 function plFull() {
+  if (window.KAMI_PLAYER_WINDOW && api?.player_fullscreen) {   // WebView2'de oge tam ekrani pencereyi buyutmuyor
+    PL.full = !PL.full; $("#player").classList.toggle("full", PL.full);
+    api.player_fullscreen(PL.full); return;
+  }
   if (document.fullscreenElement) document.exitFullscreen(); else $("#player").requestFullscreen?.();
 }
 // ses 0-%200: %100'e kadar video.volume, ustu Web Audio kazanci (PL.boost)
@@ -377,17 +390,28 @@ function plAudioGraph() {
           for (let k = Math.max(1, edges[i]); k <= Math.max(edges[i], edges[i + 1]); k++) { s += PL.bins[k]; n++; }
           lv.push(Math.pow((s / Math.max(1, n)) / 255, 1.4));
         }
-        PL.big?.set({ levels: lv });   // kucuk gozde cubuklar DOM'da (altigenin iki yani)
-        plEqDraw(lv);
+        plEqDraw(lv); plBigEq();   // ekolayzir figurden bagimsiz (DOM cubuklari), figur sadece nefes alir
         const bass = lv[0] * 0.6 + lv[1] * 0.4;
         $("#player").style.setProperty("--pl-beat", bass.toFixed(3));
-      } else if (PL.big?.target.levels) { PL.big.set({ levels: null }); plEqDraw(null); }
+      } else if (PL.eqOn) { PL.eqOn = false; plEqDraw(null); plBigEq(true); }
       requestAnimationFrame(loop);
     };
     loop();
   } catch (e) { console.warn("Web Audio kurulamadi", e); }
 }
 
+// muzik modunda figurun iki yaninda bagimsiz, ayna simetrik 16 bantlik ekolayzir
+function plBigEq(reset) {
+  const L = $("#plBigEqL"), R = $("#plBigEqR"); if (!L || !PL.bins) return;
+  PL.eqOn = !reset;
+  const n = 16, bars = [...L.children], bars2 = [...R.children];
+  for (let i = 0; i < n; i++) {
+    let v = 0;
+    if (!reset) { const k0 = Math.floor(Math.pow(PL.bins.length * 0.8, i / n)), k1 = Math.max(k0 + 1, Math.floor(Math.pow(PL.bins.length * 0.8, (i + 1) / n))); for (let k = k0; k < k1; k++) v = Math.max(v, PL.bins[k]); v /= 255; }
+    const h = (4 + Math.pow(v, 1.3) * 100).toFixed(1) + "%";
+    bars[n - 1 - i].style.height = h; bars2[i].style.height = h;
+  }
+}
 function plEqDraw(lv) {
   const L = $$("#plEqL i"), R = $$("#plEqR i");
   for (let i = 0; i < 7; i++) {   // ic bantlar goze yakin: bas ortada, tiz disarida
@@ -411,7 +435,8 @@ async function plLoadSub(i, slot = 1) {
   window.plOnSubChange?.();
   if (i < 0 || !PL.subList[i]) return;
   const it = PL.subList[i];
-  if (it.raw && window.JASSUB && PL.info.jassub && await plAss(it)) return;   // ASS: stiller, tabelalar, konumlar korunur
+  const kamiStyle = typeof PX !== "undefined" && PX.cfg.assStyle === "kami";   // ASS'i Kami altyazi stiliyle duz goster
+  if (it.raw && !kamiStyle && window.JASSUB && PL.info.jassub && await plAss(it)) return;   // ASS: stiller, tabelalar, konumlar korunur
   try {
     if (it.embedded) $("#plSpin").classList.add("on");   // buyuk mkv'de iz cikarma birkac saniye surebilir
     PL.cues = plParseVtt(await (await fetch(it.url)).text());
@@ -496,14 +521,20 @@ const PL_ACTIONS = {
   next: ["Sonraki", "Next", () => window.plQueueStep?.(1)], prev: ["Önceki", "Previous", () => window.plQueueStep?.(-1)],
   queue: ["Sıradakiler / kütüphane", "Queue / library", () => window.plDrawer?.()], settings: ["Ayarlar paneli", "Settings panel", () => window.plSettings?.()],
   info: ["Video bilgisi", "Video info", () => plInfo()],
-  close: ["Kapat / geri", "Close / back", () => { if (window.plPanelClose?.()) return; if (!document.fullscreenElement) plClose(); }],
+  close: ["Kapat / tam ekrandan çık", "Close / exit fullscreen", () => {
+    if (window.plPanelClose?.()) return;
+    if (PL.full) return plFull();
+    if (document.fullscreenElement) return document.exitFullscreen();
+    if (!window.KAMI_PLAYER_WINDOW) plClose();
+  }],
 };
 const PL_KEYS_DEFAULT = { " ": "toggle", k: "toggle", f: "full", m: "mute", arrowleft: "back5", arrowright: "fwd5", j: "back10", l: "fwd10",
-  arrowup: "volup", arrowdown: "voldown", ",": "frameback", ".": "framefwd", "[": "slower", "]": "faster", "\\": "rate1", c: "subs",
+  arrowup: "volup", arrowdown: "voldown", ",": "frameback", ".": "framefwd", "[": "slower", "]": "faster", "\\": "rate1", z: "slower", x: "faster", r: "rate1", c: "subs",
   g: "subminus", h: "subplus", n: "next", p: "prev", q: "queue", s: "settings", i: "info", escape: "close" };
 function plKeymap() { try { return { ...PL_KEYS_DEFAULT, ...JSON.parse(localStorage.getItem("kami.keys") || "{}") }; } catch { return { ...PL_KEYS_DEFAULT }; } }
 function plKey(e) {
-  if (!PL.open || PL.capture || e.target.matches("input:not([type=range]), textarea") || e.ctrlKey || e.altKey || e.metaKey) return;
+  const altGr = e.getModifierState && e.getModifierState("AltGraph");
+  if ((!PL.open && e.key !== "Escape") || PL.capture || e.target.matches("input:not([type=range]), textarea") || ((e.ctrlKey || e.altKey) && !altGr) || e.metaKey) return;
   const act = plKeymap()[e.key.toLowerCase()];
   if (act && PL_ACTIONS[act]) { e.preventDefault(); e.stopPropagation(); PL_ACTIONS[act][2](); plWake(); }
 }

@@ -454,7 +454,8 @@ def sync_subtitle(video: str, text: str, out: str) -> dict:
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)
     try:
-        return _run_once(["app.tools.subsync_run", video, tmp, out, os.path.dirname(ff)],
+        return _run_once(["app.tools.subsync_run", video, tmp, out, os.path.dirname(ff), models_dir("whisper"),
+                          "large-v3-turbo"],
                          lambda m: None, threading.Event(), "whisper", {})
     finally:
         try:

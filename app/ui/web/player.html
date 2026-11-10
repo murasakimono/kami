@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>Kami Player</title>
+  <link rel="stylesheet" href="sunak.css">
+  <link rel="stylesheet" href="player.css">
+  <style>
+    html, body { margin: 0; height: 100%; background: #050408; overflow: hidden; font-family: "Chakra Petch", "Segoe UI", sans-serif; }
+    #toast { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 100; padding: 8px 16px; background: #1C1528; color: #EDE9F6;
+      font: 600 13px "Chakra Petch", sans-serif; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); box-shadow: inset 3px 0 0 #2EE6A6; }
+    #toast.err { box-shadow: inset 3px 0 0 #FF4D6A; }
+    #toast[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <div id="toast" hidden></div>
+  <script src="player-shell.js"></script>
+  <script src="eye/kami_eye.js"></script>
+  <script src="vendor/jassub/jassub.umd.js"></script>
+  <script src="player.js"></script>
+  <script src="player-lib.js"></script>
+</body>
+</html>

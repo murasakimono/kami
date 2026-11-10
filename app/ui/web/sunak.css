@@ -20,7 +20,7 @@ body.sunak > .layout, body.sunak > .statusbar { display: none; }
 
 /* eski gorunumler cekmece olarak: liste, takip, gecmis, toplu, Real-Debrid */
 body.sunak.sk-drawer > .layout {
-  display: flex; position: fixed; z-index: 40; inset: 18px 96px 18px 18px;
+  display: flex; position: fixed; z-index: 40; inset: 44px 100px 36px 44px;
   background: rgba(13, 10, 19, .97); box-shadow: 0 0 0 1px var(--sk-line), 0 24px 70px rgba(0, 0, 0, .6);
   clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
 }
@@ -28,9 +28,13 @@ body.sunak.sk-drawer:not(.sk-list) > .layout > .sidebar { display: none; }
 body.sunak.sk-drawer .speed { display: none; }
 .sk-drawer-close { display: none; }
 body.sunak.sk-drawer .sk-drawer-close {
-  display: flex; position: fixed; z-index: 41; top: 26px; right: 108px; width: 40px; height: 34px; align-items: center; justify-content: center;
-  border: 0; background: var(--sk-plum); color: var(--sk-lav); clip-path: var(--cut-s); cursor: pointer;
+  display: flex; position: fixed; z-index: 41; top: 6px; right: 100px; height: 38px; padding: 0 14px; gap: 8px; align-items: center; justify-content: center;
+  border: 0; background: #3B1580; color: #fff; font: 600 13px var(--font); clip-path: var(--cut-s); cursor: pointer;
 }
+body.sunak.sk-drawer .sk-drawer-close:hover { background: var(--sk-royal); }
+body.sunak.sk-drawer .sk-drawer-close svg { width: 14px; height: 14px; }
+.sk-backdrop { display: none; }
+body.sunak.sk-drawer .sk-backdrop { display: block; position: fixed; inset: 0; z-index: 39; background: rgba(5, 4, 8, .55); backdrop-filter: blur(3px); }
 
 #sunak { position: fixed; inset: 0; display: flex; gap: 16px; padding: 12px 18px 16px; box-sizing: border-box; }
 #sunak .sk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -151,3 +155,14 @@ body.sunak :focus-visible { outline: 2px solid var(--sk-em); outline-offset: 2px
   #sunak .sk-altar { transform: scale(.84); transform-origin: left top; margin: 0 -48px -52px 0; }
   #sunak .sk-strip { height: 200px; }
 }
+
+/* arka plan efektleri (dusuk opaklik) */
+#skFx { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+#skFog { position: fixed; left: -10%; right: -10%; bottom: -40px; height: 220px; z-index: 0; pointer-events: none; opacity: .14;
+  background: radial-gradient(ellipse 30% 60% at 20% 80%, #6D28D9, transparent 70%), radial-gradient(ellipse 35% 55% at 60% 85%, #4C1D95, transparent 70%), radial-gradient(ellipse 25% 50% at 90% 80%, #0FA37A, transparent 70%);
+  filter: blur(30px); animation: sk-fog 26s ease-in-out infinite alternate; }
+@keyframes sk-fog { from { transform: translateX(-4%); } to { transform: translateX(4%); } }
+body.fx-off #skFog { display: none; }
+body.sunak > .topbar, body.sunak > .layout { position: relative; z-index: 2; }
+#sunak { z-index: 1; }
+@media (prefers-reduced-motion: reduce) { #skFog { animation: none; } }
