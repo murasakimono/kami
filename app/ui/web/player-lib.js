@@ -186,6 +186,8 @@ async function pxDrawerRender() {
     const names = Object.keys(lists);
     body.innerHTML = names.length ? names.map((n) => `<div class="px-card"><button class="px-row" data-list="${escapeHtml(n)}"><span>${escapeHtml(n)}</span><small>${lists[n].length}</small></button><button class="pl-b" data-del="${escapeHtml(n)}">✕</button></div>`).join("")
       : `<p class="px-empty">${plL("Henüz liste yok. Sıradakiler sekmesinden kaydedebilirsin.", "No playlists yet. Save one from the Queue tab.")}</p>`;
+    body.insertAdjacentHTML("beforeend", `<button class="pl-b" data-act="addfolder" style="margin-top:12px">📁 ${plL("Klasörü liste olarak ekle", "Add a folder as playlist")}</button>
+      <p class="px-hint">${plL("Klasör listesi her açılışta klasörün güncel içeriğini çalar; klasöre eklediğin yeni dosyalar da gelir.", "Folder playlists always play the folder's current contents.")}</p>`);
     PX.lists = lists;
     return;
   }
@@ -254,6 +256,7 @@ async function pxDrawerClick(e) {
   if (act === "adddir") { const r = await api.library_add_dir(); if (r.ok) { PX.lib = null; pxDrawerRender(); } }
   if (act === "rescan") { PX.lib = null; PX.albums = null; pxDrawerRender(); }
   if (act === "aback") { PX.album = null; pxDrawerRender(); }
+  if (act === "addfolder") { const r = await api.playlist_add_folder(); if (r?.ok) { toast(plL("Liste eklendi: ", "Playlist added: ") + r.name); pxDrawerRender(); } }
   if (act === "aplay" || act === "ashuf") {
     const a = PX.albums?.[PX.album]; if (!a) return;
     let paths = a.tracks.map((x) => x.path);

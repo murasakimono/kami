@@ -1162,7 +1162,34 @@ class Api:
         return self._playlists
 
     def playlist_get(self) -> dict[str, list[str]]:
-        return self._pl().all()
+        """Klasor listeleri ("folder:<yol>") her acilista klasorun guncel icerigine acilir (yeni dosyalar da gelir)."""
+        out = {}
+        for name, items in self._pl().all().items():
+            if len(items) == 1 and str(items[0]).startswith("folder:"):
+                from app.core.library import scan
+                d = str(items[0])[7:]
+                try:
+                    files = sorted((it["path"] for it in scan([d]).get("items", [])), key=lambda p: p.lower())
+                except Exception:
+                    files = []
+                out[name] = files
+            else:
+                out[name] = items
+        return out
+
+    def playlist_add_folder(self) -> dict[str, Any]:
+        """Listeler: bir klasor sec, adiyla klasor listesi olarak kaydet."""
+        import webview
+        if self._player_win is None:
+            return {"ok": False}
+        dialog = getattr(getattr(webview, "FileDialog", None), "FOLDER", None) or webview.FOLDER_DIALOG
+        res = self._player_win.create_file_dialog(dialog, directory=str(self._manager.base_dir()))
+        d = res[0] if res else ""
+        if not d:
+            return {"ok": False}
+        name = "📁 " + (os.path.basename(os.path.normpath(d)) or d)
+        self._pl().save(name, ["folder:" + d])
+        return {"ok": True, "name": name}
 
     def playlist_save(self, name: str, items: list) -> dict[str, list[str]]:
         return self._pl().save(str(name), [str(x) for x in (items or [])])
