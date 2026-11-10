@@ -612,8 +612,9 @@ class AiQueue:
         model = self.settings.get("uvr_model") or UVR_MODELS[0]
         out_dir = os.path.join(os.path.dirname(path), "Ayrilmis")
         res = _run_json(["app.tools.uvr_run", path, out_dir, model, models_dir("uvr"),
-                         self.settings.get("uvr_format") or "mp3"],
-                        lambda m: m.get("stage") == "separate" and self.set_extra(did, ai_uvr_p=0.3), ev, "uvr")
+                         self.settings.get("uvr_format") or "mp3", self.settings.get("uvr_quality") or "fast"],
+                        lambda m: ("p" in m and self.set_extra(did, ai_uvr_p=m["p"])) or
+                                  (m.get("stage") == "separate" and self.set_extra(did, ai_uvr_p=0.3)), ev, "uvr")
         if "error" in res:
             self.set_extra(did, ai_uvr="cancelled" if res["error"] == "cancelled" else "error",
                            ai_uvr_err=str(res["error"])[:200])
@@ -634,7 +635,7 @@ class AiQueue:
         tmp = tempfile.mkdtemp(prefix="kami_lyr_", dir=models_dir("uvr"))
         try:
             res = _run_json(["app.tools.uvr_run", path, tmp, self.settings.get("uvr_model") or UVR_MODELS[0],
-                             models_dir("uvr"), "wav"],
+                             models_dir("uvr"), "wav", "fast"],   # sadece Whisper'a vokal: hizli yeter
                             lambda m: m.get("stage") == "separate" and self.set_extra(did, ai_lyrics_p=0.2), ev, "uvr")
             if "error" in res:
                 raise _JobError(res["error"])
