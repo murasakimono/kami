@@ -76,7 +76,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
-        "library_get", "library_albums", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
+        "library_get", "library_albums", "lyrics_search", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -1091,6 +1091,48 @@ class Api:
         if not ok_paths:
             return {"ok": False, "error": "no_files"}
         return {"ok": mt.to_trash(ok_paths), "count": len(ok_paths)}
+
+    def lyrics_search(self, text: str) -> dict[str, Any]:
+        """Sozden sarki bul: LRCLIB tam metin arama + kutuphanede eslesen dosya."""
+        import re as _re
+        import requests
+        from app.core.library import scan
+        q = str(text or "").strip()[:200]
+        if len(q) < 4:
+            return {"ok": False, "hits": []}
+        js = []
+        tok = self._genius.load() if self._genius else ""
+        if tok:   # Genius resmi API sozlerin icinde de arar (sayfa cekilmez, sadece baslik/sanatci)
+            try:
+                r = requests.get("https://api.genius.com/search", params={"q": q}, headers={"Authorization": f"Bearer {tok}", "User-Agent": "Kami/1.0"}, timeout=15)
+                for h in ((r.json().get("response") or {}).get("hits") or []) if r.status_code == 200 else []:
+                    res = h.get("result") or {}
+                    if h.get("type") == "song":
+                        js.append({"artistName": (res.get("primary_artist") or {}).get("name", ""), "trackName": res.get("title", "")})
+            except Exception:
+                js = []
+        if not js:   # LRCLIB yalnizca baslik/sanatci arar
+            try:
+                r = requests.get("https://lrclib.net/api/search", params={"q": q}, headers={"User-Agent": "Kami/1.0"}, timeout=15)
+                js = r.json() if r.status_code == 200 else []
+            except Exception:
+                js = []
+        norm = lambda x: _re.sub(r"[^\w]+", " ", str(x).lower()).strip()
+        try:
+            items = [it for it in scan(self._library_dirs()).get("items", []) if it.get("kind") == "audio"]
+        except Exception:
+            items = []
+        hits, seen = [], set()
+        for h in js[:15]:
+            key = (norm(h.get("artistName")), norm(h.get("trackName")))
+            if key in seen or not key[1]:
+                continue
+            seen.add(key)
+            local = next((it["path"] for it in items if key[1] in norm(it["name"]) and (not key[0] or key[0].split()[0] in norm(it["name"]))), "")
+            hits.append({"artist": h.get("artistName", ""), "title": h.get("trackName", ""), "local": local})
+            if len(hits) >= 8:
+                break
+        return {"ok": True, "hits": hits}
 
     def library_add_dir(self) -> dict[str, Any]:
         d = ""

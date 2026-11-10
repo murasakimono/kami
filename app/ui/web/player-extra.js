@@ -211,6 +211,7 @@ window.pxExtraToolsHtml = () => `<h4>${plL("Araçlar", "Tools")}</h4>
     <div class="px-shift"><span>${plL("Klip", "Clip")} <b id="peClipLbl">${peClipLbl()}</b></span><button class="pl-b" data-xa="ca">[ ${plL("baş", "in")}</button><button class="pl-b" data-xa="cb">${plL("son", "out")} ]</button></div>
     <div class="px-shift"><button class="pl-b" data-xa="copy">${plL("Kayıpsız kaydet", "Save lossless")}</button><button class="pl-b" data-xa="gif">GIF</button><button class="pl-b" data-xa="discord">${plL("Discord'a sığdır", "Fit for Discord")}</button></div>
     <p class="px-hint">${plL("Kayıpsız: anahtar kareden keser, kaliteyi bozmaz. Discord: 10 MB altına sıkıştırır. Dosyalar videonun yanına kaydedilir.", "Lossless cuts at keyframes. Discord compresses under 10 MB. Saved next to the video.")}</p>
+    <div class="px-shift"><input class="px-in" id="peLyrQ" placeholder="${plL("Sözden şarkı bul: aklındaki satırı yaz", "Find a song from a lyric line")}" style="flex:1"><button class="pl-b" data-xa="lyrq">${plL("Ara", "Search")}</button></div><div id="peLyrRes"></div>
     <div class="px-shift"><button class="pl-b" data-xa="audio">${plL("Sesi çıkar", "Extract audio")}</button><button class="pl-b" data-xa="repair">${plL("Bozuk dosyayı onar", "Repair file")}</button></div>`;
 function peClipLbl() { return PE.clipA == null && PE.clipB == null ? "" : `${PE.clipA != null ? fmtT(PE.clipA) : "…"} → ${PE.clipB != null ? fmtT(PE.clipB) : "…"}`; }
 
@@ -231,6 +232,15 @@ document.addEventListener("click", async (e) => {
   }
   const act = b.dataset.xa; if (!act) return;
   e.stopPropagation();
+  if (act === "lyrq") {
+    const q = ($("#peLyrQ")?.value || "").trim(); if (q.length < 4) return;
+    const box = $("#peLyrRes"); box.innerHTML = `<p class="px-hint">${plL("Aranıyor…", "Searching…")}</p>`;
+    let r; try { r = await slow("lyrics_search", q); } catch { r = null; }
+    const hits = r?.hits || [];
+    box.innerHTML = hits.length ? hits.map((h, i) => `<button class="px-row" data-lh="${i}"><span>${escapeHtml(h.artist)} — ${escapeHtml(h.title)}<small> ${h.local ? "· " + plL("kütüphanende", "in library") : "· YouTube"}</small></span></button>`).join("") : `<p class="px-hint">${plL("Bulunamadı.", "Not found.")}</p>`;
+    box.querySelectorAll("[data-lh]").forEach((x) => x.onclick = (ev) => { ev.stopPropagation(); const h = hits[+x.dataset.lh]; if (h.local) playerOpenPath(h.local); else api.open_link("https://www.youtube.com/results?search_query=" + encodeURIComponent(h.artist + " " + h.title)); });
+    return;
+  }
   const path = PL.info?.path;
   if (!path) { toast(plL("Bu işlem için yerel bir dosya açık olmalı", "Needs a local file"), true); return; }
   if (act === "ca" || act === "cb") { PE[act === "ca" ? "clipA" : "clipB"] = plNow(); const l = $("#peClipLbl"); if (l) l.textContent = peClipLbl(); return; }
@@ -278,13 +288,27 @@ setTimeout(() => {
   document.body.appendChild(chip);
   setTimeout(() => chip.remove(), 15000);
 }, 1500);
-// ---------- B9 kinetik altyazi (istege bagli, varsayilan kapali): yeni satir hafifce belirir ----------
-const _peSubObs = setInterval(() => {
-  const b = $("#plSubs"); if (!b) return; clearInterval(_peSubObs);
-  new MutationObserver(() => { if (!peCfg().kinetic || !b.childNodes.length) return; b.classList.remove("kin"); void b.offsetWidth; b.classList.add("kin"); }).observe(b, { childList: true });
-}, 500);
+// ---------- B9 kinetik altyazi: ses genligi esigi asinca (bagirma/patlama) altyazi titrer, dusunce durur ----------
+(function peKinetic() {
+  const buf = new Uint8Array(1024);
+  let avg = 0.05;
+  const loop = () => {
+    requestAnimationFrame(loop);
+    const b = $("#plSubs");
+    if (!b) return;
+    if (!peCfg().kinetic || !PL.an || !PL.open || $("#plVideo").paused) { b.classList.remove("shake"); return; }
+    PL.an.getByteTimeDomainData(buf);
+    let sum = 0; for (let i = 0; i < buf.length; i++) { const x = (buf[i] - 128) / 128; sum += x * x; }
+    const rms = Math.sqrt(sum / buf.length);
+    avg = avg * 0.995 + rms * 0.005;   // ortalama ses duzeyi (sessiz/gurultulu filmlere uyum)
+    const loud = rms > Math.max(0.22, avg * 2.6);
+    b.classList.toggle("shake", loud);
+    if (loud) b.style.setProperty("--shk", Math.min(1, (rms - avg) * 3).toFixed(2));
+  };
+  requestAnimationFrame(loop);
+})();
 const _peVid = window.pxExtraVideoHtml;
-window.pxExtraVideoHtml = () => _peVid() + `<div class="px-shift"><span>${plL("Kinetik altyazı (yeni satır yumuşakça belirir)", "Kinetic subtitles")}</span></div>${peSeg("kinetic", [[0, plL("Kapalı", "Off")], [1, plL("Açık", "On")]], peCfg().kinetic ? 1 : 0)}`;
+window.pxExtraVideoHtml = () => _peVid() + `<div class="px-shift"><span>${plL("Kinetik altyazı (yüksek seste titrer)", "Kinetic subtitles")}</span></div>${peSeg("kinetic", [[0, plL("Kapalı", "Off")], [1, plL("Açık", "On")]], peCfg().kinetic ? 1 : 0)}`;
 document.addEventListener("click", (e) => {
   const seg = e.target.closest?.('#plPanel .px-xseg[data-x="kinetic"]'); const b = e.target.closest?.("button");
   if (seg && b) { PX.cfg.kinetic = b.dataset.v === "1"; pxSave(); }

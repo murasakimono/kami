@@ -384,3 +384,12 @@ body.pl-open #sunak { visibility: hidden; }
 #player .pl-subs.kin > span { animation: pe-kin .32s cubic-bezier(.2,.8,.2,1); }
 @keyframes pe-kin { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } }
 .pe-crash { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 90; }
+/* kinetik altyazi: yuksek seste titreme */
+#player .pl-subs.shake > span { animation: pe-shake .09s linear infinite; display: inline-block; }
+@keyframes pe-shake { 0% { transform: translate(0, 0); } 25% { transform: translate(calc(-3px * var(--shk, .6)), calc(1px * var(--shk, .6))) rotate(-.4deg); } 50% { transform: translate(calc(2px * var(--shk, .6)), calc(-2px * var(--shk, .6))); } 75% { transform: translate(calc(-1px * var(--shk, .6)), calc(2px * var(--shk, .6))) rotate(.4deg); } }
+/* kucuk cila: odak halkasi, dugme parlamasi, panel yumusak gelis */
+#player .pl-b:focus-visible, #player .pl-eye:focus-visible, .px-row:focus-visible { outline: 2px solid #2EE6A6; outline-offset: 2px; }
+#player .pl-deck .pl-b:hover { box-shadow: 0 0 14px rgba(124, 58, 237, .45); }
+#player .pl-panel:not([hidden]) { animation: pe-pop .18s ease-out; backdrop-filter: blur(10px); }
+@keyframes pe-pop { from { opacity: 0; transform: translateY(6px) scale(.985); } }
+#player .pl-chip { border-radius: 8px; }
