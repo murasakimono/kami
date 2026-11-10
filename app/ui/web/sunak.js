@@ -92,6 +92,10 @@ function skBind() {
   $("#skPrev").addEventListener("click", () => skPage(-1));
   $("#skNext").addEventListener("click", () => skPage(1));
   $("#skWrap").addEventListener("wheel", (e) => { if (Math.abs(e.deltaY) + Math.abs(e.deltaX) > 8) { e.preventDefault(); skPage((e.deltaY || e.deltaX) > 0 ? 1 : -1); } }, { passive: false });
+  $("#skTrack").addEventListener("dblclick", (e) => {
+    const b = e.target.closest(".sk-strip"); const d = b && state.items.find((x) => String(x.id) === b.dataset.id);
+    if (d && d.status === "complete" && ["video", "music"].includes(d.category)) playerOpen(d.id);
+  });
   $("#skTrack").addEventListener("click", (e) => { const b = e.target.closest(".sk-strip"); if (b) { SK.sel = skItems().find((d) => String(d.id) === b.dataset.id)?.id ?? null; skRender(); } });
   $("#skDots").addEventListener("click", (e) => { const i = e.target.dataset.i; if (i != null) { SK.sel = skItems()[+i]?.id; skRender(); } });
   $("#skBar").addEventListener("click", skBarAction);
@@ -228,7 +232,9 @@ function skRenderBar(d) {
   if (["active", "waiting", "queued"].includes(d.status)) btns.push(B("pause", "pause", skL("Duraklat", "Pause")));
   if (d.status === "paused") btns.push(B("resume", "play", skL("Sürdür", "Resume"), "pri"));
   if (d.status === "error") btns.push(B("resume", "retry", skL("Yeniden dene", "Retry"), "pri"));
-  if (d.status === "complete") btns.push(B("open_file", "file", skL("Aç", "Open"), "pri"));
+  const media = d.status === "complete" && ["video", "music"].includes(d.category);
+  if (media) btns.push(B("play", "play", skL("Oynat", "Play"), "pri"));
+  if (d.status === "complete") btns.push(B("open_file", "file", media ? skL("Dışarıda aç", "Open externally") : skL("Aç", "Open"), media ? "" : "pri"));
   if (d.status === "complete" && ["video", "music"].includes(d.category)) {
     btns.push(B("mtools", "sub", skL("AI altyazı", "AI subtitle"), "ai"));
     btns.push(B("mtools", "voc", skL("Vokal ayır", "Split vocals"), "ai"));
@@ -247,6 +253,7 @@ async function skBarAction(e) {
   const id = SK.sel, act = b.dataset.act;
   try {
     if (act === "mtools") return openMediaTools(id);
+    if (act === "play") return playerOpen(id);
     if (act === "remove") await api.remove(id, false);
     else if (act === "confirm") await api.confirm(id, true);
     else if (act === "reject") await api.confirm(id, false);

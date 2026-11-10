@@ -59,6 +59,7 @@ class Api:
         self._phone = None
         self._phone_key = None
         self._ntfy = None
+        self._media = None                               # media_server.MediaServer (P1 oynatici, main baglar)
         self._warns: list[dict[str, Any]] = []
         self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
         manager.events.on("ui.warn", lambda **kw: self._on_warn(kw))
@@ -968,6 +969,28 @@ class Api:
         if self._shutdown:
             self._shutdown.cancel()
         return {"ok": True}
+
+    # ---------- oynatici (P1) ----------
+    def player_open(self, download_id: int) -> dict[str, Any]:
+        """Biten indirmeyi Kami'nin kendi oynaticisinda ac: yerel medya sunucusu adresi + mod (direct/remux/transcode)."""
+        if not self._media:
+            return {"ok": False, "error": "player_unavailable"}
+        d = self._manager.store.get(int(download_id))
+        if not d or not d.path or not os.path.isfile(d.path):
+            return {"ok": False, "error": "not_found"}
+        x = dict(d.extra or {})
+        try:
+            from app.core import aitools
+            x = aitools.merge_disk_state(x, d.path)
+        except Exception:
+            pass
+        return self._media.register(d.path, d.filename or "", [x.get("ai_whisper_srt") or ""])
+
+    def player_open_path(self, path: str) -> dict[str, Any]:
+        """Surukle-birak / gecmis: kullanicinin verdigi yerel medya dosyasi."""
+        if not self._media:
+            return {"ok": False, "error": "player_unavailable"}
+        return self._media.register(str(path or ""))
 
     # inerken izle
     def watch(self, download_id: int) -> dict[str, Any]:

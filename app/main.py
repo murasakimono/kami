@@ -382,6 +382,18 @@ def main() -> int:
     api._history, api._shutdown, api._watcher = history, shutdown, watcher
     api._phone, api._phone_key, api._ntfy = phone, phone_key, ntfy_topic
 
+    # ---- P1 oynatici: yerel medya sunucusu (Range + ffmpeg akisi, sadece 127.0.0.1)
+    import atexit
+    from app.core.media_server import MediaServer
+    from app.engines.ytdlp_engine import find_ffmpeg
+    media_srv = MediaServer(find_ffmpeg)
+    try:
+        media_srv.start()
+        api._media = media_srv
+        atexit.register(media_srv.stop)
+    except OSError:
+        log.exception("Medya sunucusu acilamadi")
+
     def tray_warn(**kw) -> None:
         if kw.get("kind") == "disk" and not winwin.is_foreground(front._hwnd()):
             tray.notify("Kami", f"Disk dolacak: {kw.get('name', '')[:80]}")

@@ -28,12 +28,16 @@ soft = np.maximum(soft, rows * (mx < 200))
 def rgba(img):
     a = np.asarray(img).astype(np.float32)
     lum = a.max(axis=2)
-    alpha_bg = np.clip(lum / 70.0, 0, 1)          # ışıma/parlama zeminde yarı saydam kalır
+    alpha_bg = np.clip((lum - 28) / 60.0, 0, 1)          # ışıma/parlama zeminde yarı saydam kalır
     alpha = (1 - soft) + soft * alpha_bg
     rgb = np.where(alpha[..., None] > 0.01, np.clip(a / np.maximum(alpha[..., None], 0.01) * np.where(soft[..., None] > 0.5, 1, 1), 0, 255), 0)
     rgb = soft[..., None] * rgb + (1 - soft[..., None]) * a
     out = np.dstack([rgb, alpha * 255]).astype(np.uint8)
     fade = np.clip((1024 - np.arange(1024)) / 60.0, 0, 1)[:, None]
+    xs = np.arange(1024)
+    hfade = np.clip(np.minimum(xs - CROP[0], CROP[2] - xs) / 90.0, 0, 1)[None, :]   # zemin golgesi kenarda kutu gibi kesilmesin
+    low = np.clip((np.arange(1024) - 880) / 40.0, 0, 1)[:, None]
+    fade = fade * (1 - low + low * hfade)
     out[..., 3] = (out[..., 3] * fade).astype(np.uint8)
     im = Image.fromarray(out, 'RGBA').crop(CROP)
     return im.resize((round(im.width*K), round(im.height*K)), Image.LANCZOS)

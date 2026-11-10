@@ -1,0 +1,76 @@
+/* Kami oynatici (P1). Sunak paletiyle; yuvarlak kutu yok, pahli koseler. */
+#player {
+  --pl-beat: 0;
+  position: fixed; inset: 0; z-index: 60; background: #050408; color: #EDE9F6;
+  font-family: "Chakra Petch", "Segoe UI", sans-serif; overflow: hidden; user-select: none;
+}
+#player[hidden] { display: none; }
+#player video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+#player.is-audio video { opacity: 0; pointer-events: none; }
+#player.idle { cursor: none; }
+#player.idle .pl-top, #player.idle .pl-deck { opacity: 0; transform: translateY(8px); pointer-events: none; }
+#player.idle .pl-top { transform: translateY(-8px); }
+
+/* ses modu: tam boy karakter, ritimle nefes alan isik, kapak varsa solda */
+#player .pl-audio { display: none; position: absolute; inset: 0 0 120px; align-items: center; justify-content: center; gap: 56px; }
+#player.is-audio .pl-audio { display: flex; }
+#player.is-audio { background: radial-gradient(ellipse 50% 55% at 50% 48%, rgba(109, 40, 217, calc(.18 + var(--pl-beat) * .35)) 0%, #050408 70%); }
+#player .pl-audio canvas { height: min(62vh, 520px); aspect-ratio: 760 / 614; filter: drop-shadow(0 0 calc(10px + var(--pl-beat) * 40px) rgba(46, 230, 166, calc(.15 + var(--pl-beat) * .5))); }
+#player .pl-cover { width: min(34vh, 300px); aspect-ratio: 1; background: #110E17 center / cover no-repeat; clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); box-shadow: 0 0 0 1px #4A3D63; }
+#player .pl-cover[hidden] { display: none; }
+
+#player .pl-subs { position: absolute; left: 6%; right: 6%; bottom: 128px; text-align: center; pointer-events: none; transition: bottom .25s; }
+#player.idle .pl-subs { bottom: 48px; }
+#player .pl-subs span { display: inline; font: 600 clamp(18px, 2.6vw, 34px)/1.35 "Chakra Petch", sans-serif; color: #fff; padding: 2px 10px; background: rgba(8, 7, 12, .62); box-decoration-break: clone; -webkit-box-decoration-break: clone; text-shadow: 0 2px 4px #000; }
+
+#player .pl-spin { position: absolute; left: 50%; top: 46%; width: 54px; height: 54px; margin: -27px; opacity: 0; pointer-events: none; border: 3px solid #2B2238; border-top-color: #2EE6A6; border-radius: 50%; animation: pl-spin .8s linear infinite; transition: opacity .2s; }
+#player .pl-spin.on { opacity: 1; }
+@keyframes pl-spin { to { transform: rotate(360deg); } }
+
+#player .pl-top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 16px; padding: 16px 20px 40px; background: linear-gradient(180deg, rgba(5, 4, 8, .85), rgba(5, 4, 8, 0)); transition: opacity .3s, transform .3s; }
+#player .pl-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+#player .pl-title b { font-size: 19px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#player .pl-title span { font-size: 13px; color: #A39BB5; white-space: nowrap; }
+#player .pl-x { width: 42px; height: 38px; border: 0; background: #1C1528; color: #C4B5FD; font-size: 16px; cursor: pointer; clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px); }
+#player .pl-x:hover { background: #3B1580; color: #fff; }
+
+/* alt deste */
+#player .pl-deck { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 22px 14px; background: linear-gradient(0deg, rgba(5, 4, 8, .92) 30%, rgba(5, 4, 8, 0)); transition: opacity .3s, transform .3s; }
+#player .pl-seek { position: relative; height: 22px; cursor: pointer; margin: 0 4px 6px; }
+#player .pl-seek::before, #player .pl-buf, #player .pl-fill { content: ""; position: absolute; left: 0; top: 9px; height: 4px; }
+#player .pl-seek::before { right: 0; background: #2B2238; }
+#player .pl-buf { background: #4A3D63; width: 0; }
+#player .pl-fill { width: 0; background: linear-gradient(90deg, #6D28D9, #2EE6A6); box-shadow: 0 0 10px rgba(46, 230, 166, .45); }
+#player .pl-seek:hover::before, #player .pl-seek:hover .pl-buf, #player .pl-seek:hover .pl-fill { top: 8px; height: 6px; }
+#player .pl-knob { position: absolute; top: 4px; width: 8px; height: 14px; margin-left: -4px; background: #EDE9F6; clip-path: polygon(50% 0, 100% 30%, 100% 100%, 0 100%, 0 30%); left: 0; }
+#player .pl-tip { position: absolute; bottom: 22px; transform: translateX(-50%); padding: 3px 8px; font-size: 12px; font-weight: 600; background: #1C1528; color: #EDE9F6; opacity: 0; pointer-events: none; white-space: nowrap; }
+#player .pl-seek:hover .pl-tip { opacity: 1; }
+
+#player .pl-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; }
+#player .pl-left, #player .pl-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#player .pl-right { justify-content: flex-end; }
+#player .pl-time { font-size: 15px; color: #A39BB5; margin-right: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#player .pl-time b { color: #EDE9F6; font-weight: 600; }
+#player .pl-b { height: 36px; min-width: 40px; padding: 0 10px; border: 0; background: #16101F; color: #C4B5FD; font: 600 13px "Chakra Petch", sans-serif; cursor: pointer; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+#player .pl-b:hover { background: #2A1F3B; color: #fff; }
+#player .pl-sel { height: 36px; max-width: 170px; padding: 0 8px; border: 0; background: #16101F; color: #C4B5FD; font: 500 13px "Chakra Petch", sans-serif; cursor: pointer; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+#player .pl-sel[hidden] { display: none; }
+#player .pl-vol { display: flex; align-items: center; gap: 6px; }
+#player .pl-vol input { width: 90px; accent-color: #2EE6A6; }
+
+/* goz = oynat/duraklat; ekolayzir cubuklari tuvalde gozun iki yaninda */
+#player .pl-eqw { display: flex; align-items: center; gap: 10px; }
+#player .pl-eq { display: flex; align-items: center; gap: 4px; height: 40px; }
+#player .pl-eq i { width: 4px; height: 3px; background: linear-gradient(180deg, #2EE6A6, #6D28D9); transition: height .06s linear; }
+#player.paused .pl-eq i { background: #3A2E52; }
+/* goz = oynat/duraklat: bust karesinin goz bolgesi altigen pencerede */
+#player .pl-eye { position: relative; width: 96px; height: 84px; padding: 0; border: 0; cursor: pointer; overflow: hidden; background: #0B0910;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+#player .pl-eye canvas { position: absolute; width: 230px; height: 267px; left: calc(48px - 230px * 190 / 352); top: calc(42px - 267px * 252 / 409); pointer-events: none; transition: filter .2s; }
+#player .pl-eye::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(46, 230, 166, calc(.3 + var(--pl-beat))); clip-path: inherit; }
+#player.paused .pl-eye::after { box-shadow: inset 0 0 0 2px #6D28D9; }
+#player.paused .pl-eye canvas { filter: saturate(.75) brightness(.85); }
+#player .pl-eye:hover canvas { filter: brightness(1.2); }
+
+body.pl-open #sunak { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { #player .pl-spin { animation-duration: 2s; } }
