@@ -1,4 +1,4 @@
-﻿"""Asama 6a yardimcilari: zamanlayici, Defender taramasi, SHA256, guncelleme denetimi, sorun paketi.
+"""Asama 6a yardimcilari: zamanlayici, Defender taramasi, SHA256, guncelleme denetimi, sorun paketi.
 
 Hepsi arka plan is parcaciginda calisir; ayarlardan acilip kapanir.
 """
@@ -23,7 +23,7 @@ from app import paths
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.9.2"
 GITHUB_REPO = "murasakimono/kami"
 CREATE_NO_WINDOW = 0x08000000
 

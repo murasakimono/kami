@@ -2,7 +2,7 @@
 
 ## Python
 
-- **app/core/aitools.py** (668 satir)
+- **app/core/aitools.py** (729 satir)
   - def tool_env L52
   - def _venv_has L57
   - def python_exe L61
@@ -26,14 +26,17 @@
   - def _diag_popen L344
   - def _run_json L354
   - def _run_once L365
-  - def _listdir_cached L411
-  - def _norm L425
-  - def disk_state L430
-  - def merge_disk_state L450
-  - def embed_subtitle L465
-  - def _sub_count L493
-  - class AiQueue L506: install_async, submit, cancel, _loop, _do_whisper, _do_uvr, _do_lyrics
-  - class _JobError L667: 
+  - def _ensure_pkg L410
+  - def translate_subtitle L423
+  - def sync_subtitle L444
+  - def _listdir_cached L471
+  - def _norm L485
+  - def disk_state L490
+  - def merge_disk_state L510
+  - def embed_subtitle L525
+  - def _sub_count L553
+  - class AiQueue L566: install_async, submit, cancel, _loop, _do_whisper, _do_uvr, _do_lyrics
+  - class _JobError L728: 
 - **app/core/automate.py** (411 satir)
   - def url_key L27
   - class History L41: add, find, search, clear
@@ -85,33 +88,21 @@
   - class TokenStore L125: save, load, clear
   - class RealDebridClient L155: _req, user, domains, unrestrict, unrestrict_folder, add_magnet, add_torrent, select_all, torrent_info, torrents, downloads, delete_torrent, delete_download
   - class DebridService L229: has_token, set_token, clear_token, status, domains, _refresh_domains, refresh_domains_async, supports, unrestrict_files, add_link, add_magnet, add_torrent_bytes, add_any, queue_torrent, queue_download, account_lists, _track, _load_pending, _save_pending, start, stop, _loop, poll_once, progress, _step, _drop, _queue_finished, _enqueue
-- **app/core/desktop.py** (207 satir)
+- **app/core/desktop.py** (212 satir)
   - def autostart_command L25
-  - def autostart_enabled L35
-  - def set_autostart L47
-  - class Tray L63: _text, start, stop, running, notify
-  - def parse_hotkey L129
-  - class HotKey L151: start, stop
-  - def icon_path L206
+  - def autostart_enabled L40
+  - def set_autostart L52
+  - class Tray L68: _text, start, stop, running, notify
+  - def parse_hotkey L134
+  - class HotKey L156: start, stop
+  - def icon_path L211
+- **app/core/dictionary.py** (197 satir)
+  - class Dictionary L33: _conn, status, installed, install, _install, _row, lookup, longest_match
+  - class _Counting L182: readable, readinto
 - **app/core/events.py** (53 satir)
   - class EventBus L23: on, emit
 - **app/core/extras.py** (290 satir)
-  - def _hm L32
-  - def in_window L39
-  - class Scheduler L47: check, start, stop
-  - def should_scan L95
-  - def mpcmdrun L104
-  - def defender_scan L116
-  - def sha256_file L137
-  - def norm_hash L148
-  - def _ver L155
-  - def _gh L159
-  - def _gh_latest L164
-  - def check_update L179
-  - def download_update L203
-  - def mask L242
-  - def _tail L248
-  - def build_report L259
+  - (ayristirilamadi: invalid non-printable character U+FEFF (<unknown>, line 1))
 - **app/core/firewall.py** (39 satir)
   - def has_rule L20
   - def request_rule L31
@@ -153,15 +144,15 @@
   - def write_mp3_tags L77
   - def write_generic_tags L113
   - def safe_name L134
-- **app/core/media_server.py** (474 satir)
-  - def find_ffprobe L47
-  - def probe L55
-  - def choose_mode L88
-  - def srt_to_vtt L102
-  - def read_text L110
-  - class MediaServer L120: start, stop, port, base, ffmpeg, encoder, register, _key_for, _find_subs, entry, stream_cmd, keyframe_before, thumb, spawn, done
-  - def _kill L315
-  - def _make_handler L324
+- **app/core/media_server.py** (626 satir)
+  - def find_ffprobe L49
+  - def probe L57
+  - def choose_mode L96
+  - def srt_to_vtt L110
+  - def read_text L118
+  - class MediaServer L128: start, stop, port, base, ffmpeg, encoder, register, register_url, _key_for, _find_subs, _find_ass, _cache_base, extract_sub, font, entry, stream_cmd, keyframe_before, thumb, spawn, done
+  - def _kill L423
+  - def _make_handler L432
 - **app/core/mediapost.py** (119 satir)
   - class MediaPost L18: s, music_dir, set_extra, lyrics, lyrics_paste, archive, process, _has_subs
 - **app/core/models.py** (81 satir)
@@ -184,6 +175,8 @@
   - def prefer_ipv4 L25
   - def ipv6_works L32
   - class ExclusiveHTTPServer L49: make
+- **app/core/ocr.py** (97 satir)
+  - def recognize L49
 - **app/core/phone.py** (358 satir)
   - def lan_ip L71
   - def lan_ips L83
@@ -231,9 +224,9 @@
   - def match L64
   - def media_options L85
   - def folder_path L96
-- **app/core/settings.py** (212 satir)
-  - class Settings L107: load, save, get, all, set, on_change
-  - def _coerce L161
+- **app/core/settings.py** (213 satir)
+  - class Settings L108: load, save, get, all, set, on_change
+  - def _coerce L162
 - **app/core/setup_tasks.py** (179 satir)
   - def register_player L36
   - def unregister_player L59
@@ -267,14 +260,14 @@
   - def group_of L69
   - def to_netscape L78
   - class CookieStore L96: save, load, groups, has_login, cookiefile
-- **app/core/watch.py** (170 satir)
+- **app/core/watch.py** (185 satir)
   - class _GUID L25: 
   - def _guid L30
   - def _vcall L36
   - def open_in_uwp L41
   - def play L71
   - def contiguous_head L83
-  - class Watcher L97: start, cancel, _target, _wait
+  - class Watcher L97: start, cancel, _target, _wait, head
 - **app/core/watchdog.py** (99 satir)
   - def log_slow_calls L25
   - def thread_dump L49
@@ -319,13 +312,13 @@
   - def _installed_version L591
   - def update_pylib L604
   - def _ver_tuple L646
-- **app/main.py** (496 satir)
+- **app/main.py** (526 satir)
   - def _setup_logging L23
   - def _magnet_arg L48
   - def _play_arg L58
   - def _already_running_mutex L72
   - def main L82
-  - def _main_logged L485
+  - def _main_logged L515
 - **app/paths.py** (118 satir)
   - class _GUID L47: 
   - def downloads_dir L56
@@ -338,16 +331,31 @@
   - def test_whisper L46
   - def test_uvr L58
   - def main L76
-- **app/tools/uvr_run.py** (45 satir)
-  - def emit L12
-  - def main L17
+- **app/tools/subsync_run.py** (141 satir)
+  - def emit L14
+  - def _sec L22
+  - def _fmt L26
+  - def _cues L31
+  - def whisper_offset L45
+  - def main L102
+- **app/tools/translate_run.py** (141 satir)
+  - def emit L21
+  - def parse L26
+  - def wrap L42
+  - def _cuda_dlls L51
+  - def nllb L65
+  - def google L96
+  - def main L114
+- **app/tools/uvr_run.py** (76 satir)
+  - def emit L19
+  - def main L24
 - **app/tools/whisper_run.py** (76 satir)
   - def emit L10
   - def _cuda_dlls L15
   - def ts L30
   - def main L38
-- **app/ui/api.py** (1231 satir)
-  - class Api L25: job_start, job_result, _set_window, get_state, _public, link_supported, _start_clipboard, read_clipboard, own_copy, add_url, cloud_list, add_cloud, _torrent_route, torrent_source, torrent_choose, torrent_open, torrent_meta, torrent_meta_cancel, firewall_status, firewall_allow, torrent_add, torrent_pick_file, _on_torrent_request, media_probe, add_media, _on_media_choose, pause, resume, remove, confirm, pause_all, resume_all, clear_finished, open_file, open_folder, open_downloads_dir, _rd, _rd_route, _rd_routed, _on_rd_event, _rd_err, rd_status, rd_set_token, rd_clear_token, _fetch_torrent, rd_add, rd_pick_torrent, rd_lists, rd_queue_torrent, rd_queue_download, rd_delete, reorder, hash_file, drop_torrent, check_update, install_update, open_release, make_report, desktop_status, get_settings, set_setting, choose_folder, plugins, plugin_set_enabled, plugin_reload, plugin_set, _on_ai_event, media_lyrics, media_lyrics_paste, media_archive, ai_status, ai_install, ai_run, ai_cancel, genius_status, genius_set_token, genius_clear, open_link, open_path, follow_list, follow_add, follow_update, follow_remove, follow_check_now, _rule_dir_for, _on_warn, rules_get, rules_set, history_search, history_clear, history_open, shutdown_arm, shutdown_cancel, player_open, player_open_path, player_siblings, _library_dirs, library_get, library_add_dir, library_remove_dir, _pl, playlist_get, playlist_save, playlist_delete, _play_request, player_default_apps, watch, watch_cancel, phone_info, phone_test, phone_status_items, phone_control, phone_new_key, add_text, add_text_detail, _add_quiet, batch_parse, batch_from_page, batch_add, ntfy_status, ntfy_set_topic, ntfy_test
+- **app/ui/api.py** (1403 satir)
+  - class Api L25: job_start, job_result, _set_window, get_state, _public, link_supported, _start_clipboard, read_clipboard, own_copy, add_url, cloud_list, add_cloud, _torrent_route, torrent_source, torrent_choose, torrent_open, torrent_meta, torrent_meta_cancel, firewall_status, firewall_allow, torrent_add, torrent_pick_file, _on_torrent_request, media_probe, add_media, _on_media_choose, pause, resume, remove, confirm, pause_all, resume_all, clear_finished, open_file, open_folder, open_downloads_dir, _rd, _rd_route, _rd_routed, _on_rd_event, _rd_err, rd_status, rd_set_token, rd_clear_token, _fetch_torrent, rd_add, rd_pick_torrent, rd_lists, rd_queue_torrent, rd_queue_download, rd_delete, reorder, hash_file, drop_torrent, check_update, install_update, open_release, make_report, desktop_status, get_settings, set_setting, choose_folder, plugins, plugin_set_enabled, plugin_reload, plugin_set, _on_ai_event, media_lyrics, media_lyrics_paste, media_archive, ai_status, ai_install, ai_run, ai_cancel, genius_status, genius_set_token, genius_clear, open_link, open_path, follow_list, follow_add, follow_update, follow_remove, follow_check_now, _rule_dir_for, _on_warn, rules_get, rules_set, history_search, history_clear, history_open, shutdown_arm, shutdown_cancel, player_open, player_open_path, player_siblings, _library_dirs, library_get, library_add_dir, library_remove_dir, _pl, playlist_get, playlist_save, playlist_delete, subtitle_translate, player_open_url, subtitle_sync, _dict, dict_status, dict_install, dict_lookup, ocr_image, ocr_translate, player_show, player_poll, player_fullscreen, _ensure_player, _play_request, player_default_apps, watch, watch_cancel, phone_info, phone_test, phone_status_items, phone_control, phone_new_key, add_text, add_text_detail, _add_quiet, batch_parse, batch_from_page, batch_add, ntfy_status, ntfy_set_topic, ntfy_test
 
 ## Arayuz JS
 
@@ -356,19 +364,22 @@
 - **app/ui/web/extras.js** (228 satir)
   - syncToolbar L6, setSetting L21, bindToolbarExtras L27, extraBadges L37, openHash L48, showHashResult L62, bindHash L67, KAMI_DRAG L85, bindReorder L87, isExternal L132, fileToB64 L136, bindDrop L144, showUpdate L173, installUpdate L182, refreshDesktop L191, bindAppSettings L203, bindExtras L221
 - **app/ui/web/i18n.js** (275 satir)
-- **app/ui/web/i18n6.js** (98 satir)
+- **app/ui/web/i18n6.js** (100 satir)
 - **app/ui/web/media6.js** (231 satir)
   - VIEW_OPEN L6, showView L7, mtItem L33, aiLine L35, fillMediaTools L43, openMediaTools L74, runAi L81, bindMediaTools L99, followRefresh L132, bindFollow L147, refreshMediaSettings L180, bindMediaSettings L193, onAiEvents L212, STATE_HOOKS L224, onStateExtras L225
-- **app/ui/web/player-lib.js** (226 satir)
-  - PX L5, pxNextWatch L48, pxDrawerRender L84, pxDrawerClick L126, pxApplyAll L187, pxApplySub L188, pxApplyVideo L196
-- **app/ui/web/player.js** (385 satir)
-  - PL L6, plBuild L18, plThumb L98, playerOpen L109, playerOpenPath L116, plStart L125, plPos L149, plSetSrcResume L159, plMediaSession L168, plClose L179, plUrl L192, plSetSrc L198, plSeek L207, plFallback L218, plAudio L231, plModeUi L238, plTick L244, plDrawPos L255, plBufDraw L260, plEyeState L265, plToggle L271, plFull L275, plVolUi L278, plWake L283, plBlinkLoop L291, plAudioGraph L301, plEqDraw L333, plLoadSub L342, plParseVtt L351, plSubDraw L363, plKey L372
+- **app/ui/web/player-lib.js** (373 satir)
+  - PX L5, pxPrefSave L32, pxOfferTranslate L61, pxSync L69, pxTranslate L85, pxNextWatch L136, pxDrawerRender L172, pxDrawerClick L214, pxApplyAll L306, pxApplySub L307, pxApplyVideo L315, pxKeyName L330, pxKeysHtml L331, pxCaptureKey L338
+- **app/ui/web/player-shell.js** (58 satir)
+  - STATE_HOOKS L8, escapeHtml L13, toast L16, slow L21, shellPoll L32, plIdle L53
+- **app/ui/web/player.js** (775 satir)
+  - PL L6, plBuild L18, plThumb L122, playerOpen L133, playerOpenPath L140, playerOpenUrl L151, plStart L161, plPos L197, plSetSrcResume L207, plMediaSession L216, plClose L227, plUrl L244, plSetSrc L251, plSeek L261, plFallback L272, plAudio L285, plModeUi L292, plTick L298, plDrawPos L309, plBufDraw L314, plEyeState L319, plToggle L325, plFull L329, plSetVol L337, plVolUi L345, plWake L352, plBlinkLoop L360, plAudioGraph L370, plBigEq L405, plEqDraw L416, plLoadSub L425, plAss L448, plAssDestroy L463, plAssSync L464, plShift L466, PL_LANG L473, plLang L475, plLangName L480, plParseVtt L484, plSubDraw L496, PL_CJK L511, plSubWords L512, plSubLang L526, plDictOpen L530, plDictRender L558, plDictPacks L574, plDictClose L590, plOcrStart L607, plOcrCrop L640, plOcrRun L656, plCfg L691, plOcrClose L692, PL_ACTIONS L703, PL_KEYS_DEFAULT L727, plKeymap L730, plKey L731, plFrame L738, plRate L743, plInfo L754
 - **app/ui/web/plugins.js** (91 satir)
   - plField L19, refreshPlugins L41, bindPlugins L56
 - **app/ui/web/rd.js** (277 satir)
   - rdErr L8, dispatchAdd L15, rdResultToast L26, rdEvent L33, setAskTexts L42, askRd L49, askTorrent L56, magnetName L68, openTorrentLocal L72, renderLive L98, bindLive L119, rdAskAnswer L129, showRd L152, RD_STATUS L159, rdRow L166, rdRefresh L171, rdAction L200, rdSettingsState L218, rdSaveToken L225, bindRd L237
-- **app/ui/web/sunak.js** (348 satir)
-  - SK L4, SK_RING_R L5, SK_STRIP_W L6, skBuild L30, skBind L91, SK_ORDER L125, skItems L126, skPerPage L130, skPage L131, skMoveSel L137, skLiquidColors L144, skWave L150, skStripHtml L156, skRender L183, skPatchStrips L201, skRenderBar L225, skBarAction L251, skDock L265, skCloseDrawer L274, skMood L281, skState L288, skSpark L325, skFrame L340
+- **app/ui/web/settings-tabs.js** (86 satir)
+- **app/ui/web/sunak.js** (466 satir)
+  - SK L4, SK_RING_R L5, SK_STRIP_W L6, playerOpen L26, playerOpenUrl L27, playerLibrary L28, skBuild L35, skBind L106, SK_ORDER L141, skItems L142, skPerPage L146, skPage L147, skMoveSel L153, skLiquidColors L160, skWave L166, skStripHtml L172, skRender L199, skPatchStrips L217, skRenderBar L256, skBarAction L284, skAutoSave L299, skDock L301, skCloseDrawer L312, skMood L319, skState L326, skSpark L366, skFrame L381, FX L389, fxSprite L390, fxInit L391, fxToggle L462
 - **app/ui/web/use6.js** (344 satir)
   - canWatch L113, startWatch L117, syncShutdown L131, onWarns L144, historyRefresh L155, BT_EXT L169, BT_VIDEO_SITE L176, btKind L177, batchShown L182, batchRender L187, batchSet L193, CATS L202, rulesRender L204, rulesSave L220, refreshUseSettings L226, bindUse L239
 - **app/ui/web/eye/kami_eye.js** (124 satir)

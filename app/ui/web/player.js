@@ -45,6 +45,7 @@ function plBuild() {
           <select class="pl-sel" id="plAud" title="${plL("Ses izi", "Audio track")}"></select>
           <select class="pl-sel" id="plRate" title="${plL("Hız", "Speed")}">${[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => `<option value="${r}" ${r === 1 ? "selected" : ""}>${r}×</option>`).join("")}</select>
           <label class="pl-vol" title="${plL("Ses (↑ ↓, M)", "Volume (↑ ↓, M)")}"><button class="pl-b" data-pl="mute" id="plMute">◢</button><input type="range" id="plVol" min="0" max="2" step="0.02" value="1"></label>
+          <button class="pl-b" data-pl="ocr" title="${plL("Ekrandaki yazıyı oku (O)", "Read on-screen text (O)")}">⌗</button>
           <button class="pl-b" data-pl="queue" title="${plL("Sıradakiler / kütüphane (Q)", "Queue / library (Q)")}">☰</button>
           <button class="pl-b" data-pl="settings" title="${plL("Altyazı, görüntü, ses ayarları", "Subtitle, picture, audio settings")}">⚙</button>
           <button class="pl-b" data-pl="full" title="${plL("Tam ekran (F)", "Fullscreen (F)")}">⛶</button>
@@ -90,7 +91,7 @@ function plBuild() {
   el.addEventListener("click", (e) => {
     const b = e.target.closest("[data-pl]"); if (!b) return;
     ({ back: () => plSeek(plNow() - 10), fwd: () => plSeek(plNow() + 10), mute: () => { v.muted = !v.muted; plVolUi(); }, full: plFull,
-       prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), queue: () => window.plDrawer?.(), settings: () => window.plSettings?.() })[b.dataset.pl]?.();
+       prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), queue: () => window.plDrawer?.(), settings: () => window.plSettings?.(), ocr: () => plOcrStart() })[b.dataset.pl]?.();
   });
   $("#plVol").addEventListener("input", (e) => { v.muted = false; plSetVol(+e.target.value); });
   $("#plRate").addEventListener("change", (e) => { v.playbackRate = +e.target.value; });
@@ -501,8 +502,200 @@ function plSubDraw(t) {
   }
   const box = $("#plSubs");
   const html = PL.cues.filter((c) => t >= c.s && t <= c.e)
-    .map((c) => `<span>${escapeHtml(c.text.replace(/<[^>]+>/g, "")).replace(/\n/g, "<br>")}</span>`).join("<br>");
+    .map((c) => `<span>${plSubWords(c.text.replace(/<[^>]+>/g, ""))}</span>`).join("<br>");
   if (box.dataset.h !== html) { box.innerHTML = html; box.dataset.h = html; }
+}
+
+// ---------- sozluk: altyazida kelimeye tikla (B6) ----------
+// Kelimeler ayri span (.w); bosluksuz yazilarda (Japonca/Cince) her karakter span, sunucu en uzun eslesmeyi bulur.
+const PL_CJK = /[぀-ヿ㐀-鿿豈-﫿ｦ-ﾟ]/;
+function plSubWords(text) {
+  return text.split("\n").map((ln) => {
+    let out = "", i = 0;
+    for (const m of ln.matchAll(/[\p{L}\p{M}\p{N}'’\-]+/gu)) {
+      out += escapeHtml(ln.slice(i, m.index));
+      const w = m[0];
+      if (PL_CJK.test(w)) {
+        out += [...w].map((ch, k) => `<span class="w" data-l="${escapeHtml(ln)}" data-p="${m.index + k}">${escapeHtml(ch)}</span>`).join("");
+      } else out += `<span class="w">${escapeHtml(w)}</span>`;
+      i = m.index + w.length;
+    }
+    return out + escapeHtml(ln.slice(i));
+  }).join("<br>");
+}
+function plSubLang() {
+  const it = PL.subList?.[PL.subIdx];
+  return (it && (it.lang || plLang(it.label || ""))) || "";
+}
+async function plDictOpen(el, forceLang) {
+  const v = $("#plVideo");
+  if (!v.paused) { v.pause(); PL.dictResume = true; }
+  document.querySelectorAll("#plSubs .w.on, #plOcr .w.on").forEach((x) => x.classList.remove("on"));
+  el.classList.add("on");
+  let p = $("#plDict");
+  if (!p) {
+    p = document.createElement("aside");
+    p.id = "plDict"; p.className = "pl-dict";
+    $("#player").appendChild(p);
+    p.addEventListener("click", (e) => e.stopPropagation());
+    p.addEventListener("dblclick", (e) => e.stopPropagation());
+  }
+  p.hidden = false;
+  const lang = forceLang || plSubLang();
+  const isCjk = el.dataset.p != null;
+  p.innerHTML = `<div class="pd-head"><b>${escapeHtml(el.textContent)}</b><button class="pd-x" title="${plL("Kapat", "Close")}">✕</button></div><div class="pd-body">${plL("Aranıyor…", "Looking up…")}</div>`;
+  p.querySelector(".pd-x").onclick = plDictClose;
+  let r;
+  try {
+    r = await api.dict_lookup(el.textContent, lang, isCjk ? el.dataset.l : "", isCjk ? +el.dataset.p : -1);
+  } catch (e) { r = { ok: false, error: String(e) }; }
+  if (isCjk && r?.word) {   // eslesen uzunlugu altyazida da isaretle
+    const start = +el.dataset.p, n = [...r.word].length;
+    el.parentElement.querySelectorAll(".w[data-p]").forEach((x) => { const k = +x.dataset.p; if (x.dataset.l === el.dataset.l && k >= start && k < start + n) x.classList.add("on"); });
+  }
+  plDictRender(p, r, lang);
+}
+function plDictRender(p, r, lang) {
+  const body = p.querySelector(".pd-body");
+  if (r?.word) p.querySelector(".pd-head b").textContent = r.word;
+  const q = encodeURIComponent(r?.word || "");
+  const links = `<div class="pd-links"><a href="#" data-u="https://translate.google.com/?sl=${lang || "auto"}&tl=tr&text=${q}">Google Çeviri</a> · <a href="#" data-u="https://en.wiktionary.org/wiki/${q}">Wiktionary</a>${lang === "ja" ? ` · <a href="#" data-u="https://jisho.org/search/${q}">Jisho</a>` : ""}</div>`;
+  if (!r?.installed) {
+    body.innerHTML = `<p class="pd-note">${plL("Sözlük henüz kurulu değil. Bir kez indirilir, sonra çevrimdışı çalışır.", "Dictionary not installed yet. Downloaded once, then works offline.")}</p><div class="pd-packs"></div>` + links;
+    plDictPacks(body.querySelector(".pd-packs"));
+  } else if (!r.ok || !r.entries?.length) {
+    body.innerHTML = `<p class="pd-note">${r?.error ? escapeHtml(r.error) : plL("Sözlükte bulunamadı.", "Not found in the dictionary.")}</p><div class="pd-packs"></div>` + links;
+    plDictPacks(body.querySelector(".pd-packs"), true);
+  } else {
+    body.innerHTML = r.entries.map((e) => `<div class="pd-e"><div class="pd-meta">${e.word !== r.word ? `<b>${escapeHtml(e.word)}</b> ` : ""}<i>${escapeHtml(e.pos || "")}</i> <span class="pd-lg">${escapeHtml(plLangName(e.lang) || e.lang)}</span>${e.ipa ? ` <span class="pd-ipa">${escapeHtml(e.ipa)}</span>` : ""}<span class="pd-src">${e.src === "tr" ? "TR" : "EN"}</span></div><ol>${e.glosses.map((g) => `<li>${escapeHtml(g)}</li>`).join("")}</ol></div>`).join("") + links;
+  }
+  body.querySelectorAll("a[data-u]").forEach((a) => a.onclick = (ev) => { ev.preventDefault(); api.open_link(a.dataset.u); });
+}
+async function plDictPacks(box, onlyMissing = false) {
+  let st;
+  try { st = await api.dict_status(); } catch { return; }
+  const html = Object.entries(st.packs).filter(([, v]) => !(onlyMissing && v.done)).map(([k, v]) => {
+    const pr = st.progress[k];
+    const run = pr?.state === "running";
+    const lab = v.done ? plL("kurulu", "installed") : run ? `${Math.round((pr.p || 0) * 100)}% · ${escapeHtml(pr.msg || "")}` : pr?.state === "error" ? plL("hata: ", "error: ") + escapeHtml(pr.msg || "") : `${v.size_mb >= 1000 ? (v.size_mb / 1000).toFixed(1) + " GB" : v.size_mb + " MB"}`;
+    return `<div class="pd-pack"><span>${escapeHtml(v.name)}<small>${lab}</small></span>${v.done || run ? "" : `<button data-k="${k}">${plL("İndir", "Download")}</button>`}</div>`;
+  }).join("");
+  box.innerHTML = html;
+  box.querySelectorAll("button[data-k]").forEach((b) => b.onclick = async () => { b.disabled = true; await api.dict_install(b.dataset.k); plDictPacks(box, onlyMissing); });
+  if (Object.values(st.progress).some((x) => x.state === "running")) {
+    clearTimeout(PL.dictT);
+    PL.dictT = setTimeout(() => { if (box.isConnected && !$("#plDict")?.hidden) plDictPacks(box, onlyMissing); }, 1500);
+  }
+}
+function plDictClose() {
+  const p = $("#plDict");
+  if (!p || p.hidden) return false;
+  p.hidden = true;
+  document.querySelectorAll("#plSubs .w.on").forEach((x) => x.classList.remove("on"));
+  if (PL.dictResume) { PL.dictResume = false; const v = $("#plVideo"); v.play().catch(() => {}); }
+  return true;
+}
+document.addEventListener("click", (e) => {
+  const w = e.target.closest?.("#plSubs .w");
+  if (!w) return;
+  e.stopPropagation(); e.preventDefault();
+  plDictOpen(w);
+}, true);
+document.addEventListener("dblclick", (e) => { if (e.target.closest?.("#plSubs .w")) { e.stopPropagation(); e.preventDefault(); } }, true);
+
+// ---------- ekran ustu OCR (B6): kareyi dondur, bolge sec, yaziyi oku + cevir ----------
+function plOcrStart() {
+  const v = $("#plVideo");
+  if (!PL.open || !v.videoWidth) { toast(plL("Önce bir video aç", "Open a video first"), true); return; }
+  plOcrClose();
+  if (!v.paused) { v.pause(); PL.ocrResume = true; }
+  const ov = document.createElement("div");
+  ov.id = "plOcr"; ov.className = "pl-ocr";
+  ov.innerHTML = `<div class="po-hint">${plL("Okunacak yazının çevresini sürükleyerek seç · Esc: vazgeç", "Drag around the text to read · Esc: cancel")}</div><div class="po-box" hidden></div>`;
+  $("#player").appendChild(ov);
+  const box = ov.querySelector(".po-box");
+  let x0 = 0, y0 = 0, drag = false;
+  const stop = (e) => { e.stopPropagation(); e.preventDefault(); };
+  ov.addEventListener("click", stop); ov.addEventListener("dblclick", stop);
+  ov.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".po-res")) return;
+    stop(e); ov.setPointerCapture(e.pointerId); drag = true;
+    const r = ov.getBoundingClientRect(); x0 = e.clientX - r.left; y0 = e.clientY - r.top;
+    Object.assign(box.style, { left: x0 + "px", top: y0 + "px", width: "0px", height: "0px" }); box.hidden = false;
+    ov.querySelector(".po-res")?.remove();
+  });
+  ov.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const r = ov.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    Object.assign(box.style, { left: Math.min(x, x0) + "px", top: Math.min(y, y0) + "px", width: Math.abs(x - x0) + "px", height: Math.abs(y - y0) + "px" });
+  });
+  ov.addEventListener("pointerup", (e) => {
+    if (!drag) return;
+    drag = false; stop(e);
+    const b = box.getBoundingClientRect();
+    if (b.width < 12 || b.height < 8) { box.hidden = true; return; }
+    plOcrRun(b);
+  });
+}
+function plOcrCrop(b) {
+  // ekrandaki secimi videonun gercek piksellerine cevir (object-fit: contain kenar bosluklari dahil)
+  const v = $("#plVideo"), vr = v.getBoundingClientRect();
+  const sc = Math.min(vr.width / v.videoWidth, vr.height / v.videoHeight);
+  const ox = vr.left + (vr.width - v.videoWidth * sc) / 2, oy = vr.top + (vr.height - v.videoHeight * sc) / 2;
+  const sx = Math.max(0, (b.left - ox) / sc), sy = Math.max(0, (b.top - oy) / sc);
+  const sw = Math.min(v.videoWidth - sx, b.width / sc), sh = Math.min(v.videoHeight - sy, b.height / sc);
+  if (sw < 4 || sh < 4) return "";
+  const up = Math.max(1, Math.min(3, 64 / sh * 1.2));   // kucuk yazi: buyut (Windows OCR kucuk harfte zayif)
+  const c = document.createElement("canvas");
+  c.width = Math.round(sw * up); c.height = Math.round(sh * up);
+  const g = c.getContext("2d");
+  g.imageSmoothingQuality = "high";
+  g.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  try { return c.toDataURL("image/png"); } catch { return ""; }
+}
+async function plOcrRun(b) {
+  const ov = $("#plOcr");
+  if (!ov) return;
+  const img = plOcrCrop(b);
+  const res = document.createElement("div");
+  res.className = "po-res";
+  const r0 = ov.getBoundingClientRect();
+  const below = b.bottom + 180 < r0.bottom;
+  Object.assign(res.style, { left: Math.max(12, Math.min(b.left - r0.left, r0.width - 432)) + "px", [below ? "top" : "bottom"]: (below ? b.bottom - r0.top + 10 : r0.bottom - b.top + 10) + "px" });
+  res.innerHTML = `<div class="po-txt">${plL("Okunuyor…", "Reading…")}</div>`;
+  ov.appendChild(res);
+  ["pointerdown", "click", "dblclick"].forEach((ev) => res.addEventListener(ev, (e) => e.stopPropagation()));
+  if (!img) { res.querySelector(".po-txt").textContent = plL("Kare alınamadı.", "Could not grab the frame."); return; }
+  const lang = plSubLang() || plCfg().ocrLang || "";
+  let r;
+  try { r = await slow("ocr_image", img, lang); } catch (e) { r = { ok: false, error: String(e) }; }
+  if (!res.isConnected) return;
+  if (!r?.ok) { res.querySelector(".po-txt").textContent = plL("Okunamadı: ", "OCR failed: ") + (r?.error || "?"); return; }
+  if (!r.text) {
+    res.querySelector(".po-txt").textContent = plL("Yazı bulunamadı.", "No text found.") + (lang && !r.avail.some((a) => a.startsWith(lang)) ? " " + plL(`Bu dil (${plLangName(lang) || lang}) için Windows OCR paketi yok: Ayarlar › Saat ve dil › Dil › dili ekle.`, `No Windows OCR pack for ${lang}: Settings › Time & language › Language.`) : "");
+    return;
+  }
+  const ocrLang = (r.lang || "").split("-")[0];
+  res.innerHTML = `<div class="po-txt pl-subs-like">${plSubWords(r.text)}</div><div class="po-tr">${plL("Çevriliyor…", "Translating…")}</div><div class="po-act"><button data-a="copy">${plL("Kopyala", "Copy")}</button><button data-a="again">${plL("Yeni seçim", "New selection")}</button><button data-a="close">${plL("Kapat", "Close")}</button></div>`;
+  res.querySelectorAll(".po-txt .w").forEach((w) => w.addEventListener("click", (e) => { e.stopPropagation(); plDictOpen(w, ocrLang); }));
+  res.querySelector("[data-a=copy]").onclick = () => { navigator.clipboard?.writeText(r.text).then(() => toast(plL("Kopyalandı", "Copied"))).catch(() => {}); };
+  res.querySelector("[data-a=again]").onclick = () => { res.remove(); ov.querySelector(".po-box").hidden = true; };
+  res.querySelector("[data-a=close]").onclick = () => plOcrClose();
+  if (ocrLang === "tr") { res.querySelector(".po-tr").remove(); return; }
+  let t;
+  try { t = await slow("ocr_translate", r.text, ocrLang, plCfg().trEngine === "nllb" ? "nllb" : "google"); } catch (e) { t = { ok: false }; }
+  const tr = res.querySelector(".po-tr");
+  if (!tr) return;
+  if (t?.ok && t.text) tr.textContent = t.text; else tr.remove();   // ceviri yoksa metin cevirisiz kalir
+}
+function plCfg() { return (typeof PX !== "undefined" && PX.cfg) || {}; }
+function plOcrClose() {
+  const ov = $("#plOcr");
+  if (!ov) return false;
+  ov.remove();
+  if (PL.ocrResume && $("#plDict")?.hidden !== false) { PL.ocrResume = false; $("#plVideo").play().catch(() => {}); }
+  PL.ocrResume = false;
+  return true;
 }
 
 // ---------- klavye ----------
@@ -521,7 +714,10 @@ const PL_ACTIONS = {
   next: ["Sonraki", "Next", () => window.plQueueStep?.(1)], prev: ["Önceki", "Previous", () => window.plQueueStep?.(-1)],
   queue: ["Sıradakiler / kütüphane", "Queue / library", () => window.plDrawer?.()], settings: ["Ayarlar paneli", "Settings panel", () => window.plSettings?.()],
   info: ["Video bilgisi", "Video info", () => plInfo()],
+  ocr: ["Ekrandaki yazıyı oku (OCR)", "Read on-screen text (OCR)", () => plOcrStart()],
   close: ["Kapat / tam ekrandan çık", "Close / exit fullscreen", () => {
+    if (plOcrClose()) return;
+    if (plDictClose()) return;
     if (window.plPanelClose?.()) return;
     if (PL.full) return plFull();
     if (document.fullscreenElement) return document.exitFullscreen();
@@ -530,7 +726,7 @@ const PL_ACTIONS = {
 };
 const PL_KEYS_DEFAULT = { " ": "toggle", k: "toggle", f: "full", m: "mute", arrowleft: "back5", arrowright: "fwd5", j: "back10", l: "fwd10",
   arrowup: "volup", arrowdown: "voldown", ",": "frameback", ".": "framefwd", "[": "slower", "]": "faster", "\\": "rate1", z: "slower", x: "faster", r: "rate1", c: "subs",
-  g: "subminus", h: "subplus", n: "next", p: "prev", q: "queue", s: "settings", i: "info", escape: "close" };
+  g: "subminus", h: "subplus", n: "next", p: "prev", q: "queue", s: "settings", i: "info", o: "ocr", escape: "close" };
 function plKeymap() { try { return { ...PL_KEYS_DEFAULT, ...JSON.parse(localStorage.getItem("kami.keys") || "{}") }; } catch { return { ...PL_KEYS_DEFAULT }; } }
 function plKey(e) {
   const altGr = e.getModifierState && e.getModifierState("AltGraph");

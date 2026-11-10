@@ -76,7 +76,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
-        "library_get",
+        "library_get", "ocr_image", "ocr_translate",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -1118,6 +1118,61 @@ class Api:
         if "error" in res:
             return {"ok": False, "error": str(res["error"])[:200]}
         return {"ok": True, "path": res["done"], "vtt": srt_to_vtt(Path(res["done"]).read_text(encoding="utf-8"))}
+
+    # ---------- sozluk (altyazida kelimeye tikla; yerel Vikisozluk SQLite) ----------
+    def _dict(self):
+        if not getattr(self, "_dictionary", None):
+            from app import paths
+            from app.core.dictionary import Dictionary
+            self._dictionary = Dictionary(paths.DATA_DIR / "dict" / "wiktionary.db")
+        return self._dictionary
+
+    def dict_status(self) -> dict[str, Any]:
+        return self._dict().status()
+
+    def dict_install(self, pack: str = "tr") -> dict[str, Any]:
+        return {"ok": self._dict().install(str(pack or ""))}
+
+    def dict_lookup(self, word: str, lang: str = "", line: str = "", pos: int = -1) -> dict[str, Any]:
+        """word: tiklanan kelime; bosluksuz dillerde (ja/zh) line + pos ile en uzun eslesme bulunur."""
+        d = self._dict()
+        lang = str(lang or "")[:5]
+        w = str(word or "")[:80]
+        if line and pos >= 0 and lang in ("ja", "zh"):
+            w = d.longest_match(str(line)[:300], int(pos), lang)
+        try:
+            return {"ok": True, "word": w, "entries": d.lookup(w, lang), "installed": d.installed()}
+        except Exception as exc:   # veritabani kilitli (kurulum suruyor) vb.
+            return {"ok": False, "word": w, "error": str(exc)[:160], "installed": d.installed()}
+
+    # ---------- ekran ustu OCR (B6) ----------
+    def ocr_image(self, png_b64: str, lang: str = "") -> dict[str, Any]:
+        from app.core import ocr
+        return ocr.recognize(png_b64, lang)
+
+    def ocr_translate(self, text: str, src: str = "", engine: str = "google") -> dict[str, Any]:
+        """OCR metnini Turkceye cevir (googletrans / NLLB); basarisizsa arayuz metni cevirisiz gosterir."""
+        import os as _os
+        import tempfile
+        from app.core import aitools
+        text = str(text or "").strip()[:2000]
+        if not text:
+            return {"ok": False, "error": "bad_input"}
+        vtt = "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\n" + text.replace("\n\n", "\n") + "\n"
+        fd, out = tempfile.mkstemp(prefix="kami_ocr_tr_", suffix=".srt")
+        _os.close(fd)
+        try:
+            res = aitools.translate_subtitle(vtt, out, str(src or "en")[:5], "tr", "nllb" if engine == "nllb" else "google")
+            if "error" in res:
+                return {"ok": False, "error": str(res["error"])[:200]}
+            with open(res["done"], encoding="utf-8") as f:
+                lines = [ln for ln in f.read().splitlines() if ln.strip() and "-->" not in ln and not ln.strip().isdigit()]
+            return {"ok": True, "text": "\n".join(lines)}
+        finally:
+            try:
+                _os.remove(out)
+            except OSError:
+                pass
 
     # ---------- Kami Player penceresi (ayri pywebview penceresi; main baglar) ----------
     def player_show(self, req: dict | None = None) -> dict[str, Any]:
