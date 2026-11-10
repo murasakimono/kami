@@ -690,7 +690,9 @@ async function init() {
   bindLive();
   bindExtras();
   await tick();
-  setInterval(() => { if (!document.hidden) tick(); }, 500);
+  // hafif yoklama (B10): pencere odaktayken 0,5 sn, arka planda 1,5 sn, gizliyken hic
+  const loop = async () => { if (!document.hidden) { try { await tick(); } catch (_) { /* sonraki turda */ } } setTimeout(loop, document.hasFocus() ? 500 : 1500); };
+  setTimeout(loop, 500);
 }
 
 window.addEventListener("pywebviewready", init);

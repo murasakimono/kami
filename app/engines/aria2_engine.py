@@ -90,6 +90,7 @@ class Aria2Engine(Engine):
             # falloc yonetici yetkisi ister; yoksa sifir doldurmaya dusup aria2'yi bloke ediyor (04.11 olculdu)
             "--file-allocation=none",
             "--disk-cache=64M",
+            "--uri-selector=adaptive",   # coklu kaynakta hizli olani sec
             f"--max-tries={self.max_tries}",
             "--retry-wait=3",
             "--connect-timeout=30",
