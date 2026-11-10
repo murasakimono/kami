@@ -258,3 +258,34 @@ document.addEventListener("input", (e) => {
   document.querySelectorAll('.px-xseg[data-x="eqp"] button').forEach((x) => x.classList.remove("on"));
   pxSave(); window.plApplyAudio();
 }, true);
+
+// ---------- B13 cokme kurtarma: oturum temiz kapanmadiysa son dosyaya devam teklifi ----------
+document.addEventListener("timeupdate", (e) => {
+  if (e.target.id !== "plVideo" || !PL.open || !PL.info?.path) return;
+  if (Math.abs(plNow() - (PE.lastSess || 0)) < 5) return;
+  PE.lastSess = plNow();
+  peSave("kami.last", { p: PL.info.path, t: Math.round(plNow()), ts: Date.now() }); peSave("kami.clean", 0);
+}, true);
+window.addEventListener("beforeunload", () => peSave("kami.clean", 1));
+setTimeout(() => {
+  const last = peLS("kami.last", null);
+  if (peLS("kami.clean", 1) !== 0 || !last?.p || PL.open) return;
+  peSave("kami.clean", 1);
+  const chip = document.createElement("button");
+  chip.className = "pl-chip pe-crash";
+  chip.textContent = plL(`Son oturum beklenmedik kapandı · ${pxBase(last.p)} ${fmtT(last.t)}'den devam et`, `Last session closed unexpectedly · resume ${pxBase(last.p)} at ${fmtT(last.t)}`);
+  chip.onclick = () => { chip.remove(); playerOpenPath(last.p); };
+  document.body.appendChild(chip);
+  setTimeout(() => chip.remove(), 15000);
+}, 1500);
+// ---------- B9 kinetik altyazi (istege bagli, varsayilan kapali): yeni satir hafifce belirir ----------
+const _peSubObs = setInterval(() => {
+  const b = $("#plSubs"); if (!b) return; clearInterval(_peSubObs);
+  new MutationObserver(() => { if (!peCfg().kinetic || !b.childNodes.length) return; b.classList.remove("kin"); void b.offsetWidth; b.classList.add("kin"); }).observe(b, { childList: true });
+}, 500);
+const _peVid = window.pxExtraVideoHtml;
+window.pxExtraVideoHtml = () => _peVid() + `<div class="px-shift"><span>${plL("Kinetik altyazı (yeni satır yumuşakça belirir)", "Kinetic subtitles")}</span></div>${peSeg("kinetic", [[0, plL("Kapalı", "Off")], [1, plL("Açık", "On")]], peCfg().kinetic ? 1 : 0)}`;
+document.addEventListener("click", (e) => {
+  const seg = e.target.closest?.('#plPanel .px-xseg[data-x="kinetic"]'); const b = e.target.closest?.("button");
+  if (seg && b) { PX.cfg.kinetic = b.dataset.v === "1"; pxSave(); }
+}, true);

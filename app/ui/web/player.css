@@ -381,3 +381,6 @@ body.pl-open #sunak { visibility: hidden; }
 .pe-clean { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding: 12px; border-radius: 8px; background: rgba(46, 230, 166, .07); color: #B9F5DE; font-size: 13px; }
 .px-series.has-poster { background-size: cover; background-position: center; min-height: 150px; justify-content: flex-end; }
 #player .pl-skip { bottom: 168px; z-index: 9; }
+#player .pl-subs.kin > span { animation: pe-kin .32s cubic-bezier(.2,.8,.2,1); }
+@keyframes pe-kin { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } }
+.pe-crash { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 90; }
