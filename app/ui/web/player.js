@@ -24,6 +24,7 @@ function plBuild() {
       <div class="pl-cover" id="plCover"></div>
       <canvas id="plBig" width="760" height="614"></canvas>
     </div>
+    <div class="pl-subs2" id="plSubs2"></div>
     <div class="pl-subs" id="plSubs"></div>
     <div class="pl-spin" id="plSpin"></div>
     <div class="pl-top">
@@ -131,11 +132,20 @@ function plStart(r) {
   plModeUi();
   $("#plCover").style.backgroundImage = r.cover ? `url("${r.cover}")` : "";
   $("#plCover").hidden = !r.cover;
-  $("#plSub").innerHTML = `<option value="-1">${plL("Altyazı yok", "No subtitles")}</option>` + r.subs.map((s, i) => `<option value="${i}">${escapeHtml(s.label)}</option>`).join("");
-  $("#plSub").hidden = !r.subs.length;
+  // altyazi listesi: yan dosyalar (+ Whisper) + dosya ici izler (resim altyazilar metne cevrilemez, listede yok)
+  PL.subList = [
+    ...r.subs.map((x) => ({ label: x.label, url: x.url, raw: x.ass ? x.raw_url : "", lang: plLang(x.label) })),
+    ...(r.embedded || []).filter((x) => !x.image).map((x) => ({
+      label: [plLangName(x.lang), x.title, x.ass ? "ASS" : ""].filter(Boolean).join(" · ") || plL("İz ", "Track ") + (x.index + 1),
+      url: x.url, raw: x.ass ? x.raw_url : "", lang: plLang(x.lang), def: x.default, forced: x.forced, embedded: true })),
+  ];
+  PL.cues2 = []; PL.sub2Idx = -1; plAssDestroy();
+  $("#plSub").innerHTML = `<option value="-1">${plL("Altyazı yok", "No subtitles")}</option>` + PL.subList.map((x, i) => `<option value="${i}">${escapeHtml(x.label)}</option>`).join("");
+  $("#plSub").hidden = !PL.subList.length;
   $("#plAud").innerHTML = r.audio.map((a, i) => `<option value="${i}">${escapeHtml([a.lang, a.title, a.codec].filter(Boolean).join(" · ") || plL("Ses ", "Audio ") + (i + 1))}</option>`).join("");
   $("#plAud").hidden = r.audio.length < 2;
-  if (r.subs.length) { $("#plSub").value = "0"; plLoadSub(0); }
+  if (window.plPickTracks) window.plPickTracks(r);   // dizi/klasor tercihi + dil sirasi (player-lib)
+  else if (PL.subList.length) { $("#plSub").value = "0"; plLoadSub(0); }
   plBlinkLoop();
   if (r.kind === "audio") PL.big?.ready.then(() => PL.big.start());
   const saved = plPos(r.path);
@@ -198,6 +208,7 @@ function plUrl(t) {
 function plSetSrc(t, autoplay = true) {
   const v = $("#plVideo");
   PL.offset = PL.mode === "direct" ? 0 : t;
+  plAssSync();
   v.src = plUrl(t);
   if (PL.mode === "direct" && t) v.currentTime = t;
   $("#plSpin").classList.add("on");
@@ -339,14 +350,63 @@ function plEqDraw(lv) {
 }
 
 // ---------- altyazi: WebVTT ayristir, kendi katmanimizda ciz ----------
-async function plLoadSub(i) {
+async function plLoadSub(i, slot = 1) {
+  if (slot === 2) {   // DUAL: ikinci altyazi her zaman duz metin, ustte
+    PL.sub2Idx = i; PL.cues2 = []; $("#plSubs2").innerHTML = ""; $("#plSubs2").dataset.h = "";
+    if (i < 0 || !PL.subList[i]) return;
+    try { PL.cues2 = plParseVtt(await (await fetch(PL.subList[i].url)).text()); } catch { toast(plL("Altyazı yüklenemedi", "Subtitle failed to load"), true); }
+    return;
+  }
   PL.subIdx = i; PL.cues = [];
-  $("#plSubs").innerHTML = "";
-  if (i < 0) return;
+  $("#plSubs").innerHTML = ""; $("#plSubs").dataset.h = "";
+  plAssDestroy();
+  if (i >= 0) PL.lastSub = i;
+  window.plOnSubChange?.();
+  if (i < 0 || !PL.subList[i]) return;
+  const it = PL.subList[i];
+  if (it.raw && window.JASSUB && PL.info.jassub && await plAss(it)) return;   // ASS: stiller, tabelalar, konumlar korunur
   try {
-    const txt = await (await fetch(PL.info.subs[i].url)).text();
-    PL.cues = plParseVtt(txt);
+    if (it.embedded) $("#plSpin").classList.add("on");   // buyuk mkv'de iz cikarma birkac saniye surebilir
+    PL.cues = plParseVtt(await (await fetch(it.url)).text());
   } catch (e) { toast(plL("Altyazı yüklenemedi", "Subtitle failed to load"), true); }
+  finally { if (!$("#plVideo").paused || $("#plVideo").readyState > 2) $("#plSpin").classList.remove("on"); }
+}
+// ASS/SSA: JASSUB (libass WASM). Worker file:// sayfasindan acilamaz -> medya sunucusundan alinip blob ile
+async function plAss(it) {
+  try {
+    const base = PL.info.jassub;
+    if (!PL.workerBlob) PL.workerBlob = URL.createObjectURL(new Blob([await (await fetch(base + "jassub-worker.js")).text()], { type: "text/javascript" }));
+    const sub = await (await fetch(it.raw)).text();
+    if (!sub.trim().startsWith("[Script")) return false;
+    PL.ass = new JASSUB({
+      video: $("#plVideo"), subContent: sub, workerUrl: PL.workerBlob,
+      wasmUrl: base + "jassub-worker.wasm", modernWasmUrl: base + "jassub-worker-modern.wasm",
+      fonts: PL.info.fonts || [], availableFonts: { "liberation sans": base + "default.woff2" }, fallbackFont: "liberation sans",
+      timeOffset: PL.offset - PL.subShift,
+    });
+    return true;
+  } catch (e) { console.warn("ASS cizici acilamadi, duz metne dusuluyor", e); plAssDestroy(); return false; }
+}
+function plAssDestroy() { try { PL.ass?.destroy(); } catch { /* zaten kapali */ } PL.ass = null; }
+function plAssSync() { if (PL.ass) PL.ass.timeOffset = PL.offset - PL.subShift; }
+// altyazi kaydirma: G / H (VLC gibi), ayarlar panelinde de dugme
+function plShift(d) {
+  PL.subShift = d === 0 ? 0 : Math.round((PL.subShift + d) * 10) / 10;
+  plAssSync(); plSubDraw(plNow());
+  toast(plL("Altyazı ", "Subtitles ") + (PL.subShift > 0 ? "+" : "") + PL.subShift.toFixed(1) + " sn");
+  window.plOnShift?.();
+}
+// dil kodlari: tur/tr/Turkish -> tr
+const PL_LANG = { tur: "tr", tr: "tr", turkish: "tr", eng: "en", en: "en", english: "en", jpn: "ja", ja: "ja", japanese: "ja", ger: "de", deu: "de", de: "de",
+  fre: "fr", fra: "fr", fr: "fr", spa: "es", es: "es", ita: "it", it: "it", rus: "ru", ru: "ru", ara: "ar", ar: "ar", kor: "ko", ko: "ko", chi: "zh", zho: "zh", zh: "zh", por: "pt", pt: "pt" };
+function plLang(x) {
+  const t = String(x || "").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  for (const w of t) if (PL_LANG[w]) return PL_LANG[w];
+  return t[0] && t[0].length <= 3 ? t[0] : "";
+}
+function plLangName(code) {
+  const c = plLang(code);
+  return ({ tr: "Türkçe", en: "English", ja: "日本語", de: "Deutsch", fr: "Français", es: "Español", it: "Italiano", ru: "Русский", ar: "العربية", ko: "한국어", zh: "中文", pt: "Português" })[c] || (code || "");
 }
 function plParseVtt(txt) {
   const ts = (s) => { const p = s.trim().split(":").map(parseFloat); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
@@ -362,6 +422,11 @@ function plParseVtt(txt) {
 }
 function plSubDraw(t) {
   t -= PL.subShift;
+  if (PL.cues2 && PL.cues2.length) {
+    const b2 = $("#plSubs2");
+    const h2 = PL.cues2.filter((c) => t >= c.s && t <= c.e).map((c) => `<span>${escapeHtml(c.text.replace(/<[^>]+>/g, "")).replace(/\n/g, "<br>")}</span>`).join("<br>");
+    if (b2.dataset.h !== h2) { b2.innerHTML = h2; b2.dataset.h = h2; }
+  }
   const box = $("#plSubs");
   const html = PL.cues.filter((c) => t >= c.s && t <= c.e)
     .map((c) => `<span>${escapeHtml(c.text.replace(/<[^>]+>/g, "")).replace(/\n/g, "<br>")}</span>`).join("<br>");
@@ -377,7 +442,8 @@ function plKey(e) {
     arrowleft: () => plSeek(plNow() - 5), arrowright: () => plSeek(plNow() + 5),
     j: () => plSeek(plNow() - 10), l: () => plSeek(plNow() + 10),
     arrowup: () => { v.volume = Math.min(1, v.volume + 0.05); plVolUi(); }, arrowdown: () => { v.volume = Math.max(0, v.volume - 0.05); plVolUi(); },
-    c: () => { const s = $("#plSub"); if (PL.info.subs.length) { s.value = PL.subIdx < 0 ? "0" : "-1"; plLoadSub(+s.value); } },
+    c: () => { const s = $("#plSub"); if (PL.subList.length) { s.value = PL.subIdx < 0 ? String(PL.lastSub ?? 0) : "-1"; if (PL.subIdx >= 0) PL.lastSub = PL.subIdx; plLoadSub(+s.value); } },
+    g: () => plShift(-0.5), h: () => plShift(0.5),
     escape: () => { if (window.plPanelClose?.()) return; if (!document.fullscreenElement) plClose(); },
     n: () => window.plQueueStep?.(1), p: () => window.plQueueStep?.(-1), q: () => window.plDrawer?.(),
   };

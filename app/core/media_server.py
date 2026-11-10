@@ -42,6 +42,8 @@ OK_CONTAINER = {".mp4", ".m4v", ".mov", ".webm", ".mkv", ".mp3", ".flac", ".wav"
 OK_VCODEC = {"h264", "vp8", "vp9", "av1"}
 OK_ACODEC = {"aac", "mp3", "opus", "vorbis", "flac", "pcm_s16le", "pcm_s24le", "pcm_f32le", "pcm_u8"}
 CHUNK = 256 * 1024
+IMAGE_SUBS = {"hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub"}   # resim altyazi: metne cevrilemez
+ASS_SUBS = {"ass", "ssa"}
 
 
 def find_ffprobe(ffmpeg: str) -> str:
@@ -54,7 +56,8 @@ def find_ffprobe(ffmpeg: str) -> str:
 
 def probe(ffprobe: str, path: str) -> dict[str, Any]:
     """ffprobe ozeti: sure, goruntu codec'i, ses izleri, gomulu altyazilar, kapak."""
-    out: dict[str, Any] = {"duration": 0.0, "vcodec": "", "width": 0, "height": 0, "audio": [], "subs": [], "cover": False}
+    out: dict[str, Any] = {"duration": 0.0, "vcodec": "", "width": 0, "height": 0, "audio": [], "subs": [], "cover": False,
+                           "fonts": []}
     if not ffprobe:
         return out
     try:
@@ -81,7 +84,12 @@ def probe(ffprobe: str, path: str) -> dict[str, Any]:
             out["audio"].append({"codec": codec, "lang": tags.get("language", ""), "title": tags.get("title", ""),
                                  "channels": int(st.get("channels") or 0), "default": bool(disp.get("default"))})
         elif kind == "subtitle":
-            out["subs"].append({"codec": codec, "lang": tags.get("language", ""), "title": tags.get("title", "")})
+            out["subs"].append({"codec": codec, "lang": tags.get("language", ""), "title": tags.get("title", ""),
+                                "default": bool(disp.get("default")), "forced": bool(disp.get("forced"))})
+        elif kind == "attachment":
+            fn = tags.get("filename", "")
+            if fn.lower().endswith((".ttf", ".otf", ".ttc", ".woff", ".woff2")):
+                out["fonts"].append(fn)
     return out
 
 
@@ -118,8 +126,9 @@ def read_text(path: str) -> str:
 
 
 class MediaServer:
-    def __init__(self, ffmpeg_getter) -> None:
+    def __init__(self, ffmpeg_getter, vendor_dir: Path | None = None) -> None:
         self._ffmpeg_getter = ffmpeg_getter
+        self.vendor_dir = vendor_dir   # JASSUB (ASS cizici) dosyalari: web/vendor/jassub
         self.token = secrets.token_urlsafe(24)
         self._files: dict[str, dict[str, Any]] = {}   # key -> {path, kind, mode, ...}
         self._by_path: dict[str, str] = {}
@@ -127,6 +136,9 @@ class MediaServer:
         self._procs: set[subprocess.Popen] = set()
         self._encoder: str | None = None
         self._thumbs: dict[tuple[str, int], bytes] = {}
+        import tempfile
+        self.cache_dir = Path(tempfile.gettempdir()) / "kami_player"
+        self._xlock = threading.Lock()
         self.httpd = None
 
     # ---------- yasam dongusu ----------
@@ -194,6 +206,8 @@ class MediaServer:
             mode = "direct"   # ffmpeg yoksa yine de dene
         key = self._key_for(str(p))
         subs = self._find_subs(p, extra_subs or [])
+        subs += [{"path": str(q), "label": q.name[len(p.stem):-len(q.suffix)].strip(". _-") or "ASS"}
+                 for q in self._find_ass(p)]
         with self._lock:
             self._files[key] = {"path": str(p), "kind": kind, "mode": mode, "info": info}
             for i, s in enumerate(subs):
@@ -208,7 +222,14 @@ class MediaServer:
             "stream_url": f"{self.base}/x/{key}",
             "cover": f"{self.base}/c/{key}" if info["cover"] else "",
             "thumb_url": f"{self.base}/p/{key}" if kind == "video" else "",
-            "subs": [{"label": s["label"], "url": f"{self.base}/s/{key}-s{i}"} for i, s in enumerate(subs)],
+            "subs": [{"label": s["label"], "url": f"{self.base}/s/{key}-s{i}", "ass": s["path"].lower().endswith((".ass", ".ssa")),
+                      "raw_url": f"{self.base}/r/{key}-s{i}"} for i, s in enumerate(subs)],
+            "embedded": [{"index": i, "lang": e["lang"], "title": e["title"], "codec": e["codec"], "default": e["default"],
+                          "forced": e["forced"], "image": e["codec"] in IMAGE_SUBS, "ass": e["codec"] in ASS_SUBS,
+                          "url": f"{self.base}/e/{key}?i={i}", "raw_url": f"{self.base}/e/{key}?i={i}&raw=1"}
+                         for i, e in enumerate(info["subs"])],
+            "fonts": [f"{self.base}/a/{key}?n={urllib.parse.quote(n)}" for n in info["fonts"]],
+            "jassub": f"{self.base}/j/" if self.vendor_dir else "",
         }
         log.info("Oynatici: %s (%s, %s, %s/%s)", p.name, kind, mode, info["vcodec"] or "-",
                  (info["audio"][0]["codec"] if info["audio"] else "-"))
@@ -238,6 +259,51 @@ class MediaServer:
             tail = q.name[len(p.stem):-len(q.suffix)].strip(". _-") if q.name.startswith(p.stem) else q.stem
             found.append({"path": str(q), "label": tail or q.suffix[1:].upper()})
         return found
+
+    @staticmethod
+    def _find_ass(p: Path) -> list[Path]:
+        try:
+            return sorted(q for q in p.parent.iterdir() if q.suffix.lower() in (".ass", ".ssa") and q.name.startswith(p.stem))
+        except OSError:
+            return []
+
+    # ---------- gomulu altyazi / font cikarma (diskte onbellek; buyuk mkv'de ilk acilis birkac saniye) ----------
+    def _cache_base(self, e: dict[str, Any]) -> Path:
+        import hashlib
+        st = os.stat(e["path"])
+        h = hashlib.sha1(f'{e["path"]}|{st.st_size}|{st.st_mtime_ns}'.encode()).hexdigest()[:16]
+        d = self.cache_dir / h
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def extract_sub(self, e: dict[str, Any], index: int, raw: bool) -> bytes:
+        codec = (e["info"]["subs"][index]["codec"] if index < len(e["info"]["subs"]) else "")
+        if codec in IMAGE_SUBS:
+            return b""
+        as_ass = raw and codec in ASS_SUBS
+        out = self._cache_base(e) / f"s{index}.{'ass' if as_ass else 'vtt'}"
+        with self._xlock:
+            if not out.is_file():
+                cmd = [self.ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-i", e["path"], "-map", f"0:s:{index}",
+                       "-c:s", "copy" if as_ass else "webvtt", "-f", "ass" if as_ass else "webvtt", str(out) + ".tmp"]
+                r = subprocess.run(cmd, capture_output=True, timeout=300, creationflags=NO_WINDOW)
+                if r.returncode != 0:
+                    log.info("altyazi cikarilamadi: %s", (r.stderr or b"")[-300:].decode("utf-8", "replace"))
+                    return b""
+                os.replace(str(out) + ".tmp", out)
+        return out.read_bytes()
+
+    def font(self, e: dict[str, Any], name: str) -> bytes:
+        if name not in e["info"].get("fonts", []) or "/" in name or "\\" in name:
+            return b""
+        d = self._cache_base(e) / "fonts"
+        f = d / name
+        with self._xlock:
+            if not f.is_file():
+                d.mkdir(exist_ok=True)
+                subprocess.run([self.ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-dump_attachment:t", "", "-i", e["path"]],
+                               cwd=str(d), capture_output=True, timeout=120, creationflags=NO_WINDOW)
+        return f.read_bytes() if f.is_file() else b""
 
     def entry(self, key: str) -> dict[str, Any] | None:
         with self._lock:
@@ -354,6 +420,8 @@ def _make_handler(server: MediaServer):
             if len(seg) != 3 or not secrets.compare_digest(seg[0], server.token):
                 return self._err(403)
             _, route, key = seg
+            if route == "j":   # ASS cizici (worker blob olarak buradan alinir: file:// sayfasi worker acamaz)
+                return self._vendor(key, head)
             q = urllib.parse.parse_qs(parts.query)
             e = server.entry(key)
             if not e:
@@ -367,7 +435,28 @@ def _make_handler(server: MediaServer):
                         e = {**e, "mode": m}
                     self._stream(e, float((q.get("t") or ["0"])[0] or 0), int((q.get("a") or ["0"])[0] or 0), head)
                 elif route == "s":
-                    self._bytes(srt_to_vtt(read_text(e["path"])).encode("utf-8"), "text/vtt; charset=utf-8", head)
+                    if e["path"].lower().endswith((".ass", ".ssa")) and server.ffmpeg():   # ASS -> duz VTT (yedek gorunum)
+                        r = subprocess.run([server.ffmpeg(), "-hide_banner", "-loglevel", "error", "-i", e["path"], "-f", "webvtt", "pipe:1"],
+                                           capture_output=True, timeout=60, creationflags=NO_WINDOW)
+                        data = r.stdout
+                    else:
+                        data = srt_to_vtt(read_text(e["path"])).encode("utf-8")
+                    self._bytes(data, "text/vtt; charset=utf-8", head)
+                elif route == "e":
+                    data = server.extract_sub(e, int((q.get("i") or ["0"])[0] or 0), (q.get("raw") or [""])[0] == "1")
+                    if data:
+                        raw = (q.get("raw") or [""])[0] == "1" and data[:20].lstrip().startswith(b"[Script")
+                        self._bytes(data, "text/plain; charset=utf-8" if raw else "text/vtt; charset=utf-8", head)
+                    else:
+                        self._err(404)
+                elif route == "r":   # yan altyazi dosyasinin kendisi (ASS icin)
+                    self._bytes(read_text(e["path"]).encode("utf-8"), "text/plain; charset=utf-8", head)
+                elif route == "a":
+                    data = server.font(e, (q.get("n") or [""])[0])
+                    if data:
+                        self._bytes(data, "font/ttf", head)
+                    else:
+                        self._err(404)
                 elif route == "k":
                     t = float((q.get("t") or ["0"])[0] or 0)
                     kf = server.keyframe_before(e, t) if e["kind"] == "video" else t   # arayuz sadece kopya akista sorar
@@ -460,6 +549,14 @@ def _make_handler(server: MediaServer):
                 err = (p.stderr.read() if p.stderr else b"")[-600:]
                 if err.strip():
                     log.info("ffmpeg akisi: %s", err.decode("utf-8", "replace").strip())
+
+        def _vendor(self, name: str, head: bool) -> None:
+            ok = {"jassub-worker.js": "text/javascript", "jassub-worker.wasm": "application/wasm",
+                  "jassub-worker-modern.wasm": "application/wasm", "default.woff2": "font/woff2"}
+            f = (server.vendor_dir / name) if server.vendor_dir and name in ok else None
+            if not f or not f.is_file():
+                return self._err(404)
+            self._bytes(f.read_bytes(), ok[name], head)
 
         def _cover(self, path: str, head: bool) -> None:
             ff = server.ffmpeg()

@@ -427,7 +427,7 @@ def main() -> int:
     import atexit
     from app.core.media_server import MediaServer
     from app.engines.ytdlp_engine import find_ffmpeg
-    media_srv = MediaServer(find_ffmpeg)
+    media_srv = MediaServer(find_ffmpeg, paths.WEB_DIR / "vendor" / "jassub")
     try:
         media_srv.start()
         api._media = media_srv

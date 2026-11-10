@@ -4,7 +4,7 @@
 
 const PX = {
   queue: [], qi: -1, pending: null, nextShown: false, nextCancel: false, lib: null, libTab: "queue", libSeries: null,
-  cfg: { sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
+  cfg: { langs: "tr,en", sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
 };
 const pxBase = (p) => String(p).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 const pxSave = () => { try { localStorage.setItem("kami.player", JSON.stringify(PX.cfg)); } catch { /* yok */ } };
@@ -20,9 +20,44 @@ window.plOnBuild = () => {
   $("#plNextNow").onclick = () => { $("#plNextCard").hidden = true; plQueueStep(1); };
   $("#plNextNo").onclick = () => { PX.nextCancel = true; $("#plNextCard").hidden = true; };
   $("#plVideo").addEventListener("timeupdate", pxNextWatch);
+  $("#plAud").addEventListener("change", (e) => pxPrefSave({ a: plLang(PL.info.audio[+e.target.value]?.lang) }));
+  $("#plRate").addEventListener("change", (e) => pxPrefSave({ rate: +e.target.value }));
   window.addEventListener("resize", pxApplyVideo);
   pxApplyAll();
 };
+
+// ---------- dil + klasor/dizi basina tercih (ses dili, altyazi, 2. altyazi, hiz) ----------
+const pxDir = (p) => String(p || "").replace(/[\\/][^\\/]*$/, "");
+const pxPrefs = () => { try { return JSON.parse(localStorage.getItem("kami.prefs") || "{}"); } catch { return {}; } };
+function pxPrefSave(patch) {
+  if (!PL.info?.path) return;
+  const all = pxPrefs(), k = pxDir(PL.info.path);
+  all[k] = { ...(all[k] || {}), ...patch };
+  try { localStorage.setItem("kami.prefs", JSON.stringify(all)); } catch { /* yok */ }
+}
+window.plPickTracks = (r) => {
+  const pref = pxPrefs()[pxDir(r.path)] || {};
+  PX.applying = true;
+  // ses izi: tercih edilen dil
+  if (pref.a && r.audio.length > 1) {
+    const ai = r.audio.findIndex((a) => plLang(a.lang) === pref.a);
+    if (ai > 0) { $("#plAud").value = String(ai); plAudio(ai); }
+  }
+  // altyazi: klasor tercihi > dil sirasi (Ayarlar) > dosyanin varsayilan izi
+  const order = pref.s ? [pref.s] : PX.cfg.langs.split(",").map((x) => x.trim()).filter(Boolean);
+  let si = -1;
+  if (pref.s !== "off") {
+    for (const L of order) { si = PL.subList.findIndex((x) => x.lang === L && !x.forced); if (si >= 0) break; }
+    if (si < 0) si = PL.subList.findIndex((x) => x.def);
+    if (si < 0 && PL.subList.length && !pref.s) si = 0;
+  }
+  $("#plSub").value = String(si); plLoadSub(si);
+  if (pref.s2 && pref.s2 !== "off") { const s2 = PL.subList.findIndex((x, i) => x.lang === pref.s2 && i !== si); if (s2 >= 0) plLoadSub(s2, 2); }
+  if (pref.rate) { $("#plVideo").playbackRate = pref.rate; $("#plRate").value = String(pref.rate); }
+  PX.applying = false;
+};
+window.plOnSubChange = () => { if (!PX.applying && PL.open) pxPrefSave({ s: PL.subIdx < 0 ? "off" : PL.subList[PL.subIdx]?.lang || "" }); };
+window.plOnShift = () => { if ($("#pxShift")) $("#pxShift").textContent = (PL.subShift > 0 ? "+" : "") + PL.subShift.toFixed(1) + " sn"; };
 
 // ---------- siradakiler ----------
 window.plPlayQueue = (paths, i = 0) => {
@@ -38,7 +73,8 @@ window.plOnStart = async (r) => {
   PX.qi = PX.queue.indexOf(r.path);
   $("#plPrev").disabled = PX.qi <= 0; $("#plNext").disabled = PX.qi < 0 || PX.qi >= PX.queue.length - 1;
   pxApplyAll();
-  if (!$("#plDrawer")?.hidden && PX.libTab === "queue") pxDrawerRender();
+  const dr = $("#plDrawer");
+  if (dr && !dr.hidden && PX.libTab === "queue") pxDrawerRender();
 };
 window.plQueueStep = (d) => {
   const i = PX.qi + d;
@@ -155,6 +191,9 @@ window.plSettings = () => {
     ${seg("sub", "color", [["#ffffff", plL("Beyaz", "White")], ["#ffe066", plL("Sarı", "Yellow")], ["#2EE6A6", plL("Zümrüt", "Emerald")], ["#C4B5FD", plL("Lavanta", "Lavender")]])}
     ${seg("sub", "bg", [["none", plL("Gölge", "Shadow")], ["semi", plL("Yarı saydam", "Semi")], ["solid", plL("Koyu", "Solid")]])}
     ${seg("sub", "pos", [[0, plL("Alt", "Bottom")], [60, plL("Biraz yukarı", "Raised")], [140, plL("Yukarı", "High")]])}
+    <label class="px-rng"><span>${plL("2. altyazı (DUAL)", "2nd subtitle (DUAL)")}</span><select class="pl-sel" id="pxSub2" style="grid-column: span 2"><option value="-1">${plL("Kapalı", "Off")}</option>${(PL.subList || []).map((x, i) => `<option value="${i}" ${i === PL.sub2Idx ? "selected" : ""}>${escapeHtml(x.label)}</option>`).join("")}</select></label>
+    <div class="px-shift"><span>${plL("Kaydır (G / H)", "Offset (G / H)")}</span><button class="pl-b" data-act="sh-">−0.5</button><b id="pxShift">${(PL.subShift > 0 ? "+" : "") + (PL.subShift || 0).toFixed(1)} sn</b><button class="pl-b" data-act="sh+">+0.5</button><button class="pl-b" data-act="sh0">0</button></div>
+    <label class="px-rng"><span>${plL("Dil sırası", "Language order")}</span><input class="px-in" id="pxLangs" value="${escapeHtml(c.langs)}" placeholder="tr,en,ja" style="grid-column: span 2"></label>
     <h4>${plL("Görüntü", "Picture")}</h4>
     ${seg("vid", "aspect", [["auto", plL("Otomatik", "Auto")], ["16/9", "16:9"], ["4/3", "4:3"], ["21/9", "21:9"], ["fill", plL("Doldur", "Fill")]])}
     ${rng("zoom", 100, 160, plL("Yakınlaştır / kırp", "Zoom / crop"))}${rng("bright", 50, 150, plL("Parlaklık", "Brightness"))}${rng("contrast", 50, 150, plL("Kontrast", "Contrast"))}${rng("sat", 0, 200, plL("Doygunluk", "Saturation"))}
@@ -174,8 +213,15 @@ window.plSettings = () => {
       segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
       pxSave(); pxApplyAll();
     }
+    if (b.dataset.act === "sh-") plShift(-0.5);
+    if (b.dataset.act === "sh+") plShift(0.5);
+    if (b.dataset.act === "sh0") plShift(0);
     if (b.dataset.act === "vreset") { Object.assign(c.vid, { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }); pxSave(); pxApplyAll(); p.hidden = true; plSettings(); }
     if (b.dataset.act === "default") { const ok = await api.player_default_apps(); if (!ok) toast(plL("Windows ayarları açılamadı", "Couldn't open Windows settings"), true); }
+  };
+  p.onchange = (e) => {
+    if (e.target.id === "pxSub2") { const i = +e.target.value; plLoadSub(i, 2); pxPrefSave({ s2: i < 0 ? "off" : PL.subList[i]?.lang || "" }); }
+    if (e.target.id === "pxLangs") { c.langs = e.target.value.toLowerCase().replace(/\s+/g, ""); pxSave(); }
   };
   p.oninput = (e) => {
     const k = e.target.dataset.vk; if (!k) return;

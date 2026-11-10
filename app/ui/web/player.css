@@ -20,6 +20,9 @@
 #player .pl-cover[hidden] { display: none; }
 
 #player .pl-subs { position: absolute; left: 6%; right: 6%; bottom: calc(128px + var(--sub-pos, 0px)); text-align: center; pointer-events: none; transition: bottom .25s; }
+#player .pl-subs2 { position: absolute; left: 8%; right: 8%; top: 64px; text-align: center; pointer-events: none; }
+#player .pl-subs2 span { font: 600 calc(clamp(15px, 1.9vw, 26px) * var(--sub-size, 1))/1.35 "Chakra Petch", sans-serif; color: #C4B5FD; padding: 1px 8px; background: var(--sub-bg, rgba(8, 7, 12, .62)); box-decoration-break: clone; -webkit-box-decoration-break: clone; text-shadow: 0 2px 4px #000; }
+#player .JASSUB { z-index: 1; }
 #player.idle .pl-subs { bottom: calc(48px + var(--sub-pos, 0px)); }
 #player .pl-subs span { display: inline; font: 600 calc(clamp(18px, 2.6vw, 34px) * var(--sub-size, 1))/1.35 "Chakra Petch", sans-serif; color: var(--sub-color, #fff); padding: 2px 10px; background: var(--sub-bg, rgba(8, 7, 12, .62)); box-decoration-break: clone; -webkit-box-decoration-break: clone; text-shadow: 0 2px 4px #000; }
 
@@ -139,3 +142,8 @@ body.pl-open #sunak { visibility: hidden; }
 .px-empty { color: #7E7593; font-size: 13px; padding: 14px 4px; }
 #plDrawer .pl-b { height: 34px; min-width: 34px; padding: 0 10px; border: 0; background: #16101F; color: #C4B5FD; font: 600 12px "Chakra Petch", sans-serif; cursor: pointer; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
 #plDrawer .pl-b:hover { background: #2A1F3B; color: #fff; }
+.px-shift { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-size: 13px; color: #C4B5FD; }
+.px-shift span { flex: 1; }
+.px-shift b { min-width: 58px; text-align: center; color: #EDE9F6; font-weight: 600; font-size: 12px; }
+.px-in { height: 32px; padding: 0 8px; border: 0; background: #16101F; color: #EDE9F6; font: 13px "Chakra Petch", sans-serif; outline: none; }
+#player .pl-panel .pl-b { height: 32px; min-width: 40px; padding: 0 8px; border: 0; background: #16101F; color: #C4B5FD; font: 600 12px "Chakra Petch", sans-serif; cursor: pointer; clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); }
