@@ -214,7 +214,7 @@ class MediaServer:
                 self._files[f"{key}-s{i}"] = {"path": s["path"], "kind": "sub"}
         a_ok = mode == "direct"
         res = {
-            "ok": True, "key": key, "path": str(p), "kind": kind, "mode": mode, "title": title or p.stem,
+            "ok": True, "key": key, "path": str(p), "kind": kind, "vcodec": info["vcodec"], "size": p.stat().st_size, "mode": mode, "title": title or p.stem,
             "duration": info["duration"], "width": info["width"], "height": info["height"],
             "audio": info["audio"], "embedded_subs": info["subs"],
             "url": f"{self.base}/f/{key}" if a_ok else f"{self.base}/x/{key}",
@@ -310,7 +310,7 @@ class MediaServer:
             return self._files.get(key)
 
     # ---------- ffmpeg akisi ----------
-    def stream_cmd(self, e: dict[str, Any], start: float, audio_index: int) -> list[str]:
+    def stream_cmd(self, e: dict[str, Any], start: float, audio_index: int, dialog: bool = False) -> list[str]:
         ff = self.ffmpeg()
         cmd = [ff, "-hide_banner", "-loglevel", "error", "-nostdin"]
         if start > 0:
@@ -327,6 +327,10 @@ class MediaServer:
                 cmd += ["-c:v", "copy"]   # remux (ve 'direct' kaydin zorla akisi)
         else:
             cmd += ["-map", f"0:a:{audio_index}", "-vn"]
+        auds = e["info"].get("audio") or []
+        ch = (auds[audio_index] if audio_index < len(auds) else {}).get("channels", 0)
+        if dialog and ch >= 6:   # 5.1/7.1 -> stereo, merkez (diyalog) one: c2 = FC, c4/c5 = arka/yan
+            cmd += ["-af", "pan=stereo|c0=c2+0.30*c0+0.30*c4|c1=c2+0.30*c1+0.30*c5"]
         cmd += ["-c:a", "aac", "-b:a", "224k", "-ac", "2", "-sn", "-dn",
                 "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]
         return cmd
@@ -433,7 +437,8 @@ def _make_handler(server: MediaServer):
                     m = (q.get("m") or [""])[0]
                     if m in ("remux", "transcode"):   # dogrudan oynatma basarisiz olunca arayuz zorlar
                         e = {**e, "mode": m}
-                    self._stream(e, float((q.get("t") or ["0"])[0] or 0), int((q.get("a") or ["0"])[0] or 0), head)
+                    self._stream(e, float((q.get("t") or ["0"])[0] or 0), int((q.get("a") or ["0"])[0] or 0), head,
+                                 (q.get("dm") or [""])[0] == "1")
                 elif route == "s":
                     if e["path"].lower().endswith((".ass", ".ssa")) and server.ffmpeg():   # ASS -> duz VTT (yedek gorunum)
                         r = subprocess.run([server.ffmpeg(), "-hide_banner", "-loglevel", "error", "-i", e["path"], "-f", "webvtt", "pipe:1"],
@@ -526,7 +531,7 @@ def _make_handler(server: MediaServer):
                     self.wfile.write(buf)
                     left -= len(buf)
 
-        def _stream(self, e: dict[str, Any], start: float, audio_index: int, head: bool) -> None:
+        def _stream(self, e: dict[str, Any], start: float, audio_index: int, head: bool, dialog: bool = False) -> None:
             if not server.ffmpeg():
                 return self._err(503)
             self.send_response(200)
@@ -537,7 +542,7 @@ def _make_handler(server: MediaServer):
             self.close_connection = True
             if head:
                 return
-            p = server.spawn(server.stream_cmd(e, start, audio_index))
+            p = server.spawn(server.stream_cmd(e, start, audio_index, dialog))
             try:
                 while True:
                     buf = p.stdout.read(CHUNK)

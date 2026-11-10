@@ -41,7 +41,7 @@ function plBuild() {
           <select class="pl-sel" id="plSub" title="${plL("Altyazı (C)", "Subtitles (C)")}"></select>
           <select class="pl-sel" id="plAud" title="${plL("Ses izi", "Audio track")}"></select>
           <select class="pl-sel" id="plRate" title="${plL("Hız", "Speed")}">${[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => `<option value="${r}" ${r === 1 ? "selected" : ""}>${r}×</option>`).join("")}</select>
-          <label class="pl-vol" title="${plL("Ses (↑ ↓, M)", "Volume (↑ ↓, M)")}"><button class="pl-b" data-pl="mute" id="plMute">◢</button><input type="range" id="plVol" min="0" max="1" step="0.02" value="1"></label>
+          <label class="pl-vol" title="${plL("Ses (↑ ↓, M)", "Volume (↑ ↓, M)")}"><button class="pl-b" data-pl="mute" id="plMute">◢</button><input type="range" id="plVol" min="0" max="2" step="0.02" value="1"></label>
           <button class="pl-b" data-pl="queue" title="${plL("Sıradakiler / kütüphane (Q)", "Queue / library (Q)")}">☰</button>
           <button class="pl-b" data-pl="settings" title="${plL("Altyazı, görüntü, ses ayarları", "Subtitle, picture, audio settings")}">⚙</button>
           <button class="pl-b" data-pl="full" title="${plL("Tam ekran (F)", "Fullscreen (F)")}">⛶</button>
@@ -64,7 +64,23 @@ function plBuild() {
   });
   v.addEventListener("error", () => plFallback("error"));
   v.addEventListener("click", plToggle);
-  v.addEventListener("dblclick", plFull);
+  v.addEventListener("dblclick", (e) => {
+    const x = e.clientX / innerWidth;
+    if (x < 0.3) plSeek(plNow() - 10); else if (x > 0.7) plSeek(plNow() + 10); else plFull();
+  });
+  el.addEventListener("wheel", (e) => {
+    if (e.target.closest(".pl-panel, .pl-deck select, #plDrawer")) return;
+    e.preventDefault(); plSetVol((PL.vol ?? 1) + (e.deltaY < 0 ? 0.05 : -0.05)); plWake();
+    toast(plL("Ses ", "Volume ") + Math.round(PL.vol * 100) + "%");
+  }, { passive: false });
+  el.addEventListener("auxclick", (e) => { if (e.button === 1 && !e.target.closest("button, select, input")) { e.preventDefault(); plFull(); } });
+  v.addEventListener("loadeddata", () => {   // kare suresi (kare kare ilerleme icin)
+    if (v.requestVideoFrameCallback) {
+      let last = null;
+      const cb = (now, md) => { if (last !== null && md.mediaTime > last) PL.frameDur = Math.min(0.1, md.mediaTime - last); last = md.mediaTime; if (!PL.frameDur) v.requestVideoFrameCallback(cb); };
+      v.requestVideoFrameCallback(cb);
+    }
+  });
   $("#plEye").addEventListener("click", plToggle);
   $("#plClose").addEventListener("click", plClose);
   el.addEventListener("click", (e) => {
@@ -72,7 +88,7 @@ function plBuild() {
     ({ back: () => plSeek(plNow() - 10), fwd: () => plSeek(plNow() + 10), mute: () => { v.muted = !v.muted; plVolUi(); }, full: plFull,
        prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), queue: () => window.plDrawer?.(), settings: () => window.plSettings?.() })[b.dataset.pl]?.();
   });
-  $("#plVol").addEventListener("input", (e) => { v.volume = +e.target.value; v.muted = false; plVolUi(); });
+  $("#plVol").addEventListener("input", (e) => { v.muted = false; plSetVol(+e.target.value); });
   $("#plRate").addEventListener("change", (e) => { v.playbackRate = +e.target.value; });
   $("#plSub").addEventListener("change", (e) => plLoadSub(+e.target.value));
   $("#plAud").addEventListener("change", (e) => plAudio(+e.target.value));
@@ -90,6 +106,8 @@ function plBuild() {
   el.addEventListener("mousemove", plWake);
   document.addEventListener("keydown", plKey, true);
   window.plOnBuild?.();
+  try { PL.vol = +(localStorage.getItem("kami.vol") || 1); } catch { PL.vol = 1; }
+  plSetVol(PL.vol);
   if (window.KamiEye) {
     PL.big = new KamiEye($("#plBig"), { assets: "eye/char/", eyeY: 0.38, mirrorFrame: true });
   }
@@ -150,6 +168,7 @@ function plStart(r) {
   if (r.kind === "audio") PL.big?.ready.then(() => PL.big.start());
   const saved = plPos(r.path);
   const resume = saved && saved > 15 && (!PL.dur || saved < PL.dur - 30) ? saved : 0;
+  if (PL.mode === "direct" && window.plDialogMix?.()) PL.mode = "remux";   // 5.1 diyalog karisimi ffmpeg ister
   if (resume) plSetSrcResume(resume); else plSetSrc(0);
   window.plOnStart?.(r);
   plMediaSession();
@@ -188,6 +207,7 @@ function plMediaSession() {
 }
 function plClose() {
   const v = $("#plVideo");
+  clearInterval(PL.infoT); $("#plInfo")?.remove();
   if (PL.info?.path) { const t = plNow(); plPos(PL.info.path, PL.dur && t > PL.dur - 30 ? null : t); }
 
   v.pause(); v.removeAttribute("src"); v.load();   // akis baglantisi kapanir -> sunucu ffmpeg'i oldurur
@@ -203,6 +223,7 @@ function plUrl(t) {
   const r = PL.info;
   if (PL.mode === "direct") return r.direct_url;
   const q = new URLSearchParams({ t: t.toFixed(3), a: PL.audio, m: PL.mode });
+  if (window.plDialogMix?.()) q.set("dm", "1");
   return `${r.stream_url}?${q}`;
 }
 function plSetSrc(t, autoplay = true) {
@@ -286,9 +307,20 @@ function plToggle() {
 function plFull() {
   if (document.fullscreenElement) document.exitFullscreen(); else $("#player").requestFullscreen?.();
 }
+// ses 0-%200: %100'e kadar video.volume, ustu Web Audio kazanci (PL.boost)
+function plSetVol(x) {
+  const v = $("#plVideo");
+  PL.vol = Math.max(0, Math.min(2, Math.round(x * 100) / 100));
+  v.volume = Math.min(1, PL.vol);
+  if (PL.boost) PL.boost.gain.setTargetAtTime(Math.max(1, PL.vol), PL.ctx.currentTime, 0.03);
+  plVolUi();
+  try { localStorage.setItem("kami.vol", String(PL.vol)); } catch { /* yok */ }
+}
 function plVolUi() {
   const v = $("#plVideo");
-  $("#plVol").value = v.muted ? 0 : v.volume;
+  $("#plVol").value = v.muted ? 0 : (PL.vol ?? v.volume);
+  $("#plVol").title = Math.round((v.muted ? 0 : (PL.vol ?? v.volume)) * 100) + "%";
+  $("#plVol").classList.toggle("boost", (PL.vol || 0) > 1);
   $("#plMute").textContent = v.muted || v.volume === 0 ? "◁" : "◢";
 }
 function plWake() {
@@ -316,7 +348,10 @@ function plAudioGraph() {
     PL.src = PL.ctx.createMediaElementSource($("#plVideo"));
     PL.an = PL.ctx.createAnalyser(); PL.an.fftSize = 512; PL.an.smoothingTimeConstant = 0.78;
     PL.comp = PL.ctx.createDynamicsCompressor(); PL.gain = PL.ctx.createGain();
-    PL.src.connect(PL.comp); PL.comp.connect(PL.gain); PL.gain.connect(PL.an); PL.an.connect(PL.ctx.destination);
+    PL.boost = PL.ctx.createGain(); PL.delay = PL.ctx.createDelay(3);
+    PL.src.connect(PL.comp); PL.comp.connect(PL.gain); PL.gain.connect(PL.boost); PL.boost.connect(PL.delay);
+    PL.delay.connect(PL.an); PL.an.connect(PL.ctx.destination);
+    PL.boost.gain.value = Math.max(1, PL.vol || 1);
     window.plApplyAudio?.();
     PL.bins = new Uint8Array(PL.an.frequencyBinCount);
     const N = 7, edges = [];   // logaritmik bantlar ~40 Hz .. 16 kHz
@@ -434,18 +469,68 @@ function plSubDraw(t) {
 }
 
 // ---------- klavye ----------
+// eylemler (kisayollar ayarlardan degistirilebilir: localStorage kami.keys)
+const PL_ACTIONS = {
+  toggle: ["Oynat / duraklat", "Play / pause", () => plToggle()],
+  full: ["Tam ekran", "Fullscreen", () => plFull()],
+  mute: ["Sessiz", "Mute", () => { const v = $("#plVideo"); v.muted = !v.muted; plVolUi(); }],
+  back5: ["5 sn geri", "Back 5 s", () => plSeek(plNow() - 5)], fwd5: ["5 sn ileri", "Forward 5 s", () => plSeek(plNow() + 5)],
+  back10: ["10 sn geri", "Back 10 s", () => plSeek(plNow() - 10)], fwd10: ["10 sn ileri", "Forward 10 s", () => plSeek(plNow() + 10)],
+  volup: ["Ses +", "Volume +", () => plSetVol((PL.vol ?? 1) + 0.05)], voldown: ["Ses −", "Volume −", () => plSetVol((PL.vol ?? 1) - 0.05)],
+  frameback: ["Bir kare geri", "Frame back", () => plFrame(-1)], framefwd: ["Bir kare ileri", "Frame forward", () => plFrame(1)],
+  slower: ["Hız −0.05", "Speed −0.05", () => plRate(-0.05)], faster: ["Hız +0.05", "Speed +0.05", () => plRate(0.05)], rate1: ["Hız 1×", "Speed 1×", () => plRate(0)],
+  subs: ["Altyazı aç / kapat", "Subtitles on / off", () => { const s = $("#plSub"); if (PL.subList.length) { s.value = PL.subIdx < 0 ? String(PL.lastSub ?? 0) : "-1"; if (PL.subIdx >= 0) PL.lastSub = PL.subIdx; plLoadSub(+s.value); } }],
+  subminus: ["Altyazı −0.5 sn", "Subtitles −0.5 s", () => plShift(-0.5)], subplus: ["Altyazı +0.5 sn", "Subtitles +0.5 s", () => plShift(0.5)],
+  next: ["Sonraki", "Next", () => window.plQueueStep?.(1)], prev: ["Önceki", "Previous", () => window.plQueueStep?.(-1)],
+  queue: ["Sıradakiler / kütüphane", "Queue / library", () => window.plDrawer?.()], settings: ["Ayarlar paneli", "Settings panel", () => window.plSettings?.()],
+  info: ["Video bilgisi", "Video info", () => plInfo()],
+  close: ["Kapat / geri", "Close / back", () => { if (window.plPanelClose?.()) return; if (!document.fullscreenElement) plClose(); }],
+};
+const PL_KEYS_DEFAULT = { " ": "toggle", k: "toggle", f: "full", m: "mute", arrowleft: "back5", arrowright: "fwd5", j: "back10", l: "fwd10",
+  arrowup: "volup", arrowdown: "voldown", ",": "frameback", ".": "framefwd", "[": "slower", "]": "faster", "\\": "rate1", c: "subs",
+  g: "subminus", h: "subplus", n: "next", p: "prev", q: "queue", s: "settings", i: "info", escape: "close" };
+function plKeymap() { try { return { ...PL_KEYS_DEFAULT, ...JSON.parse(localStorage.getItem("kami.keys") || "{}") }; } catch { return { ...PL_KEYS_DEFAULT }; } }
 function plKey(e) {
-  if (!PL.open || e.target.matches("input:not([type=range]), textarea")) return;
-  const v = $("#plVideo"), k = e.key.toLowerCase();
-  const map = {
-    " ": plToggle, k: plToggle, f: plFull, m: () => { v.muted = !v.muted; plVolUi(); },
-    arrowleft: () => plSeek(plNow() - 5), arrowright: () => plSeek(plNow() + 5),
-    j: () => plSeek(plNow() - 10), l: () => plSeek(plNow() + 10),
-    arrowup: () => { v.volume = Math.min(1, v.volume + 0.05); plVolUi(); }, arrowdown: () => { v.volume = Math.max(0, v.volume - 0.05); plVolUi(); },
-    c: () => { const s = $("#plSub"); if (PL.subList.length) { s.value = PL.subIdx < 0 ? String(PL.lastSub ?? 0) : "-1"; if (PL.subIdx >= 0) PL.lastSub = PL.subIdx; plLoadSub(+s.value); } },
-    g: () => plShift(-0.5), h: () => plShift(0.5),
-    escape: () => { if (window.plPanelClose?.()) return; if (!document.fullscreenElement) plClose(); },
-    n: () => window.plQueueStep?.(1), p: () => window.plQueueStep?.(-1), q: () => window.plDrawer?.(),
+  if (!PL.open || PL.capture || e.target.matches("input:not([type=range]), textarea") || e.ctrlKey || e.altKey || e.metaKey) return;
+  const act = plKeymap()[e.key.toLowerCase()];
+  if (act && PL_ACTIONS[act]) { e.preventDefault(); e.stopPropagation(); PL_ACTIONS[act][2](); plWake(); }
+}
+// kare kare: duraklatir, kare suresi requestVideoFrameCallback ile olculur (yoksa 1/24)
+function plFrame(d) {
+  const v = $("#plVideo"); v.pause();
+  const t = Math.max(0, v.currentTime + d * (PL.frameDur || 1 / 24));
+  v.currentTime = t;
+}
+function plRate(d) {
+  const v = $("#plVideo");
+  const r = d === 0 ? 1 : Math.max(0.25, Math.min(4, Math.round((v.playbackRate + d) * 100) / 100));
+  v.playbackRate = r;
+  const sel = $("#plRate");
+  if (![...sel.options].some((o) => +o.value === r)) sel.insertAdjacentHTML("beforeend", `<option value="${r}">${r}×</option>`);
+  sel.value = String(r);
+  sel.dispatchEvent(new Event("change"));
+  toast(plL("Hız ", "Speed ") + r + "×");
+}
+// video bilgisi: I tusu, sol ustte kucuk katman (arayuz sade kalsin diye kendiliginden acilmaz)
+function plInfo() {
+  let box = $("#plInfo");
+  if (box) { box.remove(); clearInterval(PL.infoT); return; }
+  box = document.createElement("div"); box.id = "plInfo"; box.className = "pl-info";
+  $("#player").appendChild(box);
+  const draw = () => {
+    const v = $("#plVideo"), r = PL.info, q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+    const a = r.audio[PL.audio] || {};
+    const br = r.size && r.duration ? Math.round((r.size * 8) / r.duration / 1000) : 0;
+    const rows = [
+      [plL("Mod", "Mode"), { direct: plL("doğrudan", "direct"), remux: "ffmpeg remux", transcode: plL("canlı dönüşüm", "live transcode") }[PL.mode]],
+      [plL("Görüntü", "Video"), r.kind === "video" ? `${(r.vcodec || "?").toUpperCase()} · ${v.videoWidth || r.width}×${v.videoHeight || r.height}${PL.frameDur ? " · " + Math.round(1 / PL.frameDur) + " fps" : ""}` : "—"],
+      [plL("Ses", "Audio"), a.codec ? `${a.codec.toUpperCase()} · ${a.channels || "?"} ${plL("kanal", "ch")}${a.lang ? " · " + a.lang : ""}` : "—"],
+      [plL("Bit hızı", "Bitrate"), br ? (br > 1000 ? (br / 1000).toFixed(1) + " Mbit/s" : br + " kbit/s") : "—"],
+      [plL("Hız", "Speed"), v.playbackRate + "×"],
+      [plL("Düşen kare", "Dropped"), q ? `${q.droppedVideoFrames} / ${q.totalVideoFrames}` : "—"],
+      [plL("Tampon", "Buffer"), v.buffered.length ? Math.max(0, v.buffered.end(v.buffered.length - 1) - v.currentTime).toFixed(1) + " sn" : "—"],
+    ];
+    box.innerHTML = rows.map(([k, x]) => `<div><span>${k}</span><b>${escapeHtml(String(x))}</b></div>`).join("");
   };
-  if (map[k]) { e.preventDefault(); e.stopPropagation(); map[k](); plWake(); }
+  draw(); PL.infoT = setInterval(draw, 1000);
 }

@@ -4,7 +4,7 @@
 
 const PX = {
   queue: [], qi: -1, pending: null, nextShown: false, nextCancel: false, lib: null, libTab: "queue", libSeries: null,
-  cfg: { langs: "tr,en", trEngine: "nllb", sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
+  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
 };
 const pxBase = (p) => String(p).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 const pxSave = () => { try { localStorage.setItem("kami.player", JSON.stringify(PX.cfg)); } catch { /* yok */ } };
@@ -256,7 +256,12 @@ window.plSettings = () => {
     <button class="pl-b" data-act="vreset">${plL("Görüntüyü sıfırla", "Reset picture")}</button>
     <h4>${plL("Ses", "Audio")}</h4>
     <div class="px-seg" data-g="audio">${[["off", plL("Kapalı", "Off")], ["norm", plL("Normalleştir", "Normalize")], ["night", plL("Gece modu", "Night mode")]].map(([v, l]) => `<button data-v="${v}" class="${c.audio === v ? "on" : ""}">${l}</button>`).join("")}</div>
-    <p class="px-hint">${plL("Gece modu patlamaları kısar, fısıltıları yükseltir.", "Night mode tames explosions and lifts whispers.")}</p>
+    <p class="px-hint">${plL("Gece modu patlamaları kısar, fısıltıları yükseltir. Ses kaydırıcısı %200'e kadar çıkar.", "Night mode tames explosions and lifts whispers. Volume goes up to 200%.")}</p>
+    <div class="px-shift"><span>${plL("5.1 → kulaklık (diyalog öne)", "5.1 → headphones (dialogue first)")}</span><div class="px-seg" data-g="dialog" style="margin:0">${[["0", plL("Kapalı", "Off")], ["1", plL("Açık", "On")]].map(([v, l]) => `<button data-v="${v}" class="${(c.dialog ? "1" : "0") === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
+    <label class="px-rng"><span>${plL("Sesi geciktir", "Delay audio")}</span><input type="range" data-ak="delay" min="0" max="1000" step="10" value="${c.delay}"><b>${c.delay} ms</b></label>
+    <h4>${plL("Kısayollar", "Shortcuts")}</h4>
+    <div class="px-keys">${pxKeysHtml()}</div>
+    <button class="pl-b" data-act="keyreset">${plL("Varsayılana dön", "Reset to defaults")}</button>
     <h4>Kami Player</h4>
     <button class="pl-b" data-act="default">${plL("Varsayılan oynatıcı yap (Windows ayarları)", "Make default player (Windows settings)")}</button>`;
   p.hidden = false;
@@ -265,11 +270,14 @@ window.plSettings = () => {
     const segEl = b.closest(".px-seg");
     if (segEl) {
       const g = segEl.dataset.g, v = b.dataset.v;
-      if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v; else c[g][segEl.dataset.k] = segEl.dataset.k === "pos" ? +v : v;
+      if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v;
+      else if (g === "dialog") { c.dialog = v === "1"; pxSave(); if (PL.open) { if (PL.mode === "direct" && plDialogMix()) PL.mode = "remux"; plModeUi(); plSeek(plNow(), !$("#plVideo").paused); } } else c[g][segEl.dataset.k] = segEl.dataset.k === "pos" ? +v : v;
       segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
       pxSave(); pxApplyAll();
     }
     if (b.dataset.act === "translate") pxTranslate();
+    if (b.dataset.key) pxCaptureKey(b);
+    if (b.dataset.act === "keyreset") { try { localStorage.removeItem("kami.keys"); } catch { /* yok */ } $(".px-keys").innerHTML = pxKeysHtml(); }
     if (b.dataset.act === "sync") pxSync();
     if (b.dataset.act === "sh-") plShift(-0.5);
     if (b.dataset.act === "sh+") plShift(0.5);
@@ -282,6 +290,9 @@ window.plSettings = () => {
     if (e.target.id === "pxLangs") { c.langs = e.target.value.toLowerCase().replace(/\s+/g, ""); pxSave(); }
   };
   p.oninput = (e) => {
+    if (e.target.dataset.ak === "delay") {
+      c.delay = +e.target.value; e.target.nextElementSibling.textContent = c.delay + " ms"; pxSave(); window.plApplyAudio(); return;
+    }
     const k = e.target.dataset.vk; if (!k) return;
     c.vid[k] = +e.target.value; e.target.nextElementSibling.textContent = c.vid[k] + "%";
     pxSave(); pxApplyVideo();
@@ -310,7 +321,35 @@ function pxApplyVideo() {
     Object.assign(v.style, { width: w + "px", height: h + "px", left: (W - w) / 2 + "px", top: (H - h) / 2 + "px", objectFit: "fill" });
   }
 }
+window.plDialogMix = () => !!(PX.cfg.dialog && PL.info && PL.info.kind === "video" && (PL.info.audio[PL.audio]?.channels || 0) >= 6);
+// kisayol listesi: her eylem icin atanmis tus(lar); tiklayinca yeni tus beklenir
+function pxKeyName(k) { return ({ " ": plL("Boşluk", "Space"), arrowleft: "←", arrowright: "→", arrowup: "↑", arrowdown: "↓", escape: "Esc" })[k] || k.toUpperCase(); }
+function pxKeysHtml() {
+  const km = plKeymap();
+  return Object.entries(PL_ACTIONS).map(([act, [tr, en]]) => {
+    const keys = Object.keys(km).filter((k) => km[k] === act);
+    return `<div><span>${plL(tr, en)}</span><button class="pl-b" data-key="${act}">${keys.map(pxKeyName).join(" / ") || "—"}</button></div>`;
+  }).join("");
+}
+function pxCaptureKey(btn) {
+  btn.textContent = plL("Bir tuşa bas…", "Press a key…"); PL.capture = true;
+  const on = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    document.removeEventListener("keydown", on, true); PL.capture = false;
+    const key = e.key.toLowerCase();
+    if (key !== "escape" || btn.dataset.key === "close") {
+      let user = {}; try { user = JSON.parse(localStorage.getItem("kami.keys") || "{}"); } catch { /* bos */ }
+      const km = plKeymap();
+      for (const k of Object.keys(km)) if (km[k] === btn.dataset.key && k !== key) user[k] = "";   // eski tusu bosalt
+      user[key] = btn.dataset.key;
+      try { localStorage.setItem("kami.keys", JSON.stringify(user)); } catch { /* yok */ }
+    }
+    $(".px-keys").innerHTML = pxKeysHtml();
+  };
+  document.addEventListener("keydown", on, true);
+}
 window.plApplyAudio = () => {
+  if (PL.delay) PL.delay.delayTime.setTargetAtTime((PX.cfg.delay || 0) / 1000, PL.ctx.currentTime, 0.02);
   if (!PL.comp) return;
   const m = PX.cfg.audio, C = PL.comp, t = PL.ctx.currentTime;
   const set = (th, knee, ratio, att, rel, g) => {
