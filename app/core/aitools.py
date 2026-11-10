@@ -382,6 +382,8 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
         for line in p.stdout or []:
             try:
                 msg = json.loads(line)
+                if not isinstance(msg, dict):   # "11557.000" gibi gunluk satirlari da JSON sayilir
+                    raise ValueError
             except ValueError:
                 if line.strip():
                     noise = (noise + [line.strip()])[-6:]   # JSON olmayan satirlar (Traceback, stderr)
@@ -402,6 +404,64 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
         tail = noise[-1][-150:] if noise else ""
         return {"error": f"no_output (cikis {rc})" + (": " + tail if tail else "")}
     return last
+
+
+# ---- altyazi cevirisi (Whisper ortaminda: NLLB / googletrans) -----------------------------------------------
+def _ensure_pkg(tool: str, module: str, package: str) -> bool:
+    """Arac ortaminda modul yoksa kur (googletrans kucuk; ilk 'Google ile cevir'de bir kez)."""
+    py = python_exe(tool)
+    try:
+        if subprocess.run([py, "-c", f"import {module}"], capture_output=True, timeout=60, creationflags=NO_WINDOW).returncode == 0:
+            return True
+    except Exception:
+        return False
+    uv = str(paths.BIN_DIR / "uv.exe") if paths.FROZEN and (paths.BIN_DIR / "uv.exe").is_file() else shutil.which("uv")
+    cmd = [uv, "pip", "install", "--python", py, package] if uv else [py, "-m", "pip", "install", package]
+    return _run_logged(tool, cmd, lambda s: None) == 0
+
+
+def translate_subtitle(text: str, out: str, src: str, tgt: str, engine: str,
+                       on_p: Callable[[float], None] = lambda p: None) -> dict:
+    import tempfile
+    if not installed("whisper"):
+        return {"error": "tool_missing"}
+    if engine == "google" and not _ensure_pkg("whisper", "googletrans", "googletrans>=4.0.2"):
+        return {"error": "googletrans_install_failed"}
+    fd, tmp = tempfile.mkstemp(prefix="kami_sub_", suffix=".vtt")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    try:
+        return _run_once(["app.tools.translate_run", tmp, out, src or "en", tgt or "tr", engine,
+                          os.path.join(models_dir("whisper"), "nllb")],
+                         lambda m: "p" in m and on_p(m["p"]), threading.Event(), "whisper", {})
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+def sync_subtitle(video: str, text: str, out: str) -> dict:
+    """Altyaziyi sese hizala (ffsubsync, Whisper ortaminda; ilk kullanimda kurulur)."""
+    import tempfile
+    from app.engines.ytdlp_engine import find_ffmpeg
+    if not installed("whisper"):
+        return {"error": "tool_missing"}
+    if not _ensure_pkg("whisper", "ffsubsync", "ffsubsync"):
+        return {"error": "ffsubsync_install_failed"}
+    ff = find_ffmpeg() or shutil.which("ffmpeg") or ""
+    fd, tmp = tempfile.mkstemp(prefix="kami_sync_", suffix=".srt" if "-->" in text and "WEBVTT" not in text[:10] else ".vtt")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    try:
+        return _run_once(["app.tools.subsync_run", video, tmp, out, os.path.dirname(ff), models_dir("whisper"),
+                          "large-v3-turbo"],
+                         lambda m: None, threading.Event(), "whisper", {})
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 # ---- rozetler: durum diskteki gercek dosyalardan turetilir (Kami'nin kendi kaydi bos/yanlis olabilir)
@@ -612,8 +672,9 @@ class AiQueue:
         model = self.settings.get("uvr_model") or UVR_MODELS[0]
         out_dir = os.path.join(os.path.dirname(path), "Ayrilmis")
         res = _run_json(["app.tools.uvr_run", path, out_dir, model, models_dir("uvr"),
-                         self.settings.get("uvr_format") or "mp3"],
-                        lambda m: m.get("stage") == "separate" and self.set_extra(did, ai_uvr_p=0.3), ev, "uvr")
+                         self.settings.get("uvr_format") or "mp3", self.settings.get("uvr_quality") or "fast"],
+                        lambda m: ("p" in m and self.set_extra(did, ai_uvr_p=m["p"])) or
+                                  (m.get("stage") == "separate" and self.set_extra(did, ai_uvr_p=0.3)), ev, "uvr")
         if "error" in res:
             self.set_extra(did, ai_uvr="cancelled" if res["error"] == "cancelled" else "error",
                            ai_uvr_err=str(res["error"])[:200])
@@ -634,7 +695,7 @@ class AiQueue:
         tmp = tempfile.mkdtemp(prefix="kami_lyr_", dir=models_dir("uvr"))
         try:
             res = _run_json(["app.tools.uvr_run", path, tmp, self.settings.get("uvr_model") or UVR_MODELS[0],
-                             models_dir("uvr"), "wav"],
+                             models_dir("uvr"), "wav", "fast"],   # sadece Whisper'a vokal: hizli yeter
                             lambda m: m.get("stage") == "separate" and self.set_extra(did, ai_lyrics_p=0.2), ev, "uvr")
             if "error" in res:
                 raise _JobError(res["error"])

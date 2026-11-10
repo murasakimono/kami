@@ -154,6 +154,7 @@ function bindDrop() {
     const files = [...(e.dataTransfer.files || [])];
     if (files.length) {
       for (const f of files) {
+        if (/\.(mkv|mp4|m4v|webm|avi|mov|ts|m2ts|wmv|flv|mpg|mpeg|3gp|ogv|mp3|flac|wav|ogg|oga|opus|m4a|aac|wma|ape|aiff|mka|wv)$/i.test(f.name)) continue;   // oynatici: Python tarafi yakalar (main.bind_drop)
         if (!/\.torrent$/i.test(f.name) || f.size > 10 * 1024 * 1024) { toast(T("drop_only_torrent"), true); continue; }
         const r = await api.drop_torrent(await fileToB64(f));
         dispatchAdd(r, f.name, {});

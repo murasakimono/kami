@@ -1,7 +1,9 @@
 """Kurulum / kaldirma isleri (Inno Setup cagirir):  Kami.exe --setup register | unregister
 
-register:   native host (Brave + Chrome + Edge, HKCU) -> <kurulum>\\kami_host.exe; magnet: isleyicisi -> Kami.exe
-unregister: ikisini de kaldirir (sadece bizim kayitlarimiz; magnet baska programa aitse dokunulmaz).
+register:   native host (Brave + Chrome + Edge, HKCU) -> <kurulum>\\kami_host.exe; magnet: isleyicisi -> Kami.exe;
+            Kami Player: video/ses uzantilari "Birlikte ac" + Varsayilan uygulamalar listesine (Kami.exe --play "%1").
+            Windows varsayilani programla degistirtmez; kullanici Ayarlar > Varsayilan uygulamalar > Kami'den secer.
+unregister: hepsini kaldirir (sadece bizim kayitlarimiz; magnet baska programa aitse dokunulmaz).
 Ayarlar ve gecmis (%LOCALAPPDATA%\\Kami\\data) SILINMEZ.
 """
 from __future__ import annotations
@@ -25,6 +27,63 @@ REG_PATHS = {
     "Edge": rf"Software\Microsoft\Edge\NativeMessagingHosts\{HOST_NAME}",
 }
 MAGNET = r"Software\Classes\magnet"
+PLAYER_VIDEO = (".mkv", ".mp4", ".m4v", ".webm", ".avi", ".mov", ".ts", ".m2ts", ".wmv", ".flv", ".mpg", ".mpeg", ".3gp", ".ogv")
+PLAYER_AUDIO = (".mp3", ".flac", ".wav", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wma", ".ape", ".aiff", ".mka", ".wv")
+PROGIDS = {"Kami.Video": "Kami video", "Kami.Audio": "Kami ses"}
+CAPS = r"Software\Kami\Capabilities"
+
+
+def register_player(kami: str) -> None:
+    """ProgID + OpenWithProgids + RegisteredApplications (HKCU, yonetici gerekmez)."""
+    for pid, name in PROGIDS.items():
+        for sub, nm, val in [(rf"Software\Classes\{pid}", "", name),
+                             (rf"Software\Classes\{pid}\DefaultIcon", "", f'"{kami}",0'),
+                             (rf"Software\Classes\{pid}\shell\open", "FriendlyAppName", "Kami Player"),
+                             (rf"Software\Classes\{pid}\shell\open\command", "", f'"{kami}" --play "%1"')]:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
+                winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, val)
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, CAPS) as k:
+        winreg.SetValueEx(k, "ApplicationName", 0, winreg.REG_SZ, "Kami")
+        winreg.SetValueEx(k, "ApplicationDescription", 0, winreg.REG_SZ, "Kami Download Manager & Player")
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, CAPS + r"\FileAssociations") as fa:
+        for ext in PLAYER_VIDEO + PLAYER_AUDIO:
+            pid = "Kami.Video" if ext in PLAYER_VIDEO else "Kami.Audio"
+            winreg.SetValueEx(fa, ext, 0, winreg.REG_SZ, pid)
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{ext}\OpenWithProgids") as k:
+                winreg.SetValueEx(k, pid, 0, winreg.REG_NONE, b"")
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\RegisteredApplications") as k:
+        winreg.SetValueEx(k, "Kami", 0, winreg.REG_SZ, CAPS)
+    _notify_assoc()
+
+
+def unregister_player() -> None:
+    for pid in PROGIDS:
+        _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{pid}")
+    for ext in PLAYER_VIDEO + PLAYER_AUDIO:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{ext}\OpenWithProgids", 0, winreg.KEY_ALL_ACCESS) as k:
+                for pid in PROGIDS:
+                    try:
+                        winreg.DeleteValue(k, pid)
+                    except FileNotFoundError:
+                        pass
+        except FileNotFoundError:
+            pass
+    _delete_tree(winreg.HKEY_CURRENT_USER, r"Software\Kami")
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\RegisteredApplications", 0, winreg.KEY_ALL_ACCESS) as k:
+            winreg.DeleteValue(k, "Kami")
+    except FileNotFoundError:
+        pass
+    _notify_assoc()
+
+
+def _notify_assoc() -> None:
+    try:
+        import ctypes
+        ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)   # SHCNE_ASSOCCHANGED
+    except Exception:
+        pass
 
 
 def extension_id(manifest: Path | None = None) -> str:
@@ -59,6 +118,8 @@ def register(exe_dir: Path | None = None) -> list[str]:
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
             winreg.SetValueEx(k, name, 0, winreg.REG_SZ, val)
     done.append("magnet: Kami")
+    register_player(kami)
+    done.append("oynatici: video/ses uzantilari")
     return done
 
 
@@ -97,6 +158,8 @@ def unregister() -> list[str]:
     if _magnet_is_ours():
         _delete_tree(winreg.HKEY_CURRENT_USER, MAGNET)
         done.append("magnet kaldirildi")
+    unregister_player()
+    done.append("oynatici kayitlari kaldirildi")
     return done
 
 

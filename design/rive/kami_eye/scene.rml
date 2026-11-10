@@ -1,0 +1,111 @@
+<Rive version="1" kind="fragment">
+    <!-- Kami muska ruhu: canli goz. Cizim sirasi: ilk yazilan en ustte.
+         Girdiler (ViewModel "Eye"): mouseX, mouseY (-1..1), lid (0 acik .. 1 kapali),
+         error (0..1 kirmizi iris), downloadSpeed (0..1 iris buyur), isDownloading, playbackState. -->
+    <Artboard defaultStateMachineId="0:7" viewModelId="0:40" viewModelInstanceId="0:41" width="1024" height="1024" styleId="0:5" name="KamiEye" id="0:2">
+        <LayoutComponentStyle name="Artboard Style" id="0:5"/>
+
+        <!-- 1) Goz kirpma kapagi (zaman cizelgesi surer) -->
+        <Node name="BlinkLid" id="0:100">
+            <ClippingShape sourceId="0:102" name="Clip"/>
+            <Image x="475" y="385" assetId="0:64" name="BlinkLidImage"/>
+        </Node>
+        <Shape x="470" y="170" rotation="-0.16" name="BlinkClip" id="0:102">
+            <Ellipse width="360" height="300" originX="0.5" originY="0.5" name="Path"/>
+        </Shape>
+
+        <!-- 2) Uygulamanin surdugu kapak (uzerine gelince, uyku, bitti) -->
+        <Node name="HostLid" id="0:110">
+            <ClippingShape sourceId="0:112" name="Clip"/>
+            <Image x="475" y="385" assetId="0:64" name="HostLidImage"/>
+        </Node>
+        <Shape x="470" y="170" rotation="-0.16" name="HostClip" id="0:112">
+            <DataBindContext sourcePathIds="0:40-0:47" propertyKey="14" converterId="0:82"/>
+            <Ellipse width="360" height="300" originX="0.5" originY="0.5" name="Path"/>
+        </Shape>
+
+        <!-- 2b) Sabit isik yansimasi (iris hareket etse de yerinde kalir) -->
+        <Node name="GlintClip" id="0:130">
+            <ClippingShape sourceId="0:132" name="Clip"/>
+            <Image x="508" y="360" assetId="0:65" name="Glint"/>
+        </Node>
+        <Shape x="487" y="385" name="GlintMask" id="0:132">
+            <DataBindContext sourcePathIds="0:40-0:45" propertyKey="13" converterId="0:80"/>
+            <DataBindContext sourcePathIds="0:40-0:46" propertyKey="14" converterId="0:81"/>
+            <Ellipse width="92" height="92" originX="0.5" originY="0.5" name="Path"/>
+        </Shape>
+
+        <!-- 3) Govde: goz yuvasi delik, iris bunun ALTINDA kalir (yuvadan cikamaz) -->
+        <Image x="512" y="512" assetId="0:61" name="BodyWithHole"/>
+
+        <!-- 4) Iris: imleci izler, hizla buyur; kirmizi kopya hata icin -->
+        <Node x="487" y="385" scaleX="1.18" scaleY="1.18" name="Iris" id="0:120">
+            <DataBindContext sourcePathIds="0:40-0:45" propertyKey="13" converterId="0:80"/>
+            <DataBindContext sourcePathIds="0:40-0:46" propertyKey="14" converterId="0:81"/>
+            <DataBindContext sourcePathIds="0:40-0:49" propertyKey="16" converterId="0:83"/>
+            <DataBindContext sourcePathIds="0:40-0:49" propertyKey="17" converterId="0:83"/>
+            <Image assetId="0:63" opacity="0" name="IrisRed" id="0:122">
+                <DataBindContext sourcePathIds="0:40-0:48" propertyKey="18"/>
+            </Image>
+            <Image assetId="0:62" name="IrisGreen" id="0:121"/>
+        </Node>
+
+        <!-- 5) Taban: govde + temiz goz aki -->
+        <Image x="512" y="512" assetId="0:60" name="Base"/>
+
+        <StateMachine name="Eye" id="0:7">
+            <StateMachineLayer name="Blink" id="0:8">
+                <EntryState>
+                    <StateTransition stateToId="0:12"/>
+                </EntryState>
+                <AnimationState x="200" y="0" animationId="0:6" id="0:12"/>
+            </StateMachineLayer>
+        </StateMachine>
+
+        <!-- 4 sn'de bir kirpma: 60 fps, 240 kare -->
+        <LinearAnimation loopValue="loop" duration="240" name="Blink" id="0:6">
+            <KeyedObject objectId="0:102">
+                <KeyedProperty propertyKey="14">
+                    <KeyFrameDouble value="170" interpolationType="linear"/>
+                    <KeyFrameDouble value="170" interpolationType="linear" frame="222"/>
+                    <KeyFrameDouble value="312" interpolationType="linear" frame="228"/>
+                    <KeyFrameDouble value="312" interpolationType="linear" frame="231"/>
+                    <KeyFrameDouble value="170" interpolationType="linear" frame="239"/>
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+    </Artboard>
+
+    <DataConverterRangeMapper minInput="-1" maxInput="1" minOutput="463" maxOutput="511" clampLower="true" clampUpper="true" name="LookX" id="0:80"/>
+    <DataConverterRangeMapper minInput="-1" maxInput="1" minOutput="375" maxOutput="395" clampLower="true" clampUpper="true" name="LookY" id="0:81"/>
+    <DataConverterRangeMapper minInput="0" maxInput="1" minOutput="170" maxOutput="312" clampLower="true" clampUpper="true" name="LidY" id="0:82"/>
+    <DataConverterRangeMapper minInput="0" maxInput="1" minOutput="1.18" maxOutput="1.38" clampLower="true" clampUpper="true" name="SpeedScale" id="0:83"/>
+
+    <ViewModel defaultInstanceId="0:41" name="Eye" id="0:40">
+        <ViewModelPropertyNumber name="mouseX" id="0:45"/>
+        <ViewModelPropertyNumber name="mouseY" id="0:46"/>
+        <ViewModelPropertyNumber name="lid" id="0:47"/>
+        <ViewModelPropertyNumber name="error" id="0:48"/>
+        <ViewModelPropertyNumber name="downloadSpeed" id="0:49"/>
+        <ViewModelPropertyBoolean name="isDownloading" id="0:50"/>
+        <ViewModelPropertyBoolean name="isError" id="0:51"/>
+        <ViewModelPropertyNumber name="playbackState" id="0:52"/>
+        <ViewModelInstance exports="true" name="Default" id="0:41">
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:45"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:46"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:47"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:48"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:49"/>
+            <ViewModelInstanceBoolean propertyValue="false" viewModelPropertyId="0:50"/>
+            <ViewModelInstanceBoolean propertyValue="false" viewModelPropertyId="0:51"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:52"/>
+        </ViewModelInstance>
+    </ViewModel>
+
+    <ImageAsset file="base.png" name="base" id="0:60"/>
+    <ImageAsset file="body_hole.png" name="body_hole" id="0:61"/>
+    <ImageAsset file="iris.png" name="iris" id="0:62"/>
+    <ImageAsset file="iris_red.png" name="iris_red" id="0:63"/>
+    <ImageAsset file="lid.png" name="lid" id="0:64"/>
+    <ImageAsset file="glint.png" name="glint" id="0:65"/>
+</Rive>

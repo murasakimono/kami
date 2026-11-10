@@ -69,7 +69,7 @@ def open_in_uwp(aumid: str, path: str) -> bool:
 
 
 def play(path: str, player: str = "screenbox") -> str:
-    """-> 'screenbox' | 'default' | ''"""
+    """-> 'screenbox' | 'default' | ''  (Kami Player main.py'de ayrica yonlendirilir)"""
     if player == "screenbox" and open_in_uwp(SCREENBOX_AUMID, path):
         return "screenbox"
     try:
@@ -102,6 +102,7 @@ class Watcher:
         self.set_extra = set_extra
         self.player = player
         self._active: dict[int, threading.Event] = {}
+        self.heads: dict[str, int] = {}   # yol -> bastan kesintisiz inen byte (Kami Player akisi icin)
 
     def start(self, did: int) -> dict[str, Any]:
         d = self.manager.store.get(did)
@@ -147,6 +148,7 @@ class Watcher:
 
     def _wait(self, did: int, ev: threading.Event) -> None:
         need_mb = int(self.manager.settings.get("watch_min_mb") or 20)
+        opened, how, tracked = False, "", None
         while not ev.wait(1.0):
             d = self.manager.store.get(did)
             if not d or not d.gid:
@@ -161,10 +163,23 @@ class Watcher:
                                    int(st.get("pieceLength") or 0), start)
             need = min(need_mb * 1024 * 1024, max(1, length) if length else need_mb * 1024 * 1024)
             self.set_extra(did, watch="buffering", watch_p=round(min(1.0, have / need), 2))
-            if have >= need or st.get("status") == "complete":
+            if path and st.get("status") != "complete":
+                tracked = os.path.normcase(os.path.abspath(path))
+                self.heads[tracked] = have   # Kami Player: sunucu inmemis kisma gecmesin
+            if not opened and (have >= need or st.get("status") == "complete"):
                 if path and os.path.exists(path):
                     how = self.player(path)
+                    opened = True
                     self.set_extra(did, watch="playing" if how else "error", watch_player=how)
                     log.info("Inerken izle: %s (%s)", os.path.basename(path), how or "acilamadi")
+                if how != "kami":   # dis oynatici: takip bitti; Kami Player: inis bitene kadar bas konumu guncellenir
+                    break
+            if st.get("status") == "complete":
                 break
         self._active.pop(did, None)
+        if tracked:
+            self.heads.pop(tracked, None)   # inis bitti / iptal: dosya artik tam
+
+    def head(self, path: str) -> int | None:
+        """Kami Player medya sunucusu icin: dosyanin bastan kesintisiz inmis byte sayisi (inmiyorsa None)."""
+        return self.heads.get(os.path.normcase(os.path.abspath(path)))

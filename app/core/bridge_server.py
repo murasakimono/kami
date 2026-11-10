@@ -36,6 +36,7 @@ class BridgeServer:
         self.info_path = info_path
         self.on_show = on_show or (lambda: None)
         self.on_quit = on_quit or (lambda: None)
+        self.on_play: Callable[[str], None] | None = None   # Kami Player (main baglar)
         self.token = secrets.token_urlsafe(32)
         self.httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -100,6 +101,12 @@ class BridgeServer:
                          "sites": sites}
         if path == "/v1/show":
             self.on_show()
+            return 200, {"ok": True}
+        if path == "/v1/play":   # Kami.exe --play "<dosya>" (ikinci ornek) -> calisan Kami'nin oynaticisi
+            p = str(body.get("path") or "")
+            if not self.on_play or not os.path.isfile(p):
+                return 400, {"ok": False, "error": "bad_path"}
+            self.on_play(p)
             return 200, {"ok": True}
         if path == "/v1/selfcheck-whisper":   # tanilama: Kami surecinin icinden alt surec yolunu dene
             from app.core import aitools

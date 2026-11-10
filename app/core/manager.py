@@ -528,10 +528,14 @@ class DownloadManager:
         if d.gid:
             self.engine.remove(d.gid)
         if delete_file and d.path:
+            from app.core.mediatools import remove_or_trash
             for p in (d.path, d.path + ".aria2"):
                 try:
                     if os.path.isfile(p):
-                        os.remove(p)
+                        if p == d.path and d.status == Status.COMPLETE:
+                            remove_or_trash(p)   # bitmis dosya Geri Donusum Kutusu'na
+                        else:
+                            os.remove(p)
                 except OSError:
                     log.warning("Dosya silinemedi: %s", p)
         elif d.status != Status.COMPLETE and d.path:

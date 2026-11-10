@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kami</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="sunak.css">
 </head>
 <body>
   <header class="topbar">
@@ -305,6 +306,8 @@
         <label class="row"><span data-i18n="s_uvr_model"></span><select name="uvr_model" id="uvrModelSel"></select></label>
         <label class="row"><span data-i18n="s_uvr_format"></span>
           <select name="uvr_format"><option value="mp3">MP3</option><option value="flac">FLAC</option><option value="wav">WAV</option></select></label>
+        <label class="row"><span data-i18n="s_uvr_quality"></span>
+          <select name="uvr_quality"><option value="fast" data-i18n="s_uvrq_fast"></option><option value="balanced" data-i18n="s_uvrq_bal"></option><option value="best" data-i18n="s_uvrq_best"></option></select></label>
         <p class="hint" id="aiState"></p>
         <label class="check"><input type="checkbox" name="social_cookies"><span data-i18n="s_social"></span></label>
         <label class="check"><input type="checkbox" name="follow_enabled"><span data-i18n="s_follow"></span></label>
@@ -325,7 +328,7 @@
         <label class="check"><input type="checkbox" name="history_warn"><span data-i18n="s_history_warn"></span></label>
         <label class="row"><span data-i18n="s_watch_mb"></span><input type="number" name="watch_min_mb" min="2" max="500"></label>
         <label class="row"><span data-i18n="s_watch_player"></span>
-          <select name="watch_player"><option value="screenbox">Screenbox</option><option value="default" data-i18n="s_player_default"></option></select></label>
+          <select name="watch_player"><option value="kami">Kami Player</option><option value="screenbox">Screenbox</option><option value="default" data-i18n="s_player_default"></option></select></label>
       </fieldset>
 
       <fieldset>
@@ -524,5 +527,8 @@
   <script src="media6.js"></script>
   <script src="use6.js"></script>
   <script src="plugins.js"></script>
+  <script src="eye/kami_eye.js"></script>
+  <script src="sunak.js"></script>
+  <script src="settings-tabs.js"></script>
 </body>
 </html>

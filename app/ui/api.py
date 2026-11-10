@@ -59,6 +59,12 @@ class Api:
         self._phone = None
         self._phone_key = None
         self._ntfy = None
+        self._media = None                               # media_server.MediaServer (P1 oynatici, main baglar)
+        self._play_inbox: list[str] = []                 # (eski) Sunak ici oynatici kuyrugu
+        self._player_q: list[dict[str, Any]] = []        # Kami Player penceresine giden istekler
+        self._player_win = None                          # pywebview penceresi (kapaninca None)
+        self._make_player_window = None                  # main: pencere fabrikasi
+        self._front_player = None                        # main: pencereyi one getir (Win32)
         self._warns: list[dict[str, Any]] = []
         self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
         manager.events.on("ui.warn", lambda **kw: self._on_warn(kw))
@@ -69,7 +75,8 @@ class Api:
         "add_url", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
-        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now",
+        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
+        "library_get", "library_albums", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -123,12 +130,14 @@ class Api:
             torrents, self._torrent_inbox = self._torrent_inbox, []
             ai_events, self._ai_events = self._ai_events, []
             warns, self._warns = self._warns, []
+            plays, self._play_inbox = self._play_inbox, []
         rd = self._rd
         upd = None
         with self._inbox_lock:
             if self._update_info and not self._update_shown:   # yeni surum bilgisi arayuze bir kez
                 upd, self._update_shown = self._update_info, True
         return {
+            "play_requests": plays,
             "ai_events": ai_events,
             "warns": warns,
             "shutdown": self._shutdown.state() if self._shutdown else None,
@@ -968,6 +977,413 @@ class Api:
         if self._shutdown:
             self._shutdown.cancel()
         return {"ok": True}
+
+    # ---------- oynatici (P1) ----------
+    def player_open(self, download_id: int) -> dict[str, Any]:
+        """Biten indirmeyi Kami'nin kendi oynaticisinda ac: yerel medya sunucusu adresi + mod (direct/remux/transcode)."""
+        if not self._media:
+            return {"ok": False, "error": "player_unavailable"}
+        d = self._manager.store.get(int(download_id))
+        if not d or not d.path or not os.path.isfile(d.path):
+            return {"ok": False, "error": "not_found"}
+        x = dict(d.extra or {})
+        try:
+            from app.core import aitools
+            x = aitools.merge_disk_state(x, d.path)
+        except Exception:
+            pass
+        return self._media.register(d.path, d.filename or "", [x.get("ai_whisper_srt") or ""])
+
+    def player_open_path(self, path: str) -> dict[str, Any]:
+        """Surukle-birak / gecmis: kullanicinin verdigi yerel medya dosyasi."""
+        if not self._media:
+            return {"ok": False, "error": "player_unavailable"}
+        return self._media.register(str(path or ""))
+
+    def player_siblings(self, path: str) -> list[str]:
+        """Ayni klasordeki ayni turden medya: otomatik 'siradakiler' listesi."""
+        from app.core.library import siblings
+        return siblings(str(path or ""))
+
+    def _library_dirs(self) -> list[str]:
+        dirs = [str(self._manager.base_dir())] + [str(d) for d in (self._manager.settings.get("library_dirs") or [])]
+        return list(dict.fromkeys(d for d in dirs if d))
+
+    def library_get(self) -> dict[str, Any]:
+        from app.core.library import scan
+        res = scan(self._library_dirs())
+        res["dirs"] = self._library_dirs()
+        res["base"] = str(self._manager.base_dir())
+        return res
+
+    def library_albums(self) -> dict[str, Any]:
+        """Kutuphanedeki muzik: album kartlari (kapak, sanatci, parcalar)."""
+        from app import paths
+        from app.core.library import albums, scan
+        res = scan(self._library_dirs())
+        al = albums(res.get("items", []), paths.DATA_DIR / "albums_cache.json")
+        for g in al:
+            g["cover"] = (self._media.asset_url(g["cover_path"], "c") if g["cover_path"] else
+                          self._media.asset_url(g["cover_img"], "f") if g["cover_img"] else "") if self._media else ""
+            g.pop("cover_path", None); g.pop("cover_img", None)
+        return {"ok": True, "albums": al}
+
+    # ---------- B8/B9: atlama araliklari, posterler, ses cikar, klip, onarim, cop kutusu ----------
+    def _mt_cache(self):
+        if not getattr(self, "_mtc", None):
+            from app import paths
+            from app.core.mediatools import _Cache
+            self._mtc = _Cache(paths.DATA_DIR / "online_cache.json")
+        return self._mtc
+
+    def player_skips(self, path: str, duration: float = 0, tags: dict | None = None) -> dict[str, Any]:
+        """Intro/outro (AniSkip, anime) + SponsorBlock (YouTube'dan inenler)."""
+        from pathlib import Path
+        from app.core import mediatools as mt
+        from app.core.library import parse_name
+        p = Path(str(path or ""))
+        out: list[dict[str, Any]] = []
+        info = parse_name(p.stem) if p.name else {}
+        if info.get("series") and info.get("episode"):
+            out += mt.aniskip(info["series"], int(info["episode"]), float(duration or 0), self._mt_cache())
+        vid = mt.youtube_id(str(p), tags or {})
+        if vid:
+            out += mt.sponsorblock(vid, self._mt_cache())
+        return {"ok": True, "segments": out, "series": info.get("series", ""), "episode": info.get("episode", 0)}
+
+    def library_posters(self, names: list | None = None) -> dict[str, Any]:
+        from app.core import mediatools as mt
+        res = {}
+        for n in (names or [])[:60]:
+            al = mt.anilist(str(n), self._mt_cache())
+            if al and al.get("cover"):
+                res[str(n)] = {"cover": al["cover"], "color": al.get("color", "")}
+        return {"ok": True, "posters": res}
+
+    def _ff(self) -> str:
+        from app.engines.ytdlp_engine import find_ffmpeg
+        return find_ffmpeg() or ""
+
+    def media_extract_audio(self, path: str, codec: str = "") -> dict[str, Any]:
+        from app.core import mediatools as mt
+        if not os.path.isfile(str(path or "")) or not self._ff():
+            return {"ok": False, "error": "bad_input"}
+        return mt.extract_audio(self._ff(), str(path), str(codec or ""))
+
+    def media_clip(self, path: str, a: float, b: float, mode: str = "copy") -> dict[str, Any]:
+        from app.core import mediatools as mt
+        if not os.path.isfile(str(path or "")) or not self._ff():
+            return {"ok": False, "error": "bad_input"}
+        return mt.clip(self._ff(), str(path), float(a), float(b), str(mode), "h264_nvenc")
+
+    def media_repair(self, path: str) -> dict[str, Any]:
+        from app.core import mediatools as mt
+        if not os.path.isfile(str(path or "")) or not self._ff():
+            return {"ok": False, "error": "bad_input"}
+        return mt.repair(self._ff(), str(path))
+
+    def library_trash(self, paths: list | None = None) -> dict[str, Any]:
+        """Izlenmis diziyi Geri Donusum Kutusu'na tasi (yalnizca kutuphane klasorlerindeki dosyalar)."""
+        from app.core import mediatools as mt
+        roots = [os.path.normcase(os.path.abspath(d)) for d in self._library_dirs()]
+        ok_paths = [p for p in (paths or []) if os.path.isfile(str(p))
+                    and any(os.path.normcase(os.path.abspath(str(p))).startswith(r + os.sep) for r in roots)]
+        if not ok_paths:
+            return {"ok": False, "error": "no_files"}
+        return {"ok": mt.to_trash(ok_paths), "count": len(ok_paths)}
+
+    def library_add_dir(self) -> dict[str, Any]:
+        d = ""
+        if self._player_win is not None:   # kutuphane oynatici penceresinden: iletisim kutusu orada acilsin
+            import webview
+            dialog = getattr(getattr(webview, "FileDialog", None), "FOLDER", None) or webview.FOLDER_DIALOG
+            res = self._player_win.create_file_dialog(dialog, directory=str(self._manager.base_dir()))
+            d = res[0] if res else ""
+        else:
+            d = self.choose_folder()
+        if d:
+            cur = list(self._manager.settings.get("library_dirs") or [])
+            if d not in cur:
+                self._manager.settings.set("library_dirs", cur + [d])
+        return {"ok": bool(d), "dirs": self._library_dirs()}
+
+    def library_remove_dir(self, path: str) -> dict[str, Any]:
+        cur = [d for d in (self._manager.settings.get("library_dirs") or []) if d != path]
+        self._manager.settings.set("library_dirs", cur)
+        return {"ok": True, "dirs": self._library_dirs()}
+
+    def _pl(self):
+        if not getattr(self, "_playlists", None):
+            from app import paths
+            from app.core.library import Playlists
+            self._playlists = Playlists(paths.DATA_DIR / "playlists.json")
+        return self._playlists
+
+    def playlist_get(self) -> dict[str, list[str]]:
+        return self._pl().all()
+
+    def playlist_save(self, name: str, items: list) -> dict[str, list[str]]:
+        return self._pl().save(str(name), [str(x) for x in (items or [])])
+
+    def playlist_delete(self, name: str) -> dict[str, list[str]]:
+        return self._pl().delete(str(name))
+
+    def subtitle_translate(self, video_path: str, text: str, src: str = "en", engine: str = "nllb") -> dict[str, Any]:
+        """Altyaziyi Turkceye cevir (NLLB yerel / googletrans), videonun yanina <ad>.tr.srt yazar; oynatici VTT'yi alir."""
+        from pathlib import Path
+        from app.core import aitools
+        from app.core.media_server import srt_to_vtt
+        p = Path(str(video_path or ""))
+        if not p.is_file() or not str(text or "").strip():
+            return {"ok": False, "error": "bad_input"}
+        out = p.with_name(p.stem + ".tr.srt")
+        if out.exists():
+            out = p.with_name(p.stem + ".tr.kami.srt")   # var olan insan yapimi altyaziya dokunma
+        res = aitools.translate_subtitle(str(text), str(out), str(src or "en"), "tr", "google" if engine == "google" else "nllb")
+        if "error" in res:
+            return {"ok": False, "error": str(res["error"])[:200]}
+        return {"ok": True, "path": res["done"], "engine": res.get("engine"),
+                "vtt": srt_to_vtt(Path(res["done"]).read_text(encoding="utf-8"))}
+
+    def player_open_url(self, url: str) -> dict[str, Any]:
+        """Indirmeden izle: hoster linki + RD token -> Real-Debrid linki; medya sitesi -> yt-dlp akisi; yoksa dogrudan URL."""
+        if not self._media:
+            return {"ok": False, "error": "player_unavailable"}
+        url = str(url or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            return {"ok": False, "error": "bad_url"}
+        from app.core.debrid import is_media_site
+        rd = self._rd
+        if rd is not None and rd.has_token() and not is_media_site(url):
+            try:
+                if rd.supports(url, wait=False):
+                    files = rd.unrestrict_files(url)
+                    vids = [f for f in files if f["filename"].lower().endswith((".mkv", ".mp4", ".avi", ".webm", ".mov", ".m4v", ".ts", ".mp3", ".flac", ".m4a"))]
+                    if vids:
+                        f = max(vids, key=lambda x: x["size"])
+                        return {**self._media.register_url([f["url"]], f["filename"] or url), "source": "rd"}
+            except Exception as exc:   # RD olmazsa yt-dlp / dogrudan dene
+                log.info("RD ile izlenemedi: %s", exc)
+        try:
+            from app.engines.ytdlp_engine import _ytdlp, _cookiefile
+            yt_dlp = _ytdlp()
+            opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True,
+                    "format": "bv*[height<=1080][vcodec^=avc1]+ba[acodec^=mp4a]/bv*[height<=1080]+ba/b[height<=1080]/b"}
+            with _cookiefile(url) as ck, yt_dlp.YoutubeDL({**opts, "cookiefile": ck} if ck else opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            fmts = info.get("requested_formats") or [info]
+            urls = [f["url"] for f in fmts if f.get("url")]
+            headers = (fmts[0].get("http_headers") or info.get("http_headers") or {})
+            if urls:
+                return {**self._media.register_url(urls[:2], info.get("title") or url, headers, info.get("duration") or 0),
+                        "source": "ytdlp", "webpage": url}
+        except Exception as exc:
+            log.info("yt-dlp ile izlenemedi: %s", str(exc)[:200])
+        return {**self._media.register_url([url], url.rsplit("/", 1)[-1][:120] or url), "source": "direct"}
+
+    def subtitle_sync(self, video_path: str, text: str, lang: str = "") -> dict[str, Any]:
+        """Altyaziyi sese hizala; videonun yanina <ad>[.dil].sync.srt yazar, oynatici VTT'yi alir."""
+        from pathlib import Path
+        from app.core import aitools
+        from app.core.media_server import srt_to_vtt
+        p = Path(str(video_path or ""))
+        if not p.is_file() or not str(text or "").strip():
+            return {"ok": False, "error": "bad_input"}
+        out = p.with_name(p.stem + (f".{lang}" if lang else "") + ".sync.srt")
+        res = aitools.sync_subtitle(str(p), str(text), str(out))
+        if "error" in res:
+            return {"ok": False, "error": str(res["error"])[:200]}
+        return {"ok": True, "path": res["done"], "vtt": srt_to_vtt(Path(res["done"]).read_text(encoding="utf-8"))}
+
+    # ---------- sozluk (altyazida kelimeye tikla; yerel Vikisozluk SQLite) ----------
+    def _dict(self):
+        if not getattr(self, "_dictionary", None):
+            from app import paths
+            from app.core.dictionary import Dictionary
+            self._dictionary = Dictionary(paths.DATA_DIR / "dict" / "wiktionary.db")
+        return self._dictionary
+
+    def dict_status(self) -> dict[str, Any]:
+        return self._dict().status()
+
+    def dict_install(self, pack: str = "tr") -> dict[str, Any]:
+        return {"ok": self._dict().install(str(pack or ""))}
+
+    def dict_lookup(self, word: str, lang: str = "", line: str = "", pos: int = -1) -> dict[str, Any]:
+        """word: tiklanan kelime; bosluksuz dillerde (ja/zh) line + pos ile en uzun eslesme bulunur."""
+        d = self._dict()
+        lang = str(lang or "")[:5]
+        w = str(word or "")[:80]
+        if line and pos >= 0 and lang in ("ja", "zh"):
+            w = d.longest_match(str(line)[:300], int(pos), lang)
+        try:
+            return {"ok": True, "word": w, "entries": d.lookup(w, lang), "installed": d.installed()}
+        except Exception as exc:   # veritabani kilitli (kurulum suruyor) vb.
+            return {"ok": False, "word": w, "error": str(exc)[:160], "installed": d.installed()}
+
+    # ---------- muzik modu sozleri (B7): yan .lrc/.txt -> gomulu etiket -> LRCLIB ----------
+    def player_lyrics(self, path: str, artist: str = "", title: str = "", album: str = "", duration: float = 0,
+                      online: bool = True) -> dict[str, Any]:
+        from pathlib import Path
+        from app.core import lyrics as ly
+        links = ly.search_links(str(artist or ""), str(title or "")) if title else {}
+        p = Path(str(path or ""))
+        if p.is_file():
+            for ext, src in ((".lrc", "lrc"), (".txt", "txt")):
+                q = p.with_suffix(ext)
+                if q.is_file():
+                    try:
+                        t = q.read_text(encoding="utf-8-sig", errors="replace")
+                    except OSError:
+                        continue
+                    if t.strip():
+                        lrc = ly.is_lrc(t)
+                        return {"ok": True, "synced": t if lrc else "", "plain": "" if lrc else t, "source": src, "links": links}
+            if self._media is not None:
+                from app.core.media_server import find_ffprobe, probe
+                tg = probe(find_ffprobe(self._media.ffmpeg()), str(p)).get("tags", {})
+                t = tg.get("syncedlyrics") or tg.get("lyrics") or tg.get("unsyncedlyrics") or ""
+                if t.strip():
+                    lrc = ly.is_lrc(t)
+                    return {"ok": True, "synced": t if lrc else "", "plain": "" if lrc else t, "source": "tag", "links": links}
+        if online and title:
+            hit = None
+            dur = float(duration or 0)
+            tries = [(artist, title, album, dur), ("", f"{artist} {title}".strip(), "", dur), (artist, title, "", 0)]
+            for a_, t_, al_, d_ in tries:   # tam eslesme -> serbest arama -> sure filtresiz (klip surumleri uzun olur)
+                try:
+                    hit = ly.lrclib_find(str(a_ or ""), str(t_), str(al_ or ""), float(d_ or 0))
+                except Exception:
+                    hit = None
+                if hit:
+                    break
+            if hit:
+                return {"ok": True, "synced": hit.get("synced", ""), "plain": hit.get("plain", ""),
+                        "instrumental": bool(hit.get("instrumental")), "source": "lrclib", "links": links}
+        return {"ok": True, "synced": "", "plain": "", "source": "", "links": links}
+
+    def player_lyrics_save(self, path: str, text: str) -> dict[str, Any]:
+        """Yapistirilan sozu sarkinin yanina yazar (.lrc zamanliysa, degilse .txt); var olan dosyanin ustune yazar."""
+        from pathlib import Path
+        from app.core import lyrics as ly
+        p = Path(str(path or ""))
+        text = str(text or "").strip()
+        if not p.is_file() or not text or len(text) > 200_000:
+            return {"ok": False, "error": "bad_input"}
+        lrc = ly.is_lrc(text)
+        q = p.with_suffix(".lrc" if lrc else ".txt")
+        try:
+            q.write_text(text + "\n", encoding="utf-8")
+            other = p.with_suffix(".txt" if lrc else ".lrc")
+            if other.is_file() and not lrc:
+                pass   # zamanli .lrc onceliklidir; duz metin yalnizca .lrc yoksa okunur
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:160]}
+        return {"ok": True, "source": "lrc" if lrc else "txt", "path": str(q)}
+
+    # ---------- ekran ustu OCR (B6) ----------
+    def ocr_image(self, png_b64: str, lang: str = "") -> dict[str, Any]:
+        from app.core import ocr
+        return ocr.recognize(png_b64, lang)
+
+    def ocr_translate(self, text: str, src: str = "", engine: str = "google") -> dict[str, Any]:
+        """OCR metnini Turkceye cevir (googletrans / NLLB); basarisizsa arayuz metni cevirisiz gosterir."""
+        import os as _os
+        import tempfile
+        from app.core import aitools
+        text = str(text or "").strip()[:2000]
+        if not text:
+            return {"ok": False, "error": "bad_input"}
+        vtt = "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\n" + text.replace("\n\n", "\n") + "\n"
+        fd, out = tempfile.mkstemp(prefix="kami_ocr_tr_", suffix=".srt")
+        _os.close(fd)
+        try:
+            res = aitools.translate_subtitle(vtt, out, str(src or "en")[:5], "tr", "nllb" if engine == "nllb" else "google")
+            if "error" in res:
+                return {"ok": False, "error": str(res["error"])[:200]}
+            with open(res["done"], encoding="utf-8") as f:
+                lines = [ln for ln in f.read().splitlines() if ln.strip() and "-->" not in ln and not ln.strip().isdigit()]
+            return {"ok": True, "text": "\n".join(lines)}
+        finally:
+            try:
+                _os.remove(out)
+            except OSError:
+                pass
+
+    # ---------- Kami Player penceresi (ayri pywebview penceresi; main baglar) ----------
+    def player_show(self, req: dict | None = None) -> dict[str, Any]:
+        """Sunak / Gezgin / surukle-birak -> Kami Player penceresi: {id} | {path} | {url} | {library: True}."""
+        req = req or {}
+        item: dict[str, Any] = {}
+        if req.get("id") is not None:
+            d = self._manager.store.get(int(req["id"]))
+            if not d or not d.path or not os.path.isfile(d.path):
+                return {"ok": False, "error": "not_found"}
+            item["path"] = d.path
+        elif req.get("path"):
+            item["path"] = str(req["path"])
+        elif req.get("url"):
+            item["url"] = str(req["url"])
+        if req.get("queue"):
+            item["queue"] = [str(x) for x in req["queue"]]
+        if req.get("library"):
+            item["library"] = True
+        with self._inbox_lock:
+            self._player_q.append(item)
+        self._ensure_player()
+        return {"ok": True}
+
+    def player_poll(self) -> list[dict[str, Any]]:
+        with self._inbox_lock:
+            q, self._player_q = self._player_q, []
+        return q
+
+    def player_fullscreen(self, on: bool = True) -> None:
+        w = self._player_win
+        if w is not None:   # pywebview cagrisi arayuz is parcacigini bekleyebilir: JS'i bekletme
+            threading.Thread(target=w.toggle_fullscreen, name="kami-player-fs", daemon=True).start()
+
+    def player_mini(self, on: bool = True, kind: str = "audio", aspect: float = 0) -> dict[str, Any]:
+        """Mini oynatici (YouTube PiP gibi): cercevesiz, hep ustte, ekranin sag alti. Video: 16:9 kart, muzik: ince kart."""
+        from app.core.winwin import MiniWindow
+        if not getattr(self, "_mini", None):
+            self._mini = MiniWindow("Kami Player")
+        try:
+            if on:
+                if kind == "video":
+                    ar = float(aspect or 0) if 0.4 < float(aspect or 0) < 3.5 else 16 / 9
+                    w = 480 if ar >= 1 else 300
+                    ok = self._mini.enter(w, int(w / ar))
+                else:
+                    ok = self._mini.enter(440, 132)
+            else:
+                ok = self._mini.leave()
+            return {"ok": bool(ok)}
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("mini oynatici")
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def player_mini_move(self, dx: int = 0, dy: int = 0) -> None:
+        if getattr(self, "_mini", None):
+            self._mini.move(int(dx), int(dy))
+
+    def _ensure_player(self) -> None:
+        if self._player_win is None and self._make_player_window:
+            self._player_win = self._make_player_window()
+        elif self._player_win is not None and self._front_player:
+            self._front_player()
+
+    def _play_request(self, path: str) -> None:
+        self.player_show({"path": str(path)})
+
+    def player_default_apps(self) -> bool:
+        """Windows Ayarlar > Varsayilan uygulamalar > Kami (varsayilan programla degistirilemez, kullanici secer)."""
+        try:
+            os.startfile("ms-settings:defaultapps?registeredAppUser=Kami")  # type: ignore[attr-defined]
+            return True
+        except OSError:
+            return False
 
     # inerken izle
     def watch(self, download_id: int) -> dict[str, Any]:

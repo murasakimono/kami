@@ -55,6 +55,17 @@ def _magnet_arg(argv: list[str]) -> str:
     return ""
 
 
+def _play_arg(argv: list[str]) -> str:
+    """Kami Player: Kami.exe --play "<dosya>" (dosya iliskilendirme) ya da dogrudan medya dosyasi yolu."""
+    from app.core.media_server import AUDIO_EXT, VIDEO_EXT
+    for i, a in enumerate(argv):
+        if a == "--play" and i + 1 < len(argv):
+            return argv[i + 1]
+        if not a.startswith("-") and os.path.splitext(a)[1].lower() in VIDEO_EXT | AUDIO_EXT and os.path.isfile(a):
+            return a
+    return ""
+
+
 _MUTEX = None
 
 
@@ -101,6 +112,7 @@ def main() -> int:
             _time.sleep(1.5)       # aria2 (--stop-with-process) Kami'den hemen sonra kapanir: bin\ kilitli kalmasin
         return 0
     magnet = _magnet_arg(sys.argv[1:])
+    play = _play_arg(sys.argv[1:])
 
     # Tek ornek: zaten calisiyorsa onu one getir ve cik
     if call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping"):
@@ -114,6 +126,10 @@ def main() -> int:
             res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/rd", {"url": magnet, "source": "magnet"},
                                         timeout=5.0)
             log.info("Magnet calisan Kami'ye iletildi: %s", bool(res and res.get("ok")))
+        if play:   # Gezgin'de cift tik: calisan Kami oynaticiyi acar (pencereyi de one getirir)
+            res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/play", {"path": os.path.abspath(play)}, timeout=5.0)
+            log.info("Oynatma calisan Kami'ye iletildi: %s", bool(res and res.get("ok")))
+            return 0
         if "--tray" not in sys.argv[1:]:
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/show")
         log.info("Kami zaten calisiyor; pencere one getirildi.")
@@ -216,7 +232,7 @@ def main() -> int:
     events.on("ui.attention", lambda reason: show_window())
 
     api = Api(manager, engine, registry, lambda: bridge.port)
-    start_hidden = "--tray" in sys.argv[1:]
+    start_hidden = "--tray" in sys.argv[1:] or bool(play)   # Gezgin'den dosya: sadece Kami Player penceresi
     window = webview.create_window(
         "Kami",
         url=str(paths.WEB_DIR / "index.html"),
@@ -227,6 +243,52 @@ def main() -> int:
         minimized=start_hidden,
     )
     api._set_window(window)
+
+    # ---- Kami Player: --play ile acilis, calisan ornege gelen istek, pencereye birakilan medya dosyasi
+    def play_request(path: str) -> None:
+        api._play_request(path)   # Kami Player penceresi acilir / one gelir (Sunak tepside kalabilir)
+
+    def bind_drop(win) -> None:
+        try:
+            from webview.dom import DOMEventHandler
+            from app.core.media_server import AUDIO_EXT, VIDEO_EXT
+
+            def on_drop(e) -> None:
+                for f in (e.get("dataTransfer") or {}).get("files") or []:
+                    p = f.get("pywebviewFullPath") or ""
+                    if p and os.path.splitext(p)[1].lower() in VIDEO_EXT | AUDIO_EXT:
+                        api._play_request(p)
+                        break
+            win.dom.document.events.drop += DOMEventHandler(on_drop, True, False)
+        except Exception:
+            log.exception("Surukle-birak oynatma baglanamadi")
+    window.events.loaded += lambda: bind_drop(window)
+
+    # ---- Kami Player: ayri pencere (ayni surec, ayni api); kapaninca yok olur, istekte yeniden kurulur
+    player_front = WindowFront("Kami Player")
+
+    def make_player_window():
+        w = webview.create_window("Kami Player", url=str(paths.WEB_DIR / "player.html"), js_api=api,
+                                  width=1280, height=760, min_size=(360, 150), background_color="#050408",
+                                  text_select=False)
+
+        def closed() -> None:
+            api._player_win = None
+        w.events.closed += closed
+
+        def loaded() -> None:
+            bind_drop(w)
+            # simge durumundaki / arka plandaki Kami'den acilinca da one gelsin (Gezgin ikinci ornegi izin verdi)
+            player_front.request()
+            threading.Timer(0.6, player_front.request).start()
+        w.events.loaded += loaded
+        return w
+    api._make_player_window = make_player_window
+    api._front_player = player_front.request
+
+    bridge.on_play = play_request
+    if play:
+        api._play_request(os.path.abspath(play))
 
     from app.core import desktop, winwin
     from app.core.watchdog import UiWatchdog
@@ -362,7 +424,15 @@ def main() -> int:
         manager, busy_extra=lambda: bool(ai._cancel), on_queue_done=queue_done)
     shutdown.start()
     watcher = Watcher(manager, media_post.set_extra,
-                      player=lambda p: _play(p, settings.get("watch_player") or "screenbox"))
+                      player=lambda p: _watch_play(p))
+
+    def _watch_play(p: str) -> str:
+        """Inerken izle: Kami Player (varsayilan) ya da Screenbox / Windows varsayilani."""
+        how = settings.get("watch_player") or "kami"
+        if how == "kami" and api._media:
+            play_request(p)
+            return "kami"
+        return _play(p, how)
     phone_key = TokenStore(paths.DATA_DIR / "phone_key.bin")
     phone = PhoneServer(int(settings.get("phone_port")), phone_key.load,
                         lambda text, fmt="": api.add_text_detail(text, "phone", fmt),
@@ -381,6 +451,19 @@ def main() -> int:
     settings.on_change(lambda k, v: phone_apply() if k in ("phone_enabled", "phone_port") else None)
     api._history, api._shutdown, api._watcher = history, shutdown, watcher
     api._phone, api._phone_key, api._ntfy = phone, phone_key, ntfy_topic
+
+    # ---- P1 oynatici: yerel medya sunucusu (Range + ffmpeg akisi, sadece 127.0.0.1)
+    import atexit
+    from app.core.media_server import MediaServer
+    from app.engines.ytdlp_engine import find_ffmpeg
+    media_srv = MediaServer(find_ffmpeg, paths.WEB_DIR / "vendor" / "jassub")
+    try:
+        media_srv.start()
+        api._media = media_srv
+        media_srv.growing = watcher.head   # inerken izle: inmemis kisim istenirse bekle
+        atexit.register(media_srv.stop)
+    except OSError:
+        log.exception("Medya sunucusu acilamadi")
 
     def tray_warn(**kw) -> None:
         if kw.get("kind") == "disk" and not winwin.is_foreground(front._hwnd()):

@@ -15,6 +15,8 @@
 [Setup]
 AppId={{F27ACB8F-5660-4574-B6FA-305CA6828311}
 AppName=Kami
+; Kami Player: --setup register video/ses uzantilarini kaydeder, Gezgin yenilensin
+ChangesAssociations=yes
 AppVersion={#AppVersion}
 AppVerName=Kami {#AppVersion}
 AppPublisher=Metehan
