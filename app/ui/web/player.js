@@ -192,6 +192,7 @@ function plStart(r) {
   if (resume) plSetSrcResume(resume); else plSetSrc(0);
   window.plOnStart?.(r);
   window.plMusicStart?.(r);
+  window.plExtraStart?.(r);
   plMediaSession();
   plWake();
 }

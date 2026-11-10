@@ -344,3 +344,40 @@ body.pl-open #sunak { visibility: hidden; }
 .px-aacts .pl-b { height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: #1A1424; color: #C4B5FD; font: 600 12px "Segoe UI", system-ui, sans-serif; cursor: pointer; }
 .px-aacts .pl-b.pri { background: #3B1580; color: #fff; }
 .px-row small { color: #7E7593; }
+
+/* ===== B8/B9 ===== */
+.px-xseg { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.px-xseg button { flex: 1 1 auto; height: 32px; padding: 0 8px; border: 0; background: #16101F; color: #C4B5FD; font: 600 12px "Chakra Petch", sans-serif; cursor: pointer; clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); }
+.px-xseg button.on { background: #3B1580; color: #fff; box-shadow: inset 0 -2px 0 #2EE6A6; }
+.pe-eq { display: flex; justify-content: space-between; gap: 4px; height: 128px; margin: 4px 0 8px; padding: 6px 4px 0; background: rgba(255,255,255,.03); }
+.pe-eq label { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+.pe-eq input { writing-mode: vertical-lr; direction: rtl; width: 18px; height: 96px; accent-color: #2EE6A6; }
+.pe-eq small { font-size: 10px; color: #7E7593; }
+/* seekbar: atlama araliklari + bolum isaretleri */
+#player .pl-seek .pe-mark { position: absolute; top: 9px; height: 4px; pointer-events: none; opacity: .9; z-index: 1; }
+#player .pl-seek:hover .pe-mark { top: 8px; height: 6px; }
+#player .pl-seek .pe-mark.t-op, #player .pl-seek .pe-mark.t-ed, #player .pl-seek .pe-mark.t-recap { background: rgba(255, 196, 0, .75); }
+#player .pl-seek .pe-mark.t-sponsor, #player .pl-seek .pe-mark.t-selfpromo, #player .pl-seek .pe-mark.t-interaction { background: rgba(0, 212, 0, .7); }
+#player .pl-seek .pe-mark.t-intro, #player .pl-seek .pe-mark.t-outro, #player .pl-seek .pe-mark.t-music_offtopic { background: rgba(0, 170, 255, .6); }
+#player .pl-seek .pe-ch { position: absolute; top: 7px; width: 3px; height: 8px; margin-left: -1px; background: #050408; z-index: 2; pointer-events: none; }
+/* intro atla dugmesi */
+#player .pl-skip { position: absolute; right: 28px; bottom: 132px; z-index: 12; height: 42px; padding: 0 18px; border: 1px solid rgba(255,255,255,.25); border-radius: 8px; background: rgba(13,10,19,.82); color: #fff; font: 600 15px "Segoe UI", system-ui, sans-serif; cursor: pointer; backdrop-filter: blur(6px); animation: pe-in .25s ease-out; }
+#player .pl-skip:hover { background: #3B1580; border-color: #A78BFA; }
+@keyframes pe-in { from { opacity: 0; transform: translateY(8px); } }
+#player.idle .pl-skip { bottom: 52px; }
+/* ortam isigi: video kenar renkleri siyah bantlara yayilir */
+#player .pl-amb { position: absolute; inset: -10%; pointer-events: none; filter: blur(60px); opacity: .55; transition: background 1s;
+  background: linear-gradient(90deg, rgb(var(--al, 0,0,0)) 0%, transparent 35%, transparent 65%, rgb(var(--ar, 0,0,0)) 100%), linear-gradient(180deg, rgb(var(--at, 0,0,0)) 0%, transparent 30%, transparent 70%, rgb(var(--ab, 0,0,0)) 100%); }
+#player .pl-amb[hidden], #player.is-audio .pl-amb, #player.mini .pl-amb { display: none; }
+/* izlemeye devam + izlendi + temizle + posterler */
+.pe-shelf { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+.pe-cont { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px 10px 12px; border: 0; border-radius: 6px; background: #17111F; color: #EDE9F6; text-align: left; cursor: pointer; overflow: hidden; font-family: "Segoe UI", system-ui, sans-serif; }
+.pe-cont:hover { background: #221932; }
+.pe-cont b { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pe-cont small { font-size: 11px; color: #8E86A3; }
+.pe-cont i { position: absolute; left: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, #6D28D9, #2EE6A6); }
+.px-row.seen span { color: #7E7593; }
+.px-row.seen::after { content: "✓"; margin-left: auto; padding-left: 8px; color: #2EE6A6; font-size: 12px; }
+.pe-clean { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding: 12px; border-radius: 8px; background: rgba(46, 230, 166, .07); color: #B9F5DE; font-size: 13px; }
+.px-series.has-poster { background-size: cover; background-position: center; min-height: 150px; justify-content: flex-end; }
+#player .pl-skip { bottom: 168px; z-index: 9; }

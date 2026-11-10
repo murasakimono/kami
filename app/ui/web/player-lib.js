@@ -4,7 +4,7 @@
 
 const PX = {
   queue: [], qi: -1, pending: null, nextShown: false, nextCancel: false, lib: null, libTab: "queue", libSeries: null,
-  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, xfade: 0, assStyle: "orig", ocrLang: "auto", dictClick: true, lyrics: true, lrclib: true, karaoke: true, glow: true, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
+  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, xfade: 0, assStyle: "orig", ocrLang: "auto", dictClick: true, lyrics: true, lrclib: true, karaoke: true, glow: true, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100, rot: 0, flip: false }, audio: "off" },
 };
 const pxBase = (p) => String(p).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 const pxSave = () => { try { localStorage.setItem("kami.player", JSON.stringify(PX.cfg)); } catch { /* yok */ } };
@@ -297,12 +297,14 @@ window.plSettings = () => {
     <h4>${plL("Görüntü", "Picture")}</h4>
     ${seg("vid", "aspect", [["auto", plL("Otomatik", "Auto")], ["16/9", "16:9"], ["4/3", "4:3"], ["21/9", "21:9"], ["fill", plL("Doldur", "Fill")]])}
     ${rng("zoom", 100, 160, plL("Yakınlaştır / kırp", "Zoom / crop"))}${rng("bright", 50, 150, plL("Parlaklık", "Brightness"))}${rng("contrast", 50, 150, plL("Kontrast", "Contrast"))}${rng("sat", 0, 200, plL("Doygunluk", "Saturation"))}
+    ${window.pxExtraVideoHtml?.() || ""}
     <button class="pl-b" data-act="vreset">${plL("Görüntüyü sıfırla", "Reset picture")}</button>
     <h4>${plL("Ses", "Audio")}</h4>
     <div class="px-seg" data-g="audio">${[["off", plL("Kapalı", "Off")], ["norm", plL("Normalleştir", "Normalize")], ["night", plL("Gece modu", "Night mode")]].map(([v, l]) => `<button data-v="${v}" class="${c.audio === v ? "on" : ""}">${l}</button>`).join("")}</div>
     <p class="px-hint">${plL("Gece modu patlamaları kısar, fısıltıları yükseltir. Ses kaydırıcısı %200'e kadar çıkar.", "Night mode tames explosions and lifts whispers. Volume goes up to 200%.")}</p>
     <div class="px-shift"><span>${plL("5.1 → kulaklık (diyalog öne)", "5.1 → headphones (dialogue first)")}</span><div class="px-seg" data-g="dialog" style="margin:0">${[["0", plL("Kapalı", "Off")], ["1", plL("Açık", "On")]].map(([v, l]) => `<button data-v="${v}" class="${(c.dialog ? "1" : "0") === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
     <label class="px-rng"><span>${plL("Sesi geciktir", "Delay audio")}</span><input type="range" data-ak="delay" min="0" max="1000" step="10" value="${c.delay}"><b>${c.delay} ms</b></label>
+    ${window.pxExtraAudioHtml?.() || ""}
     <h4>${plL("Müzik", "Music")}</h4>
     ${pxBool("lyrics", plL("Şarkı sözü paneli", "Lyrics panel"))}
     ${pxBool("lrclib", plL("Sözleri internette ara (LRCLIB)", "Search lyrics online (LRCLIB)"))}
@@ -315,7 +317,8 @@ window.plSettings = () => {
     <div class="px-keys">${pxKeysHtml()}</div>
     <button class="pl-b" data-act="keyreset">${plL("Varsayılana dön", "Reset to defaults")}</button>
     <h4>${plL("Genel", "General")}</h4>
-    <button class="pl-b" data-act="default">${plL("Varsayılan oynatıcı yap (Windows ayarları)", "Make default player (Windows settings)")}</button>`;
+    <button class="pl-b" data-act="default">${plL("Varsayılan oynatıcı yap (Windows ayarları)", "Make default player (Windows settings)")}</button>
+    ${window.pxExtraToolsHtml?.() || ""}`;
   pxTabify(p);
   p.hidden = false;
   p.onclick = async (e) => {
@@ -337,7 +340,7 @@ window.plSettings = () => {
     if (b.dataset.act === "sh-") plShift(-0.5);
     if (b.dataset.act === "sh+") plShift(0.5);
     if (b.dataset.act === "sh0") plShift(0);
-    if (b.dataset.act === "vreset") { Object.assign(c.vid, { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }); pxSave(); pxApplyAll(); p.hidden = true; plSettings(); }
+    if (b.dataset.act === "vreset") { Object.assign(c.vid, { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100, rot: 0, flip: false }); pxSave(); pxApplyAll(); p.hidden = true; plSettings(); }
     if (b.dataset.act === "default") { const ok = await api.player_default_apps(); if (!ok) toast(plL("Windows ayarları açılamadı", "Couldn't open Windows settings"), true); }
   };
   p.onchange = (e) => {

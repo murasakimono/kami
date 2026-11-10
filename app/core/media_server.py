@@ -61,7 +61,7 @@ def probe(ffprobe: str, path: str) -> dict[str, Any]:
     if not ffprobe:
         return out
     try:
-        r = subprocess.run([ffprobe, "-v", "error", "-show_format", "-show_streams", "-of", "json", path],
+        r = subprocess.run([ffprobe, "-v", "error", "-show_format", "-show_streams", "-show_chapters", "-of", "json", path],
                            capture_output=True, timeout=20, creationflags=NO_WINDOW)
         data = json.loads(r.stdout or b"{}")
     except Exception:
@@ -78,6 +78,14 @@ def probe(ffprobe: str, path: str) -> dict[str, Any]:
             if k in ("title", "artist", "album", "album_artist", "track", "date", "genre", "lyrics", "unsyncedlyrics", "syncedlyrics") and v and k not in tg:
                 tg[k] = str(v)
     out["tags"] = tg
+    chs = []
+    for c in data.get("chapters") or []:   # mkv/mp4 bolumleri (seekbar isaretleri)
+        try:
+            chs.append({"start": float(c.get("start_time") or 0), "end": float(c.get("end_time") or 0),
+                        "title": str((c.get("tags") or {}).get("title") or "")})
+        except (TypeError, ValueError):
+            pass
+    out["chapters"] = chs[:200]
     for st in data.get("streams") or []:
         kind, codec = st.get("codec_type"), (st.get("codec_name") or "").lower()
         tags = st.get("tags") or {}
@@ -225,6 +233,7 @@ class MediaServer:
             "ok": True, "key": key, "path": str(p), "kind": kind, "vcodec": info["vcodec"], "size": p.stat().st_size, "mode": mode, "title": title or p.stem,
             "duration": info["duration"], "width": info["width"], "height": info["height"],
             "tags": {k: v for k, v in info.get("tags", {}).items() if "lyrics" not in k},
+            "chapters": info.get("chapters", []),
             "audio": info["audio"], "embedded_subs": info["subs"],
             "url": f"{self.base}/f/{key}" if a_ok else f"{self.base}/x/{key}",
             "direct_url": f"{self.base}/f/{key}",

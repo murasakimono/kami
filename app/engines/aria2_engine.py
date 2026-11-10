@@ -214,6 +214,7 @@ class Aria2Engine(Engine):
             "split": str(conn),
             "max-connection-per-server": str(conn),
             "continue": "true",
+            "remote-time": "true",   # dosya tarihi sunucudaki Last-Modified olsun
         }
         if download.filename:
             opts["out"] = download.filename

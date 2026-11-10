@@ -76,7 +76,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
-        "library_get", "library_albums", "ocr_image", "ocr_translate", "player_lyrics",
+        "library_get", "library_albums", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -1027,6 +1027,70 @@ class Api:
                           self._media.asset_url(g["cover_img"], "f") if g["cover_img"] else "") if self._media else ""
             g.pop("cover_path", None); g.pop("cover_img", None)
         return {"ok": True, "albums": al}
+
+    # ---------- B8/B9: atlama araliklari, posterler, ses cikar, klip, onarim, cop kutusu ----------
+    def _mt_cache(self):
+        if not getattr(self, "_mtc", None):
+            from app import paths
+            from app.core.mediatools import _Cache
+            self._mtc = _Cache(paths.DATA_DIR / "online_cache.json")
+        return self._mtc
+
+    def player_skips(self, path: str, duration: float = 0, tags: dict | None = None) -> dict[str, Any]:
+        """Intro/outro (AniSkip, anime) + SponsorBlock (YouTube'dan inenler)."""
+        from pathlib import Path
+        from app.core import mediatools as mt
+        from app.core.library import parse_name
+        p = Path(str(path or ""))
+        out: list[dict[str, Any]] = []
+        info = parse_name(p.stem) if p.name else {}
+        if info.get("series") and info.get("episode"):
+            out += mt.aniskip(info["series"], int(info["episode"]), float(duration or 0), self._mt_cache())
+        vid = mt.youtube_id(str(p), tags or {})
+        if vid:
+            out += mt.sponsorblock(vid, self._mt_cache())
+        return {"ok": True, "segments": out, "series": info.get("series", ""), "episode": info.get("episode", 0)}
+
+    def library_posters(self, names: list | None = None) -> dict[str, Any]:
+        from app.core import mediatools as mt
+        res = {}
+        for n in (names or [])[:60]:
+            al = mt.anilist(str(n), self._mt_cache())
+            if al and al.get("cover"):
+                res[str(n)] = {"cover": al["cover"], "color": al.get("color", "")}
+        return {"ok": True, "posters": res}
+
+    def _ff(self) -> str:
+        from app.engines.ytdlp_engine import find_ffmpeg
+        return find_ffmpeg() or ""
+
+    def media_extract_audio(self, path: str, codec: str = "") -> dict[str, Any]:
+        from app.core import mediatools as mt
+        if not os.path.isfile(str(path or "")) or not self._ff():
+            return {"ok": False, "error": "bad_input"}
+        return mt.extract_audio(self._ff(), str(path), str(codec or ""))
+
+    def media_clip(self, path: str, a: float, b: float, mode: str = "copy") -> dict[str, Any]:
+        from app.core import mediatools as mt
+        if not os.path.isfile(str(path or "")) or not self._ff():
+            return {"ok": False, "error": "bad_input"}
+        return mt.clip(self._ff(), str(path), float(a), float(b), str(mode), "h264_nvenc")
+
+    def media_repair(self, path: str) -> dict[str, Any]:
+        from app.core import mediatools as mt
+        if not os.path.isfile(str(path or "")) or not self._ff():
+            return {"ok": False, "error": "bad_input"}
+        return mt.repair(self._ff(), str(path))
+
+    def library_trash(self, paths: list | None = None) -> dict[str, Any]:
+        """Izlenmis diziyi Geri Donusum Kutusu'na tasi (yalnizca kutuphane klasorlerindeki dosyalar)."""
+        from app.core import mediatools as mt
+        roots = [os.path.normcase(os.path.abspath(d)) for d in self._library_dirs()]
+        ok_paths = [p for p in (paths or []) if os.path.isfile(str(p))
+                    and any(os.path.normcase(os.path.abspath(str(p))).startswith(r + os.sep) for r in roots)]
+        if not ok_paths:
+            return {"ok": False, "error": "no_files"}
+        return {"ok": mt.to_trash(ok_paths), "count": len(ok_paths)}
 
     def library_add_dir(self) -> dict[str, Any]:
         d = ""
