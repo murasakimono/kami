@@ -187,5 +187,8 @@
   },
   "popup_restricted": {
     "message": "Bu sayfada yakalama yok (tarayıcının kendi sayfası). Kami'yi açmak için aşağıdaki butonu kullan."
+  },
+  "popup_active": {
+    "message": "Süren indirmeler"
   }
 }

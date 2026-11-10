@@ -53,11 +53,17 @@
     .media .acts button { height: 34px; min-width: 34px; padding: 0 10px; border-radius: 8px; clip-path: none; box-shadow: none; background: #7C3AED; }
     .media .acts button:hover:not(:disabled) { background: #8B5CF6; }
     #open, #retry { border-radius: 8px; clip-path: none; }
+    #activeList { display: grid; gap: 9px; }
+    .act-i { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; font-size: 12px; }
+    .act-i .an { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .act-i .as { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .act-i .ab { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: #241B33; overflow: hidden; }
+    .act-i .ab i { display: block; height: 100%; background: linear-gradient(90deg, #7C3AED, #2EE6A6); border-radius: 3px; transition: width .4s; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="head"><img src="icons/128.png" alt=""><span>KAMI</span></div>
+    <div class="head"><img src="icons/avatar.png" alt=""><span>KAMI</span></div>
     <div class="status" id="status"><i></i><span id="statusText">…</span></div>
     <p class="note" id="detail" hidden></p>
     <button id="retry" class="sec" hidden></button>
@@ -74,6 +80,10 @@
       <h3 id="torrentsTitle"></h3>
       <ul id="torrentList"></ul>
       <button id="rdAll"></button>
+    </div>
+    <div class="media" id="active" hidden>
+      <h3 id="activeTitle"></h3>
+      <div id="activeList"></div>
     </div>
     <p class="hint" id="hint"></p>
   </div>

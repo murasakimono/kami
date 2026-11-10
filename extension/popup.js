@@ -59,6 +59,7 @@ async function refresh() {
     capture.disabled = false;
     capture.checked = !!res.capture_enabled;
     open.disabled = false;
+    renderActive(res.active || []);
     return true;
   } else {
     status.className = "status off";
@@ -186,3 +187,20 @@ function rdResultText(res) {
 }
 
 setupPage().catch(() => {}).then(refresh).then((online) => { showMedia(online); showTorrents(online); });
+
+// ---------- suren indirmeler (Kami /v1/ping -> active) ----------
+function fmtSpeed(b) { if (!b) return ""; const u = ["B/sn", "KB/sn", "MB/sn", "GB/sn"]; let i = 0; while (b >= 1024 && i < 3) { b /= 1024; i++; } return b.toFixed(i ? 1 : 0).replace(".", ",") + " " + u[i]; }
+function renderActive(list) {
+  const box = document.getElementById("active"), ul = document.getElementById("activeList");
+  document.getElementById("activeTitle").textContent = (chrome.i18n.getMessage("popup_active") || "Süren indirmeler") + (list.length ? ` (${list.length})` : "");
+  box.hidden = !list.length;
+  ul.innerHTML = "";
+  for (const a of list) {
+    const d = document.createElement("div"); d.className = "act-i";
+    const n = document.createElement("span"); n.className = "an"; n.textContent = a.name; n.title = a.name;
+    const sp = document.createElement("span"); sp.className = "as"; sp.textContent = fmtSpeed(a.speed) || Math.round(a.p * 100) + "%";
+    const bar = document.createElement("div"); bar.className = "ab"; const f = document.createElement("i"); f.style.width = (a.p * 100).toFixed(1) + "%"; bar.appendChild(f);
+    d.append(n, sp, bar); ul.appendChild(d);
+  }
+}
+setInterval(async () => { try { const r = await ask({ type: "ping" }); if (r && r.ok) renderActive(r.active || []); } catch (_) {} }, 2000);

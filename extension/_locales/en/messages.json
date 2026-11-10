@@ -187,5 +187,8 @@
   },
   "popup_restricted": {
     "message": "No capture on this page (browser's own page). Use the button below to open Kami."
+  },
+  "popup_active": {
+    "message": "Active downloads"
   }
 }

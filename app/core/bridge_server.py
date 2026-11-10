@@ -92,13 +92,36 @@ class BridgeServer:
         except Exception:
             pass
 
+    def _active(self) -> list[dict[str, Any]]:
+        """Eklenti acilir penceresi: suren indirmeler (ad, yuzde, hiz)."""
+        out = []
+        try:
+            for d in self.manager.snapshot():
+                pub = d.to_public()
+                st = str(pub.get("status") or "").lower().split(".")[-1]   # "Status.ACTIVE" -> "active"
+                if st not in ("active", "downloading", "running"):
+                    continue
+                total = float(pub.get("total") or pub.get("total_length") or pub.get("size") or 0)
+                done = float(pub.get("completed") or pub.get("completed_length") or pub.get("downloaded") or 0)
+                prog = pub.get("progress")
+                p = float(prog) if prog is not None else (done / total if total else 0)
+                if p > 1:
+                    p /= 100
+                out.append({"name": str(pub.get("filename") or pub.get("name") or pub.get("title") or pub.get("url") or "?")[:80],
+                            "p": round(max(0.0, min(1.0, p)), 3), "speed": float(pub.get("speed") or pub.get("download_speed") or 0)})
+                if len(out) >= 5:
+                    break
+        except Exception:
+            pass
+        return out
+
     # ---------- islemler ----------
     def handle(self, path: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         if path == "/v1/ping":
             sites = self.manager.registry.url_patterns()   # eklentilerin URL desenleri -> tarayici eklentisi
             return 200, {"ok": True, "app": "kami", "version": APP_VERSION,
                          "capture_enabled": bool(self.manager.settings.get("capture_enabled")),
-                         "sites": sites}
+                         "sites": sites, "active": self._active()}
         if path == "/v1/show":
             self.on_show()
             return 200, {"ok": True}

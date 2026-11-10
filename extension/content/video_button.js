@@ -54,7 +54,7 @@
         </div>
       </div>`;
     btn = root.querySelector(".main");
-    try { root.querySelector(".main img").src = chrome.runtime.getURL("icons/48.png"); } catch (_) {}
+    try { root.querySelector(".main img").src = chrome.runtime.getURL("icons/avatar.png"); } catch (_) {}
     menu = root.querySelector(".menu");
     root.querySelector(".label").textContent = t("btn_download", "Kami ile indir");
     root.querySelector('[data-mode="mp4"] small').textContent = t("btn_mp4_hint", "video");

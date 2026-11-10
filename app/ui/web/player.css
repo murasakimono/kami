@@ -1,4 +1,3 @@
-@font-face { font-family: "Butcherman"; src: url(fonts/Butcherman-Regular.ttf) format("truetype"); }
 /* Kami oynatici (P1). Sunak paletiyle; yuvarlak kutu yok, pahli koseler. */
 #player {
   --pl-beat: 0;
@@ -405,4 +404,12 @@ body.pl-open #sunak { visibility: hidden; }
 .pm-vpaste div { display: flex; gap: 6px; }
 .pm-vpaste .pl-b { height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: #1A1424; color: #C4B5FD; font: 600 13px "Segoe UI", sans-serif; cursor: pointer; }
 .pm-vpaste .pl-b.pri { background: #3B1580; color: #fff; }
-#player .pl-subs.kinetic.extreme-loud.trch > span { font-family: "Butcherman", Impact, sans-serif; letter-spacing: .02em; }
+#player .pl-subs.kinetic.extreme-loud.trch > span { font-family: Impact, "Arial Black", sans-serif; }
+/* kinetik v3: bas ambilight + vokal glitch (soz panelindeki aktif satir da basla parlar) */
+@font-face { font-family: "Rubik Glitch"; src: url(fonts/RubikGlitch-Regular.ttf) format("truetype"); }
+#player .pl-subs.kinetic > span { text-shadow: 0 2px 4px #000, 0 0 calc(var(--sub-glow, 0) * 1px) rgba(0, 255, 163, .8), 0 0 calc(var(--sub-glow, 0) * 2px) rgba(124, 58, 237, .55), 0 0 calc(var(--sub-bass, 0) * 36px) rgba(167, 139, 250, .95); }
+#player .pl-subs.kinetic > span { box-shadow: 0 0 calc(var(--sub-bass, 0) * 30px) rgba(124, 58, 237, calc(var(--sub-bass, 0) * .7)); }
+#player .pl-subs.kinetic.extreme-loud.trch > span { font-family: "Rubik Glitch", Impact, sans-serif; letter-spacing: .02em; }
+#player .pl-subs.kinetic.glitch > span { animation: pe-glitch .14s steps(2, end) 1; text-shadow: 2px 0 rgba(255, 0, 90, .85), -2px 0 rgba(0, 240, 255, .85), 0 2px 4px #000; }
+@keyframes pe-glitch { 0% { transform: translate(0); clip-path: inset(0 0 0 0); } 33% { transform: translate(-3px, 1px) skewX(-6deg); clip-path: inset(10% 0 55% 0); } 66% { transform: translate(3px, -1px) skewX(4deg); clip-path: inset(45% 0 15% 0); } 100% { transform: translate(0); clip-path: inset(0 0 0 0); } }
+.pl-lyr .pm-l.on span { filter: drop-shadow(0 0 calc(8px + var(--sub-bass, 0) * 22px) rgba(var(--pl-glow, 46, 230, 166), calc(.4 + var(--sub-bass, 0) * .5))); }
