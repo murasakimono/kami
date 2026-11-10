@@ -65,6 +65,23 @@ function pxOfferTranslate() {
   chip.onclick = () => { chip.remove(); pxTranslate(); };
   $("#player").appendChild(chip); setTimeout(() => chip.remove(), 8000);
 }
+// kaymis altyaziyi sese hizala (ffsubsync): secili altyazinin yerine hizali olani koyar
+async function pxSync() {
+  const it = PL.subList[PL.subIdx];
+  if (!it) { toast(plL("Önce bir altyazı seç", "Select a subtitle first"), true); return; }
+  if ($("#plPanel")) $("#plPanel").hidden = true;
+  toast(plL("Altyazı sese hizalanıyor…", "Syncing subtitles to audio…"));
+  let r;
+  try { r = await slow("subtitle_sync", PL.info.path, await (await fetch(it.url)).text(), it.lang || ""); }
+  catch (e) { r = { ok: false, error: String(e) }; }
+  if (!r || !r.ok) { toast(plL("Hizalanamadı: ", "Sync failed: ") + (r?.error || "?"), true); return; }
+  it.url = URL.createObjectURL(new Blob([r.vtt], { type: "text/vtt" }));
+  it.raw = "";   // hizali surum duz metin
+  PL.subShift = 0; window.plOnShift?.();
+  await plLoadSub(PL.subIdx);
+  toast(plL("Altyazı hizalandı, dosyanın yanına kaydedildi", "Subtitles synced and saved next to the file"));
+}
+
 async function pxTranslate() {
   const it = PL.subList[PL.subIdx >= 0 ? PL.subIdx : PL.subList.findIndex((x) => x.lang === "en")] || PL.subList[0];
   if (!it) { toast(plL("Çevrilecek altyazı yok", "No subtitle to translate"), true); return; }
@@ -227,6 +244,7 @@ window.plSettings = () => {
     ${seg("sub", "pos", [[0, plL("Alt", "Bottom")], [60, plL("Biraz yukarı", "Raised")], [140, plL("Yukarı", "High")]])}
     <label class="px-rng"><span>${plL("2. altyazı (DUAL)", "2nd subtitle (DUAL)")}</span><select class="pl-sel" id="pxSub2" style="grid-column: span 2"><option value="-1">${plL("Kapalı", "Off")}</option>${(PL.subList || []).map((x, i) => `<option value="${i}" ${i === PL.sub2Idx ? "selected" : ""}>${escapeHtml(x.label)}</option>`).join("")}</select></label>
     <div class="px-shift"><span>${plL("Kaydır (G / H)", "Offset (G / H)")}</span><button class="pl-b" data-act="sh-">−0.5</button><b id="pxShift">${(PL.subShift > 0 ? "+" : "") + (PL.subShift || 0).toFixed(1)} sn</b><button class="pl-b" data-act="sh+">+0.5</button><button class="pl-b" data-act="sh0">0</button></div>
+    <div class="px-shift"><span>${plL("Kaymış altyazıyı sese hizala", "Auto-sync subtitles to audio")}</span><button class="pl-b" data-act="sync">${plL("Hizala", "Sync")}</button></div>
     <div class="px-shift"><span>${plL("Türkçeye çevir", "Translate to Turkish")}</span>
       <div class="px-seg" data-g="tr" style="margin:0">${[["nllb", "NLLB"], ["google", "Google"]].map(([v, l]) => `<button data-v="${v}" class="${c.trEngine === v ? "on" : ""}">${l}</button>`).join("")}</div>
       <button class="pl-b" data-act="translate">${plL("Çevir", "Translate")}</button></div>
@@ -252,6 +270,7 @@ window.plSettings = () => {
       pxSave(); pxApplyAll();
     }
     if (b.dataset.act === "translate") pxTranslate();
+    if (b.dataset.act === "sync") pxSync();
     if (b.dataset.act === "sh-") plShift(-0.5);
     if (b.dataset.act === "sh+") plShift(0.5);
     if (b.dataset.act === "sh0") plShift(0);

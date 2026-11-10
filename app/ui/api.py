@@ -71,7 +71,7 @@ class Api:
         "add_url", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
-        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate",
+        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync",
         "library_get",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
@@ -1057,6 +1057,20 @@ class Api:
             return {"ok": False, "error": str(res["error"])[:200]}
         return {"ok": True, "path": res["done"], "engine": res.get("engine"),
                 "vtt": srt_to_vtt(Path(res["done"]).read_text(encoding="utf-8"))}
+
+    def subtitle_sync(self, video_path: str, text: str, lang: str = "") -> dict[str, Any]:
+        """Altyaziyi sese hizala; videonun yanina <ad>[.dil].sync.srt yazar, oynatici VTT'yi alir."""
+        from pathlib import Path
+        from app.core import aitools
+        from app.core.media_server import srt_to_vtt
+        p = Path(str(video_path or ""))
+        if not p.is_file() or not str(text or "").strip():
+            return {"ok": False, "error": "bad_input"}
+        out = p.with_name(p.stem + (f".{lang}" if lang else "") + ".sync.srt")
+        res = aitools.sync_subtitle(str(p), str(text), str(out))
+        if "error" in res:
+            return {"ok": False, "error": str(res["error"])[:200]}
+        return {"ok": True, "path": res["done"], "vtt": srt_to_vtt(Path(res["done"]).read_text(encoding="utf-8"))}
 
     def _play_request(self, path: str) -> None:
         with self._inbox_lock:

@@ -439,6 +439,28 @@ def translate_subtitle(text: str, out: str, src: str, tgt: str, engine: str,
             pass
 
 
+def sync_subtitle(video: str, text: str, out: str) -> dict:
+    """Altyaziyi sese hizala (ffsubsync, Whisper ortaminda; ilk kullanimda kurulur)."""
+    import tempfile
+    from app.engines.ytdlp_engine import find_ffmpeg
+    if not installed("whisper"):
+        return {"error": "tool_missing"}
+    if not _ensure_pkg("whisper", "ffsubsync", "ffsubsync"):
+        return {"error": "ffsubsync_install_failed"}
+    ff = find_ffmpeg() or shutil.which("ffmpeg") or ""
+    fd, tmp = tempfile.mkstemp(prefix="kami_sync_", suffix=".srt" if "-->" in text and "WEBVTT" not in text[:10] else ".vtt")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    try:
+        return _run_once(["app.tools.subsync_run", video, tmp, out, os.path.dirname(ff)],
+                         lambda m: None, threading.Event(), "whisper", {})
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
 # ---- rozetler: durum diskteki gercek dosyalardan turetilir (Kami'nin kendi kaydi bos/yanlis olabilir)
 _DISK_CACHE: dict[str, tuple[float, list[str]]] = {}
 
