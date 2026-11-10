@@ -382,6 +382,8 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
         for line in p.stdout or []:
             try:
                 msg = json.loads(line)
+                if not isinstance(msg, dict):   # "11557.000" gibi gunluk satirlari da JSON sayilir
+                    raise ValueError
             except ValueError:
                 if line.strip():
                     noise = (noise + [line.strip()])[-6:]   # JSON olmayan satirlar (Traceback, stderr)
