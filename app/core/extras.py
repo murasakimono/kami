@@ -23,7 +23,7 @@ from app import paths
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "0.9.3"
+APP_VERSION = "0.9.4"
 GITHUB_REPO = "murasakimono/kami"
 CREATE_NO_WINDOW = 0x08000000
 
@@ -288,3 +288,4 @@ def build_report(state: dict[str, Any], out_dir: Path) -> Path:
         z.writestr("threads.txt", thread_dump())
     log.info("Sorun paketi olusturuldu: %s", out.name)
     return out
+

@@ -27,23 +27,40 @@ function Await($op, $type) { $t = $asTask.MakeGenericMethod($type).Invoke($null,
 [Windows.Globalization.Language, Windows.Globalization, ContentType = WindowsRuntime] | Out-Null
 $img = $args[0]; $lang = $args[1]; $out = $args[2]
 $avail = @([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages | ForEach-Object { $_.LanguageTag })
-$eng = $null
-if ($lang) {
-  $tag = $avail | Where-Object { $_ -eq $lang -or $_.StartsWith($lang + '-') } | Select-Object -First 1
-  if ($tag) { $eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new($tag)) }
-}
-if (-not $eng) { $eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }
 $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($img)) ([Windows.Storage.StorageFile])
 $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
 $dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
 $bmp = Await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
-$res = Await ($eng.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
+$results = @()
+foreach ($want in ($lang -split ',')) {
+  $eng = $null
+  if ($want -and $want -ne '*') {
+    $tag = $avail | Where-Object { $_ -eq $want -or $_.StartsWith($want + '-') } | Select-Object -First 1
+    if ($tag) { $eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new($tag)) }
+  }
+  if (-not $eng -and ($want -eq '*' -or -not $want)) { $eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }
+  if (-not $eng) { continue }
+  $res = Await ($eng.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
+  $results += @{ lang = $eng.RecognizerLanguage.LanguageTag; lines = @($res.Lines | ForEach-Object { $_.Text }) }
+}
 $stream.Dispose()
-$o = @{ lines = @($res.Lines | ForEach-Object { $_.Text }); lang = $eng.RecognizerLanguage.LanguageTag; avail = $avail }
-[System.IO.File]::WriteAllText($out, (ConvertTo-Json $o -Compress), [System.Text.UTF8Encoding]::new($false))
+$o = @{ results = $results; avail = $avail }
+[System.IO.File]::WriteAllText($out, (ConvertTo-Json $o -Compress -Depth 5), [System.Text.UTF8Encoding]::new($false))
 """
 _CJK = "぀-ヿ㐀-鿿豈-﫿ｦ-ﾟ　-〿！-｠"
 _CJK_GAP = re.compile(f"(?<=[{_CJK}]) +(?=[{_CJK}])")
+
+
+def _best(cands: list[tuple[str, str]]) -> tuple[str, str]:
+    """Birden cok motor okuduysa: CJK motoru gercekten CJK yazi bulduysa onu, yoksa ilk (profil) sonucu sec."""
+    for lg, text in cands:
+        if lg.split("-")[0] in ("ja", "zh", "ko"):
+            chars = [c for c in text if not c.isspace()]
+            cjk = sum(1 for c in chars if re.match(f"[{_CJK}\uac00-\ud7af]", c))
+            if chars and cjk / len(chars) >= 0.5 and cjk >= 2:
+                return lg, text
+    latin = [c for c in cands if c[0].split("-")[0] not in ("ja", "zh", "ko")]
+    return (latin or cands)[0]
 
 
 def recognize(png_b64: str, lang: str = "") -> dict:
@@ -59,6 +76,8 @@ def recognize(png_b64: str, lang: str = "") -> dict:
         return {"ok": False, "error": "bad_image"}
     if len(raw) < 100 or len(raw) > 25 * 2**20:
         return {"ok": False, "error": "bad_image"}
+    # otomatik: kullanici profili dilleri + (kuruluysa) Japonca/Cince/Korece; en uygun sonuc secilir
+    langs = str(lang or "")[:8] or "*,ja,zh,ko"
     tmp = tempfile.mkdtemp(prefix="kami_ocr_")
     img, out, ps1 = (os.path.join(tmp, n) for n in ("in.png", "out.json", "ocr.ps1"))
     try:
@@ -67,19 +86,27 @@ def recognize(png_b64: str, lang: str = "") -> dict:
         with open(ps1, "w", encoding="utf-8-sig") as f:
             f.write(_PS)
         r = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1, img, str(lang or "")[:8], out],
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1, img, langs, out],
             capture_output=True, timeout=40, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if not os.path.isfile(out):
             err = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
             return {"ok": False, "error": (err[0] if err else f"ocr_failed ({r.returncode})")[:200]}
         with open(out, encoding="utf-8") as f:
             o = json.load(f)
-        lines = o.get("lines") or []
-        if isinstance(lines, str):
-            lines = [lines]
-        text = "\n".join(_CJK_GAP.sub("", ln) for ln in lines if ln).strip()   # Windows OCR Japoncada harf arasina bosluk koyar
         avail = o.get("avail") or []
-        return {"ok": True, "text": text, "lang": o.get("lang") or "", "avail": avail if isinstance(avail, list) else [avail]}
+        avail = avail if isinstance(avail, list) else [avail]
+        res = o.get("results") or []
+        res = res if isinstance(res, list) else [res]
+        cands = []
+        for r_ in res:
+            lines = r_.get("lines") or []
+            lines = [lines] if isinstance(lines, str) else lines
+            text = "\n".join(_CJK_GAP.sub("", ln) for ln in lines if ln).strip()   # Windows OCR Japoncada harf arasina bosluk koyar
+            if text:
+                cands.append((r_.get("lang") or "", text))
+        if not cands:
+            return {"ok": True, "text": "", "lang": "", "avail": avail}
+        return {"ok": True, "text": _best(cands)[1], "lang": _best(cands)[0], "avail": avail}
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "timeout"}
     except Exception as exc:

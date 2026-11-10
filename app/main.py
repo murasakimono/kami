@@ -269,7 +269,7 @@ def main() -> int:
 
     def make_player_window():
         w = webview.create_window("Kami Player", url=str(paths.WEB_DIR / "player.html"), js_api=api,
-                                  width=1280, height=760, min_size=(640, 400), background_color="#050408",
+                                  width=1280, height=760, min_size=(360, 150), background_color="#050408",
                                   text_select=False)
 
         def closed() -> None:

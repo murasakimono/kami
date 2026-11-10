@@ -544,7 +544,7 @@ async function plDictOpen(el, forceLang) {
     p.addEventListener("dblclick", (e) => e.stopPropagation());
   }
   p.hidden = false;
-  const lang = forceLang || plSubLang();
+  const lang = forceLang != null ? forceLang : plSubLang();
   const isCjk = el.dataset.p != null;
   p.innerHTML = `<div class="pd-head"><b>${escapeHtml(el.textContent)}</b><button class="pd-x" title="${plL("Kapat", "Close")}">✕</button></div><div class="pd-body">${plL("Aranıyor…", "Looking up…")}</div>`;
   p.querySelector(".pd-x").onclick = plDictClose;
@@ -669,7 +669,7 @@ async function plOcrRun(b) {
   ov.appendChild(res);
   ["pointerdown", "click", "dblclick"].forEach((ev) => res.addEventListener(ev, (e) => e.stopPropagation()));
   if (!img) { res.querySelector(".po-txt").textContent = plL("Kare alınamadı.", "Could not grab the frame."); return; }
-  const lang = plSubLang() || plCfg().ocrLang || "";
+  const lang = plCfg().ocrLang && plCfg().ocrLang !== "auto" ? plCfg().ocrLang : "";
   let r;
   try { r = await slow("ocr_image", img, lang); } catch (e) { r = { ok: false, error: String(e) }; }
   if (!res.isConnected) return;
@@ -678,18 +678,35 @@ async function plOcrRun(b) {
     res.querySelector(".po-txt").textContent = plL("Yazı bulunamadı.", "No text found.") + (lang && !r.avail.some((a) => a.startsWith(lang)) ? " " + plL(`Bu dil (${plLangName(lang) || lang}) için Windows OCR paketi yok: Ayarlar › Saat ve dil › Dil › dili ekle.`, `No Windows OCR pack for ${lang}: Settings › Time & language › Language.`) : "");
     return;
   }
-  const ocrLang = (r.lang || "").split("-")[0];
+  const ocrLang = plTextLang(r.text, (r.lang || "").split("-")[0]);
   res.innerHTML = `<div class="po-txt pl-subs-like">${plSubWords(r.text)}</div><div class="po-tr">${plL("Çevriliyor…", "Translating…")}</div><div class="po-act"><button data-a="copy">${plL("Kopyala", "Copy")}</button><button data-a="again">${plL("Yeni seçim", "New selection")}</button><button data-a="close">${plL("Kapat", "Close")}</button></div>`;
-  res.querySelectorAll(".po-txt .w").forEach((w) => w.addEventListener("click", (e) => { e.stopPropagation(); plDictOpen(w, ocrLang); }));
+  res.querySelectorAll(".po-txt .w").forEach((w) => w.addEventListener("click", (e) => { e.stopPropagation(); plDictOpen(w, ["ja", "zh", "ko"].includes(ocrLang) ? ocrLang : ""); }));
   res.querySelector("[data-a=copy]").onclick = () => { navigator.clipboard?.writeText(r.text).then(() => toast(plL("Kopyalandı", "Copied"))).catch(() => {}); };
   res.querySelector("[data-a=again]").onclick = () => { res.remove(); ov.querySelector(".po-box").hidden = true; };
   res.querySelector("[data-a=close]").onclick = () => plOcrClose();
   if (ocrLang === "tr") { res.querySelector(".po-tr").remove(); return; }
+  const eng = plCfg().trEngine === "nllb" ? "nllb" : "google";
   let t;
-  try { t = await slow("ocr_translate", r.text, ocrLang, plCfg().trEngine === "nllb" ? "nllb" : "google"); } catch (e) { t = { ok: false }; }
+  try { t = await slow("ocr_translate", r.text, eng === "google" ? "auto" : ocrLang, eng); } catch (e) { t = { ok: false }; }
+  if (!t?.ok && eng === "nllb") { try { t = await slow("ocr_translate", r.text, "auto", "google"); } catch { t = { ok: false }; } }
   const tr = res.querySelector(".po-tr");
   if (!tr) return;
   if (t?.ok && t.text) tr.textContent = t.text; else tr.remove();   // ceviri yoksa metin cevirisiz kalir
+}
+// yazinin dilini yazidan tahmin et (OCR motoru Turkce profille Ingilizceyi de okur, motor dili yaniltir)
+function plTextLang(text, hint = "") {
+  const s = String(text || "");
+  if (/[\u3040-\u30ff]/.test(s)) return "ja";
+  if (/[\u3400-\u9fff]/.test(s)) return hint === "zh" ? "zh" : "ja";
+  if (/[\uac00-\ud7af]/.test(s)) return "ko";
+  if (/[\u0400-\u04ff]/.test(s)) return "ru";
+  if (/[ğışİĞŞ]/.test(s)) return "tr";
+  const w = s.toLowerCase().match(/[a-zçöüâîû]+/g) || [];
+  const tr = w.filter((x) => /^(ve|bir|bu|da|de|ne|için|ile|çok|ben|sen|o|mi|mı|var|yok|gibi|ama)$/.test(x)).length;
+  const en = w.filter((x) => /^(the|and|a|an|is|are|of|to|you|i|it|in|that|this|what|for|on|with|be|was|my|me)$/.test(x)).length;
+  if (tr !== en) return tr > en ? "tr" : "en";
+  if (/[çöü]/.test(s)) return "tr";
+  return hint && hint !== "tr" ? hint : "en";   // isaret yok: Latin yazi icin Ingilizce varsay (Google zaten "auto")
 }
 function plCfg() { return (typeof PX !== "undefined" && PX.cfg) || {}; }
 function plOcrClose() {

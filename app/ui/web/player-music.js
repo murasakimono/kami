@@ -40,13 +40,24 @@ function pmEnsureDom() {
   ["click", "dblclick"].forEach((ev) => $("#plLyr").addEventListener(ev, (e) => e.stopPropagation()));
 }
 
+// YouTube/indirme basliklarini temizle: [Official Music Video], (Lyrics), ft. ..., "Sanatci - Sarki"
+function pmClean(s) {
+  return String(s || "")
+    .replace(/\s*[\[(【「][^\])】」]*[\])】」]/g, " ")
+    .replace(/\b(official\s+(music\s+|lyric\s+)?(video|audio|visualizer)|music\s+video|lyric\s+video|lyrics?|audio|hd|hq|4k|mv|m\/v)\b/gi, " ")
+    .replace(/\s+(ft\.?|feat\.?|featuring)\s+.*$/i, "")
+    .replace(/[|｜].*$/, "")
+    .replace(/\s{2,}/g, " ").replace(/^[\s\-–—]+|[\s\-–—]+$/g, "").trim();
+}
 function pmMeta(r) {
   const tg = r.tags || {};
-  let artist = tg.artist || tg.album_artist || "", title = tg.title || "";
-  if (!title) {   // "Sanatci - Sarki" dosya adi
-    const base = String(r.title || "").replace(/\s*[\[(].*?[\])]\s*/g, " ").trim();
-    const m = base.match(/^(.+?)\s+[-–—]\s+(.+)$/);
-    if (m) { artist = artist || m[1].trim(); title = m[2].trim(); } else title = base;
+  let artist = String(tg.artist || tg.album_artist || "").replace(/\s*(VEVO|- Topic|Official)\s*$/i, "").trim();
+  const raw = tg.title || r.title || "";
+  let title = pmClean(raw);
+  const m = title.match(/^(.+?)\s+[-–—~]\s+(.+)$/);
+  if (m) {   // "Sanatci - Sarki": kanal adi sanatci etiketine yazilmis olabilir, basliktaki sanatci daha guvenilir
+    const a = m[1].trim(), t = m[2].trim();
+    if (!artist || !t.toLowerCase().includes(artist.toLowerCase())) { artist = a; title = t; }
   }
   return { artist, title, album: tg.album || "" };
 }
@@ -157,6 +168,7 @@ function pmLoop() {
     }
     const cur = i >= 0 && list.querySelector(`.pm-l[data-i="${i}"]`);
     if (i !== PM.miniI) { PM.miniI = i; const ml = $("#pmMiniLine"); if (ml) ml.textContent = i >= 0 ? PM.lines[i].text : ""; }
+    if (cur) cur.classList.toggle("nok", pmCfg().karaoke === false);
     if (cur && pmCfg().karaoke !== false) {
       const a = PM.lines[i].t, b = PM.lines[i + 1] ? PM.lines[i + 1].t : a + 5;
       const k = Math.max(0, Math.min(1, (t - a) / Math.max(0.4, Math.min(b - a, 12))));

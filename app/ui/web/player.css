@@ -233,3 +233,71 @@ body.pl-open #sunak { visibility: hidden; }
 .pl-mini .pmi-btns button:hover { background: rgba(255,255,255,.08); color: #fff; }
 .pl-mini .pmi-play { color: #2EE6A6 !important; font-size: 18px !important; }
 .pl-mini .pmi-prog { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: linear-gradient(90deg, #6D28D9, #2EE6A6); }
+
+/* ===== 0.9.4: B7 stilleri (0.9.3'te yanlis bir kosul yuzunden hic eklenmemisti) ===== */
+/* sozluk kelimeleri: satir kutusunun stili kelimelere tasinmasin (siyah cerceve) */
+#player .pl-subs span.w { display: inline; padding: 0; margin: 0; background: none; font: inherit; color: inherit; text-shadow: inherit; box-shadow: none; border-radius: 3px; }
+#player .pl-subs span.w:hover { background: rgba(167, 139, 250, .22); box-shadow: 0 0 0 2px rgba(167, 139, 250, .22); }
+#player .pl-subs span.w.on { background: rgba(167, 139, 250, .45); box-shadow: 0 0 0 2px rgba(167, 139, 250, .45); }
+
+/* oynatici ayarlari: sekmeli */
+#player .pl-panel { width: 460px; padding-top: 0; }
+#player .pl-panel .px-ptabs { position: sticky; top: 0; z-index: 2; display: flex; gap: 2px; margin: 0 -16px 8px; padding: 8px 10px 0; background: rgb(13, 10, 19); border-bottom: 1px solid #2B2238; }
+#player .pl-panel .px-ptabs button { flex: 1 1 auto; height: 36px; padding: 0 6px; border: 0; background: none; color: #A39BB5; font: 600 12px "Chakra Petch", sans-serif; letter-spacing: .3px; cursor: pointer; box-shadow: inset 0 -2px 0 transparent; transition: color .15s, box-shadow .15s; white-space: nowrap; }
+#player .pl-panel .px-ptabs button:hover { color: #EDE9F6; }
+#player .pl-panel .px-ptabs button.on { color: #fff; box-shadow: inset 0 -2px 0 #2EE6A6; }
+#player .pl-panel .px-sec[hidden] { display: none; }
+#player .pl-panel .px-sec { padding-top: 4px; }
+
+/* B7 muzik modu: kapak rengiyle parlayan arka plan */
+#player.is-audio { background:
+  radial-gradient(ellipse 45% 55% at 72% 50%, rgba(var(--pl-glow, 109, 40, 217), calc(.20 + var(--pl-beat) * .35)) 0%, transparent 70%),
+  radial-gradient(ellipse 60% 70% at 20% 40%, rgba(var(--pl-glow2, 40, 16, 80), .22) 0%, transparent 75%),
+  #050408; }
+#player.is-audio .pl-audio canvas { filter: drop-shadow(0 0 calc(10px + var(--pl-beat) * 40px) rgba(var(--pl-glow, 46, 230, 166), calc(.18 + var(--pl-beat) * .5))); }
+#player.is-audio .pl-bigeq i { background: linear-gradient(180deg, rgb(var(--pl-glow, 46, 230, 166)), #6D28D9); }
+
+/* sozler varken: solda sutun (kosede kucuk kapak + baslik, altinda kayan sozler), sagda karakter */
+#player .pl-audio.has-lyr { display: grid; grid-template-columns: minmax(300px, 1fr) auto auto auto; align-items: center; gap: 0 2vw; padding: 64px 4vw 0 5vw; justify-content: stretch; }
+#player .pl-audio.has-lyr > .pl-cover { display: none; }
+#player .pl-audio.has-lyr canvas { height: min(56vh, 470px); }
+#player .pl-audio.has-lyr .pl-bigeq { height: min(32vh, 240px); }
+#player .pl-lyr { align-self: stretch; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden;
+  font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; }
+#player .pl-lyr[hidden] { display: none; }
+.pl-lyr .pm-head { display: flex; align-items: center; gap: 14px; flex: none; padding-bottom: 6px; }
+.pl-lyr .pm-cover { width: 56px; height: 56px; flex: none; border-radius: 6px; background: #110E17 center / cover no-repeat; box-shadow: 0 4px 18px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06); }
+.pl-lyr .pm-cover[hidden] { display: none; }
+.pl-lyr .pm-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pl-lyr .pm-meta b { font-size: 17px; font-weight: 600; color: #F4F1FA; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-lyr .pm-meta span { font-size: 13px; color: #9C94AE; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-lyr .pm-edit { width: 32px; height: 32px; flex: none; border: 0; border-radius: 8px; background: rgba(255,255,255,.05); color: #9C94AE; cursor: pointer; font-size: 14px; }
+.pl-lyr .pm-edit:hover { color: #fff; background: rgba(255,255,255,.1); }
+.pl-lyr .pm-list { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 18vh 8px 26vh 0;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 80%, transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 80%, transparent 100%); }
+.pl-lyr .pm-list::-webkit-scrollbar { display: none; }
+.pl-lyr .pm-l { margin: 0; padding: 6px 0; font-size: clamp(18px, 1.75vw, 28px); font-weight: 600; line-height: 1.3; letter-spacing: -.01em; color: rgba(244, 241, 250, .30); transition: color .35s, transform .35s; transform-origin: left center; }
+.pl-lyr .synced .pm-l { cursor: pointer; }
+.pl-lyr .synced .pm-l:hover { color: rgba(244, 241, 250, .62); }
+.pl-lyr .pm-l.past { color: rgba(244, 241, 250, .42); }
+.pl-lyr .pm-l.gap { font-size: 18px; }
+.pl-lyr .pm-l.on { transform: scale(1.035); color: rgba(244, 241, 250, .5); }
+.pl-lyr .pm-l.on span { background-image: linear-gradient(90deg, #fff 0, #fff var(--k, 0%), rgba(244, 241, 250, .5) var(--k, 0%)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; text-shadow: none; }
+.pl-lyr .pm-l.on.nok span { background-image: none; -webkit-text-fill-color: #fff; color: #fff; }
+.pl-lyr .pm-l.on { filter: drop-shadow(0 0 16px rgba(var(--pl-glow, 46, 230, 166), .45)); }
+.pl-lyr .pm-l.plain { font-size: clamp(15px, 1.35vw, 20px); font-weight: 500; color: rgba(244, 241, 250, .82); padding: 2px 0; }
+.pl-lyr .pm-src, .pl-lyr .pm-wait, .pl-lyr .pm-hint { font-size: 12px; color: #6B6280; margin-top: 18px; }
+.pl-lyr .pm-empty { flex: 1 1 0; min-height: 0; overflow-y: auto; color: #A39BB5; font-size: 14px; padding-top: 10px; }
+.pl-lyr .pm-empty[hidden] { display: none; }
+.pl-lyr .pm-empty textarea { width: 100%; height: 40vh; box-sizing: border-box; resize: vertical; border-radius: 8px; background: rgba(13,10,19,.85); color: #EDE9F6; border: 1px solid #3A2E52; padding: 10px; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+.pl-lyr .pm-acts { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.pl-lyr .pm-acts .pl-b { height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: #1A1424; color: #C4B5FD; font: 600 13px "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+.pl-lyr .pm-acts .pl-b.pri { background: #3B1580; color: #fff; }
+@media (max-width: 1000px) { #player .pl-audio.has-lyr .pl-bigeq { display: none; } #player .pl-audio.has-lyr { grid-template-columns: minmax(260px, 1fr) auto; } }
+#player .pl-audio.has-lyr { inset: 0 0 170px; }
+.pl-lyr .pm-meta { flex: 0 1 auto; }
+.pl-lyr .pm-edit { margin-left: 6px; }
+.pl-lyr .pm-l.on { transform: none; filter: none; color: rgba(244, 241, 250, .5); }
+.pl-lyr .pm-l.on span { filter: drop-shadow(0 0 14px rgba(var(--pl-glow, 46, 230, 166), .5)); }
+.pl-lyr .pm-l { overflow-wrap: anywhere; }
+.pl-lyr .pm-list { position: relative; }

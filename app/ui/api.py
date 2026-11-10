@@ -1171,10 +1171,16 @@ class Api:
                     lrc = ly.is_lrc(t)
                     return {"ok": True, "synced": t if lrc else "", "plain": "" if lrc else t, "source": "tag", "links": links}
         if online and title:
-            try:
-                hit = ly.lrclib_find(str(artist or ""), str(title), str(album or ""), float(duration or 0))
-            except Exception:
-                hit = None
+            hit = None
+            dur = float(duration or 0)
+            tries = [(artist, title, album, dur), ("", f"{artist} {title}".strip(), "", dur), (artist, title, "", 0)]
+            for a_, t_, al_, d_ in tries:   # tam eslesme -> serbest arama -> sure filtresiz (klip surumleri uzun olur)
+                try:
+                    hit = ly.lrclib_find(str(a_ or ""), str(t_), str(al_ or ""), float(d_ or 0))
+                except Exception:
+                    hit = None
+                if hit:
+                    break
             if hit:
                 return {"ok": True, "synced": hit.get("synced", ""), "plain": hit.get("plain", ""),
                         "instrumental": bool(hit.get("instrumental")), "source": "lrclib", "links": links}
@@ -1274,10 +1280,10 @@ class Api:
                     if not getattr(self, "_player_geo", None):
                         self._player_geo = (w.width, w.height, w.x, w.y)
                     sc = webview.screens[0] if webview.screens else None
-                    mw, mh = 460, 168
+                    mw, mh = 480, 200   # pencere cercevesi dahil (pencere en az 360x150)
                     w.resize(mw, mh)
                     if sc is not None:
-                        w.move(sc.x + sc.width - mw - 24, sc.y + sc.height - mh - 64)
+                        w.move(sc.x + sc.width - mw - 16, sc.y + sc.height - mh - 60)   # gorev cubugunun ustu
                     w.on_top = True
                 else:
                     w.on_top = False

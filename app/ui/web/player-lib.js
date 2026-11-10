@@ -4,7 +4,7 @@
 
 const PX = {
   queue: [], qi: -1, pending: null, nextShown: false, nextCancel: false, lib: null, libTab: "queue", libSeries: null,
-  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, assStyle: "orig", dictClick: true, lyrics: true, lrclib: true, karaoke: true, glow: true, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
+  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, assStyle: "orig", ocrLang: "auto", dictClick: true, lyrics: true, lrclib: true, karaoke: true, glow: true, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
 };
 const pxBase = (p) => String(p).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 const pxSave = () => { try { localStorage.setItem("kami.player", JSON.stringify(PX.cfg)); } catch { /* yok */ } };
@@ -255,6 +255,8 @@ window.plSettings = () => {
     <label class="px-rng"><span>${plL("Dil sırası", "Language order")}</span><input class="px-in" id="pxLangs" value="${escapeHtml(c.langs)}" placeholder="tr,en,ja" style="grid-column: span 2"></label>
     ${pxBool("dictClick", plL("Kelimeye tıkla → sözlük", "Click a word → dictionary"))}
     <p class="px-hint">${plL("Açıkken altyazıdaki kelimeye tıklayınca video durur ve anlamı açılır.", "When on, clicking a subtitle word pauses and shows its meaning.")}</p>
+    <div class="px-shift"><span>${plL("Ekran yazısı dili (O)", "On-screen text language (O)")}</span></div>
+    <div class="px-seg" data-g="ocr">${[["auto", plL("Otomatik", "Auto")], ["en", "English"], ["tr", "Türkçe"], ["ja", "日本語"]].map(([v, l]) => `<button data-v="${v}" class="${c.ocrLang === v ? "on" : ""}">${l}</button>`).join("")}</div>
     <h4>${plL("Görüntü", "Picture")}</h4>
     ${seg("vid", "aspect", [["auto", plL("Otomatik", "Auto")], ["16/9", "16:9"], ["4/3", "4:3"], ["21/9", "21:9"], ["fill", plL("Doldur", "Fill")]])}
     ${rng("zoom", 100, 160, plL("Yakınlaştır / kırp", "Zoom / crop"))}${rng("bright", 50, 150, plL("Parlaklık", "Brightness"))}${rng("contrast", 50, 150, plL("Kontrast", "Contrast"))}${rng("sat", 0, 200, plL("Doygunluk", "Saturation"))}
@@ -283,7 +285,7 @@ window.plSettings = () => {
     if (segEl) {
       const g = segEl.dataset.g, v = b.dataset.v;
       if (segEl.dataset.b) { c[segEl.dataset.b] = v === "1"; pxSave(); pxBoolApply(segEl.dataset.b); segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); return; }
-      if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v;
+      if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v; else if (g === "ocr") c.ocrLang = v;
       else if (g === "ass") { c.assStyle = v; pxSave(); if (PL.open && PL.subIdx >= 0) plLoadSub(PL.subIdx); }
       else if (g === "dialog") { c.dialog = v === "1"; pxSave(); if (PL.open) { if (PL.mode === "direct" && plDialogMix()) PL.mode = "remux"; plModeUi(); plSeek(plNow(), !$("#plVideo").paused); } } else c[g][segEl.dataset.k] = segEl.dataset.k === "pos" ? +v : v;
       segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
@@ -333,7 +335,7 @@ function pxTabify(p) {
     } else if (sec) sec.appendChild(el);
   }
   const bar = document.createElement("nav");
-  bar.className = "px-tabs";
+  bar.className = "px-ptabs";
   bar.innerHTML = tabs.map((t, i) => `<button data-tab="${i}">${escapeHtml(t)}</button>`).join("");
   p.prepend(bar);
   const show = (i) => {
