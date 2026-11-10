@@ -23,26 +23,29 @@
     root.innerHTML = `
       <style>
         :host { all: initial; }
-        .wrap { font: 600 13px/1 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+        .wrap { font: 600 13px/1 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
         button { all: unset; box-sizing: border-box; cursor: pointer; }
-        .main { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 10px;
-                background: #7C4DFF; color: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.45);
-                transition: filter .12s, transform .12s; }
-        .main:hover { filter: brightness(1.1); }
+        .main { display: inline-flex; align-items: center; gap: 9px; height: 38px; padding: 0 16px 0 4px; color: #fff; border-radius: 999px;
+                background: rgba(15, 11, 22, .92); border: 1.5px solid #8B5CF6; box-shadow: 0 4px 18px rgba(0,0,0,.5), 0 0 16px rgba(139, 92, 246, .35);
+                backdrop-filter: blur(6px); transition: transform .12s, box-shadow .12s; }
+        .main:hover { box-shadow: 0 4px 18px rgba(0,0,0,.5), 0 0 22px rgba(139, 92, 246, .6); }
         .main:active { transform: scale(.97); }
-        .main svg { width: 16px; height: 16px; flex: none; }
-        .main.ok { background: #2E9E6E; } .main.err { background: #D9485A; }
-        .menu { display: none; min-width: 168px; background: #15111C; color: #E7E2EF; border: 1px solid #2A2236;
-                border-radius: 8px; padding: 4px; box-shadow: 0 8px 28px rgba(0,0,0,.55); }
+        .main img { width: 30px; height: 30px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(255,255,255,.12); }
+        .main svg { display: none; }
+        .main.ok { border-color: #2EE6A6; box-shadow: 0 0 18px rgba(46,230,166,.5); } .main.err { border-color: #FF4D6A; }
+        .menu { display: none; min-width: 210px; background: rgba(15, 11, 22, .97); color: #EDE9F6; border: 1px solid #3A2E52;
+                border-radius: 12px; padding: 6px; box-shadow: 0 10px 32px rgba(0,0,0,.6); }
         .menu.open { display: block; }
-        .menu button { display: block; width: 100%; padding: 9px 12px; border-radius: 6px; font-weight: 500; }
-        .menu button:hover, .menu button:focus-visible { background: #2A2236; }
-        .menu small { color: #9A91AB; font-weight: 400; margin-left: 6px; }
+        .menu button { display: flex; justify-content: space-between; align-items: center; gap: 16px; width: 100%; padding: 11px 12px; border-radius: 8px; font-weight: 600; }
+        .menu button:hover, .menu button:focus-visible { background: #2A1F3D; }
+        .menu button:first-child { background: #241A36; }
+        .menu small { color: #9A91AB; font-weight: 500; }
+        .menu [data-mode="choose"] { margin-top: 4px; border-top: 1px solid #2B2238; border-radius: 0 0 8px 8px; color: #C4B5FD; }
       </style>
       <div class="wrap">
         <button class="main" part="main" aria-haspopup="menu">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span class="label"></span>
+          <img alt=""><span class="label"></span>
         </button>
         <div class="menu" role="menu">
           <button role="menuitem" data-mode="mp4">MP4<small></small></button>
@@ -51,6 +54,7 @@
         </div>
       </div>`;
     btn = root.querySelector(".main");
+    try { root.querySelector(".main img").src = chrome.runtime.getURL("icons/48.png"); } catch (_) {}
     menu = root.querySelector(".menu");
     root.querySelector(".label").textContent = t("btn_download", "Kami ile indir");
     root.querySelector('[data-mode="mp4"] small').textContent = t("btn_mp4_hint", "video");

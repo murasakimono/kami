@@ -1,3 +1,4 @@
+@font-face { font-family: "Butcherman"; src: url(fonts/Butcherman-Regular.ttf) format("truetype"); }
 /* Kami oynatici (P1). Sunak paletiyle; yuvarlak kutu yok, pahli koseler. */
 #player {
   --pl-beat: 0;
@@ -404,4 +405,4 @@ body.pl-open #sunak { visibility: hidden; }
 .pm-vpaste div { display: flex; gap: 6px; }
 .pm-vpaste .pl-b { height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: #1A1424; color: #C4B5FD; font: 600 13px "Segoe UI", sans-serif; cursor: pointer; }
 .pm-vpaste .pl-b.pri { background: #3B1580; color: #fff; }
-#player .pl-subs.kinetic.extreme-loud.trch > span { font-family: Impact, "Arial Black", sans-serif; }
+#player .pl-subs.kinetic.extreme-loud.trch > span { font-family: "Butcherman", Impact, sans-serif; letter-spacing: .02em; }

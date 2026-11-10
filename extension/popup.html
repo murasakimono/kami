@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <style>
     @font-face { font-family: "Chakra Petch"; font-weight: 600; src: url(fonts/ChakraPetch-SemiBold.ttf) format("truetype"); }
+    @font-face { font-family: "Damnation"; src: url(fonts/Damnation.ttf) format("truetype"); }
     :root { color-scheme: dark; --accent: #A78BFA; --btn: #3B1580; --green: #2EE6A6; --muted: #8E86A3; --bg: #0B0910; --card: #16101F; --text: #EDE9F6; --line: #2B2238; }
     [hidden] { display: none !important; }
     .note { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--card); color: var(--text); font-size: 12px; box-shadow: inset 3px 0 0 var(--accent); }
@@ -41,11 +42,22 @@
     .media .res.ok { color: var(--green); } .media .res.err { color: #FF4D6A; }
     .media .empty { color: var(--muted); font-size: 12px; margin: 0; }
     .hint { margin: 0; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+      body { width: 300px; border-top: 2px solid; border-image: linear-gradient(90deg, #7C3AED, #2EE6A6) 1; }
+    .head { gap: 12px; }
+    .head img { width: 54px; height: 54px; border-radius: 12px; border: 1.5px solid #7C3AED; box-shadow: 0 0 18px rgba(124,58,237,.45); }
+    .head span { font: 400 26px "Damnation", "Chakra Petch", sans-serif; letter-spacing: 1px; background: linear-gradient(180deg, #fff, #A78BFA); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .status { background: none; padding: 0 2px; }
+    .status.on { color: var(--green); }
+    .media li { padding: 10px 10px 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+    .media .nm { font-weight: 600; font-size: 13px; }
+    .media .acts button { height: 34px; min-width: 34px; padding: 0 10px; border-radius: 8px; clip-path: none; box-shadow: none; background: #7C3AED; }
+    .media .acts button:hover:not(:disabled) { background: #8B5CF6; }
+    #open, #retry { border-radius: 8px; clip-path: none; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="head"><img src="icons/32.png" alt="">Kami</div>
+    <div class="head"><img src="icons/128.png" alt=""><span>KAMI</span></div>
     <div class="status" id="status"><i></i><span id="statusText">…</span></div>
     <p class="note" id="detail" hidden></p>
     <button id="retry" class="sec" hidden></button>
