@@ -4,7 +4,7 @@
 
 const PX = {
   queue: [], qi: -1, pending: null, nextShown: false, nextCancel: false, lib: null, libTab: "queue", libSeries: null,
-  cfg: { langs: "tr,en", sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
+  cfg: { langs: "tr,en", trEngine: "nllb", sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100 }, audio: "off" },
 };
 const pxBase = (p) => String(p).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 const pxSave = () => { try { localStorage.setItem("kami.player", JSON.stringify(PX.cfg)); } catch { /* yok */ } };
@@ -55,7 +55,41 @@ window.plPickTracks = (r) => {
   if (pref.s2 && pref.s2 !== "off") { const s2 = PL.subList.findIndex((x, i) => x.lang === pref.s2 && i !== si); if (s2 >= 0) plLoadSub(s2, 2); }
   if (pref.rate) { $("#plVideo").playbackRate = pref.rate; $("#plRate").value = String(pref.rate); }
   PX.applying = false;
+  if (r.kind === "video") pxOfferTranslate();
 };
+// Turkce altyazi yoksa ama baska metin altyazi varsa: kucuk teklif cipi (dil sirasinin basi tr ise)
+function pxOfferTranslate() {
+  if (!PL.subList.length || PX.cfg.langs.split(",")[0] !== "tr" || PL.subList.some((x) => x.lang === "tr")) return;
+  const chip = document.createElement("button");
+  chip.className = "pl-chip"; chip.textContent = plL("Türkçe altyazı yok · çevir", "No Turkish subtitles · translate");
+  chip.onclick = () => { chip.remove(); pxTranslate(); };
+  $("#player").appendChild(chip); setTimeout(() => chip.remove(), 8000);
+}
+async function pxTranslate() {
+  const it = PL.subList[PL.subIdx >= 0 ? PL.subIdx : PL.subList.findIndex((x) => x.lang === "en")] || PL.subList[0];
+  if (!it) { toast(plL("Çevrilecek altyazı yok", "No subtitle to translate"), true); return; }
+  if ($("#plPanel")) $("#plPanel").hidden = true;
+  toast(plL(`Altyazı çevriliyor (${PX.cfg.trEngine === "google" ? "Google" : "NLLB"})…`, "Translating subtitles…"));
+  let r;
+  try {
+    const text = await (await fetch(it.url)).text();
+    r = await slow("subtitle_translate", PL.info.path, text, it.lang || "en", PX.cfg.trEngine);
+  } catch (e) { r = { ok: false, error: String(e) }; }
+  if (!r || !r.ok) {
+    toast(plL("Çeviri başarısız: ", "Translation failed: ") + ({ tool_missing: plL("önce Whisper aracını kur (Ayarlar)", "install the Whisper tool first") }[r?.error] || r?.error || "?"), true);
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([r.vtt], { type: "text/vtt" }));
+  PL.subList.push({ label: plL("Türkçe (çeviri)", "Turkish (translated)"), url, raw: "", lang: "tr" });
+  const i = PL.subList.length - 1;
+  $("#plSub").insertAdjacentHTML("beforeend", `<option value="${i}">${escapeHtml(PL.subList[i].label)}</option>`);
+  $("#plSub").hidden = false; $("#plSub").value = String(i);
+  const prev = PL.subIdx;
+  await plLoadSub(i);
+  if (prev >= 0 && PX.cfg.dualOnTranslate !== false) plLoadSub(prev, 2);   // orijinal ustte kalsin (DUAL)
+  toast(plL("Türkçe altyazı hazır, dosyanın yanına kaydedildi", "Turkish subtitles ready, saved next to the file"));
+}
+
 window.plOnSubChange = () => { if (!PX.applying && PL.open) pxPrefSave({ s: PL.subIdx < 0 ? "off" : PL.subList[PL.subIdx]?.lang || "" }); };
 window.plOnShift = () => { if ($("#pxShift")) $("#pxShift").textContent = (PL.subShift > 0 ? "+" : "") + PL.subShift.toFixed(1) + " sn"; };
 
@@ -138,7 +172,7 @@ async function pxDrawerRender() {
     return;
   }
   // kutuphane
-  if (!PX.lib) { body.innerHTML = `<p class="px-empty">${plL("Taranıyor…", "Scanning…")}</p>`; try { PX.lib = await api.library_get(); } catch (e) { body.innerHTML = `<p class="px-empty">${escapeHtml(String(e))}</p>`; return; } }
+  if (!PX.lib) { body.innerHTML = `<p class="px-empty">${plL("Taranıyor…", "Scanning…")}</p>`; try { PX.lib = typeof slow === "function" ? await slow("library_get") : await api.library_get(); } catch (e) { body.innerHTML = `<p class="px-empty">${escapeHtml(String(e))}</p>`; return; } }
   const L = PX.lib;
   if (PX.libSeries) {
     const s = L.series.find((x) => x.name === PX.libSeries);
@@ -193,6 +227,10 @@ window.plSettings = () => {
     ${seg("sub", "pos", [[0, plL("Alt", "Bottom")], [60, plL("Biraz yukarı", "Raised")], [140, plL("Yukarı", "High")]])}
     <label class="px-rng"><span>${plL("2. altyazı (DUAL)", "2nd subtitle (DUAL)")}</span><select class="pl-sel" id="pxSub2" style="grid-column: span 2"><option value="-1">${plL("Kapalı", "Off")}</option>${(PL.subList || []).map((x, i) => `<option value="${i}" ${i === PL.sub2Idx ? "selected" : ""}>${escapeHtml(x.label)}</option>`).join("")}</select></label>
     <div class="px-shift"><span>${plL("Kaydır (G / H)", "Offset (G / H)")}</span><button class="pl-b" data-act="sh-">−0.5</button><b id="pxShift">${(PL.subShift > 0 ? "+" : "") + (PL.subShift || 0).toFixed(1)} sn</b><button class="pl-b" data-act="sh+">+0.5</button><button class="pl-b" data-act="sh0">0</button></div>
+    <div class="px-shift"><span>${plL("Türkçeye çevir", "Translate to Turkish")}</span>
+      <div class="px-seg" data-g="tr" style="margin:0">${[["nllb", "NLLB"], ["google", "Google"]].map(([v, l]) => `<button data-v="${v}" class="${c.trEngine === v ? "on" : ""}">${l}</button>`).join("")}</div>
+      <button class="pl-b" data-act="translate">${plL("Çevir", "Translate")}</button></div>
+    <p class="px-hint">${plL("NLLB: bilgisayarında çalışır, tutarlı (ilk kullanımda ~1.4 GB iner). Google: hızlı, internet ister.", "NLLB: runs locally, consistent (~1.4 GB first time). Google: fast, needs internet.")}</p>
     <label class="px-rng"><span>${plL("Dil sırası", "Language order")}</span><input class="px-in" id="pxLangs" value="${escapeHtml(c.langs)}" placeholder="tr,en,ja" style="grid-column: span 2"></label>
     <h4>${plL("Görüntü", "Picture")}</h4>
     ${seg("vid", "aspect", [["auto", plL("Otomatik", "Auto")], ["16/9", "16:9"], ["4/3", "4:3"], ["21/9", "21:9"], ["fill", plL("Doldur", "Fill")]])}
@@ -209,10 +247,11 @@ window.plSettings = () => {
     const segEl = b.closest(".px-seg");
     if (segEl) {
       const g = segEl.dataset.g, v = b.dataset.v;
-      if (g === "audio") c.audio = v; else c[g][segEl.dataset.k] = segEl.dataset.k === "pos" ? +v : v;
+      if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v; else c[g][segEl.dataset.k] = segEl.dataset.k === "pos" ? +v : v;
       segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
       pxSave(); pxApplyAll();
     }
+    if (b.dataset.act === "translate") pxTranslate();
     if (b.dataset.act === "sh-") plShift(-0.5);
     if (b.dataset.act === "sh+") plShift(0.5);
     if (b.dataset.act === "sh0") plShift(0);

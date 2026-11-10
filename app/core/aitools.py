@@ -404,6 +404,41 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
     return last
 
 
+# ---- altyazi cevirisi (Whisper ortaminda: NLLB / googletrans) -----------------------------------------------
+def _ensure_pkg(tool: str, module: str, package: str) -> bool:
+    """Arac ortaminda modul yoksa kur (googletrans kucuk; ilk 'Google ile cevir'de bir kez)."""
+    py = python_exe(tool)
+    try:
+        if subprocess.run([py, "-c", f"import {module}"], capture_output=True, timeout=60, creationflags=NO_WINDOW).returncode == 0:
+            return True
+    except Exception:
+        return False
+    uv = str(paths.BIN_DIR / "uv.exe") if paths.FROZEN and (paths.BIN_DIR / "uv.exe").is_file() else shutil.which("uv")
+    cmd = [uv, "pip", "install", "--python", py, package] if uv else [py, "-m", "pip", "install", package]
+    return _run_logged(tool, cmd, lambda s: None) == 0
+
+
+def translate_subtitle(text: str, out: str, src: str, tgt: str, engine: str,
+                       on_p: Callable[[float], None] = lambda p: None) -> dict:
+    import tempfile
+    if not installed("whisper"):
+        return {"error": "tool_missing"}
+    if engine == "google" and not _ensure_pkg("whisper", "googletrans", "googletrans>=4.0.2"):
+        return {"error": "googletrans_install_failed"}
+    fd, tmp = tempfile.mkstemp(prefix="kami_sub_", suffix=".vtt")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    try:
+        return _run_once(["app.tools.translate_run", tmp, out, src or "en", tgt or "tr", engine,
+                          os.path.join(models_dir("whisper"), "nllb")],
+                         lambda m: "p" in m and on_p(m["p"]), threading.Event(), "whisper", {})
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
 # ---- rozetler: durum diskteki gercek dosyalardan turetilir (Kami'nin kendi kaydi bos/yanlis olabilir)
 _DISK_CACHE: dict[str, tuple[float, list[str]]] = {}
 

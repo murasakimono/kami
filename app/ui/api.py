@@ -71,7 +71,8 @@ class Api:
         "add_url", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
-        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now",
+        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate",
+        "library_get",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -1039,6 +1040,23 @@ class Api:
 
     def playlist_delete(self, name: str) -> dict[str, list[str]]:
         return self._pl().delete(str(name))
+
+    def subtitle_translate(self, video_path: str, text: str, src: str = "en", engine: str = "nllb") -> dict[str, Any]:
+        """Altyaziyi Turkceye cevir (NLLB yerel / googletrans), videonun yanina <ad>.tr.srt yazar; oynatici VTT'yi alir."""
+        from pathlib import Path
+        from app.core import aitools
+        from app.core.media_server import srt_to_vtt
+        p = Path(str(video_path or ""))
+        if not p.is_file() or not str(text or "").strip():
+            return {"ok": False, "error": "bad_input"}
+        out = p.with_name(p.stem + ".tr.srt")
+        if out.exists():
+            out = p.with_name(p.stem + ".tr.kami.srt")   # var olan insan yapimi altyaziya dokunma
+        res = aitools.translate_subtitle(str(text), str(out), str(src or "en"), "tr", "google" if engine == "google" else "nllb")
+        if "error" in res:
+            return {"ok": False, "error": str(res["error"])[:200]}
+        return {"ok": True, "path": res["done"], "engine": res.get("engine"),
+                "vtt": srt_to_vtt(Path(res["done"]).read_text(encoding="utf-8"))}
 
     def _play_request(self, path: str) -> None:
         with self._inbox_lock:
