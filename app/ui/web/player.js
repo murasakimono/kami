@@ -164,7 +164,7 @@ function plStart(r) {
   el.hidden = false; el.classList.toggle("is-audio", r.kind === "audio");
   document.body.classList.add("pl-open");
   $("#plTitle").textContent = r.title;
-  if (window.KAMI_PLAYER_WINDOW) document.title = r.title + " — Kami Player";
+
   plModeUi();
   $("#plCover").style.backgroundImage = r.cover ? `url("${r.cover}")` : "";
   $("#plCover").hidden = !r.cover;
@@ -232,7 +232,7 @@ function plClose() {
   v.pause(); v.removeAttribute("src"); v.load();   // akis baglantisi kapanir -> sunucu ffmpeg'i oldurur
   PL.open = false;
   $("#plSpin").classList.remove("on");
-  if (window.KAMI_PLAYER_WINDOW) { window.plIdle?.(true); if (document.title) document.title = "Kami Player"; PL.big?.stop(); clearTimeout(PL.blinkT); return; }
+  if (window.KAMI_PLAYER_WINDOW) { window.plIdle?.(true); PL.big?.stop(); clearTimeout(PL.blinkT); return; }
   $("#player").hidden = true;
   document.body.classList.remove("pl-open");
   if (document.fullscreenElement) document.exitFullscreen();

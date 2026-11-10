@@ -387,56 +387,72 @@ function skFrame(t) {
 
 // ---------- arka plan: suzulen muskalar, yukselen kivilcimlar, yerde sis, ruh isiklari (hepsi dusuk opaklik) ----------
 const FX = { on: (() => { try { return localStorage.getItem("kami.fx") !== "0"; } catch { return true; } })(), parts: [], last: 0 };
+function fxSprite(w, h, draw) { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); return c; }
 function fxInit() {
   const c = document.createElement("canvas");
   c.id = "skFx"; document.body.prepend(c);
   const fog = document.createElement("div"); fog.id = "skFog"; document.body.prepend(fog);
-  const resize = () => { c.width = innerWidth; c.height = innerHeight; };
-  resize(); addEventListener("resize", resize);
-  const rnd = (a, b) => a + Math.random() * (b - a);
-  const spawn = (kind) => {
-    const W = c.width, H = c.height;
-    if (kind === "talisman") return { kind, x: rnd(0, W), y: rnd(-60, H), vx: rnd(-6, 6), vy: rnd(-10, -4), r: rnd(0, 6.28), vr: rnd(-0.3, 0.3), s: rnd(0.6, 1.1), a: rnd(0.05, 0.11) };
-    if (kind === "ember") return { kind, x: rnd(0, W), y: H + 10, vx: rnd(-8, 8), vy: rnd(-40, -18), life: rnd(4, 9), t: 0, s: rnd(1, 2.4), g: Math.random() < 0.3 };
-    return { kind: "wisp", x: rnd(0, W), y: rnd(H * 0.2, H * 0.8), vx: rnd(-14, 14), vy: rnd(-6, 6), life: rnd(6, 11), t: 0, s: rnd(10, 20) };
-  };
-  for (let i = 0; i < 7; i++) FX.parts.push(spawn("talisman"));
   const ctx = c.getContext("2d");
+  let W = 0, H = 0, dpr = 1;
+  const resize = () => { dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; c.width = W * dpr; c.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  resize(); addEventListener("resize", resize);
+  // muska sprite: lavanta kagit, ust mor serit, yirtik alt kenar, zumrut muhur, firca yazilari
+  const paper = (blur) => fxSprite(70, 150, (g, w, h) => {
+    if (blur) g.filter = `blur(${blur}px)`;
+    g.translate(w / 2, h / 2);
+    const grd = g.createLinearGradient(0, -60, 0, 60); grd.addColorStop(0, "#EDE6FF"); grd.addColorStop(1, "#B9A6F2");
+    g.fillStyle = grd; g.beginPath(); g.moveTo(-20, -62); g.lineTo(20, -62); g.lineTo(20, 52);
+    for (let x = 20; x >= -20; x -= 5) g.lineTo(x, 52 + ((x / 5) % 2 ? 7 : 1));
+    g.closePath(); g.fill();
+    g.fillStyle = "#6D28D9"; g.fillRect(-20, -62, 40, 9);
+    g.strokeStyle = "#3B1580"; g.lineWidth = 2.6; g.lineCap = "round";
+    g.beginPath(); g.moveTo(0, -44); g.lineTo(0, 30); g.moveTo(-10, -30); g.quadraticCurveTo(0, -24, 10, -32); g.moveTo(-11, -10); g.lineTo(9, -4);
+    g.moveTo(-8, 10); g.quadraticCurveTo(2, 18, 10, 8); g.stroke();
+    g.fillStyle = "#0FA37A"; g.beginPath(); g.arc(0, 38, 6.5, 0, 6.28); g.fill();
+  });
+  const glow = (col) => fxSprite(64, 64, (g) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, col.replace("A", "1")); r.addColorStop(0.25, col.replace("A", ".55")); r.addColorStop(1, col.replace("A", "0")); g.fillStyle = r; g.fillRect(0, 0, 64, 64); });
+  const SPR = { near: paper(0), mid: paper(1.2), far: paper(2.4), vio: glow("rgba(167,139,250,A)"), em: glow("rgba(46,230,166,A)"), wisp: glow("rgba(196,181,253,A)") };
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const LAYERS = [["far", 0.35, 0.05, 5], ["mid", 0.55, 0.075, 4], ["near", 0.8, 0.1, 3]];   // derinlik: boyut, opaklik, adet
+  const tal = (layer, y) => { const [n, sc, a] = layer; return { kind: "t", spr: n, sc: sc * rnd(0.85, 1.15), a, x: rnd(0, W), y: y ?? rnd(0, H), vy: -rnd(6, 14) * sc, sway: rnd(10, 26) * sc, ph: rnd(0, 6.28), rot: rnd(-0.4, 0.4), spin: rnd(0.4, 1.1) }; };
+  for (const L of LAYERS) for (let i = 0; i < L[3]; i++) FX.parts.push(tal(L));
   const loop = (now) => {
     requestAnimationFrame(loop);
-    if (!FX.on || document.hidden || document.body.classList.contains("pl-open")) { if (FX.drawn) { ctx.clearRect(0, 0, c.width, c.height); FX.drawn = false; } return; }
-    const dt = Math.min(0.05, (now - FX.last) / 1000 || 0); FX.last = now;
-    if (dt < 1 / 40) return;   // ~30 fps yeter, pil dostu
-    const W = c.width, H = c.height;
-    // kivilcim yogunlugu indirme hiziyla artar
-    const rate = 0.6 + (SK.speedFrac || 0) * 4;
-    if (Math.random() < rate * dt) FX.parts.push(spawn("ember"));
-    if (Math.random() < 0.06 * dt && FX.parts.filter((p) => p.kind === "wisp").length < 3) FX.parts.push(spawn("wisp"));
+    if (!FX.on || document.hidden) { if (FX.drawn) { ctx.clearRect(0, 0, W, H); FX.drawn = false; } FX.last = now; return; }
+    if (now - FX.last < 30) return;   // ~33 fps
+    const dt = Math.min(0.1, (now - FX.last) / 1000); FX.last = now;
+    const t = now / 1000;
+    const rate = 1.2 + (SK.speedFrac || 0) * 6;   // kivilcim: indirme hizlandikca artar
+    if (Math.random() < rate * dt && FX.parts.length < 48) FX.parts.push({ kind: "e", x: rnd(0, W), y: H + 8, vx: rnd(-6, 6), vy: -rnd(22, 48), life: rnd(5, 10), t: 0, s: rnd(6, 13), g: Math.random() < 0.3, fl: rnd(0, 6.28) });
+    if (Math.random() < 0.07 * dt && FX.parts.filter((p) => p.kind === "w").length < 3)
+      FX.parts.push({ kind: "w", x: rnd(W * 0.1, W * 0.9), y: rnd(H * 0.25, H * 0.75), vx: rnd(-18, 18), vy: rnd(-8, 8), life: rnd(7, 12), t: 0, s: rnd(26, 44), trail: [] });
     ctx.clearRect(0, 0, W, H); FX.drawn = true;
     FX.parts = FX.parts.filter((p) => {
-      p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt;
-      if (p.kind === "talisman") {
-        p.r += p.vr * dt;
-        if (p.y < -80) { Object.assign(p, spawn("talisman"), { y: H + 60 }); }
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.scale(p.s, p.s); ctx.globalAlpha = p.a;
-        ctx.fillStyle = "#C4B5FD"; ctx.fillRect(-11, -26, 22, 52);
-        ctx.fillStyle = "#6D28D9"; ctx.fillRect(-11, -26, 22, 5);
-        ctx.strokeStyle = "#4C1D95"; ctx.lineWidth = 1.6;
-        ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(0, 18); ctx.moveTo(-6, -8); ctx.lineTo(6, -2); ctx.moveTo(-6, 4); ctx.lineTo(6, 10); ctx.stroke();
-        ctx.restore();
+      if (p.kind === "t") {   // muska: yukari suzulur, saga sola salinir, kendi ekseninde yavasca doner (kagit cevrilme hissi)
+        p.y += p.vy * dt;
+        const x = p.x + Math.sin(t * 0.5 + p.ph) * p.sway;
+        if (p.y < -90) Object.assign(p, tal(LAYERS.find((L) => L[0] === p.spr), H + 90));
+        ctx.save(); ctx.translate(x, p.y); ctx.rotate(p.rot + Math.sin(t * 0.35 + p.ph) * 0.35);
+        const fl = Math.cos(t * p.spin * 0.45 + p.ph);
+        ctx.scale(p.sc * (Math.sign(fl) || 1) * (0.3 + 0.7 * Math.abs(fl)), p.sc);   // yatay olcek -> 3B donus (cubuk gibi incelmez)
+        ctx.globalAlpha = p.a; ctx.drawImage(SPR[p.spr], -35, -75); ctx.restore();
         return true;
       }
-      p.t += dt;
+      p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt;
       const k = p.t / p.life, fade = Math.sin(Math.min(1, k) * Math.PI);
-      if (p.kind === "ember") {
-        ctx.globalAlpha = 0.22 * fade; ctx.fillStyle = p.g ? "#2EE6A6" : "#A78BFA";
-        ctx.beginPath(); ctx.arc(p.x + Math.sin(p.t * 2 + p.x) * 6, p.y, p.s, 0, 6.28); ctx.fill();
+      ctx.globalCompositeOperation = "lighter";
+      if (p.kind === "e") {
+        const fl = 0.75 + 0.25 * Math.sin(t * 9 + p.fl);
+        ctx.globalAlpha = 0.28 * fade * fl;
+        const xx = p.x + Math.sin(p.t * 1.7 + p.fl) * 8;
+        ctx.drawImage(p.g ? SPR.em : SPR.vio, xx - p.s, p.y - p.s, p.s * 2, p.s * 2);
       } else {
-        const gr = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.s * 2.2);
-        gr.addColorStop(0, "rgba(196,181,253,.9)"); gr.addColorStop(0.35, "rgba(139,92,246,.35)"); gr.addColorStop(1, "rgba(139,92,246,0)");
-        ctx.globalAlpha = 0.16 * fade; ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(p.x, p.y, p.s * 2.2, 0, 6.28); ctx.fill();
+        p.trail.push([p.x, p.y]); if (p.trail.length > 14) p.trail.shift();
+        p.trail.forEach(([tx, ty], i) => { ctx.globalAlpha = 0.05 * fade * (i / p.trail.length); const ss = p.s * (0.4 + 0.6 * i / p.trail.length); ctx.drawImage(SPR.wisp, tx - ss, ty - ss, ss * 2, ss * 2); });
+        ctx.globalAlpha = 0.16 * fade; ctx.drawImage(SPR.wisp, p.x - p.s, p.y - p.s, p.s * 2, p.s * 2);
+        p.vx += Math.sin(t + p.s) * 4 * dt; p.vy += Math.cos(t * 0.7 + p.s) * 4 * dt;
       }
-      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
       return p.t < p.life;
     });
   };

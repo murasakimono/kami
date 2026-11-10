@@ -275,7 +275,13 @@ def main() -> int:
         def closed() -> None:
             api._player_win = None
         w.events.closed += closed
-        w.events.loaded += lambda: bind_drop(w)
+
+        def loaded() -> None:
+            bind_drop(w)
+            # simge durumundaki / arka plandaki Kami'den acilinca da one gelsin (Gezgin ikinci ornegi izin verdi)
+            player_front.request()
+            threading.Timer(0.6, player_front.request).start()
+        w.events.loaded += loaded
         return w
     api._make_player_window = make_player_window
     api._front_player = player_front.request
