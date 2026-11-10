@@ -44,7 +44,7 @@ function skBuild() {
             stroke-dasharray="${SK_RING_C}" stroke-dashoffset="${SK_RING_C}" transform="rotate(-90 150 150)"/>
           <g id="skOrbit"><circle cx="150" cy="${150 - SK_RING_R - 14}" r="3" fill="#C4B5FD"/><circle cx="150" cy="${150 + SK_RING_R + 14}" r="2" fill="#2EE6A6"/></g>
         </svg>
-        <div class="sk-eye-mask"><canvas id="skEye" width="352" height="409"></canvas></div>
+        <canvas class="sk-char" id="skEye" width="403" height="614"></canvas>
       </div>
       <div class="sk-speed">
         <div class="sk-speed-num"><span id="skNum">0</span><small id="skUnit">B/s</small></div>
@@ -80,7 +80,8 @@ function skBuild() {
   $("#addInput")?.setAttribute("placeholder", skL("Bağlantı yapıştır ya da dosyayı ruha bırak…", "Paste a link or drop a file on the spirit…"));
   skBind();
   if (window.KamiEye) {
-    SK.eye = new KamiEye($("#skEye"), { assets: "eye/assets/" });
+    // Sunak'ta tam boy karakter; sadece goz kesiti (eye/assets) eklenti ve widget icin
+    SK.eye = new KamiEye($("#skEye"), { assets: "eye/char/", eyeY: 0.38, mirrorFrame: true });
     SK.eye.ready.then(() => SK.eye.start()).catch((e) => console.error(e));
   }
   requestAnimationFrame(skFrame);

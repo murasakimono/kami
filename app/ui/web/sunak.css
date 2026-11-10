@@ -46,19 +46,18 @@ body.sunak.sk-drawer .sk-drawer-close {
 
 /* ust bolum: ruh + hiz */
 #sunak .sk-top { display: flex; align-items: center; gap: 38px; padding-left: 8px; min-height: 0; flex: 0 0 auto; }
-#sunak .sk-altar { position: relative; width: 300px; height: 300px; flex: 0 0 300px; }
-#sunak .sk-altar svg.sk-ring { position: absolute; inset: 0; overflow: visible; }
+#sunak .sk-altar { position: relative; width: 300px; height: 330px; flex: 0 0 300px; }
+#sunak .sk-altar svg.sk-ring { position: absolute; left: 0; top: 0; width: 300px; height: 300px; overflow: visible; }
 #sunak .sk-ring-fill { transition: stroke-dashoffset .6s cubic-bezier(.3, .9, .3, 1); }
 #sunak .sk-altar.full .sk-ring-fill { filter: drop-shadow(0 0 6px rgba(46, 230, 166, .9)); animation: sk-glow 1.6s ease-in-out infinite; }
-#sunak .sk-altar.slow .sk-ring-tip { animation: sk-shiver .18s steps(2) infinite; }
 @keyframes sk-glow { 50% { opacity: .65; } }
-@keyframes sk-shiver { 50% { transform: translate(1px, -1px); } }
-#sunak .sk-eye { position: absolute; left: 52px; top: 38px; width: 196px; height: 228px; cursor: pointer; border-radius: 0; }
-#sunak .sk-eye-mask { position: absolute; left: 22px; top: 22px; width: 256px; height: 256px; border-radius: 50%; overflow: hidden; }
-#sunak .sk-eye-mask canvas { position: absolute; left: 50%; top: 50%; width: 248px; height: 288px; transform: translate(-50%, -46%); }
-#sunak .sk-altar.drop .sk-eye-mask { box-shadow: 0 0 0 3px var(--sk-em), 0 0 40px rgba(46, 230, 166, .6); }
-#sunak .sk-altar.swallow .sk-eye-mask { animation: sk-swallow .6s cubic-bezier(.3, 1.6, .5, 1); }
-@keyframes sk-swallow { 30% { transform: scale(.9); } 60% { transform: scale(1.06); box-shadow: 0 0 60px rgba(46, 230, 166, .8); } }
+/* tam boy karakter halkanin onunde durur; boynuzlar halkayi tasar */
+#sunak .sk-char { position: absolute; left: 50%; top: -6px; width: 222px; height: 338px; transform: translateX(-50%); cursor: pointer; filter: drop-shadow(0 10px 24px rgba(0, 0, 0, .55)); }
+#sunak .sk-altar::after { content: ""; position: absolute; left: 50%; bottom: -4px; width: 210px; height: 22px; transform: translateX(-50%); background: radial-gradient(ellipse at center, rgba(46, 230, 166, .28), rgba(46, 230, 166, 0) 70%); pointer-events: none; }
+#sunak .sk-altar.drop .sk-char { filter: drop-shadow(0 0 22px rgba(46, 230, 166, .85)); }
+#sunak .sk-altar.drop .sk-ring circle:first-child { stroke: #0FA37A; }
+#sunak .sk-altar.swallow .sk-char { animation: sk-swallow .6s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes sk-swallow { 30% { transform: translateX(-50%) scale(.92, 1.06); } 60% { transform: translateX(-50%) scale(1.05, .96); filter: drop-shadow(0 0 30px rgba(46, 230, 166, .9)); } }
 
 #sunak .sk-speed { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 #sunak .sk-speed-num { font-weight: 700; font-size: 72px; line-height: .95; letter-spacing: -1px; }
@@ -70,14 +69,14 @@ body.sunak.sk-drawer .sk-drawer-close {
 
 /* seritler */
 #sunak .sk-strips { display: flex; align-items: center; gap: 10px; min-height: 0; }
-#sunak .sk-arrow { width: 36px; height: 120px; flex: 0 0 36px; border: 0; cursor: pointer; background: var(--sk-plum); }
+#sunak .sk-arrow { width: 36px; height: 110px; flex: 0 0 36px; border: 0; cursor: pointer; background: var(--sk-plum); }
 #sunak .sk-arrow.on { background: var(--sk-royal); }
 #sunak .sk-arrow.prev { clip-path: polygon(100% 0, 100% 100%, 0 50%); }
 #sunak .sk-arrow.next { clip-path: polygon(0 0, 100% 50%, 0 100%); }
 #sunak .sk-track-wrap { flex: 1; min-width: 0; overflow: hidden; padding: 10px 2px 8px; }
 #sunak .sk-track { display: flex; gap: 12px; transition: transform .38s cubic-bezier(.2, .8, .2, 1); }
 #sunak .sk-strip {
-  flex: 0 0 150px; height: 244px; padding: 0; border: 0; background: transparent; cursor: pointer; position: relative;
+  flex: 0 0 150px; height: 226px; padding: 0; border: 0; background: transparent; cursor: pointer; position: relative;
   transition: transform .25s, filter .25s; color: var(--sk-text); font-family: var(--font); text-align: left;
 }
 #sunak .sk-strip.sel { transform: translateY(-6px); filter: drop-shadow(0 0 12px rgba(124, 77, 255, .8)); }
@@ -85,7 +84,7 @@ body.sunak.sk-drawer .sk-drawer-close {
 @keyframes sk-slosh { 20% { transform: skewY(-4deg); } 45% { transform: skewY(3deg); } 70% { transform: skewY(-1.5deg); } }
 #sunak .sk-paper {
   position: absolute; inset: 0; background: #110D17;
-  clip-path: path("M0 0 H150 V226 C144 232 140 238 133 236 C126 234 122 226 114 229 C106 232 104 241 96 240 C88 239 86 230 78 231 C70 232 66 241 58 240 C50 239 47 229 39 230 C31 231 28 240 20 239 C12 238 7 230 0 232 Z");
+  clip-path: path("M0 0 H150 V208 C144 214 140 220 133 218 C126 216 122 208 114 211 C106 214 104 223 96 222 C88 221 86 212 78 213 C70 214 66 223 58 222 C50 221 47 211 39 212 C31 213 28 222 20 221 C12 220 7 212 0 214 Z");
 }
 #sunak .sk-liquid { position: absolute; left: 0; right: 0; bottom: 0; transition: height .8s cubic-bezier(.3, .9, .3, 1); transform-origin: 50% 100%; }
 #sunak .sk-wave { position: absolute; left: 0; width: 300px; animation: sk-wave 2.6s linear infinite; }
@@ -110,7 +109,7 @@ body.sunak.sk-drawer .sk-drawer-close {
 #sunak .sk-dots i { width: 10px; height: 4px; background: #2B2238; transition: width .2s, background .2s; }
 #sunak .sk-dots i.vis { background: #6D5A8C; }
 #sunak .sk-dots i.sel { width: 22px; background: var(--sk-em); }
-#sunak .sk-empty { flex: 1; height: 244px; display: flex; align-items: center; justify-content: center; color: var(--sk-mute); font-size: 15px; border: 1px dashed var(--sk-line); clip-path: var(--cut); }
+#sunak .sk-empty { flex: 1; height: 226px; display: flex; align-items: center; justify-content: center; color: var(--sk-mute); font-size: 15px; border: 1px dashed var(--sk-line); clip-path: var(--cut); }
 
 /* secili indirme cubugu */
 #sunak .sk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 14px; background: linear-gradient(90deg, #16101F, #0E0B14); clip-path: var(--cut); border-left: 3px solid var(--sk-em); min-height: 58px; box-sizing: border-box; }
@@ -148,6 +147,6 @@ body.sunak :focus-visible { outline: 2px solid var(--sk-em); outline-offset: 2px
   #sunak .sk-track, #sunak .sk-liquid { transition: none; }
 }
 @media (max-height: 760px) {
-  #sunak .sk-altar { transform: scale(.82); transform-origin: left center; margin-right: -54px; }
-  #sunak .sk-strip { height: 210px; }
+  #sunak .sk-altar { transform: scale(.84); transform-origin: left top; margin: 0 -48px -52px 0; }
+  #sunak .sk-strip { height: 200px; }
 }
