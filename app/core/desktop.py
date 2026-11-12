@@ -215,6 +215,7 @@ def icon_path() -> Path:
 # ---------------------------------------------------------------- dugmeli Windows bildirimi
 def toast(title: str, body: str, actions: list[tuple[str, str]] | None = None, launch: str = "kami://show") -> bool:
     """WinRT ToastNotification (PowerShell). Dugmeler kami:// linki acar -> calisan Kami islem yapar."""
+    import base64
     import subprocess
     import xml.sax.saxutils as su
     if os.name != "nt":
@@ -225,10 +226,10 @@ def toast(title: str, body: str, actions: list[tuple[str, str]] | None = None, l
            + (f"<actions>{acts}</actions>" if acts else "") + "</toast>")
     ps = ("[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;"
           "[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null;"
-          "$x = New-Object Windows.Data.Xml.Dom.XmlDocument; $x.LoadXml([Console]::In.ReadToEnd());"
+          "$x = New-Object Windows.Data.Xml.Dom.XmlDocument; $x.LoadXml([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd().Trim())));"
           "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Kami.DownloadManager').Show([Windows.UI.Notifications.ToastNotification]::new($x))")
     try:
-        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps], input=xml.encode("utf-8"),
+        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps], input=base64.b64encode(xml.encode("utf-8")),
                            capture_output=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return r.returncode == 0
     except Exception:

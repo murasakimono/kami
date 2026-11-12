@@ -414,7 +414,7 @@ def main() -> int:
                 want = settings.get("mini_card") and not api._card_hidden and away and busy
                 if want and api._card_win is None:
                     sc = webview.screens[0] if webview.screens else None
-                    w, h = 380, 128
+                    w, h = 360, 98
                     x, y = ((sc.x + sc.width - w - 18), (sc.y + sc.height - h - 70)) if sc else (None, None)
                     api._card_win = webview.create_window("Kami Kart", url=str(paths.WEB_DIR / "card.html"), js_api=api, width=w, height=h,
                                                           x=x, y=y, frameless=True, easy_drag=True, on_top=True, resizable=False,
@@ -583,6 +583,7 @@ def main() -> int:
         threading.Thread(target=bridge.handle, args=("/v1/rd", {"url": magnet, "source": "magnet"}),
                          daemon=True).start()
     try:
+        _clear_web_cache_on_update()
         webview.start(debug=bool(os.environ.get("KAMI_DEBUG")), private_mode=False,
                       storage_path=str(paths.DATA_DIR / "webview"))
     finally:
@@ -614,3 +615,21 @@ def _main_logged() -> int:
 
 if __name__ == "__main__":
     sys.exit(_main_logged())
+
+
+def _clear_web_cache_on_update() -> None:
+    """Surum degisince WebView2 onbellegini sil; yoksa eski JS/CSS calisir (1.1.0'da Anime4K gorunmedi)."""
+    import shutil
+    from app.core.extras import APP_VERSION
+    root = paths.DATA_DIR / "webview"
+    mark = root / "ui_version.txt"
+    try:
+        if mark.exists() and mark.read_text(encoding="utf-8").strip() == APP_VERSION:
+            return
+        base = root / "EBWebView" / "Default"
+        for d in ("Cache", "Code Cache", "GPUCache", "Service Worker"):
+            shutil.rmtree(base / d, ignore_errors=True)
+        root.mkdir(parents=True, exist_ok=True)
+        mark.write_text(APP_VERSION, encoding="utf-8")
+    except Exception:
+        log.exception("WebView onbellegi temizlenemedi")
