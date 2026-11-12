@@ -107,6 +107,8 @@ DEFAULTS: dict[str, Any] = {
     "auto_mirror": True,           # coklu kaynak: SourceForge / Metalink aynalarindan da cek
     "song_hotkey_enabled": True,   # "Bu sarki ne?" genel kisayolu (bilgisayardan cikan sesi dinler)
     "song_hotkey": "ctrl+shift+s",
+    "lens_hotkey_enabled": True,
+    "lens_hotkey": "ctrl+shift+l",   # Kami Lens: ekrandan alan secip ara
 }
 
 

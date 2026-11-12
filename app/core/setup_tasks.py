@@ -86,7 +86,13 @@ CONVERT_EXTS = (".png .jpg .jpeg .webp .avif .heic .bmp .tif .tiff .gif .mp3 .fl
 
 
 def register_convert_menu(kami: str) -> None:
-    """Gezgin sag tik: 'Kami ile donustur' (Windows 11'de 'Diger secenekler' altinda). HKCU, yonetici gerekmez."""
+    """Gezgin sag tik: 'Kami ile donustur' + gorsellerde 'Kami Lens ile ara' (Windows 11'de 'Diger secenekler' altinda)."""
+    for ext in PLAYER_IMAGE:
+        base = rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiLens"
+        for sub, nm, val in [(base, "MUIVerb", "Kami Lens ile ara"), (base, "Icon", f'"{kami}",0'),
+                             (base + r"\command", "", f'"{kami}" --lens "%1"')]:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
+                winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, val)
     for ext in CONVERT_EXTS:
         base = rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiConvert"
         for sub, nm, val in [(base, "MUIVerb", "Kami ile dönüştür"), (base, "Icon", f'"{kami}",0'),
@@ -98,6 +104,8 @@ def register_convert_menu(kami: str) -> None:
 def unregister_player() -> None:
     for ext in CONVERT_EXTS:
         _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiConvert")
+    for ext in PLAYER_IMAGE:
+        _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiLens")
     _delete_tree(winreg.HKEY_CURRENT_USER, r"Software\Classes\kami")
     _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\AppUserModelId\{AUMID}")
     for pid in PROGIDS:

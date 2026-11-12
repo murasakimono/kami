@@ -926,6 +926,14 @@ class Api:
             self._genius.clear()
         return {"ok": True}
 
+    def open_web(self, url: str) -> bool:
+        """Kami Lens sonuclari: http(s) adresini varsayilan tarayicida acar."""
+        url = str(url or "")
+        if not url.startswith(("https://", "http://")):
+            return False
+        os.startfile(url)  # type: ignore[attr-defined]
+        return True
+
     def open_link(self, url: str) -> bool:
         """Soz linkleri (Genius / AZLyrics) varsayilan tarayicida."""
         url = str(url or "")
@@ -1426,12 +1434,104 @@ class Api:
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:120]}
 
-    def viewer_add(self, path: str) -> None:
-        self._view_inbox = str(path or "")
+    # ---------- Kami Picture + Kami Lens ----------
+    def picture_open(self, path: str, lens: bool = False) -> dict[str, Any]:
+        """Kami Picture penceresini acar; lens=True ise hemen gorsel aramasi yapar. path='screen': ekrandan alan sec."""
+        path = str(path or "")
+        if path == "screen":
+            path = self.lens_screen_grab()
+            if not path:
+                return {"ok": False, "error": "cancelled"}
+            lens = True
+        if not os.path.isfile(path):
+            return {"ok": False, "error": "no_file"}
+        with self._inbox_lock:
+            self._picture_q = getattr(self, "_picture_q", []) + [{"path": path, "lens": bool(lens)}]
+        if getattr(self, "_picture_win", None) is None and getattr(self, "_make_picture_window", None):
+            self._picture_win = self._make_picture_window()
+        elif getattr(self, "_front_picture", None):
+            self._front_picture()
+        return {"ok": True}
 
-    def viewer_inbox(self) -> str:
-        p, self._view_inbox = getattr(self, "_view_inbox", ""), ""
-        return p if p and os.path.isfile(p) else ""
+    def picture_poll(self) -> list[dict[str, Any]]:
+        with self._inbox_lock:
+            q, self._picture_q = getattr(self, "_picture_q", []), []
+        return q
+
+    def lens_search(self, path: str) -> dict[str, Any]:
+        from app.core import lens
+        if not os.path.isfile(str(path or "")):
+            return {"ok": False, "error": "no_file"}
+        try:
+            return lens.search(str(path))
+        except Exception as exc:
+            log.exception("Kami Lens")
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def lens_download(self, url: str, near: str = "") -> dict[str, Any]:
+        """Bulunan en buyuk / secilen gorseli indirir (aranan gorselin klasorune; yoksa indirme klasorune)."""
+        from app.core import lens
+        url = str(url or "")
+        if not url.startswith(("http://", "https://")):
+            return {"ok": False, "error": "bad_url"}
+        folder = os.path.dirname(str(near)) if near and os.path.isfile(str(near)) and "kami_lens_" not in str(near) else self._manager.settings.get("download_dir")
+        stem = os.path.splitext(os.path.basename(str(near)))[0] if near else "lens"
+        try:
+            return {"ok": True, "path": lens.download(url, folder, stem)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def lens_screen_grab(self) -> str:
+        """Ekran goruntusu al, secim penceresinde alan sectir, kirpilmis PNG yolunu dondur (iptal: '')."""
+        import tempfile
+        import time
+        from PIL import ImageGrab
+        shot = os.path.join(tempfile.gettempdir(), f"kami_lens_full_{int(time.time())}.png")
+        ImageGrab.grab(all_screens=False).save(shot)
+        self._grab = {"full": shot, "rect": None, "done": threading.Event()}
+        if getattr(self, "_make_grab_window", None):
+            self._make_grab_window()
+        if not self._grab["done"].wait(120) or not self._grab["rect"]:
+            return ""
+        from PIL import Image
+        x, y, w, h = self._grab["rect"]
+        out = shot.replace("_full_", "_")
+        Image.open(shot).crop((int(x), int(y), int(x + w), int(y + h))).save(out)
+        try:
+            os.remove(shot)
+        except OSError:
+            pass
+        return out
+
+    def lens_grab_info(self) -> dict[str, Any]:
+        g = getattr(self, "_grab", None)
+        if not g:
+            return {}
+        import base64
+        return {"url": "data:image/png;base64," + base64.b64encode(open(g["full"], "rb").read()).decode()}
+
+    def lens_grab_done(self, x: float = 0, y: float = 0, w: float = 0, h: float = 0) -> None:
+        g = getattr(self, "_grab", None)
+        if not g:
+            return
+        g["rect"] = (x, y, w, h) if w > 8 and h > 8 else None
+        g["done"].set()
+        win = getattr(self, "_grab_win", None)
+        if win is not None:
+            threading.Thread(target=win.destroy, daemon=True).start()
+            self._grab_win = None
+
+    def picture_send(self, path: str, target: str = "") -> None:
+        """Kami Picture -> Donusturucu (ana pencerede acilir)."""
+        self.convert_add([str(path)])
+        if target:
+            self._conv_target = str(target)
+        if self._show_main:
+            self._show_main()
+
+    def convert_preset(self) -> str:
+        t, self._conv_target = getattr(self, "_conv_target", ""), ""
+        return t
 
     def open_path_folder(self, path: str) -> bool:
         path = str(path or "")

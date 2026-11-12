@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Kami Lens</title><style>
+html,body{margin:0;height:100%;overflow:hidden;background:#000;cursor:crosshair;user-select:none;font:600 14px "Segoe UI",sans-serif}
+#shot{position:fixed;inset:0;width:100%;height:100%;object-fit:fill}
+#dim{position:fixed;inset:0;background:rgba(8,7,12,.45)}
+#sel{position:fixed;border:2px solid #2EE6A6;box-shadow:0 0 0 9999px rgba(8,7,12,.45),0 0 18px rgba(46,230,166,.6);display:none}
+#hint{position:fixed;left:50%;top:22px;transform:translateX(-50%);padding:8px 14px;border-radius:10px;background:#120E1A;color:#EDE9F6;border:1px solid #6D28D9}
+</style></head><body>
+<img id="shot" alt=""><div id="dim"></div><div id="sel"></div><div id="hint">Kami Lens · aramak istediğin alanı seç (Esc: vazgeç)</div>
+<script>
+let api, sx, sy, dragging = false;
+const shot = document.getElementById("shot"), sel = document.getElementById("sel"), dim = document.getElementById("dim");
+window.addEventListener("pywebviewready", async () => { api = window.pywebview.api; const r = await api.lens_grab_info(); if (r?.url) shot.src = r.url; });
+addEventListener("mousedown", (e) => { sx = e.clientX; sy = e.clientY; dragging = true; dim.style.display = "none"; sel.style.display = "block"; draw(e); });
+addEventListener("mousemove", (e) => { if (dragging) draw(e); });
+addEventListener("mouseup", (e) => {
+  if (!dragging) return; dragging = false;
+  const k = shot.naturalWidth / innerWidth, x = Math.min(sx, e.clientX), y = Math.min(sy, e.clientY), w = Math.abs(e.clientX - sx), h = Math.abs(e.clientY - sy);
+  api.lens_grab_done(x * k, y * k, w * k, h * k);
+});
+addEventListener("keydown", (e) => { if (e.key === "Escape") api.lens_grab_done(0, 0, 0, 0); });
+function draw(e) { Object.assign(sel.style, { left: Math.min(sx, e.clientX) + "px", top: Math.min(sy, e.clientY) + "px", width: Math.abs(e.clientX - sx) + "px", height: Math.abs(e.clientY - sy) + "px" }); }
+</script></body></html>

@@ -122,7 +122,11 @@ document.addEventListener("click", async (e) => {
 setInterval(async () => {
   let got = [];
   try { got = await api.convert_inbox(); } catch { return; }
-  if (got && got.length) cvOpen(got);
+  if (got && got.length) {
+    await cvOpen(got);
+    const pre = await api.convert_preset?.();
+    if (pre) { CV.target = pre; cvRender(); }
+  }
 }, 1500);
 
 // indirilenler: biten dosyada "Donustur"

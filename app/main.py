@@ -131,6 +131,9 @@ def main() -> int:
     magnet = _magnet_arg(sys.argv[1:])
     play = _play_arg(sys.argv[1:])
     view = _view_arg(sys.argv[1:])
+    lens = next((os.path.abspath(sys.argv[i + 2]) for i, a in enumerate(sys.argv[1:]) if a == "--lens" and i + 2 < len(sys.argv)), "")
+    if "--lens-screen" in sys.argv[1:]:
+        lens = "screen"
     uri = next((sys.argv[i + 2] for i, a in enumerate(sys.argv[1:]) if a == "--uri" and i + 2 < len(sys.argv)), "")
     convert = [os.path.abspath(a) for a in sys.argv[sys.argv.index("--convert") + 1:]] if "--convert" in sys.argv else []
     if convert and not call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping") and _already_running_mutex():
@@ -160,6 +163,9 @@ def main() -> int:
             return 0
         if view:   # gorsel: calisan Kami'nin fotograf goruntuleyicisi
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/view", {"path": view}, timeout=5.0)
+            return 0
+        if lens:   # Gezgin sag tik "Kami Lens ile ara"
+            call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/lens", {"path": lens}, timeout=5.0)
             return 0
         if play:   # Gezgin'de cift tik: calisan Kami oynaticiyi acar (pencereyi de one getirir)
             res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/play", {"path": os.path.abspath(play)}, timeout=5.0)
@@ -326,12 +332,35 @@ def main() -> int:
     api._make_player_window = make_player_window
     api._front_player = player_front.request
 
+    # ---- Kami Picture: fotograf goruntuleyici + Kami Lens (ayri pencere, ayni api)
+    picture_front = WindowFront("Kami Picture")
+
+    def make_picture_window():
+        w = webview.create_window("Kami Picture", url=str(paths.WEB_DIR / "picture.html"), js_api=api,
+                                  width=1280, height=820, min_size=(520, 360), background_color="#050408", text_select=False)
+
+        def closed() -> None:
+            api._picture_win = None
+        w.events.closed += closed
+        w.events.loaded += lambda: (picture_front.request(), threading.Timer(0.6, picture_front.request).start())
+        return w
+    api._make_picture_window = make_picture_window
+    api._front_picture = picture_front.request
+
+    def make_grab_window():   # Kami Lens: ekrandan alan sec (cercevesiz, tam ekran, hep ustte)
+        api._grab_win = webview.create_window("Kami Lens", url=str(paths.WEB_DIR / "grab.html"), js_api=api, frameless=True,
+                                              on_top=True, fullscreen=True, background_color="#000000")
+    api._make_grab_window = make_grab_window
+
     bridge.on_play = play_request
     bridge.on_uri = lambda u: api.handle_uri(u)
     bridge.on_convert = api.convert_add
-    bridge.on_view = api.viewer_add
+    bridge.on_view = api.picture_open
+    bridge.on_lens = lambda p: api.picture_open(p, True)
     if view:
-        api.viewer_add(view)
+        threading.Timer(1.5, lambda: api.picture_open(view)).start()
+    if lens:
+        threading.Timer(1.5, lambda: api.picture_open(lens, True)).start()
     if convert:
         api.convert_add(convert)
     if uri:   # Kami kapaliyken bildirim dugmesine basildi: acilinca isle
@@ -440,6 +469,9 @@ def main() -> int:
         threading.Thread(target=run, name="kami-song", daemon=True).start()
 
     song_hotkey = desktop.HotKey(on_song_hotkey)
+    lens_hotkey = desktop.HotKey(lambda: threading.Thread(target=api.picture_open, args=("screen", True), daemon=True).start())
+    if settings.get("lens_hotkey_enabled"):
+        lens_hotkey.start(settings.get("lens_hotkey"))
     if settings.get("song_hotkey_enabled"):
         song_hotkey.start(settings.get("song_hotkey"))
 
@@ -486,6 +518,8 @@ def main() -> int:
                 tray.start() if value else tray.stop()
             elif key == "autostart":
                 desktop.set_autostart(bool(value))
+            elif key in ("lens_hotkey", "lens_hotkey_enabled"):
+                lens_hotkey.start(settings.get("lens_hotkey")) if settings.get("lens_hotkey_enabled") else lens_hotkey.stop()
             elif key in ("song_hotkey", "song_hotkey_enabled"):
                 song_hotkey.start(settings.get("song_hotkey")) if settings.get("song_hotkey_enabled") else song_hotkey.stop()
             elif key == "auto_mirror":
@@ -632,6 +666,7 @@ def main() -> int:
     finally:
         log.info("Kami kapaniyor")
         song_hotkey.stop()
+        lens_hotkey.stop()
         hotkey.stop()
         tray.stop()
         scheduler.stop()

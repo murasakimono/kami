@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami Picture</title>
+<link rel="stylesheet" href="picture.css">
+</head>
+<body>
+  <div id="pic">
+    <header class="pc-top">
+      <span class="pc-logo">KAMI <b>Picture</b></span>
+      <b id="pcName">—</b><span id="pcInfo"></span><span class="sp"></span>
+      <button data-a="rot" title="R">⟳ <span data-tr="Döndür" data-en="Rotate"></span></button>
+      <button data-a="fit" title="0"><span data-tr="Sığdır" data-en="Fit"></span></button>
+      <button data-a="nobg">✦ <span data-tr="Arka planı kaldır" data-en="Remove background"></span></button>
+      <button data-a="conv">⇄ <span data-tr="Dönüştür" data-en="Convert"></span></button>
+      <button data-a="folder"><span data-tr="Klasör" data-en="Folder"></span></button>
+      <button data-a="lens" class="lens">◎ Kami Lens</button>
+    </header>
+    <main class="pc-main">
+      <section class="pc-stage" id="pcStage">
+        <img id="pcImg" alt="">
+        <p class="pc-empty" id="pcEmpty"><span data-tr="Bir görseli buraya bırak ya da Kami'de aç" data-en="Drop an image here or open one in Kami"></span></p>
+        <button class="pc-nav l" data-a="prev">‹</button><button class="pc-nav r" data-a="next">›</button>
+      </section>
+      <aside class="pc-lens" id="pcLens" hidden></aside>
+    </main>
+  </div>
+  <script src="picture.js"></script>
+</body>
+</html>

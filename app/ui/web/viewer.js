@@ -5,7 +5,8 @@ const VW = { list: [], i: 0, z: 1, x: 0, y: 0, rot: 0, el: null };
 const vwL = (tr, en) => (state.lang !== "en" ? tr : en);
 const VW_EXT = /\.(jpe?g|png|webp|gif|bmp|avif|jfif|heic|tiff?)$/i;
 
-async function vwOpen(path) {
+async function vwOpen(path, lens) {
+  if (api.picture_open) { api.picture_open(path, !!lens); return; }   // ayri pencere: Kami Picture
   VW.list = (await api.image_siblings(path)) || [path];
   VW.i = Math.max(0, VW.list.indexOf(path));
   if (!VW.el) vwBuild();
@@ -89,8 +90,4 @@ skRenderBar = function (d) {   // eslint-disable-line no-global-assign
 };
 window.KPAL = window.KPAL || [];
 
-// "Birlikte ac > Kami" / Kami.exe --view: kopruden gelen gorsel
-setInterval(async () => {
-  let p = ""; try { p = await api.viewer_inbox(); } catch { return; }
-  if (p) vwOpen(p);
-}, 1200);
+window.KPAL.push(() => [{ ic: "◎", t: "Kami Lens: " + vwL("ekrandan alan seçip ara", "search a screen region"), sub: "Ctrl+Shift+L", run: () => api.picture_open("screen", true) }]);
