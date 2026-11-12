@@ -25,6 +25,15 @@ def version() -> str:
     return m.group(1)
 
 
+def sync_extension_version(v: str) -> None:
+    """Brave'deki eklenti surumu uygulamayla ayni olsun (manifest elle unutuluyordu)."""
+    mf = ROOT / "extension" / "manifest.json"
+    t = mf.read_text(encoding="utf-8")
+    t2 = re.sub(r'"version":\s*"[\d.]+"', f'"version": "{v}"', t, count=1)
+    if t2 != t:
+        mf.write_text(t2, encoding="utf-8")
+
+
 def write_version_info(v: str) -> None:
     n = (tuple(int(x) for x in v.split(".")) + (0, 0, 0))[:4]
     (ROOT / "packaging/version_info.txt").write_text(f"""VSVersionInfo(
@@ -79,6 +88,7 @@ def main(argv: list[str]) -> int:
     v = version()
     print(f"== Kami {v}")
     write_version_info(v)
+    sync_extension_version(v)
     r = subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--distpath", str(OUT / "dist"),
                         "--workpath", str(OUT / "work"), str(ROOT / "packaging/kami.spec")], cwd=ROOT)
     if r.returncode:

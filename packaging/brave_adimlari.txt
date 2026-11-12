@@ -11,12 +11,15 @@ Kami kuruldu. Tarayici eklentisini Brave'e yukle (bir kerelik):
       %LOCALAPPDATA%\Programs\Kami\extension
    (Kurulumu baska klasore yaptiysan: <kurulum klasoru>\extension)
 
-5) Kami eklenti simgesine tikla: "Kami acik (0.8.x)" yazmali.
+5) Kami eklenti simgesine tikla: "Kami acik (surum)" yazmali.
    Yazmiyorsa Kami'yi bir kez kapatip ac (tepsi simgesi > Cikis).
+
+Guncelleme yaptiysan: brave://extensions sayfasinda Kami kartindaki yenile (dairesel ok) dugmesine bas;
+eklenti kurulum klasorundeki yeni surumu yukler.
 
 Notlar
 - Ayarlar ve gecmis %LOCALAPPDATA%\Kami\data klasorunde; guncelleme ve kaldirma bunlari silmez
   (kaldirirken ayrica sorulur).
 - Gelistirme klasorundeki (Projeler\kami\data) ayarlar ilk acilista KOPYALANIR; eskisi yerinde kalir.
 - Whisper / UVR5 ilk kullanimda sorulup ayrica iner (modeller kuruluma dahil degil).
-- Guncellemeler: Ayarlar > Hakkinda > Simdi denetle (GitHub Releases).
+- Guncellemeler: yeni surum cikinca Kami bildirir; tek tikla indirip kurar (Ayarlar > Hakkinda).

@@ -209,7 +209,7 @@ body.sunak > .topbar, body.sunak > .layout { position: relative; z-index: 2; }
 .cv-seg button.on { background: rgba(46, 230, 166, .12); border-color: var(--sk-em); color: var(--sk-em); }
 .cv-warn { margin-top: 14px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--sk-warn); color: var(--sk-warn); font-size: 12.5px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .cv-go { margin-top: 16px; }
-.cv-go .btn { width: 100%; padding: 12px; font-size: 14px; }
+.cv-go .btn { width: 100%; height: 44px; padding: 0 12px; font-size: 14px; display: flex; align-items: center; justify-content: center; line-height: 1; }
 .cv-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .cv-jobs li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 9px; background: rgba(255, 255, 255, .03); font-size: 12.5px; }
 .cv-jobs li.error em { color: var(--sk-err); font-style: normal; }
