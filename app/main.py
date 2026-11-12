@@ -389,6 +389,7 @@ def main() -> int:
     api._front_reader = reader_front.request
 
     room_front = WindowFront("Kami Oda")
+    from app.core import desktop   # asagidaki yerel import yuzunden burada da gerekli (UnboundLocalError)
     room_keys = {"mute": desktop.HotKey(lambda: room_js("kamiKey('mute')")),
                  "deaf": desktop.HotKey(lambda: room_js("kamiKey('deaf')")),
                  "ptt": desktop.KeyHold(lambda down: room_js(f"kamiKey('ptt', {str(down).lower()})"))}

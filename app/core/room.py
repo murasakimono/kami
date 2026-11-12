@@ -181,7 +181,8 @@ class RoomServer:
         try:
             req = urllib.request.Request(f"https://rtc.live.cloudflare.com/v1/turn/keys/{kid}/credentials/generate-ice-servers",
                                          data=json.dumps({"ttl": 86400}).encode(), method="POST",
-                                         headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"})
+                                         headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json",
+                                                  "User-Agent": "Kami/1.6 (+github.com/murasakimono/kami)"})
             with urllib.request.urlopen(req, timeout=10) as r:
                 servers = json.loads(r.read()).get("iceServers") or []
             out = []
