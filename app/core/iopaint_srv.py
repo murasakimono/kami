@@ -19,6 +19,8 @@ from typing import Any
 from app import paths
 from app.core import aitools
 
+from app.core.procjob import attach
+
 log = logging.getLogger("kami")
 NOWIN = 0x08000000
 IDLE_SEC = 600
@@ -80,8 +82,8 @@ class IOPaint:
                 logf = open(paths.DATA_DIR / "iopaint.log", "a", encoding="utf-8")   # noqa: SIM115
                 self.state, self.error = "starting", ""
                 log.info("IOPaint baslatiliyor (%s, port %s)", dev, self.port)
-                self.proc = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                             creationflags=NOWIN, env=aitools._clean_env(), cwd=mdir)
+                self.proc = attach(subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                             creationflags=NOWIN, env=aitools._clean_env(), cwd=mdir))
             end = time.time() + timeout
             while time.time() < end:
                 if self.proc.poll() is not None:

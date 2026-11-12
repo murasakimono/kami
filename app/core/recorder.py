@@ -22,6 +22,8 @@ import wave
 from pathlib import Path
 from typing import Any, Callable
 
+from app.core.procjob import attach
+
 log = logging.getLogger("kami")
 NOWIN = 0x08000000 if os.name == "nt" else 0
 SEG = 2            # replay parca suresi (sn)
@@ -242,8 +244,8 @@ class Recorder:
             args = [self._ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", *_video_args(self._fps(), mode),
                     "-f", "segment", "-segment_time", str(SEG), "-segment_wrap", str(WRAP), "-reset_timestamps", "1",
                     "-segment_format", "mpegts", str(self.work / "seg_%03d.ts")]
-            self.buf = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                        creationflags=NOWIN)
+            self.buf = attach(subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                        creationflags=NOWIN))
             return True
 
     def watch(self) -> None:
@@ -317,10 +319,10 @@ class Recorder:
                 return {"ok": False, "error": str(exc)}
             self._audio_on()
             job = Path(tempfile.mkdtemp(prefix="kami_rec_"))
-            p = subprocess.Popen([self._ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
+            p = attach(subprocess.Popen([self._ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
                                   *_video_args(self._fps(), mode), str(job / "v.mkv")],
                                  stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                 creationflags=NOWIN)
+                                 creationflags=NOWIN))
             t0 = time.time() + 0.15      # ddagrab acilis gecikmesi (yaklasik)
             sinks = {}
             if self.sys.alive:

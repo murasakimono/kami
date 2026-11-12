@@ -23,6 +23,8 @@ from typing import Any, Callable
 
 from app import paths
 
+from app.core.procjob import attach
+
 log = logging.getLogger("kami")
 NOWIN = 0x08000000 if os.name == "nt" else 0
 CF_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
@@ -259,9 +261,9 @@ class RoomServer:
         try:
             exe = self._ensure_cf()
             self.tunnel_state, self.tunnel_error = "starting", ""
-            p = subprocess.Popen([exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{self.port}"],
+            p = attach(subprocess.Popen([exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{self.port}"],
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NOWIN,
-                                 text=True, encoding="utf-8", errors="replace")
+                                 text=True, encoding="utf-8", errors="replace"))
             self.tunnel = p
             deadline = time.time() + 60
             for line in p.stdout:
