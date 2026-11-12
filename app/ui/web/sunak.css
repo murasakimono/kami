@@ -254,8 +254,7 @@ body.sunak > .topbar, body.sunak > .layout { position: relative; z-index: 2; }
 .cv-jobs small { color: var(--sk-mute); min-width: 34px; text-align: right; }
 
 /* ---------- coklu secim / favori / geri al / yeniden adlandir ---------- */
-#sunak .sk-strip.msel .sk-paper { outline: 2.5px solid var(--sk-em); outline-offset: 2px; box-shadow: 0 0 16px rgba(46, 230, 166, .45); }
-#sunak .sk-strip.msel::after { content: "✓"; position: absolute; left: 8px; top: 8px; z-index: 3; width: 18px; height: 18px; border-radius: 50%; background: var(--sk-em); color: #08070C; font: 800 11px/18px var(--font); text-align: center; }
+#sunak .sk-strip.msel { transform: translateY(-6px); filter: drop-shadow(0 0 12px rgba(124, 77, 255, .8)); }   /* secili kartla ayni: yukari + mor parilti */
 #sunak .sk-star { position: absolute; right: 8px; top: 6px; z-index: 3; font-size: 15px; line-height: 1; color: rgba(255, 255, 255, .35); opacity: 0; transition: opacity .15s, color .15s, transform .15s; cursor: pointer; }
 #sunak .sk-strip:hover .sk-star { opacity: 1; }
 #sunak .sk-star:hover { transform: scale(1.2); color: #F5B94A; }

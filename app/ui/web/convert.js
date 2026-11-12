@@ -129,7 +129,7 @@ setInterval(async () => {
 const _cvBar = skRenderBar;
 skRenderBar = function (d) {   // eslint-disable-line no-global-assign
   _cvBar(d);
-  if (!d || d.status !== "complete" || !d.path) return;
+  if (!d || d.status !== "complete" || !d.path || $("#skBar .sk-rename")) return;   // yeniden adlandirirken dugme ekleme
   const rm = $('#skBar [data-act="remove"]');
   const btn = document.createElement("button");
   btn.className = "sk-btn"; btn.dataset.cv = "1";

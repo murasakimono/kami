@@ -66,6 +66,19 @@ def _play_arg(argv: list[str]) -> str:
     return ""
 
 
+IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".jfif", ".heic", ".tif", ".tiff")
+
+
+def _view_arg(argv: list[str]) -> str:
+    """Fotograf goruntuleyici: Kami.exe --view "<gorsel>" ya da dogrudan gorsel yolu ("Birlikte ac")."""
+    for i, a in enumerate(argv):
+        if a == "--view" and i + 1 < len(argv):
+            return os.path.abspath(argv[i + 1])
+        if not a.startswith("-") and a.lower().endswith(IMAGE_EXT) and os.path.isfile(a):
+            return os.path.abspath(a)
+    return ""
+
+
 _MUTEX = None
 _MUTEX_OTHER: bool | None = None   # ilk mutex denemesinin sonucu (tekrar cagrilinca ayni)
 
@@ -117,6 +130,7 @@ def main() -> int:
         return 0
     magnet = _magnet_arg(sys.argv[1:])
     play = _play_arg(sys.argv[1:])
+    view = _view_arg(sys.argv[1:])
     uri = next((sys.argv[i + 2] for i, a in enumerate(sys.argv[1:]) if a == "--uri" and i + 2 < len(sys.argv)), "")
     convert = [os.path.abspath(a) for a in sys.argv[sys.argv.index("--convert") + 1:]] if "--convert" in sys.argv else []
     if convert and not call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping") and _already_running_mutex():
@@ -143,6 +157,9 @@ def main() -> int:
             return 0
         if uri:   # bildirim dugmesi (kami://...)
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/uri", {"uri": uri}, timeout=5.0)
+            return 0
+        if view:   # gorsel: calisan Kami'nin fotograf goruntuleyicisi
+            call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/view", {"path": view}, timeout=5.0)
             return 0
         if play:   # Gezgin'de cift tik: calisan Kami oynaticiyi acar (pencereyi de one getirir)
             res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/play", {"path": os.path.abspath(play)}, timeout=5.0)
@@ -256,7 +273,7 @@ def main() -> int:
         "Kami",
         url=str(paths.WEB_DIR / "index.html"),
         js_api=api,
-        width=1180, height=740, min_size=(820, 520),
+        width=1445, height=850, min_size=(820, 520),
         background_color="#0D0A12" if settings.get("theme") == "dark" else "#F5F3F9",
         text_select=False,
         minimized=start_hidden,
@@ -312,14 +329,18 @@ def main() -> int:
     bridge.on_play = play_request
     bridge.on_uri = lambda u: api.handle_uri(u)
     bridge.on_convert = api.convert_add
+    bridge.on_view = api.viewer_add
+    if view:
+        api.viewer_add(view)
     if convert:
         api.convert_add(convert)
     if uri:   # Kami kapaliyken bildirim dugmesine basildi: acilinca isle
         threading.Timer(4.0, lambda: api.handle_uri(uri)).start()
     if paths.FROZEN:   # kami:// + bildirim kimligi (guncellemede yol degisebilir; her acilista ucuz)
         try:
-            from app.core.setup_tasks import register_convert_menu, register_protocol
+            from app.core.setup_tasks import register_convert_menu, register_player, register_protocol
             register_protocol(sys.executable)
+            register_player(sys.executable)   # gorsel iliskilendirmesi (Birlikte ac > Kami) guncellemede de eklensin
             register_convert_menu(sys.executable)
         except Exception:
             log.exception("kami:// kaydedilemedi")

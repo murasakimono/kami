@@ -88,3 +88,9 @@ skRenderBar = function (d) {   // eslint-disable-line no-global-assign
   $("#skBar .sk-bar-info")?.after(b);
 };
 window.KPAL = window.KPAL || [];
+
+// "Birlikte ac > Kami" / Kami.exe --view: kopruden gelen gorsel
+setInterval(async () => {
+  let p = ""; try { p = await api.viewer_inbox(); } catch { return; }
+  if (p) vwOpen(p);
+}, 1200);

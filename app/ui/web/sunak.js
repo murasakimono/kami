@@ -221,6 +221,7 @@ function skRename() {
   let done = false;
   const finish = async (save) => {
     if (done) return; done = true;
+    inp.remove(); $("#skBar").innerHTML = "";   // kutu kalkmazsa cubuk hic yenilenmiyordu
     if (save && inp.value.trim() && inp.value.trim() !== full) {
       const r = await api.rename_download(d.id, inp.value.trim());
       if (!r?.ok) toast(skL("Yeniden adlandırılamadı: ", "Rename failed: ") + ({ exists: skL("bu adda dosya var", "name exists"), no_file: skL("dosya bulunamadı", "file missing") }[r?.error] || r?.error || "?"), true);

@@ -29,7 +29,8 @@ REG_PATHS = {
 MAGNET = r"Software\Classes\magnet"
 PLAYER_VIDEO = (".mkv", ".mp4", ".m4v", ".webm", ".avi", ".mov", ".ts", ".m2ts", ".wmv", ".flv", ".mpg", ".mpeg", ".3gp", ".ogv")
 PLAYER_AUDIO = (".mp3", ".flac", ".wav", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wma", ".ape", ".aiff", ".mka", ".wv")
-PROGIDS = {"Kami.Video": "Kami video", "Kami.Audio": "Kami ses"}
+PLAYER_IMAGE = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".jfif", ".heic", ".tif", ".tiff")
+PROGIDS = {"Kami.Video": "Kami video", "Kami.Audio": "Kami ses", "Kami.Image": "Kami görsel"}
 CAPS = r"Software\Kami\Capabilities"
 
 
@@ -38,16 +39,17 @@ def register_player(kami: str) -> None:
     for pid, name in PROGIDS.items():
         for sub, nm, val in [(rf"Software\Classes\{pid}", "", name),
                              (rf"Software\Classes\{pid}\DefaultIcon", "", f'"{kami}",0'),
-                             (rf"Software\Classes\{pid}\shell\open", "FriendlyAppName", "Kami Player"),
-                             (rf"Software\Classes\{pid}\shell\open\command", "", f'"{kami}" --play "%1"')]:
+                             (rf"Software\Classes\{pid}\shell\open", "FriendlyAppName", "Kami" if pid == "Kami.Image" else "Kami Player"),
+                             (rf"Software\Classes\{pid}\shell\open\command", "",
+                              f'"{kami}" --view "%1"' if pid == "Kami.Image" else f'"{kami}" --play "%1"')]:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
                 winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, val)
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, CAPS) as k:
         winreg.SetValueEx(k, "ApplicationName", 0, winreg.REG_SZ, "Kami")
         winreg.SetValueEx(k, "ApplicationDescription", 0, winreg.REG_SZ, "Kami Download Manager & Player")
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, CAPS + r"\FileAssociations") as fa:
-        for ext in PLAYER_VIDEO + PLAYER_AUDIO:
-            pid = "Kami.Video" if ext in PLAYER_VIDEO else "Kami.Audio"
+        for ext in PLAYER_VIDEO + PLAYER_AUDIO + PLAYER_IMAGE:
+            pid = "Kami.Video" if ext in PLAYER_VIDEO else "Kami.Image" if ext in PLAYER_IMAGE else "Kami.Audio"
             winreg.SetValueEx(fa, ext, 0, winreg.REG_SZ, pid)
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{ext}\OpenWithProgids") as k:
                 winreg.SetValueEx(k, pid, 0, winreg.REG_NONE, b"")

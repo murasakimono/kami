@@ -439,7 +439,8 @@ body.pl-open #sunak { visibility: hidden; }
 #player .pl-cc { position: relative; font-weight: 800; letter-spacing: .5px; min-width: 44px; }
 #player .pl-cc[hidden] { display: none; }
 #player .pl-cc.on { color: #2EE6A6; }
-#player .pl-cc i { position: absolute; right: -2px; top: -4px; font: 700 9px "Chakra Petch", sans-serif; font-style: normal; padding: 1px 4px; border-radius: 6px; background: #2EE6A6; color: #08070C; }
+#player .pl-cc { display: inline-flex; align-items: center; gap: 4px; }
+#player .pl-cc i { position: static; font: 700 9px/1 "Chakra Petch", sans-serif; font-style: normal; padding: 2px 4px; border-radius: 5px; background: #2EE6A6; color: #08070C; }
 #player .pl-cc i:empty { display: none; }
 #player .pl-ccmenu { position: absolute; bottom: 64px; right: 120px; z-index: 30; min-width: 220px; max-height: 300px; overflow-y: auto; padding: 6px; border-radius: 12px; background: #120E1A; border: 1px solid #3A2E52; box-shadow: 0 12px 30px rgba(0,0,0,.55); display: grid; gap: 2px; }
 #player .pl-ccmenu[hidden] { display: none; }

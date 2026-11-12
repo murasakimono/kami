@@ -1426,6 +1426,13 @@ class Api:
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:120]}
 
+    def viewer_add(self, path: str) -> None:
+        self._view_inbox = str(path or "")
+
+    def viewer_inbox(self) -> str:
+        p, self._view_inbox = getattr(self, "_view_inbox", ""), ""
+        return p if p and os.path.isfile(p) else ""
+
     def open_path_folder(self, path: str) -> bool:
         path = str(path or "")
         if not os.path.isfile(path):
