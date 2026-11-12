@@ -86,7 +86,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
-        "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "library_organize", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
+        "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "library_organize", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -1270,8 +1270,8 @@ class Api:
         self._osub.save(key) if key else self._osub.clear()
         return {"ok": True, "has_key": bool(key)}
 
-    def subtitle_fetch(self, path: str, lang: str = "tr") -> dict[str, Any]:
-        """OpenSubtitles: videonun yanina <ad>.<dil>.srt indirir, oynatici VTT'yi alir."""
+    def subtitle_fetch(self, path: str, lang: str = "tr", title: str = "", file_id: int = 0) -> dict[str, Any]:
+        """OpenSubtitles: videonun yanina <ad>.<dil>.srt indirir, oynatici VTT'yi alir. file_id verilirse o aday."""
         from app.core import opensubs
         from app.core.media_server import srt_to_vtt
         key = self._osub.load() if self._osub else ""
@@ -1279,10 +1279,24 @@ class Api:
             return {"ok": False, "error": "no_key"}
         if not os.path.isfile(str(path or "")):
             return {"ok": False, "error": "bad_input"}
-        res = opensubs.find_and_download(str(path), key, str(lang or "tr")[:5])
+        lang = str(lang or "tr")[:5]
+        if file_id:
+            res = opensubs.download(str(path), key, int(file_id), lang)
+        else:
+            res = opensubs.find_and_download(str(path), key, lang, str(title or ""))
         if not res.get("ok"):
             return res
         return {"ok": True, "path": res["path"], "release": res.get("release", ""), "vtt": srt_to_vtt(res.pop("srt"))}
+
+    def subtitle_search(self, path: str, lang: str = "tr", title: str = "") -> dict[str, Any]:
+        """'Bul' dugmesi: dogrulanmis adaylar listesi (kullanici secer)."""
+        from app.core import opensubs
+        key = self._osub.load() if self._osub else ""
+        if not key:
+            return {"ok": False, "error": "no_key"}
+        if not os.path.isfile(str(path or "")):
+            return {"ok": False, "error": "bad_input"}
+        return opensubs.search(str(path), key, str(lang or "tr")[:5], str(title or ""))
 
     def library_organize(self, paths: list | None = None, apply: bool = False) -> dict[str, Any]:
         """Dizi bolumlerini 'Dizi / Sezon 01 / bolum' duzenine tasi (once onizleme, apply=True ile tasir; yan altyazilar da gider)."""

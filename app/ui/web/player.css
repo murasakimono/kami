@@ -429,3 +429,8 @@ body.pl-open #sunak { visibility: hidden; }
 .pe-song b { display: block; color: #fff; font-size: 14px; }
 .pe-song span { display: block; color: #A39BB5; font-size: 12px; margin-bottom: 6px; }
 .pe-song .pl-b { margin-right: 4px; }
+.pe-os { display: grid; gap: 4px; margin: 4px 0 8px; }
+.pe-os-i { display: grid; gap: 1px; text-align: left; padding: 7px 10px; border: 1px solid #3A2E52; border-radius: 8px; background: rgba(255,255,255,.03); color: #EDE9F6; cursor: pointer; font: inherit; }
+.pe-os-i:hover { border-color: #8B5CF6; }
+.pe-os-i b { font-size: 12.5px; } .pe-os-i span { font-size: 11px; color: #A39BB5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pe-os-i small { font-size: 10.5px; color: #2EE6A6; } .pe-os-i.bad small { color: #F5B94A; } .pe-os-i.bad { opacity: .75; }

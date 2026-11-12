@@ -431,22 +431,41 @@ document.addEventListener("click", (e) => {
 // ---------- OpenSubtitles: Turkce altyazi yoksa bul ----------
 PE.osKey = null;
 async function peOsKey() { if (PE.osKey == null) { try { PE.osKey = !!(await api.opensub_status()).has_key; } catch { PE.osKey = false; } } return PE.osKey; }
-async function peFetchSub(manual) {
-  const r = PL.info; if (!r?.path) return;
-  if (!(await peOsKey())) { if (manual) toast(plL("Önce Altyazı ayarlarına OpenSubtitles API anahtarını gir", "Enter your OpenSubtitles API key first"), true); return; }
-  if (manual) toast(plL("Türkçe altyazı aranıyor…", "Searching Turkish subtitles…"));
-  let res; try { res = await slow("subtitle_fetch", r.path, "tr"); } catch { res = { ok: false }; }
-  if (PL.info !== r) return;
-  if (!res?.ok) {
-    if (manual || res?.error === "bad_key") toast(plL("Altyazı bulunamadı: ", "Subtitle not found: ") + ({ not_found: plL("sonuç yok", "no results"), bad_key: plL("API anahtarı geçersiz", "invalid API key"), quota: plL("günlük indirme hakkı doldu", "daily quota reached") }[res?.error] || res?.error || "?"), true);
-    return;
-  }
+function peAddSub(res) {
   const url = "data:text/vtt;charset=utf-8," + encodeURIComponent(res.vtt);
   PL.subList.push({ label: "Türkçe · OpenSubtitles", url, raw: "", lang: "tr" });
   const sel = $("#plSub");
   sel.innerHTML = `<option value="-1">${plL("Altyazı yok", "No subtitles")}</option>` + PL.subList.map((x, i) => `<option value="${i}">${escapeHtml(x.label)}</option>`).join("");
   sel.hidden = false; sel.value = String(PL.subList.length - 1); plLoadSub(PL.subList.length - 1);
+  window.plCcSync?.();
   toast(plL("Türkçe altyazı indirildi", "Turkish subtitle downloaded") + (res.release ? " · " + res.release : ""));
+}
+const peOsErr = (e) => ({ not_found: plL("bu bölüme uyan altyazı yok", "no matching subtitle"), bad_key: plL("API anahtarı geçersiz", "invalid API key"), quota: plL("günlük indirme hakkı doldu", "daily quota reached") }[e] || e || "?");
+async function peFetchSub(manual) {
+  const r = PL.info; if (!r?.path) return;
+  if (!(await peOsKey())) { if (manual) toast(plL("Önce Altyazı ayarlarına OpenSubtitles API anahtarını gir", "Enter your OpenSubtitles API key first"), true); return; }
+  if (manual) return peSubPicker(r);
+  let res; try { res = await slow("subtitle_fetch", r.path, "tr", r.title || ""); } catch { res = { ok: false }; }
+  if (PL.info !== r) return;
+  if (!res?.ok) { if (res?.error === "bad_key") toast(plL("Altyazı: ", "Subtitle: ") + peOsErr(res.error), true); return; }
+  peAddSub(res);
+}
+async function peSubPicker(r) {
+  const box = $("#peOsList"); if (!box) return;
+  box.innerHTML = `<p class="px-hint">${plL("Aranıyor…", "Searching…")}</p>`;
+  let res; try { res = await slow("subtitle_search", r.path, "tr", r.title || ""); } catch { res = { ok: false }; }
+  if (PL.info !== r) return;
+  if (!res?.ok) { box.innerHTML = `<p class="px-hint">${escapeHtml(peOsErr(res?.error))}</p>`; return; }
+  const c = res.candidates || [], inf = res.info || {};
+  const want = escapeHtml(inf.show || "") + (inf.season != null ? ` · S${String(inf.season).padStart(2, "0")}E${String(inf.episode).padStart(2, "0")}` : "");
+  box.innerHTML = `<p class="px-hint">${plL("Aranan", "Looking for")}: <b>${want}</b></p>` + (c.length ? `<div class="pe-os">${c.slice(0, 5).map((x) => `<button class="pe-os-i ${x.ok ? "" : "bad"}" data-fid="${x.file_id}" title="${escapeHtml(x.release)}">
+      <b>${escapeHtml(x.title || x.release)}</b><span>${escapeHtml(x.release)}</span><small>${x.ok ? "✓ " + plL("uyuyor", "matches") : "✕ " + plL("başka yapım olabilir", "may be another title")} · ${x.downloads} ${plL("indirme", "downloads")}${x.hash ? " · " + plL("dosyayla birebir", "exact file") : ""}</small></button>`).join("")}</div>` : `<p class="px-hint">${plL("Sonuç yok", "No results")}</p>`);
+  box.querySelectorAll("[data-fid]").forEach((b) => b.onclick = async (e) => {
+    e.stopPropagation(); box.innerHTML = `<p class="px-hint">${plL("İndiriliyor…", "Downloading…")}</p>`;
+    let d; try { d = await slow("subtitle_fetch", r.path, "tr", r.title || "", +b.dataset.fid); } catch { d = { ok: false }; }
+    box.innerHTML = "";
+    if (d?.ok) peAddSub(d); else toast(plL("İndirilemedi: ", "Failed: ") + peOsErr(d?.error), true);
+  });
 }
 function peAutoSub(r) {
   if (peCfg().osAuto === false || !r.path) return;
@@ -456,7 +475,7 @@ function peAutoSub(r) {
 window.pxExtraSubHtml = () => `<div class="px-shift"><span>${plL("Türkçe altyazı (OpenSubtitles)", "Turkish subtitles (OpenSubtitles)")}</span><button class="pl-b" data-xa="osfind">${plL("Bul", "Find")}</button></div>
   ${peSeg("osAuto", [[1, plL("Yoksa otomatik bul", "Auto when missing")], [0, plL("Sadece elle", "Manual only")]], peCfg().osAuto === false ? 0 : 1)}
   <div class="px-shift"><input class="px-in" id="peOsKey" type="password" placeholder="${plL("OpenSubtitles API anahtarı", "OpenSubtitles API key")}" style="flex:1"><button class="pl-b" data-xa="oskey">${plL("Kaydet", "Save")}</button></div>
-  <p class="px-hint">${plL("Ücretsiz anahtar: opensubtitles.com/consumers. Anahtar bu bilgisayarda şifreli saklanır.", "Free key at opensubtitles.com/consumers. Stored encrypted on this PC.")}</p>`;
+  <p class="px-hint">${plL("Ücretsiz anahtar: opensubtitles.com/consumers. Anahtar bu bilgisayarda şifreli saklanır.", "Free key at opensubtitles.com/consumers. Stored encrypted on this PC.")}</p><div id="peOsList"></div>`;
 document.addEventListener("click", async (e) => {
   const seg = e.target.closest?.('#plPanel .px-xseg[data-x="osAuto"]'); const b = e.target.closest?.("button");
   if (seg && b) { PX.cfg.osAuto = b.dataset.v === "1"; pxSave(); return; }
