@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07060B">
+<title>Kami · Birlikte izle</title>
+<style>
+@font-face { font-family: "Chakra Petch"; src: url("font/ChakraPetch-Medium.ttf"); font-weight: 500; }
+@font-face { font-family: "Chakra Petch"; src: url("font/ChakraPetch-Bold.ttf"); font-weight: 700; }
+@font-face { font-family: "Damnation"; src: url("font/Damnation.ttf"); }
+:root { --bg: #07060B; --panel: #110D19; --line: #2A2140; --text: #EDE9F6; --mute: #8E86A3; --violet: #8B5CF6; --royal: #6D28D9; --em: #2EE6A6; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 500 14px "Chakra Petch", system-ui, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+.app { height: 100%; display: grid; grid-template-columns: 1fr 340px; }
+.stage { position: relative; background: #000; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: linear-gradient(180deg, #0E0A15, transparent); position: absolute; left: 0; right: 0; top: 0; z-index: 3; transition: opacity .3s; }
+.logo { font-family: "Damnation", sans-serif; font-size: 24px; color: #C4B5FD; letter-spacing: 1px; }
+.title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live { margin-left: auto; font-size: 12px; color: var(--em); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--em); box-shadow: 0 0 10px var(--em); animation: pulse 1.6s infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.vbox { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; }
+video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.sub { position: absolute; left: 6%; right: 6%; bottom: 84px; text-align: center; pointer-events: none; z-index: 2; }
+.sub span { display: inline; font-size: clamp(16px, 2.6vw, 34px); font-weight: 700; line-height: 1.35; background: rgba(0, 0, 0, .55); padding: 2px 10px; box-decoration-break: clone; -webkit-box-decoration-break: clone; white-space: pre-line; text-shadow: 0 1px 3px #000; }
+.ctrl { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; padding: 26px 16px 12px; background: linear-gradient(0deg, rgba(7, 6, 11, .95), transparent); display: flex; align-items: center; gap: 10px; transition: opacity .3s; }
+.idle .ctrl, .idle .top { opacity: 0; }
+.ctrl button { border: 0; background: #1E1730; width: 40px; height: 40px; cursor: pointer; display: grid; place-items: center; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.ctrl button.big { background: var(--royal); width: 48px; height: 48px; }
+.ctrl svg { width: 20px; height: 20px; fill: currentColor; }
+.bar { flex: 1; height: 26px; position: relative; cursor: pointer; display: flex; align-items: center; }
+.bar i { position: absolute; left: 0; right: 0; height: 5px; background: #2A2140; }
+.bar b { position: absolute; left: 0; height: 5px; background: linear-gradient(90deg, var(--royal), var(--violet)); box-shadow: 0 0 8px var(--violet); }
+.time { font-variant-numeric: tabular-nums; color: #C9C0DC; font-size: 13px; white-space: nowrap; }
+.ctrl select { background: #1E1730; border: 0; padding: 9px 6px; max-width: 150px; }
+.ctrl input[type=range] { width: 90px; accent-color: var(--violet); }
+.big-play { position: absolute; inset: 0; display: grid; place-items: center; z-index: 4; background: rgba(7, 6, 11, .55); cursor: pointer; }
+.big-play div { padding: 18px 28px; background: var(--royal); font-weight: 700; font-size: 17px; clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.spin { position: absolute; width: 46px; height: 46px; border: 3px solid #2A2140; border-top-color: var(--em); border-radius: 50%; animation: sp 0.9s linear infinite; z-index: 2; }
+@keyframes sp { to { transform: rotate(360deg); } }
+.side { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.who { padding: 14px 16px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--mute); }
+.who b { color: var(--text); }
+.chat { flex: 1; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; }
+.msg { line-height: 1.4; word-wrap: break-word; }
+.msg b { color: #C4B5FD; margin-right: 6px; } .msg.me b { color: var(--em); }
+.msg.sys { color: var(--mute); font-size: 12px; } .msg.sys b { color: var(--mute); font-weight: 500; }
+.send { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); }
+.send input { flex: 1; min-width: 0; background: #0A0810; border: 1px solid var(--line); padding: 11px 12px; outline: none; }
+.send input:focus { border-color: var(--violet); }
+.send button { border: 0; background: var(--royal); padding: 0 16px; cursor: pointer; font-weight: 700; }
+.float { position: absolute; left: 16px; bottom: 90px; z-index: 3; display: flex; flex-direction: column; gap: 6px; pointer-events: none; max-width: 60%; }
+.float div { background: rgba(17, 13, 25, .9); border-left: 3px solid var(--violet); padding: 7px 10px; animation: fl 6s forwards; }
+@keyframes fl { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.join { position: fixed; inset: 0; z-index: 10; background: radial-gradient(ellipse 60% 50% at 50% 30%, #1E1430, var(--bg) 70%); display: grid; place-items: center; padding: 20px; }
+.join form { width: min(420px, 100%); display: flex; flex-direction: column; gap: 14px; }
+.join .logo { font-size: 54px; text-align: center; }
+.join p { margin: 0; color: var(--mute); text-align: center; line-height: 1.5; }
+.join input { background: #0A0810; border: 1px solid var(--line); padding: 14px; font-size: 16px; outline: none; }
+.join input:focus { border-color: var(--violet); }
+.join button { border: 0; background: var(--royal); padding: 14px; font-size: 16px; font-weight: 700; cursor: pointer; }
+.gone { position: fixed; inset: 0; z-index: 11; background: var(--bg); display: grid; place-items: center; text-align: center; color: var(--mute); padding: 20px; }
+@media (max-width: 820px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .stage { aspect-ratio: 16 / 9; }
+  .side { border-left: 0; border-top: 1px solid var(--line); min-height: 0; }
+  .ctrl select, .ctrl input[type=range] { display: none; }
+  .sub { bottom: 70px; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <section class="stage" id="stage">
+    <header class="top"><span class="logo">KAMI</span><span class="title" id="title">—</span><span class="live" id="live">canlı</span></header>
+    <div class="vbox"><video id="v" playsinline preload="auto"></video><div class="spin" id="spin" hidden></div></div>
+    <div class="sub" id="sub"></div>
+    <div class="float" id="float"></div>
+    <div class="ctrl">
+      <button class="big" id="pp" title="Oynat / durdur (boşluk)"><svg viewBox="0 0 24 24"><path id="ppi" d="M7 4v16l13-8z"/></svg></button>
+      <span class="time" id="cur">0:00</span>
+      <div class="bar" id="bar"><i></i><b id="prog"></b></div>
+      <span class="time" id="dur">0:00</span>
+      <select id="subSel"><option value="-1">Altyazı yok</option></select>
+      <input type="range" id="vol" min="0" max="1" step="0.05" value="1" title="Ses">
+      <button id="fs" title="Tam ekran (F)"><svg viewBox="0 0 24 24"><path d="M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z"/></svg></button>
+    </div>
+    <div class="big-play" id="unmute" hidden><div>▶ İzlemeye katıl</div></div>
+  </section>
+  <aside class="side">
+    <div class="who" id="who">—</div>
+    <div class="chat" id="chat"></div>
+    <form class="send" id="send"><input id="msg" placeholder="Bir şey yaz…" autocomplete="off" maxlength="500"><button>Gönder</button></form>
+  </aside>
+</div>
+<div class="join" id="join">
+  <form id="joinF">
+    <div class="logo">KAMI</div>
+    <p id="joinTxt">Birlikte izlemeye davet edildin.</p>
+    <input id="nm" placeholder="Adın" maxlength="40" required autofocus>
+    <button>Katıl</button>
+  </form>
+</div>
+<div class="gone" id="gone" hidden><div><div class="logo" style="font-size:48px">KAMI</div><p>Oda kapandı. Tekrar izlemek için yeni bir bağlantı iste.</p></div></div>
+<script>
+"use strict";
+const $ = (s) => document.getElementById(s);
+const me = { id: localStorage.kw_id || (localStorage.kw_id = Math.random().toString(36).slice(2, 10)), name: localStorage.kw_name || "" };
+const W = { info: null, offset: 0, st: null, v: 0, n: 0, skew: 0, applying: 0, cues: [], dur: 0 };
+const v = $("v");
+const fmt = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); };
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const now = () => Date.now() / 1000 + W.skew;
+const pos = () => W.offset + (v.currentTime || 0);
+const direct = () => W.info.mode === "direct";
+
+function src(t, play) {
+  W.applying = Date.now();
+  if (direct()) { if (!v.src) v.src = W.info.direct_url; v.currentTime = t; W.offset = 0; }
+  else { W.offset = t; v.src = W.info.stream_url + "?t=" + t.toFixed(2) + "&a=0&m=" + W.info.mode; }
+  $("spin").hidden = false;
+  if (play) v.play().catch(() => { $("unmute").hidden = false; });
+}
+function target(st) { return st.t + (st.playing ? Math.max(0, now() - st.at) : 0); }
+function apply(st, force) {
+  const t = target(st), d = Math.abs(pos() - t);
+  if (force || d > 1.5) src(t, st.playing);
+  else if (st.playing && v.paused) { W.applying = Date.now(); v.play().catch(() => { $("unmute").hidden = false; }); }
+  else if (!st.playing && !v.paused) { W.applying = Date.now(); v.pause(); }
+  ppIcon();
+}
+async function act(body) { try { await fetch("act", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: me.id, name: me.name, ...body }) }); } catch { /* ag */ } }
+function sendState(playing, t) {
+  W.st = { playing, t, at: now(), by: me.id, v: W.st?.v || 0 };
+  act({ kind: "state", playing, t });
+}
+async function poll() {
+  for (;;) {
+    try {
+      const r = await (await fetch(`poll?v=${W.v}&n=${W.n}&id=${me.id}&name=${encodeURIComponent(me.name)}`, { cache: "no-store" })).json();
+      W.skew = r.now - Date.now() / 1000;
+      if (r.state.v > W.v) { const first = !W.v; W.v = r.state.v; W.st = r.state; if (first || r.state.by !== me.id) apply(r.state, first); }
+      for (const e of r.events) { W.n = Math.max(W.n, e.n); addMsg(e); }
+      $("who").innerHTML = `<b>${esc(r.host)}</b> ile izliyorsun` + (r.people.length ? ` · ${r.people.map(esc).join(", ")}` : "");
+    } catch {
+      const res = await fetch("info", { cache: "no-store" }).catch(() => null);
+      if (res && res.status === 404) { $("gone").hidden = false; return; }
+      await new Promise((ok) => setTimeout(ok, 2000));
+    }
+  }
+}
+function addMsg(e) {
+  const el = document.createElement("div");
+  el.className = "msg" + (e.kind === "sys" ? " sys" : "") + (e.who === me.name && e.kind !== "sys" ? " me" : "");
+  el.innerHTML = `<b>${esc(e.who)}</b>${esc(e.text)}`;
+  const c = $("chat"); c.appendChild(el); c.scrollTop = c.scrollHeight;
+  if (e.kind !== "sys" && e.who !== me.name && document.fullscreenElement) {
+    const f = document.createElement("div"); f.innerHTML = `<b style="color:#C4B5FD">${esc(e.who)}</b> ${esc(e.text)}`;
+    $("float").appendChild(f); setTimeout(() => f.remove(), 6200);
+  }
+}
+function ppIcon() { $("ppi").setAttribute("d", v.paused ? "M7 4v16l13-8z" : "M6 4h4v16H6zm8 0h4v16h-4z"); }
+function tick() {
+  const t = pos();
+  $("cur").textContent = fmt(t);
+  $("prog").style.width = (W.dur ? Math.min(100, t / W.dur * 100) : 0) + "%";
+  const c = W.cues.find((x) => t >= x.a && t <= x.b);
+  $("sub").innerHTML = c ? `<span>${esc(c.text)}</span>` : "";
+  // kucuk kaymalari hizla duzelt (yalnizca dogrudan oynatmada; akista kayma = yeniden baglanma)
+  if (W.st && W.st.playing && !v.paused && Date.now() - W.applying > 3000) {
+    const d = target(W.st) - t;
+    if (Math.abs(d) > 2.5) src(target(W.st), true);
+    else if (direct()) v.playbackRate = Math.abs(d) > 0.4 ? (d > 0 ? 1.05 : 0.95) : 1;
+  }
+}
+function parseVtt(txt) {
+  const out = [], ts = (s) => { const p = s.trim().replace(",", ".").split(":").map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
+  for (const blk of txt.replace(/\r/g, "").split(/\n\n+/)) {
+    const lines = blk.split("\n"), k = lines.findIndex((l) => l.includes("-->"));
+    if (k < 0) continue;
+    const [a, b] = lines[k].split("-->");
+    out.push({ a: ts(a), b: ts(b.split(" ").filter(Boolean)[0]), text: lines.slice(k + 1).join("\n").replace(/<[^>]+>/g, "") });
+  }
+  return out;
+}
+$("subSel").onchange = async (e) => {
+  const s = W.info.subs[+e.target.value];
+  W.cues = s ? parseVtt(await (await fetch(s.url)).text()) : [];
+};
+$("pp").onclick = () => { const playing = v.paused; if (playing) v.play().catch(() => {}); else v.pause(); sendState(playing, pos()); ppIcon(); };
+$("bar").onclick = (e) => { if (!W.dur) return; const r = $("bar").getBoundingClientRect(), t = (e.clientX - r.left) / r.width * W.dur; const p = !v.paused; src(t, p); sendState(p, t); };
+$("vol").oninput = (e) => { v.volume = +e.target.value; };
+$("fs").onclick = () => (document.fullscreenElement ? document.exitFullscreen() : $("stage").requestFullscreen?.());
+$("unmute").onclick = () => { $("unmute").hidden = true; if (W.st) apply(W.st, true); };
+$("send").onsubmit = (e) => { e.preventDefault(); const t = $("msg").value.trim(); if (t) { act({ kind: "chat", text: t }); $("msg").value = ""; } };
+v.addEventListener("playing", () => { $("spin").hidden = true; ppIcon(); });
+v.addEventListener("waiting", () => { $("spin").hidden = false; });
+v.addEventListener("canplay", () => { $("spin").hidden = true; });
+v.addEventListener("pause", ppIcon);
+v.addEventListener("error", () => {   // dogrudan oynatma olmadiysa akisa gec
+  if (direct() && W.info.stream_url) { W.info.mode = "transcode"; src(W.st ? target(W.st) : 0, W.st?.playing); }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === " ") { e.preventDefault(); $("pp").click(); }
+  if (e.key === "f" || e.key === "F") $("fs").click();
+});
+let idle; document.addEventListener("mousemove", () => { $("stage").classList.remove("idle"); clearTimeout(idle); idle = setTimeout(() => $("stage").classList.add("idle"), 2600); });
+
+async function start() {
+  $("join").hidden = true;
+  W.info = await (await fetch("info", { cache: "no-store" })).json();
+  W.dur = W.info.duration || 0;
+  $("title").textContent = W.info.title; document.title = W.info.title + " · Kami";
+  $("dur").textContent = fmt(W.dur);
+  $("subSel").innerHTML = `<option value="-1">Altyazı yok</option>` + W.info.subs.map((s, i) => `<option value="${i}">${esc(s.label)}</option>`).join("");
+  if (W.info.subs.length) { $("subSel").value = "0"; $("subSel").onchange({ target: $("subSel") }); }
+  setInterval(tick, 250);
+  poll();
+}
+$("joinF").onsubmit = (e) => { e.preventDefault(); me.name = $("nm").value.trim() || "Misafir"; localStorage.kw_name = me.name; start(); };
+fetch("info", { cache: "no-store" }).then((r) => r.ok ? r.json() : Promise.reject()).then((i) => {
+  $("joinTxt").textContent = `“${i.title}” izlemeye davet edildin.`;
+  if (me.name) $("nm").value = me.name;
+}).catch(() => { $("gone").hidden = false; });
+</script>
+</body>
+</html>

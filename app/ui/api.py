@@ -84,7 +84,7 @@ class Api:
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
     JOB_METHODS = frozenset({
-        "add_url", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
+        "add_url", "watch_start", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
@@ -1563,6 +1563,40 @@ class Api:
         with open(out, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
         return {"ok": True, "path": out}
+
+    # ---------- Birlikte izle ----------
+    def watch_start(self, info: dict[str, Any], tunnel: bool = True) -> dict[str, Any]:
+        """Oynatici bilgisiyle oda acar; disari Cloudflare tuneli (ilk seferde cloudflared indirilir)."""
+        from app.core import watchparty
+        if not self._media or not isinstance(info, dict):
+            return {"on": False, "error": "no_media"}
+        name = str(self._manager.settings.get("watch_name") or os.environ.get("USERNAME") or "Kami")
+        return watchparty.SERVER.start(self._media.base, info, name, bool(tunnel))
+
+    def watch_stop(self) -> bool:
+        from app.core import watchparty
+        watchparty.SERVER.stop()
+        return True
+
+    def watch_status(self) -> dict[str, Any]:
+        from app.core import watchparty
+        return watchparty.SERVER.status()
+
+    def watch_poll(self, since_v: int = 0, since_n: int = 0) -> dict[str, Any]:
+        from app.core import watchparty
+        return watchparty.host_poll(int(since_v or 0), int(since_n or 0))
+
+    def watch_act(self, kind: str, playing: bool = False, t: float = 0.0, text: str = "") -> bool:
+        from app.core import watchparty
+        return watchparty.host_act(str(kind), bool(playing), float(t or 0), str(text or ""))
+
+    def copy_text(self, text: str) -> bool:
+        try:
+            import subprocess as sp
+            sp.run(["clip"], input=str(text).encode("utf-16-le"), check=False, creationflags=0x08000000)
+            return True
+        except Exception:
+            return False
 
     # ---------- Ekran kaydi ----------
     recorder = None   # main.py baglar

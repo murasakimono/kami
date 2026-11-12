@@ -116,6 +116,7 @@ DEFAULTS: dict[str, Any] = {
     "rec_record_hotkey": "alt+f9",
     "rec_fps": 60,
     "rec_mic": True,                 # mikrofon ayri ses izi
+    "watch_name": "Metehan",         # Birlikte izle: sohbette gorunen ad
 }
 
 
