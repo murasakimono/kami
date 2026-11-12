@@ -57,6 +57,8 @@ def targets(path: str) -> list[str]:
             out = ["pdf", "xlsx", "ods", "csv"]
         elif e in IMPRESS:
             out = ["pdf", "pptx", "odp", "png"]
+    if k == "image":
+        out = ["img:nobg"] + out
     if k in ("image", "audio", "video", "pdf"):
         out = out + ["meta:strip"]
     same = {"jpeg": "jpg", "jfif": "jpg", "tif": "tiff"}.get(e.lstrip("."), e.lstrip("."))
@@ -370,6 +372,14 @@ def convert_one(src: str, target: str, opts: dict, tools: dict, on_p: Callable[[
     k = kind(src)
     if target == "meta:strip":
         return _strip(src, opts, tools)
+    if target == "img:nobg":
+        from app.core import aitools
+        out = out_path(src, "png", tag="arka plansiz", folder=opts.get("folder", ""))
+        on_p(0.1)
+        res = aitools.remove_background(src, str(out))
+        if "error" in res:
+            raise RuntimeError({"tool_missing": "ai_araclari_kurulu_degil"}.get(res["error"], res["error"]))
+        return out
     if k == "pdf":
         if target in ("png", "jpg"):
             return _pdf_render(src, target, opts)

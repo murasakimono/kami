@@ -88,7 +88,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
-        "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "library_organize", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
+        "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -1386,6 +1386,55 @@ class Api:
         else:
             self._play_request(out)
         return True
+
+    # ---------- Fotograf goruntuleyici ----------
+    IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".jfif", ".heic", ".tif", ".tiff")
+
+    def image_data(self, path: str, max_side: int = 3000) -> dict[str, Any]:
+        """Goruntuleyici icin data URL (buyuk/HEIC gorseller kucultulup JPEG/PNG'ye cevrilir)."""
+        import base64
+        import io
+        path = str(path or "")
+        if not os.path.isfile(path) or not path.lower().endswith(self.IMAGE_EXT):
+            return {"ok": False, "error": "no_file"}
+        try:
+            from PIL import Image, ImageOps
+            im = Image.open(path)
+            w, h = im.size
+            fmt = (im.format or "").upper()
+            exif = {}
+            try:
+                ex = im.getexif()
+                exif = {k: str(v)[:60] for k, v in {"Kamera": ex.get(0x0110), "Tarih": ex.get(0x0132)}.items() if v}
+            except Exception:
+                pass
+            raw = open(path, "rb").read() if fmt in ("JPEG", "PNG", "WEBP", "GIF") and max(w, h) <= max_side and os.path.getsize(path) < 25e6 else None
+            if raw is None:
+                im = ImageOps.exif_transpose(im)
+                im.thumbnail((max_side, max_side))
+                buf = io.BytesIO()
+                im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") else "RGB").save(buf, "PNG" if im.mode in ("RGBA", "LA", "P") else "JPEG", quality=92)
+                raw, fmt = buf.getvalue(), ("PNG" if im.mode in ("RGBA", "LA", "P") else "JPEG")
+            mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp", "GIF": "image/gif"}.get(fmt, "image/png")
+            return {"ok": True, "url": f"data:{mime};base64," + base64.b64encode(raw).decode(), "w": w, "h": h,
+                    "size": os.path.getsize(path), "name": os.path.basename(path), "exif": exif}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    def open_path_folder(self, path: str) -> bool:
+        path = str(path or "")
+        if not os.path.isfile(path):
+            return False
+        subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+        return True
+
+    def image_siblings(self, path: str) -> list[str]:
+        """Ayni klasordeki gorseller (ileri / geri gezinme)."""
+        d = os.path.dirname(str(path or ""))
+        try:
+            return sorted(os.path.join(d, n) for n in os.listdir(d) if n.lower().endswith(self.IMAGE_EXT))[:2000]
+        except OSError:
+            return []
 
     def opensub_status(self) -> dict[str, Any]:
         return {"has_key": bool(self._osub and self._osub.load())}

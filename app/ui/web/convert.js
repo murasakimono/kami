@@ -7,6 +7,7 @@ const CV_LABEL = {
   "pdf:compress": () => cvL("PDF küçült", "Compress PDF"), "pdf:split": () => cvL("Sayfalara böl", "Split pages"),
   "pdf:merge": () => cvL("Tek PDF'te birleştir", "Merge into one PDF"), "pdf:images": () => cvL("Tek PDF yap", "Make one PDF"),
   "meta:strip": () => cvL("Metadata temizle", "Strip metadata"),
+  "img:nobg": () => cvL("✦ Arka planı kaldır (AI)", "✦ Remove background (AI)"),
 };
 const CV_KIND = { image: ["Görsel", "Image"], audio: ["Ses", "Audio"], video: ["Video", "Video"], pdf: ["PDF", "PDF"], office: ["Belge", "Document"], other: ["Diğer", "Other"] };
 const CV_OFFICE_T = new Set(["docx", "odt", "rtf", "html", "xlsx", "ods", "csv", "pptx", "odp"]);
@@ -43,9 +44,10 @@ function cvRender() {
       <div class="cv-targets">${ts.map((t) => `<button type="button" class="cv-t ${t === CV.target ? "on" : ""} ${t.includes(":") ? "tool" : ""}" data-t="${t}">${cvLabel(t)}</button>`).join("")}</div>`
       : `<p class="hint">${cvL("Seçili dosyaların ortak bir çıktı formatı yok; aynı türden dosyaları birlikte seç.", "The selected files share no output format; select files of the same kind.")}</p>`) : ""}
     ${CV.target ? `<div class="cv-opts">
-      ${CV.target !== "meta:strip" && CV.target !== "pdf:split" && CV.target !== "pdf:merge" ? `<label>${cvL("Kalite", "Quality")}</label>${cvSeg("quality", [["high", cvL("Yüksek", "High")], ["normal", "Normal"], ["small", cvL("Küçük dosya", "Small file")]], CV.quality)}` : ""}
+      ${CV.target === "img:nobg" ? `<p class="hint" style="grid-column:1/-1">${cvL("Bilgisayarında çalışır; ilk kullanımda yapay zekâ modeli bir kez iner (~170 MB). Çıktı şeffaf PNG.", "Runs locally; the model downloads once (~170 MB). Output: transparent PNG.")}</p>` : ""}
+      ${!["meta:strip", "pdf:split", "pdf:merge", "img:nobg"].includes(CV.target) ? `<label>${cvL("Kalite", "Quality")}</label>${cvSeg("quality", [["high", cvL("Yüksek", "High")], ["normal", "Normal"], ["small", cvL("Küçük dosya", "Small file")]], CV.quality)}` : ""}
       ${kinds.has("video") && !["mp3", "flac", "wav", "m4a", "opus", "ogg", "meta:strip"].includes(CV.target) ? `<label>${cvL("Çözünürlük", "Resolution")}</label>${cvSeg("height", [[0, cvL("Aynı", "Same")], [1080, "1080p"], [720, "720p"], [480, "480p"]], CV.height)}` : ""}
-      ${kinds.has("image") && !["meta:strip", "pdf:images"].includes(CV.target) ? `<label>${cvL("En fazla genişlik", "Max width")}</label>${cvSeg("maxw", [[0, cvL("Aynı", "Same")], [3840, "4K"], [1920, "1920"], [1280, "1280"], [800, "800"]], CV.maxw)}
+      ${kinds.has("image") && !["meta:strip", "pdf:images", "img:nobg"].includes(CV.target) ? `<label>${cvL("En fazla genişlik", "Max width")}</label>${cvSeg("maxw", [[0, cvL("Aynı", "Same")], [3840, "4K"], [1920, "1920"], [1280, "1280"], [800, "800"]], CV.maxw)}
         <label>${cvL("Konum / kamera bilgisi", "Location / camera info")}</label>${cvSeg("strip", [[1, cvL("Sil", "Remove")], [0, cvL("Koru", "Keep")]], CV.strip ? 1 : 0)}` : ""}
     </div>
     ${needsOffice && CV.office === false ? `<div class="cv-warn">${cvL("Bu dönüşüm için LibreOffice gerekiyor (ücretsiz, ~350 MB).", "This needs LibreOffice (free, ~350 MB).")} <button type="button" class="btn ghost" id="cvOffice">${cvL("LibreOffice'i kur", "Install LibreOffice")}</button></div>` : ""}
@@ -57,7 +59,7 @@ function cvRenderJobs(jobs) {
   const box = $("#cvJobs"); if (!box) return;
   if (!jobs.length) { box.innerHTML = ""; return; }
   const run = jobs.some((j) => j.state === "running" || j.state === "queued");
-  const err = (e) => ({ cancelled: cvL("iptal edildi", "cancelled"), libreoffice_yok: cvL("LibreOffice kurulu değil", "LibreOffice missing"), zaten_kucuk: cvL("zaten olabildiğince küçük", "already as small as it gets"), desteklenmiyor: cvL("bu dönüşüm desteklenmiyor", "unsupported") }[e] || e);
+  const err = (e) => ({ cancelled: cvL("iptal edildi", "cancelled"), libreoffice_yok: cvL("LibreOffice kurulu değil", "LibreOffice missing"), ai_araclari_kurulu_degil: cvL("Önce Ayarlar > Medya'dan AI araçlarını (Whisper) kur", "Install AI tools (Whisper) first"), zaten_kucuk: cvL("zaten olabildiğince küçük", "already as small as it gets"), desteklenmiyor: cvL("bu dönüşüm desteklenmiyor", "unsupported") }[e] || e);
   box.innerHTML = `<div class="rd-head"><h3 class="cv-h">${cvL("İşler", "Jobs")}</h3><span class="spacer"></span>
       ${run ? `<button type="button" class="btn ghost danger" id="cvCancel">${cvL("Hepsini iptal et", "Cancel all")}</button>` : `<button type="button" class="btn ghost" id="cvClearJobs">${cvL("Temizle", "Clear")}</button>`}</div>
     <ul class="cv-jobs">${jobs.map((j) => `<li class="${j.state}"><span class="cv-jn">${escapeHtml(j.name)} → ${cvLabel(j.target)}</span>

@@ -741,3 +741,13 @@ def identify_song(src: str, start: float = 0.0) -> dict:
         return {"error": "soundcard_install_failed"}
     return _run_once(["app.tools.shazam_run", src, str(float(start or 0)), find_ffmpeg() or ""], lambda m: None,
                      threading.Event(), "whisper", {})
+
+
+def remove_background(src: str, out: str) -> dict:
+    """Donusturucu: yerel AI arka plan kaldirma (rembg + onnxruntime, Whisper ortamina ilk kullanimda kurulur)."""
+    if not installed("whisper"):
+        return {"error": "tool_missing"}
+    if not _ensure_pkg("whisper", "rembg", "rembg[cpu]"):
+        return {"error": "rembg_install_failed"}
+    return _run_once(["app.tools.rembg_run", src, out, "isnet-general-use"], lambda m: None, threading.Event(), "whisper", {})
+

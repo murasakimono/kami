@@ -276,3 +276,17 @@ body.sunak > .topbar, body.sunak > .layout { position: relative; z-index: 2; }
 .lv-w h3 { margin: 0; font-size: 17px; } .lv-w label { font-size: 12px; color: var(--sk-mute); margin-top: 4px; }
 .lv-w .hint { margin: 0; font-size: 12px; color: var(--sk-mute); overflow: hidden; text-overflow: ellipsis; }
 .lv-b { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+/* fotograf goruntuleyici */
+.kvw { position: fixed; inset: 0; z-index: 9990; background: rgba(5, 4, 8, .94); }
+.kvw[hidden] { display: none; }
+.kvw-stage { position: absolute; inset: 56px 0 0; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; }
+.kvw-stage.drag { cursor: grabbing; }
+.kvw-stage img { max-width: 96%; max-height: 96%; transition: transform .12s ease-out; user-select: none; -webkit-user-drag: none; box-shadow: 0 10px 40px rgba(0, 0, 0, .6); }
+.kvw-top { position: absolute; left: 0; right: 0; top: 0; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: linear-gradient(180deg, #120E1A, rgba(18, 14, 26, .6)); color: var(--sk-text); font-family: var(--font); }
+.kvw-top b { font-size: 14px; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kvw-top span { font-size: 12px; color: var(--sk-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kvw-top .sp { flex: 1; }
+.kvw-top button { border: 0; background: #1C1528; color: var(--sk-text); font: 600 12.5px var(--font); padding: 7px 11px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.kvw-top button:hover { background: #2A1F3B; } .kvw-top button.x { background: none; font-size: 16px; }
+.kvw-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 90px; border: 0; border-radius: 12px; background: rgba(28, 21, 40, .6); color: #fff; font-size: 34px; cursor: pointer; }
+.kvw-nav.l { left: 14px; } .kvw-nav.r { right: 14px; } .kvw-nav:hover { background: rgba(109, 40, 217, .6); }
