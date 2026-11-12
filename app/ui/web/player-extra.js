@@ -624,7 +624,7 @@ window.pxExtraToolsHtml = () => _peTools4() + `<div class="px-shift"><span>${plL
   <div id="peLvRes"></div>`;
 function lvDraw(j) {
   const box = $("#peLvRes"); if (!box || !j) return;
-  if (j.state === "running") box.innerHTML = `<p class="px-hint">${j.stage === "render" ? plL("İşleniyor: ", "Rendering: ") + escapeHtml(j.line || "") : plL("Hazırlanıyor…", "Preparing…")}</p><button class="pl-b" data-xa="lvstop">${plL("İptal", "Cancel")}</button>`;
+  if (j.state === "running") box.innerHTML = `<p class="px-hint">${j.stage === "render" ? plL("İşleniyor", "Rendering") + (j.p ? ` · %${Math.round(j.p * 100)}` : plL(" (ilk seferde HyperFrames iner)", " (first run downloads HyperFrames)")) : plL("Hazırlanıyor…", "Preparing…")}</p><button class="pl-b" data-xa="lvstop">${plL("İptal", "Cancel")}</button>`;
   else if (j.state === "done") box.innerHTML = `<p class="px-hint">✓ ${escapeHtml(String(j.out || "").split(/[\\/]/).pop())}</p><button class="pl-b" data-xa="lvplay">${plL("Oynat", "Play")}</button><button class="pl-b" data-xa="lvfolder">${plL("Klasörü aç", "Open folder")}</button>`;
   else if (j.state === "error") box.innerHTML = `<p class="px-hint">${({ cancelled: plL("İptal edildi", "Cancelled"), no_synced: plL("Bu şarkının senkron sözü yok (LRC/SRT ya da LRCLIB)", "No synced lyrics"), node_yok: plL("Node.js gerekli (nodejs.org)", "Node.js required") })[j.error] || plL("Olmadı: ", "Failed: ") + escapeHtml(j.error || "?")}</p>`;
   else box.innerHTML = "";

@@ -1353,7 +1353,12 @@ class Api:
                 lv.build(job, path, lines, title, "", ff, style if style in ("kinetic", "simple", "karaoke") else "kinetic",
                          vertical, start, length)
                 self._lv["stage"] = "render"
-                res = lv.render(job, out, lambda ln: self._lv.update(line=ln[-140:]), self._lv_cancel)
+                def _ln(ln: str) -> None:
+                    m = re.search(r'@hf-progress .*"pct":\s*(\d+)', ln)
+                    if m:
+                        self._lv.update(p=int(m.group(1)) / 100)
+
+                res = lv.render(job, out, _ln, self._lv_cancel)
             except Exception as exc:
                 log.exception("Lyric video")
                 res = {"ok": False, "error": str(exc)[:160]}
