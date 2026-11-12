@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami Studio</title>
+<link rel="stylesheet" href="scroll.css">
+<link rel="stylesheet" href="studio.css">
+<script src="vendor/jassub/jassub.umd.js"></script>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <span class="logo">KAMI<b>STUDIO</b></span>
+    <input id="pname" value="Yeni proje" spellcheck="false" title="Proje adı">
+    <span id="saved"></span>
+    <button class="tb icon" data-a="undo" title="Geri al (Ctrl+Z)">↶</button>
+    <button class="tb icon" data-a="redo" title="Yinele (Ctrl+Y)">↷</button>
+    <select class="tb" id="ratio" title="Video boyutu">
+      <option value="1920x1080">16:9 · YouTube</option>
+      <option value="1080x1920">9:16 · Reels / TikTok / Shorts</option>
+      <option value="1080x1080">1:1 · Kare</option>
+      <option value="1080x1350">4:5 · Instagram</option>
+      <option value="2560x1440">16:9 · 1440p</option>
+      <option value="3840x2160">16:9 · 4K</option>
+      <option value="1280x720">16:9 · 720p</option>
+    </select>
+    <span class="sp"></span>
+    <button class="tb" data-a="new" title="Yeni proje">＋ Yeni</button>
+    <button class="tb" data-a="open" title="Proje aç (Ctrl+O)">Aç</button>
+    <button class="tb" data-a="save" title="Kaydet (Ctrl+S)">Kaydet</button>
+    <button class="tb" data-a="keys" title="Kısayollar">⌨</button>
+    <button class="tb pri" data-a="export" title="Dışa aktar (Ctrl+E)">⬇ Dışa aktar</button>
+  </header>
+
+  <aside id="rail">
+    <button data-panel="media" class="on"><i>▦</i>Medya</button>
+    <button data-panel="sound"><i>♪</i>Ses/Meme</button>
+    <button data-panel="text"><i>T</i>Metin</button>
+    <button data-panel="captions"><i>≡</i>Altyazı</button>
+    <button data-panel="fx"><i>✦</i>Efekt</button>
+    <button data-panel="trans"><i>⇋</i>Geçiş</button>
+    <button data-panel="zoom"><i>⊕</i>Zoom</button>
+    <button data-panel="subscribe"><i>🔔</i>Abone</button>
+    <button data-panel="ai"><i>✧</i>Akıllı</button>
+    <button data-panel="plugins"><i>⧉</i>Eklenti</button>
+  </aside>
+
+  <section id="panel">
+    <div class="ph"><b id="panelTitle">Medya</b><span class="sp"></span><span id="panelTools"></span></div>
+    <div id="panelBody"></div>
+  </section>
+
+  <main id="stage">
+    <div id="viewArea">
+      <div id="viewWrap">
+        <canvas id="view"></canvas>
+        <canvas id="assView"></canvas>
+        <div id="guides"></div>
+        <div id="handles"></div>
+      </div>
+      <div id="emptyHint"><div><b>Videoları buraya bırak</b>ya da soldan “İçe aktar”</div></div>
+    </div>
+    <div id="transport">
+      <button class="tb" data-a="home" title="Başa (Home)">⏮</button>
+      <button class="tb" data-a="back" title="1 kare geri (←)">◀︎</button>
+      <button class="tb pri" id="playBtn" data-a="play" title="Oynat / durdur (Boşluk)">▶</button>
+      <button class="tb" data-a="fwd" title="1 kare ileri (→)">▶︎</button>
+      <button class="tb" data-a="end" title="Sona (End)">⏭</button>
+      <span id="tc"><b>00:00.00</b> <span>/ 00:00.00</span></span>
+      <span class="sp"></span>
+      <select class="tb" id="pq" title="Önizleme kalitesi"><option value="0.5">Önizleme ½</option><option value="0.75" selected>Önizleme ¾</option><option value="1">Tam</option></select>
+      <button class="tb" data-a="safe" title="Güvenli alan / orta çizgi">⌗</button>
+      <button class="tb" data-a="snapshot" title="Bu kareyi PNG kaydet">📷</button>
+      <button class="tb" data-a="full" title="Tam ekran önizleme (F)">⛶</button>
+    </div>
+  </main>
+
+  <aside id="insp"></aside>
+  <div id="split" title="Sürükle: zaman çizelgesi yüksekliği"></div>
+
+  <footer id="tl">
+    <div id="tlbar">
+      <button class="tb" data-a="split" title="Böl (S)">✂ Böl</button>
+      <button class="tb" data-a="del" title="Sil (Del) · Shift+Del boşluğu kapatır">🗑</button>
+      <button class="tb" data-a="dup" title="Çoğalt (Ctrl+D)">⧉</button>
+      <button class="tb" data-a="marker" title="İşaret (M)">⚑</button>
+      <span style="width:8px"></span>
+      <button class="tb on" data-a="snap" id="snapBtn" title="Mıknatıs: kenarlara, oynatma kafasına ve vuruşlara yapış">🧲 Yapış</button>
+      <button class="tb" data-a="ripple" id="rippleBtn" title="Silince sonrakileri kaydır">⇤ Kaydır</button>
+      <button class="tb" data-a="addtrack" title="İz ekle">＋ İz</button>
+      <span class="sp"></span>
+      <span id="selInfo" class="hint"></span>
+      <button class="tb icon" data-a="zout" title="Uzaklaş (-)">－</button>
+      <input type="range" id="tlZoom" min="8" max="600" value="80" title="Zaman ölçeği">
+      <button class="tb icon" data-a="zin" title="Yakınlaş (+)">＋</button>
+      <button class="tb icon" data-a="zfit" title="Hepsini sığdır">⇔</button>
+    </div>
+    <div id="tlBody">
+      <div id="tlHeads"></div>
+      <div id="tlScroll"><div id="tlInner"><div id="ruler"><canvas></canvas></div><div id="lanes"></div><div id="playhead"></div></div></div>
+    </div>
+  </footer>
+</div>
+<div id="modal" hidden></div>
+<div id="toast"></div>
+<div id="busy" hidden></div>
+
+<script src="studio-fx.js"></script>
+<script src="studio.js"></script>
+<script src="studio-panels.js"></script>
+</body>
+</html>

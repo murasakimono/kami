@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from app.core.manager import CaptureRejected, PageLinkRejected
 from app.core.watchdog import log_slow_calls
 from app.core.models import DownloadRequest, Status
+from app.ui.api_studio import STUDIO_JOBS, StudioMixin
 
 if TYPE_CHECKING:
     from app.core.manager import DownloadManager
@@ -22,7 +23,7 @@ log = logging.getLogger(__name__)
 
 
 @log_slow_calls
-class Api:
+class Api(StudioMixin):
     # pywebview, alt cizgiyle baslayan nitelikleri JS'e acmaz
     def __init__(self, manager: "DownloadManager", engine: "Aria2Engine", registry: "PluginRegistry",
                  bridge_port_getter) -> None:
@@ -91,7 +92,7 @@ class Api:
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
         "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
-    })
+    }) | STUDIO_JOBS
 
     def job_start(self, name: str, args: list | None = None) -> dict[str, Any]:
         import time as _t

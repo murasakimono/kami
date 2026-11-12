@@ -40,6 +40,7 @@ class BridgeServer:
         self.on_uri: Callable[[str], None] | None = None    # kami:// (bildirim dugmeleri)
         self.on_convert: Callable[[list], None] | None = None   # Gezgin sag tik "Kami ile donustur"
         self.on_read: Callable[[str], None] | None = None       # Kami Reader: manga/PDF
+        self.on_studio: Callable[[str], None] | None = None     # Kami Studio: video editoru
         self.on_view: Callable[[str], None] | None = None       # gorsel: "Birlikte ac > Kami"
         self.on_lens: Callable[[str], None] | None = None       # "Kami Lens ile ara"
         self.token = secrets.token_urlsafe(32)
@@ -147,6 +148,12 @@ class BridgeServer:
             if not self.on_lens or not (p == "screen" or os.path.isfile(p)):
                 return 400, {"ok": False}
             self.on_lens(p)
+            return 200, {"ok": True}
+        if path == "/v1/studio":
+            p = str(body.get("path") or "")
+            if not self.on_studio or (p and not os.path.isfile(p)):
+                return 400, {"ok": False}
+            self.on_studio(p)
             return 200, {"ok": True}
         if path == "/v1/read":
             p = str(body.get("path") or "")

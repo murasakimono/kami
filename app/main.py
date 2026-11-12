@@ -104,6 +104,9 @@ def main() -> int:
     paths.setup_frozen()
     paths.ensure_dirs()
     _setup_logging()
+    if "--studio-mcp" in sys.argv[1:]:   # Claude masaustu: Kami Studio MCP sunucusu (stdio, pencere yok)
+        from app.tools import studio_mcp
+        return studio_mcp.main()
     if "--setup" in sys.argv[1:]:   # Inno Setup: native host + magnet kaydi / kaldirma (pencere acilmaz)
         from app.core import setup_tasks
         return setup_tasks.run(sys.argv[1:])
@@ -144,6 +147,11 @@ def main() -> int:
         read = next((os.path.abspath(a) for a in sys.argv[1:] if not a.startswith("-") and a.lower().endswith(_COMIC[:4])
                      and os.path.isfile(a)), "")
     uri = next((sys.argv[i + 2] for i, a in enumerate(sys.argv[1:]) if a == "--uri" and i + 2 < len(sys.argv)), "")
+    studio = next((os.path.abspath(sys.argv[i + 2]) for i, a in enumerate(sys.argv[1:]) if a == "--studio" and i + 2 < len(sys.argv)), "")
+    if not studio:
+        studio = next((os.path.abspath(a) for a in sys.argv[1:] if not a.startswith("-") and a.lower().endswith(".kstudio") and os.path.isfile(a)), "")
+    if "--studio" in sys.argv[1:] and not studio:
+        studio = "open"
     convert = [os.path.abspath(a) for a in sys.argv[sys.argv.index("--convert") + 1:]] if "--convert" in sys.argv else []
     if convert and not call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping") and _already_running_mutex():
         import time as _time
@@ -175,6 +183,9 @@ def main() -> int:
             return 0
         if read:   # Kami Reader: manga / PDF / klasor
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/read", {"path": read}, timeout=5.0)
+            return 0
+        if studio:   # Kami Studio (proje dosyasi ya da bos)
+            call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/studio", {"path": "" if studio == "open" else studio}, timeout=5.0)
             return 0
         if lens:   # Gezgin sag tik "Kami Lens ile ara"
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/lens", {"path": lens}, timeout=5.0)
@@ -392,6 +403,44 @@ def main() -> int:
     api._make_reader_window = make_reader_window
     api._front_reader = reader_front.request
 
+    # ---- Kami Studio: video editoru (ayri pencere, ayni api)
+    studio_front = WindowFront("Kami Studio")
+
+    def make_studio_window():
+        w = webview.create_window("Kami Studio", url=str(paths.WEB_DIR / "studio.html"), js_api=api,
+                                  width=1600, height=960, min_size=(1100, 680), background_color="#07060B", text_select=False)
+
+        def closed() -> None:
+            api._studio_win = None
+        w.events.closed += closed
+
+        def loaded() -> None:
+            studio_front.request(); threading.Timer(0.6, studio_front.request).start()
+            try:
+                w.maximize()
+            except Exception:
+                pass
+            try:
+                from webview.dom import DOMEventHandler
+
+                def on_drop(e) -> None:
+                    ps = [f.get("pywebviewFullPath") for f in (e.get("dataTransfer") or {}).get("files") or []]
+                    ps = [p for p in ps if p and os.path.isfile(p)]
+                    if ps:
+                        with api._inbox_lock:
+                            api._studio_q = list(api._studio_q) + ps
+                w.dom.document.events.drop += DOMEventHandler(on_drop, True, False)
+            except Exception:
+                log.exception("Studio surukle-birak")
+        w.events.loaded += loaded
+        return w
+    api._make_studio_window = make_studio_window
+    api._front_studio = studio_front.request
+    try:
+        api._studio_load_packs()
+    except Exception:
+        log.exception("Studio paketleri")
+
     room_front = WindowFront("Kami Oda")
     from app.core import desktop   # asagidaki yerel import yuzunden burada da gerekli (UnboundLocalError)
     room_keys = {"mute": desktop.HotKey(lambda: room_js("kamiKey('mute')")),
@@ -465,6 +514,9 @@ def main() -> int:
         threading.Timer(1.5, lambda: api.picture_open(lens, True)).start()
     if read:
         threading.Timer(1.5, lambda: api.reader_show(read)).start()
+    bridge.on_studio = api.studio_show
+    if studio:
+        threading.Timer(1.5, lambda: api.studio_show("" if studio == "open" else studio)).start()
     if convert:
         api.convert_add(convert)
     if uri:   # Kami kapaliyken bildirim dugmesine basildi: acilinca isle
