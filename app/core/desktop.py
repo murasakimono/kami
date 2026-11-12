@@ -88,7 +88,7 @@ class Tray:
         except ImportError:
             log.warning("pystray/pillow yok: sistem tepsisi kapali")
             return
-        img_path = paths.ROOT / "extension" / "icons" / "32.png"
+        img_path = paths.WEB_DIR / "kami.png"   # uygulama logosu (eklenti simgesi ayri)
         image = Image.open(img_path) if img_path.exists() else Image.new("RGBA", (32, 32), (124, 77, 255, 255))
         M = pystray.MenuItem
         menu = pystray.Menu(

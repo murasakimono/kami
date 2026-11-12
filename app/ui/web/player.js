@@ -39,7 +39,7 @@ function plBuild() {
       <div class="pl-row">
         <div class="pl-left"><span class="pl-time"><b id="plCur">0:00</b> / <span id="plDur">0:00</span></span>
           <button class="pl-b" data-pl="prev" id="plPrev" title="${plL("Önceki (P)", "Previous (P)")}">⏮</button><button class="pl-b" data-pl="back" title="-10 sn">−10</button><button class="pl-b" data-pl="fwd" title="+10 sn">+10</button><button class="pl-b" data-pl="next" id="plNext" title="${plL("Sonraki (N)", "Next (N)")}">⏭</button></div>
-        <div class="pl-eqw"><div class="pl-eq l" id="plEqL">${"<i></i>".repeat(7)}</div><button class="pl-eye" id="plEye" title="${plL("Oynat / duraklat (Boşluk)", "Play / pause (Space)")}"><span class="pl-iris"><img src="eye/iris.webp" alt=""></span><svg class="pl-ico pl-ico-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg><svg class="pl-ico pl-ico-pause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button><div class="pl-eq r" id="plEqR">${"<i></i>".repeat(7)}</div></div>
+        <div class="pl-eqw"><div class="pl-eq l" id="plEqL">${"<i></i>".repeat(7)}</div><button class="pl-eye" id="plEye" title="${plL("Oynat / duraklat (Boşluk)", "Play / pause (Space)")}"><svg class="pl-ring" viewBox="0 0 48 48" aria-hidden="true"><circle class="bg" cx="24" cy="24" r="21.5"/><circle class="fg" id="plRing" cx="24" cy="24" r="21.5" pathLength="100" transform="rotate(-90 24 24)"/></svg><svg class="pl-pp" viewBox="0 0 24 24" aria-hidden="true"><path class="l"/><path class="r"/></svg></button><div class="pl-eq r" id="plEqR">${"<i></i>".repeat(7)}</div></div>
         <div class="pl-right">
           <select class="pl-sel" id="plSub" title="${plL("Altyazı (C)", "Subtitles (C)")}"></select>
           <select class="pl-sel" id="plAud" title="${plL("Ses izi", "Audio track")}"></select>
@@ -306,6 +306,7 @@ function plTick() {
     plPos(PL.info.path, PL.dur && t > PL.dur - 30 ? null : t);
   }
   $("#plCur").textContent = fmtT(t);
+  const ring = $("#plRing"); if (ring) ring.style.strokeDashoffset = String(100 - (PL.dur ? Math.min(1, t / PL.dur) : 0) * 100);
   if (!PL.seeking) plDrawPos(t);
   plSubDraw(t);
 }
