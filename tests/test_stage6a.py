@@ -342,6 +342,7 @@ def test_check_update(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **k: R(200, {"tag_name": "v9", "html_url": "https://evil/x"}))
     assert extras.check_update("0.6.0")["url"] == "https://github.com/murasakimono/kami/releases"
     monkeypatch.setattr(requests, "get", lambda *a, **k: R(404, {}))
+    monkeypatch.setattr(extras, "_gh_latest", lambda repo: None)   # gercek gh'ye gitmesin
     assert extras.check_update()["none"]
 
 
