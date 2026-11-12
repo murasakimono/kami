@@ -682,7 +682,11 @@ def main() -> int:
     api._turn_store = TokenStore(paths.DATA_DIR / "turn_key.bin")
     _room.SERVER.turn_key = lambda: tuple((api._turn_store.load() or ":").split(":", 1))
     room_link_store = TokenStore(paths.DATA_DIR / "room_worker.bin")
-    _room.SERVER.stable = lambda: (str(settings.get("room_worker_url") or ""), room_link_store.load() or "")
+    def _stable() -> tuple[str, str]:   # DPAPI: "https://kami-oda.<hesap>.workers.dev|gizli-anahtar"
+        raw = room_link_store.load() or ""
+        url, _, key = raw.partition("|")
+        return (url or str(settings.get("room_worker_url") or ""), key) if key else ("", "")
+    _room.SERVER.stable = _stable
 
     def room_joined(name: str) -> None:   # biri odaya girdi, ev sahibi pencerede degilse haber ver
         if getattr(api, "_room_win", None) is None and name != api._room_name():
@@ -690,7 +694,7 @@ def main() -> int:
             desktop.toast("Kami Oda", f"{name} " + ("joined the room" if en else "odaya girdi"),
                           [("Join" if en else "Katıl", "kami://room")])
     _room.SERVER.on_join = room_joined
-    if settings.get("room_always") and settings.get("room_worker_url") and room_link_store.load():
+    if settings.get("room_always") and _stable()[1]:
         threading.Timer(3.0, lambda: api.room_open(False)).start()
     ytdlp_engine.SOCIAL_COOKIES = lambda: bool(settings.get("social_cookies"))
     from app.core.follow import FollowService
