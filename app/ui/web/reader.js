@@ -41,7 +41,7 @@ async function openDoc(path) {
   if (!r?.ok) { toast(L("Açılamadı: ", "Could not open: ") + (r?.error || "")); return; }
   stopTts();
   RD.doc = r; RD.cache.clear(); RD.st = r.state || {}; RD.st.hl ||= []; RD.st.marks ||= [];
-  RD.set = Object.assign({ mode: "single", rtl: false, fit: pdf() ? "width" : "height", night: false }, RD.st.settings || {});
+  RD.set = Object.assign({ mode: "single", rtl: false, fit: "height", night: false }, RD.st.settings || {}); RD.zoom = 1;
   RD.page = Math.min(RD.st.page || 0, r.count - 1);
   document.body.classList.toggle("pdf", pdf()); document.body.classList.toggle("comic", !pdf());
   $("#rdHome").hidden = true; $("#rd").hidden = false;
@@ -60,7 +60,7 @@ function applySet() {
   document.body.classList.toggle("night", !!s.night);
   $("#rdNight").classList.toggle("on", !!s.night);
   $("#rdDir").textContent = s.rtl ? "⇠ " + L("Sağdan sola", "Right to left") : "⇢ " + L("Soldan sağa", "Left to right");
-  $("#rdFit").textContent = s.fit === "width" ? "↔ " + L("Genişlik", "Width") : "↕ " + L("Yükseklik", "Height");
+  $("#rdFit").textContent = s.fit === "width" ? "↔ " + L("Genişliğe sığdır", "Fit width") : "▭ " + L("Sayfaya sığdır", "Fit page");
 }
 function saveSet() { RD.st.settings = RD.set; dirty(); applySet(); render(); }
 function dirty() { RD.dirty = true; clearTimeout(RD._sv); RD._sv = setTimeout(saveNow, 800); }
@@ -88,9 +88,10 @@ function spreadPages() {
 function boxSize(pages) {
   const st = $("#rdStage"), W = st.clientWidth - 24, H = st.clientHeight - 28;
   const per = pages.length;
-  if (RD.set.mode === "scroll") return { w: Math.min(W, pdf() ? 1100 : 900) };
-  if (RD.set.fit === "width") return { w: Math.floor(W / per) - 2 };
-  return { w: Math.floor(Math.min(W / per - 2, H / RD.ratio)) };
+  const z = RD.zoom || 1;
+  if (RD.set.mode === "scroll") return { w: Math.round(Math.min(W, pdf() ? 1100 : 900) * z) };
+  if (RD.set.fit === "width") return { w: Math.round((Math.floor(W / per) - 2) * z) };
+  return { w: Math.round(Math.floor(Math.min(W / per - 2, H / RD.ratio)) * z) };   // sayfanin tamami gorunur
 }
 
 async function render() {
@@ -186,7 +187,7 @@ function updateUi() {
   const n = RD.doc.count, i = RD.page;
   $("#rdPg").textContent = `${i + 1} / ${n}`;
   $("#rdSlider").value = i + 1;
-  $("#rdPct").textContent = "%" + Math.round(((i + 1) / n) * 100);
+  $("#rdPct").textContent = "%" + Math.round(((i + 1) / n) * 100) + (RD.zoom && RD.zoom !== 1 ? ` · ${Math.round(RD.zoom * 100)}% ${L("yakın", "zoom")}` : "");
   $("#rdMarkBtn").textContent = RD.st.marks.includes(i) ? "★" : "☆";
   $$(".rd-rail .th").forEach((t) => t.classList.toggle("on", +t.dataset.i === i));
   $(`.rd-rail .th[data-i="${i}"]`)?.scrollIntoView({ block: "nearest" });
@@ -419,12 +420,21 @@ document.addEventListener("keydown", (e) => {
   else if (k === "r" || k === "R") { RD.set.rtl = !RD.set.rtl; saveSet(); }
   else if (k === "f" || k === "F") { RD.set.fit = RD.set.fit === "width" ? "height" : "width"; saveSet(); }
   else if ((k === "t" || k === "T") && pdf()) TTS.on ? stopTts() : startTts();
+  else if (k === "+" || k === "=") zoomBy(1.15);
+  else if (k === "-") zoomBy(1 / 1.15);
+  else if (k === "0") { RD.zoom = 1; RD.cache.clear(); render(); }
   else if (k === "Escape") { $("#rdPop").hidden = true; if (!$("#rdDrawer").hidden) { $("#rdDrawer").hidden = true; setTimeout(render, 0); } }
 });
 $("#rdSlider").addEventListener("input", (e) => { $("#rdPg").textContent = `${e.target.value} / ${RD.doc.count}`; });
 $("#rdSlider").addEventListener("change", (e) => go(+e.target.value - 1));
-$("#rdStage").addEventListener("wheel", (e) => {   // tek/cift sayfada tekerlek: sayfa sonunda bir sonrakine gec
-  if (!RD.doc || RD.set.mode === "scroll" || e.ctrlKey) return;
+function zoomBy(f) {
+  RD.zoom = Math.max(0.4, Math.min(4, (RD.zoom || 1) * f));
+  clearTimeout(RD._zt); RD._zt = setTimeout(() => { RD.cache.clear(); render(); }, 120);
+  updateUi();
+}
+$("#rdStage").addEventListener("wheel", (e) => {   // tek/cift sayfada tekerlek: sayfa sonunda bir sonrakine gec; Ctrl+tekerlek: yakinlastir
+  if (RD.doc && e.ctrlKey) { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12); return; }
+  if (!RD.doc || RD.set.mode === "scroll") return;
   const st = $("#rdStage"), atEnd = st.scrollTop + st.clientHeight >= st.scrollHeight - 2, atTop = st.scrollTop <= 1;
   if ((e.deltaY > 0 && atEnd) || (e.deltaY < 0 && atTop)) {
     e.preventDefault();

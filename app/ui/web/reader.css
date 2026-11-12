@@ -41,7 +41,7 @@ body.idle .rd-top { margin-top: -46px; opacity: 0; }
 body:not(.pdf) .pdf-only { display: none; }
 
 .rd-main { flex: 1; min-height: 0; display: flex; position: relative; }
-.rd-rail { width: 14px; flex: none; overflow: hidden auto; background: #0A0810; border-right: 1px solid var(--line); transition: width .2s; scrollbar-width: thin; }
+.rd-rail { width: 14px; flex: none; overflow: hidden auto; background: #0A0810; border-right: 1px solid var(--line); transition: width .2s; }
 .rd-rail:hover, .rd-rail.pin { width: 132px; }
 .rd-rail .th { margin: 10px 12px; cursor: pointer; opacity: .55; position: relative; min-height: 40px; }
 .rd-rail .th img { width: 100%; display: block; box-shadow: 2px 3px 0 #000; }
@@ -49,7 +49,7 @@ body:not(.pdf) .pdf-only { display: none; }
 .rd-rail .th span { position: absolute; right: 2px; bottom: 2px; font-size: 10px; background: rgba(0, 0, 0, .75); padding: 0 4px; }
 .rd-rail .th.mk::before { content: "★"; position: absolute; left: 2px; top: 0; color: #F5B94A; font-size: 12px; }
 
-.rd-stage { flex: 1; min-width: 0; position: relative; overflow: auto; display: flex; scrollbar-width: thin; scrollbar-color: #3A2D55 transparent; }
+.rd-stage { flex: 1; min-width: 0; position: relative; overflow: auto; display: flex; }
 .rd-spread { margin: auto; display: flex; gap: 2px; padding: 14px 0; }
 .rd-stage.scroll .rd-spread { flex-direction: column; gap: 0; padding: 0; margin: 0 auto; }
 .rd-stage.rtl .rd-spread { flex-direction: row-reverse; }
@@ -88,7 +88,7 @@ body.idle .rd-spine { margin-bottom: -40px; opacity: 0; }
 .rd-tabs { display: flex; border-bottom: 1px solid var(--line); }
 .rd-tabs button { flex: 1; border: 0; background: transparent; padding: 11px 4px; color: var(--mute); font-size: 12px; }
 .rd-tabs button.on { color: #fff; box-shadow: inset 0 -2px 0 var(--em); }
-.rd-tabbody { flex: 1; overflow: auto; padding: 12px; scrollbar-width: thin; }
+.rd-tabbody { flex: 1; overflow: auto; padding: 12px; }
 .rd-tabbody input[type=search] { width: 100%; padding: 9px 10px; background: #0A0810; border: 1px solid var(--line); color: var(--text); font: inherit; outline: none; }
 .rd-tabbody input[type=search]:focus { border-color: var(--violet); }
 .rd-item { padding: 9px 10px; margin: 6px 0; background: #0D0A14; border-left: 3px solid var(--line); cursor: pointer; }

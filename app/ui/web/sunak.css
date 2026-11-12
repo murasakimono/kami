@@ -116,7 +116,7 @@ body.sunak.sk-drawer .sk-backdrop { display: block; position: fixed; inset: 0; z
 #sunak .sk-empty { flex: 1; height: 226px; display: flex; align-items: center; justify-content: center; color: var(--sk-mute); font-size: 15px; border: 1px dashed var(--sk-line); clip-path: var(--cut); }
 
 /* secili indirme cubugu */
-#sunak .sk-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #3A2E52 transparent; padding: 10px 14px; background: linear-gradient(90deg, #16101F, #0E0B14); clip-path: var(--cut); border-left: 3px solid var(--sk-em); min-height: 58px; box-sizing: border-box; }
+#sunak .sk-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 10px 14px; background: linear-gradient(90deg, #16101F, #0E0B14); clip-path: var(--cut); border-left: 3px solid var(--sk-em); min-height: 58px; box-sizing: border-box; }
 #sunak .sk-bar.err { border-left-color: var(--sk-err); }
 #sunak .sk-bar.wait { border-left-color: var(--sk-line); }
 #sunak .sk-bar-name { font-weight: 700; font-size: 15px; flex: 0 1 auto; min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

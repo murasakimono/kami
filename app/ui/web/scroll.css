@@ -1,0 +1,8 @@
+/* Kami kaydirma cubuklari: ince, mor, kosesiz (tum pencereler) */
+::-webkit-scrollbar { width: 9px; height: 9px; background: transparent; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #4C2A8A, #2E1D52); border: 2px solid transparent; background-clip: padding-box; border-radius: 0; clip-path: polygon(0 3px, 3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%); }
+::-webkit-scrollbar-thumb:horizontal { background: linear-gradient(90deg, #4C2A8A, #2E1D52); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, #8B5CF6, #6D28D9); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:active { background: #2EE6A6; background-clip: padding-box; }
+::-webkit-scrollbar-button, ::-webkit-scrollbar-corner { display: none; background: transparent; }
