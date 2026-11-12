@@ -57,7 +57,7 @@ def principled(name, color, rough=0.5, metal=0.0, film=0.0, emit=None, es=0.0, c
 
 def mat_body():
     """Karbon dokulu koyu mor kumas + UV'ye gore zikzak etekte zumrut isik (geometriyle ayni formul)."""
-    m, b = principled("Govde", (0.12, 0.04, 0.24), 0.6, coat=0.2)
+    m, b = principled("Govde", (0.17, 0.04, 0.32), 0.6, coat=0.2)
     nt, L = m.node_tree, m.node_tree.links
     uvn = nt.nodes.new("ShaderNodeUVMap")
     sep = nt.nodes.new("ShaderNodeSeparateXYZ")
@@ -65,8 +65,8 @@ def mat_body():
     # karbon: ince kare desen
     chk = nt.nodes.new("ShaderNodeTexChecker")
     chk.inputs["Scale"].default_value = 140
-    chk.inputs["Color1"].default_value = (*lin((0.16, 0.06, 0.3)), 1)
-    chk.inputs["Color2"].default_value = (*lin((0.09, 0.035, 0.18)), 1)
+    chk.inputs["Color1"].default_value = (*lin((0.2, 0.06, 0.38)), 1)
+    chk.inputs["Color2"].default_value = (*lin((0.11, 0.03, 0.22)), 1)
     L.new(uvn.outputs["UV"], chk.inputs["Vector"])
     # zikzak: tri(u*TEETH*4) -> etek cizgisi; v (yukseklik 0..1) cizginin hemen ustundeyse isik
     mul = nt.nodes.new("ShaderNodeMath"); mul.operation = "MULTIPLY"; mul.inputs[1].default_value = TEETH * 4
@@ -98,11 +98,11 @@ def mat_belt():
     mp = nt.nodes.new("ShaderNodeMapping"); mp.inputs["Scale"].default_value = (2.2, 2.2, 6.0)
     L.new(tc.outputs["Object"], mp.inputs["Vector"])
     wave = nt.nodes.new("ShaderNodeTexWave"); wave.bands_direction = "X"
-    wave.inputs["Scale"].default_value = 1.6; wave.inputs["Distortion"].default_value = 14.0
+    wave.inputs["Scale"].default_value = 2.4; wave.inputs["Distortion"].default_value = 6.0
     wave.inputs["Detail"].default_value = 2.0; wave.inputs["Detail Scale"].default_value = 1.5
     L.new(mp.outputs[0], wave.inputs["Vector"])
     ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].position = 0.55; ramp.color_ramp.elements[1].position = 0.62
+    ramp.color_ramp.elements[0].position = 0.45; ramp.color_ramp.elements[1].position = 0.75
     L.new(wave.outputs["Fac"], ramp.inputs["Fac"])
     b.inputs["Emission Color"].default_value = (*lin(EMERALD), 1)
     sm = nt.nodes.new("ShaderNodeMath"); sm.operation = "MULTIPLY"; sm.inputs[1].default_value = 5.0
@@ -133,7 +133,7 @@ def mat_iris(red=False):
     L.new(tex.outputs["Alpha"], mix.inputs["Factor"])
     col = tex.outputs["Color"]
     if red:   # yesil irisi kirmiziya cevir
-        hue = nt.nodes.new("ShaderNodeHueSaturation"); hue.inputs["Hue"].default_value = 0.17
+        hue = nt.nodes.new("ShaderNodeHueSaturation"); hue.inputs["Hue"].default_value = 0.14
         hue.inputs["Saturation"].default_value = 1.3
         L.new(col, hue.inputs["Color"]); col = hue.outputs["Color"]
     L.new(col, mix.inputs["B"])
@@ -264,7 +264,7 @@ def build():
     # boynuzlar: ust koselerden disa-yukari kivrik; yanlarda uc kucuk diken
     for s in (-1, 1):
         horn("Boynuz", [Vector((s * 0.42, 0, H - 0.08)), Vector((s * 0.72, 0, H + 0.18)), Vector((s * 0.78, 0, H + 0.55)),
-                        Vector((s * 0.6, 0, H + 0.82))], 0.13, hornm).parent = root
+                        Vector((s * 0.6, 0, H + 0.82))], 0.17, hornm).parent = root
         for k, zz in enumerate((H - 0.75, H - 1.0, H - 1.25)):
             horn("Diken", [Vector((s * (W / 2 - 0.02), 0, zz)), Vector((s * (W / 2 + 0.2), 0, zz + 0.02)),
                            Vector((s * (W / 2 + 0.36), 0, zz - 0.08))], 0.06, hornm).parent = root
@@ -301,19 +301,17 @@ def build():
     brow.parent = root
 
     # zemin isigi
-    gl = bpy.data.lights.new("EtekIsik", "POINT"); gl.energy = 60; gl.color = EMERALD; gl.shadow_soft_size = 0.8
-    link(bpy.data.objects.new("EtekIsik", gl)).location = (0, -0.9, 0.15)
 
     for nm, loc, e, col, size in (("Ana", (-2.6, -4.2, 4.2), 700, (0.85, 0.78, 1.0), 3),
-                                  ("Mor", (3.2, 1.5, 3.5), 900, PURPLE, 3), ("Arka", (0, 3.5, 4.5), 500, (0.6, 0.4, 1.0), 2)):
+                                  ("Mor", (3.2, 1.5, 3.5), 1400, PURPLE, 3), ("Arka", (0, 3.5, 4.5), 500, (0.6, 0.4, 1.0), 2)):
         ld = bpy.data.lights.new(nm, "AREA"); ld.energy, ld.color, ld.size = e, col, size
         lo = link(bpy.data.objects.new(nm, ld)); lo.location = loc
         c = lo.constraints.new("TRACK_TO"); c.target = root; c.track_axis = "TRACK_NEGATIVE_Z"; c.up_axis = "UP_Y"
 
-    cam_d = bpy.data.cameras.new("Kamera"); cam_d.lens = 58
+    cam_d = bpy.data.cameras.new("Kamera"); cam_d.lens = 74
     cam = link(bpy.data.objects.new("Kamera", cam_d))
     cam.location = (1.9, -7.4, 2.4)
-    tgt = link(bpy.data.objects.new("Hedef", None)); tgt.location = (0, 0, H / 2 + 0.45)
+    tgt = link(bpy.data.objects.new("Hedef", None)); tgt.location = (0, 0, H / 2 + 0.35)
     c = cam.constraints.new("TRACK_TO"); c.target = tgt; c.track_axis = "TRACK_NEGATIVE_Z"; c.up_axis = "UP_Y"
     sc.camera = cam
 
