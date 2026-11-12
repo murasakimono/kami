@@ -135,3 +135,31 @@ skRenderBar = function (d) {   // eslint-disable-line no-global-assign
   btn.onclick = async (ev) => { ev.stopPropagation(); cvOpen(await api.convert_info([d.path])); };
   rm ? rm.before(btn) : $("#skBar").appendChild(btn);
 };
+
+// Ctrl+K paleti: indirilen dosyalar + ozellikler
+window.KPAL = window.KPAL || [];
+window.KPAL.push(() => {
+  const its = (typeof skItems === "function" ? skItems() : state.items || []).slice(0, 400);
+  const kind = { video: "🎬", music: "🎵", program: "⚙", archive: "🗜", document: "📄" };
+  const out = [];
+  for (const d of its) {
+    const name = d.filename || d.url;
+    out.push({ ic: kind[d.category] || "📁", t: name, sub: cvL("indirme · seç", "download · select"), run: () => { skCloseDrawer?.(); SK.sel = d.id; SK.multi?.clear(); skRender(); } });
+    if (d.status === "complete" && ["video", "music"].includes(d.category)) out.push({ ic: "▶", t: cvL("Oynat: ", "Play: ") + name, sub: "Kami Player", run: () => playerOpen(d.id) });
+  }
+  const feat = [["⇄", cvL("Dönüştürücü", "Converter"), "convert"], ["⚡", "Real-Debrid", "rd"], ["👁", cvL("Takip", "Follow"), "follow"], ["🕘", cvL("Geçmiş", "History"), "history"], ["▦", cvL("Toplu indirme", "Batch download"), "batch"], ["📚", cvL("Kütüphane (Kami Player)", "Library (Kami Player)"), "library"], ["✦", cvL("AI altyazı / vokal ayır", "AI subtitles / vocals"), "ai"], ["⚙", cvL("Ayarlar", "Settings"), "settings"]];
+  return feat.map(([ic, t, k]) => ({ ic, t, sub: cvL("özellik", "feature"), run: () => skDock(k) })).concat(out);
+});
+
+// guncelleme: Sunak ust satirinda gorunur hap (eski #updateLink Sunak'ta gizli kaliyordu)
+const _cvShowUpdate = typeof showUpdate === "function" ? showUpdate : null;
+showUpdate = function (u) {   // eslint-disable-line no-global-assign
+  _cvShowUpdate?.(u);
+  if (!u || !u.version) return;
+  const st = $("#sunak .sk-status"); if (!st || $("#skUpd")) return;
+  const b = document.createElement("button");
+  b.id = "skUpd"; b.className = "sk-upd";
+  b.innerHTML = `${cvL("Yeni sürüm", "New version")} <b>${escapeHtml(u.version)}</b> · ${u.asset ? cvL("Kur", "Install") : cvL("Gör", "View")}`;
+  b.onclick = () => (u.asset ? installUpdate() : api.open_release());
+  st.prepend(b);
+};

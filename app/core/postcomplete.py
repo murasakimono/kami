@@ -112,3 +112,37 @@ class PostComplete:
                 fn(did)
             except Exception:
                 log.exception("Bitis isi hatasi (#%s)", did)
+        try:
+            self.smart_folder(did)
+        except Exception:
+            log.exception("Akilli klasorleme hatasi (#%s)", did)
+
+    def smart_folder(self, did: int) -> str:
+        """Dizi bolumu inince: <Video>/Diziler/<Dizi>/Sezon NN/ altina tasir (yan altyazilar da). Ayar: smart_series_folders."""
+        import re
+        import shutil
+        from app.core.library import parse_name
+        d = self.manager.store.get(did)
+        if not d or not self.manager.settings.get("smart_series_folders") or d.category != "video" or not d.path:
+            return ""
+        if not os.path.isfile(d.path):
+            return ""
+        info = parse_name(os.path.splitext(d.filename)[0])
+        series = re.sub(r'[<>:"/\\|?*]', "_", info.get("series") or "").strip(" .")
+        if not series or not info.get("episode"):
+            return ""
+        root = d.directory
+        if os.path.basename(os.path.normpath(root)).lower().startswith("sezon"):
+            return ""   # zaten duzenli
+        target = os.path.join(root, "Diziler", series, f"Sezon {int(info.get('season') or 1):02d}")
+        os.makedirs(target, exist_ok=True)
+        stem = os.path.splitext(d.filename)[0]
+        for name in os.listdir(root):   # video + ayni adli altyazi / kapak / soz dosyalari
+            if name == d.filename or (name.startswith(stem + ".") and re.search(r"\.(srt|ass|vtt|lrc|jpg|png|webp)$", name, re.I)):
+                dst = os.path.join(target, name)
+                if not os.path.exists(dst):
+                    shutil.move(os.path.join(root, name), dst)
+        nd = self.manager.store.update(did, directory=target)
+        self.manager.events.emit("download.updated", download=nd)
+        log.info("Akilli klasor: %s -> %s", d.filename, target)
+        return target

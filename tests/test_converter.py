@@ -85,3 +85,28 @@ def test_audio_convert(tmp_path):
     seen = []
     out = cv.convert_one(str(wav), "mp3", {}, {"ffmpeg": ff, "ffprobe": fp}, seen.append, threading.Event())
     assert out.exists() and out.stat().st_size > 1000
+
+
+def test_smart_series_folder(tmp_path):
+    from types import SimpleNamespace
+    from app.core.postcomplete import PostComplete
+    vid = tmp_path / "Kyle.XY.S01E02.1080p.mkv"
+    vid.write_bytes(b"x")
+    (tmp_path / "Kyle.XY.S01E02.1080p.tr.srt").write_text("1")
+    state = {"directory": str(tmp_path)}
+
+    class Store:
+        def get(self, did):
+            return SimpleNamespace(id=1, category="video", filename=vid.name, directory=state["directory"],
+                                   path=str(Path(state["directory"]) / vid.name), extra={})
+
+        def update(self, did, **kw):
+            state.update(kw)
+            return self.get(did)
+
+    mgr = SimpleNamespace(store=Store(), settings={"smart_series_folders": True},
+                          events=SimpleNamespace(on=lambda *a, **k: None, emit=lambda *a, **k: None))
+    pc = PostComplete(mgr, notify=lambda *a: True)
+    target = pc.smart_folder(1)
+    assert target.endswith(str(Path("Diziler") / "Kyle XY" / "Sezon 01"))
+    assert (Path(target) / vid.name).exists() and (Path(target) / "Kyle.XY.S01E02.1080p.tr.srt").exists()

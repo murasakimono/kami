@@ -17,6 +17,7 @@ DEFAULTS: dict[str, Any] = {
     "theme": "dark",               # dark | light
     "download_dir": "",            # bos = Windows Indirilenler klasoru
     "use_category_folders": True,  # Video, Muzik, Arsiv ... alt klasorleri
+    "smart_series_folders": True,  # dizi bolumleri: Video/Diziler/<Dizi>/Sezon NN
     "connections": 16,             # dosya basina baglanti (aria2 en fazla 16)
     "max_concurrent": 3,           # ayni anda inen dosya sayisi
     "max_tries": 5,

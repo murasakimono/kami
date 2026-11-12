@@ -601,3 +601,15 @@ if (_pxTabify) {
     p.querySelectorAll(".px-sec").forEach(pxGroupSec);
   };
 }
+
+// Ctrl+K paleti (oynatici): eylemler + son izlenenler + ayar sekmeleri
+window.KPAL = window.KPAL || [];
+window.KPAL.push(() => {
+  const out = Object.entries(PL_ACTIONS).map(([k, [tr, en, fn]]) => ({ ic: "›", t: plL(tr, en), sub: plL("eylem", "action"), run: fn }));
+  for (const r of peLS("kami.recent", []).slice(0, 30)) {
+    const name = String(r.p).split(/[\\/]/).pop();
+    out.push({ ic: "▶", t: name, sub: plL("son izlenen", "recent"), run: () => playerOpenPath(r.p) });
+  }
+  ["Altyazı", "Görüntü", "Ses", "Müzik", "Kısayollar", "Genel", "Araçlar"].forEach((n, i) => out.push({ ic: "⚙", t: plL("Ayarlar: ", "Settings: ") + n, sub: plL("ayar", "setting"), run: () => { if ($("#plPanel")?.hidden !== false) window.plSettings?.(); setTimeout(() => document.querySelector(`.px-ptabs button[data-tab="${i}"]`)?.click(), 80); } }));
+  return out;
+});

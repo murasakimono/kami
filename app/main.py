@@ -586,7 +586,7 @@ def main() -> int:
         import time as _t
         _t.sleep(30)
         while True:
-            if settings.get("update_check") and _t.time() - int(settings.get("update_last") or 0) > 86400:
+            if settings.get("update_check") and _t.time() - int(settings.get("update_last") or 0) > 21600:
                 try:
                     api.check_update()
                 except Exception:
