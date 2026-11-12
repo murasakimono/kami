@@ -14,3 +14,7 @@ extension/*.pem
 native_host/com.metehan.kami.json
 updates/
 build_out/
+
+CLAUDE.md
+GEMINI.md
+Claude outputs/
