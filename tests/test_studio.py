@@ -67,7 +67,7 @@ def test_kf_expr():
 
 
 def test_mcp_protocol(tmp_path, monkeypatch):
-    from app.tools import studio_mcp as M
+    from app.core import studio_mcp as M
     monkeypatch.setattr(M, "CURRENT", tmp_path / "current.json")
     monkeypatch.setattr(S, "home_dir", lambda: tmp_path)
     r = M.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}})

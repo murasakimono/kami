@@ -501,7 +501,7 @@ class StudioMixin:
         if paths.FROZEN:
             cmd = {"command": sys.executable, "args": ["--studio-mcp"]}
         else:
-            cmd = {"command": str(Path(sys.executable)), "args": ["-m", "app.tools.studio_mcp"], "cwd": str(paths.ROOT)}
+            cmd = {"command": str(Path(sys.executable)), "args": ["-m", "app.core.studio_mcp"], "cwd": str(paths.ROOT)}
         cfg = Path(os.environ.get("APPDATA", "")) / "Claude" / "claude_desktop_config.json"
         return {"server": cmd, "config": str(cfg), "installed": self._mcp_installed(cfg)}
 

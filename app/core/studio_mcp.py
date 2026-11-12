@@ -1,6 +1,6 @@
 """Kami Studio MCP sunucusu (stdio). Claude, Studio'da acik projeyi okur/duzenler; Studio dosya degisince kendini yeniler.
 
-Calistirma: gelistirmede `python -m app.tools.studio_mcp`, kurulu Kami'de `Kami.exe --studio-mcp`.
+Calistirma: gelistirmede `python -m app.core.studio_mcp`, kurulu Kami'de `Kami.exe --studio-mcp`.
 Bagimliliksiz, satir basina bir JSON-RPC mesaji (MCP stdio tasimasi).
 """
 from __future__ import annotations

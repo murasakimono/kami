@@ -105,7 +105,7 @@ def main() -> int:
     paths.ensure_dirs()
     _setup_logging()
     if "--studio-mcp" in sys.argv[1:]:   # Claude masaustu: Kami Studio MCP sunucusu (stdio, pencere yok)
-        from app.tools import studio_mcp
+        from app.core import studio_mcp
         return studio_mcp.main()
     if "--setup" in sys.argv[1:]:   # Inno Setup: native host + magnet kaydi / kaldirma (pencere acilmaz)
         from app.core import setup_tasks
