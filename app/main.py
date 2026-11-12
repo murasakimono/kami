@@ -67,16 +67,20 @@ def _play_arg(argv: list[str]) -> str:
 
 
 _MUTEX = None
+_MUTEX_OTHER: bool | None = None   # ilk mutex denemesinin sonucu (tekrar cagrilinca ayni)
 
 
 def _already_running_mutex() -> bool:
     """True: ayni oturumda baska Kami zaten mutex'i tutuyor. Kendi mutex'imiz surec boyunca acik kalir."""
-    global _MUTEX
+    global _MUTEX, _MUTEX_OTHER
     if os.name != "nt":
         return False
+    if _MUTEX_OTHER is not None:   # ikinci cagri: kendi tuttugumuz mutex'i "baskasi" sanmayalim
+        return _MUTEX_OTHER
     import ctypes
     _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, r"Local\KamiSingleInstance")
-    return ctypes.windll.kernel32.GetLastError() == 183   # ERROR_ALREADY_EXISTS
+    _MUTEX_OTHER = ctypes.windll.kernel32.GetLastError() == 183   # ERROR_ALREADY_EXISTS
+    return _MUTEX_OTHER
 
 
 def main() -> int:
@@ -114,6 +118,13 @@ def main() -> int:
     magnet = _magnet_arg(sys.argv[1:])
     play = _play_arg(sys.argv[1:])
     uri = next((sys.argv[i + 2] for i, a in enumerate(sys.argv[1:]) if a == "--uri" and i + 2 < len(sys.argv)), "")
+    convert = [os.path.abspath(a) for a in sys.argv[sys.argv.index("--convert") + 1:]] if "--convert" in sys.argv else []
+    if convert and not call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping") and _already_running_mutex():
+        import time as _time
+        for _ in range(30):   # Gezgin'de coklu secim: ilk kopya acilirken digerleri kopruyu bekler
+            _time.sleep(0.5)
+            if call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping"):
+                break
 
     # Tek ornek: zaten calisiyorsa onu one getir ve cik
     if call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping"):
@@ -127,6 +138,9 @@ def main() -> int:
             res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/rd", {"url": magnet, "source": "magnet"},
                                         timeout=5.0)
             log.info("Magnet calisan Kami'ye iletildi: %s", bool(res and res.get("ok")))
+        if convert:   # Gezgin sag tik: "Kami ile donustur"
+            call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/convert", {"paths": convert}, timeout=5.0)
+            return 0
         if uri:   # bildirim dugmesi (kami://...)
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/uri", {"uri": uri}, timeout=5.0)
             return 0
@@ -259,6 +273,10 @@ def main() -> int:
             from app.core.media_server import AUDIO_EXT, VIDEO_EXT
 
             def on_drop(e) -> None:
+                if api._conv_view:   # Donusturucu acik: tum dosyalar ona
+                    api.convert_add([f.get("pywebviewFullPath") for f in (e.get("dataTransfer") or {}).get("files") or []
+                                     if f.get("pywebviewFullPath")])
+                    return
                 for f in (e.get("dataTransfer") or {}).get("files") or []:
                     p = f.get("pywebviewFullPath") or ""
                     if p and os.path.splitext(p)[1].lower() in VIDEO_EXT | AUDIO_EXT:
@@ -293,12 +311,16 @@ def main() -> int:
 
     bridge.on_play = play_request
     bridge.on_uri = lambda u: api.handle_uri(u)
+    bridge.on_convert = api.convert_add
+    if convert:
+        api.convert_add(convert)
     if uri:   # Kami kapaliyken bildirim dugmesine basildi: acilinca isle
         threading.Timer(4.0, lambda: api.handle_uri(uri)).start()
     if paths.FROZEN:   # kami:// + bildirim kimligi (guncellemede yol degisebilir; her acilista ucuz)
         try:
-            from app.core.setup_tasks import register_protocol
+            from app.core.setup_tasks import register_convert_menu, register_protocol
             register_protocol(sys.executable)
+            register_convert_menu(sys.executable)
         except Exception:
             log.exception("kami:// kaydedilemedi")
 

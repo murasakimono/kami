@@ -75,6 +75,7 @@ function skBuild() {
     <button data-sk="follow" title="${skL("Takip", "Follow")}">${skIcon.follow}<b id="skFollowN" hidden></b></button>
     <button data-sk="history" title="${skL("Geçmiş", "History")}">${skIcon.hist}</button>
     <button data-sk="batch" title="${skL("Toplu", "Batch")}">${skIcon.batch}</button>
+    <button data-sk="convert" title="${skL("Dönüştürücü", "Converter")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></button>
     <button data-sk="ai" class="ai" title="${skL("AI altyazı / vokal", "AI subtitle / vocals")}">${skIcon.sub}</button>
     <button data-sk="fx" title="${skL("Arka plan efektleri aç / kapat", "Background effects on / off")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg></button>
     <button data-sk="settings" title="${skL("Ayarlar", "Settings")}">${skIcon.gear}</button>

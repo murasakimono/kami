@@ -38,6 +38,7 @@ class BridgeServer:
         self.on_quit = on_quit or (lambda: None)
         self.on_play: Callable[[str], None] | None = None   # Kami Player (main baglar)
         self.on_uri: Callable[[str], None] | None = None    # kami:// (bildirim dugmeleri)
+        self.on_convert: Callable[[list], None] | None = None   # Gezgin sag tik "Kami ile donustur"
         self.token = secrets.token_urlsafe(32)
         self.httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -137,6 +138,13 @@ class BridgeServer:
             if not self.on_play or not os.path.isfile(p):
                 return 400, {"ok": False, "error": "bad_path"}
             self.on_play(p)
+            return 200, {"ok": True}
+        if path == "/v1/convert":   # yalnizca kuyruga ekler; donusturmeyi kullanici arayuzden baslatir
+            ps = [str(x) for x in body.get("paths") or [] if isinstance(x, str) and os.path.isfile(x)]
+            if not self.on_convert or not ps:
+                return 400, {"ok": False}
+            self.on_convert(ps)
+            self.on_show()
             return 200, {"ok": True}
         if path == "/v1/uri":
             u = str(body.get("uri") or "")

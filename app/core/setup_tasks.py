@@ -79,7 +79,23 @@ def register_protocol(kami: str) -> None:
             winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, val)
 
 
+CONVERT_EXTS = (".png .jpg .jpeg .webp .avif .heic .bmp .tif .tiff .gif .mp3 .flac .wav .m4a .ogg .opus .wma .aiff "
+                ".mp4 .mkv .webm .mov .avi .wmv .flv .m4v .pdf .docx .doc .odt .rtf .pptx .ppt .xlsx .xls .ods .odp .csv .epub").split()
+
+
+def register_convert_menu(kami: str) -> None:
+    """Gezgin sag tik: 'Kami ile donustur' (Windows 11'de 'Diger secenekler' altinda). HKCU, yonetici gerekmez."""
+    for ext in CONVERT_EXTS:
+        base = rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiConvert"
+        for sub, nm, val in [(base, "MUIVerb", "Kami ile dönüştür"), (base, "Icon", f'"{kami}",0'),
+                             (base + r"\command", "", f'"{kami}" --convert "%1"')]:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
+                winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, val)
+
+
 def unregister_player() -> None:
+    for ext in CONVERT_EXTS:
+        _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiConvert")
     _delete_tree(winreg.HKEY_CURRENT_USER, r"Software\Classes\kami")
     _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\AppUserModelId\{AUMID}")
     for pid in PROGIDS:
@@ -147,6 +163,8 @@ def register(exe_dir: Path | None = None) -> list[str]:
     done.append("oynatici: video/ses uzantilari")
     register_protocol(kami)
     done.append("kami:// + bildirim kimligi")
+    register_convert_menu(kami)
+    done.append("sag tik: Kami ile donustur")
     return done
 
 

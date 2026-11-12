@@ -67,6 +67,11 @@ class Api:
         self._front_player = None                        # main: pencereyi one getir (Win32)
         self._osub = None                                # OpenSubtitles API anahtari (DPAPI, main baglar)
         self._last_song: dict[str, Any] = {}
+        self._conv_inbox: list[str] = []                 # Gezgin sag tik / surukle-birak ile gelen dosyalar
+        self._conv_jobs: list[dict[str, Any]] = []       # donusturme isleri (arayuz yoklar)
+        self._conv_cancel = threading.Event()
+        self._conv_lock = threading.Lock()
+        self._conv_view = False                          # Donusturucu acik: birakilan dosyalar ona gider
         self._card_win = None                            # masaustu mini karti (main kurar)
         self._card_hidden = False                        # kullanici bu oturumda kapatti
         self._show_main = None                           # main: ana pencereyi geri getir
@@ -1148,6 +1153,112 @@ class Api:
             return {"ok": False, "error": str(res["error"])[:200]}
         self._last_song = res.get("done") or {}
         return {"ok": True, "song": self._last_song}
+
+    # ---------- Donusturucu ----------
+    def convert_view(self, on: bool = True) -> None:
+        self._conv_view = bool(on)
+
+    def convert_inbox(self) -> list[dict[str, Any]]:
+        """Sag tik / surukle-birak ile bekleyen dosyalar (bir kez verilir) + her birinin secenekleri."""
+        from app.core import converter as cv
+        with self._conv_lock:
+            got, self._conv_inbox = self._conv_inbox, []
+        return [{"path": p, "name": os.path.basename(p), "kind": cv.kind(p), "targets": cv.targets(p),
+                 "size": os.path.getsize(p) if os.path.isfile(p) else 0} for p in got if os.path.isfile(p)]
+
+    def convert_add(self, paths: list[str]) -> None:
+        with self._conv_lock:
+            self._conv_inbox += [str(p) for p in paths or [] if p]
+
+    def convert_pick(self) -> list[dict[str, Any]]:
+        import webview
+        if not self._window:
+            return []
+        dialog = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        res = self._window.create_file_dialog(dialog, allow_multiple=True)
+        self.convert_add(list(res or []))
+        return self.convert_inbox()
+
+    def convert_info(self, paths: list[str]) -> list[dict[str, Any]]:
+        self.convert_add(paths)
+        return self.convert_inbox()
+
+    def convert_tools(self) -> dict[str, Any]:
+        from app.core import converter as cv
+        return {"libreoffice": bool(cv.find_soffice())}
+
+    def convert_install_office(self) -> dict[str, Any]:
+        """LibreOffice'i winget ile kurar (Windows kendi onayini sorar)."""
+        try:
+            subprocess.Popen(["cmd", "/c", "start", "Kami - LibreOffice kurulumu", "winget", "install", "-e", "--id",
+                              "TheDocumentFoundation.LibreOffice", "--accept-package-agreements", "--accept-source-agreements"])
+            return {"ok": True}
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def convert_start(self, paths: list[str], target: str, opts: dict | None = None) -> dict[str, Any]:
+        from app.core import converter as cv
+        from app.core.media_server import find_ffprobe
+        from app.engines.ytdlp_engine import find_ffmpeg
+        opts = dict(opts or {})
+        paths = [str(p) for p in paths or [] if os.path.isfile(str(p))]
+        if not paths:
+            return {"ok": False, "error": "no_file"}
+        ff = find_ffmpeg()
+        tools = {"ffmpeg": ff, "ffprobe": find_ffprobe(ff)}
+        if self._conv_cancel.is_set():
+            self._conv_cancel = threading.Event()
+        cancel = self._conv_cancel
+        # birlestirme araclari: tum dosyalar tek cikti
+        if target in ("pdf:merge", "pdf:images"):
+            jobs = [{"id": f"c{next(self._job_ids)}", "name": f"{len(paths)} dosya → PDF", "src": paths, "target": target,
+                     "state": "queued", "p": 0.0, "out": "", "error": ""}]
+        else:
+            jobs = [{"id": f"c{next(self._job_ids)}", "name": os.path.basename(p), "src": p, "target": target,
+                     "state": "queued", "p": 0.0, "out": "", "error": ""} for p in paths]
+        with self._conv_lock:
+            self._conv_jobs = [j for j in self._conv_jobs if j["state"] in ("queued", "running")] + jobs
+
+        def run() -> None:
+            for j in jobs:
+                if cancel.is_set():
+                    j["state"], j["error"] = "error", "cancelled"
+                    continue
+                j["state"] = "running"
+                try:
+                    if j["target"] == "pdf:merge":
+                        out = cv.pdf_merge(j["src"], opts)
+                    elif j["target"] == "pdf:images":
+                        out = cv.images_to_pdf(j["src"], opts, tools)
+                    else:
+                        out = cv.convert_one(j["src"], j["target"], opts, tools, lambda p, j=j: j.update(p=p), cancel)
+                    j.update(state="done", p=1.0, out=str(out))
+                except InterruptedError:
+                    j.update(state="error", error="cancelled")
+                except Exception as exc:
+                    log.warning("Donusturme hatasi %s -> %s: %s", j["name"], j["target"], exc)
+                    j.update(state="error", error=str(exc)[:160] or type(exc).__name__)
+
+        threading.Thread(target=run, name="kami-convert", daemon=True).start()
+        return {"ok": True, "n": len(jobs)}
+
+    def convert_status(self) -> list[dict[str, Any]]:
+        with self._conv_lock:
+            return [{k: v for k, v in j.items() if k != "src"} for j in self._conv_jobs]
+
+    def convert_cancel(self) -> None:
+        self._conv_cancel.set()
+
+    def convert_clear(self) -> None:
+        with self._conv_lock:
+            self._conv_jobs = [j for j in self._conv_jobs if j["state"] in ("queued", "running")]
+
+    def convert_reveal(self, job_id: str) -> bool:
+        j = next((x for x in self._conv_jobs if x["id"] == job_id), None)
+        if not j or not j.get("out") or not os.path.exists(j["out"]):
+            return False
+        subprocess.Popen(["explorer", "/select,", os.path.normpath(j["out"])])
+        return True
 
     def opensub_status(self) -> dict[str, Any]:
         return {"has_key": bool(self._osub and self._osub.load())}

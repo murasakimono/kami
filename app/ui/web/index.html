@@ -55,6 +55,7 @@
         <button class="nav-item" data-view="follow"><i class="dot c-video"></i><span data-i18n="v_follow"></span><b id="followCount"></b></button>
         <button class="nav-item" data-view="history"><i class="dot c-other"></i><span data-i18n="v_history"></span></button>
         <button class="nav-item" data-view="batch"><i class="dot c-archive"></i><span data-i18n="v_batch"></span></button>
+        <button class="nav-item" data-view="convert"><i class="dot c-document"></i><span class="cv-navlbl">Dönüştürücü</span></button>
       </div>
       <div class="sidebar-foot">
         <button class="link-btn" id="openDownloads" data-i18n="open_downloads"></button>
@@ -108,6 +109,8 @@
         <ul class="rd-list" id="historyList"></ul>
         <p class="hint" id="historyEmpty" data-i18n="hs_empty" hidden></p>
       </section>
+
+      <section class="xview" id="convertView" aria-label="Dönüştürücü"></section>
 
       <section class="xview" id="batchView" data-i18n-aria="v_batch">
         <div class="rd-head"><h2 data-i18n="v_batch"></h2><span class="hint" data-i18n="bt_hint"></span></div>
@@ -536,5 +539,6 @@
   <script src="settings-tabs.js"></script>
   <script src="palette.js"></script>
   <script src="sunak-extra.js"></script>
+  <script src="convert.js"></script>
 </body>
 </html>

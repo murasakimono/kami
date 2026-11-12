@@ -344,7 +344,7 @@ legend { padding: 0; margin-bottom: 8px; font-weight: 600; color: var(--accent);
 /* ---------- Asama 6b/6c: ek gorunumler (Takip, Gecmis, Toplu link) + medya araclari ---------- */
 .main[data-view] > .toolbar, .main[data-view] > #list, .main[data-view] > #empty, .main[data-view] > #liveList { display: none !important; }
 .xview { display: none; flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 20px; }
-.main[data-view="follow"] > #followView, .main[data-view="history"] > #historyView, .main[data-view="batch"] > #batchView { display: block; }
+.main[data-view="follow"] > #followView, .main[data-view="history"] > #historyView, .main[data-view="batch"] > #batchView, .main[data-view="convert"] > #convertView { display: block; }
 .fw-add { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .fw-add input[type=text], .fw-add textarea { flex: 1; min-width: 240px; }
 .fw-add input[type=number] { width: 56px; }

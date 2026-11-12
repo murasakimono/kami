@@ -181,3 +181,40 @@ body.sunak > .topbar, body.sunak > .layout { position: relative; z-index: 2; }
 #settings.st-tabs .settings-form > fieldset[hidden] { display: none; }
 #settings.st-tabs .st-miss { display: none !important; }
 @media (max-width: 720px) { #settings.st-tabs .settings-form { grid-template-columns: 1fr; padding-left: 16px; } #settings.st-tabs .st-nav { grid-column: 1; grid-row: auto; position: static; flex-direction: row; flex-wrap: wrap; padding: 0; } #settings.st-tabs .settings-form > fieldset { grid-column: 1; } }
+
+/* ---------- Donusturucu ---------- */
+#convertView { padding-bottom: 28px; }
+.cv-drop { border: 1.5px dashed var(--sk-line); border-radius: 14px; padding: 18px; background: rgba(124, 58, 237, .05); transition: border-color .2s, background .2s; }
+.cv-drop:hover { border-color: var(--sk-violet); }
+.cv-empty { text-align: center; margin: 14px 0; font: 600 16px var(--font); color: var(--sk-text); }
+.cv-empty small { font-weight: 500; font-size: 12px; color: var(--sk-mute); }
+.cv-drop-btns { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+.cv-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 210px; overflow-y: auto; }
+.cv-files li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 9px; background: rgba(255, 255, 255, .03); font-size: 13px; }
+.cv-files b { font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase; color: var(--sk-em); min-width: 52px; }
+.cv-files span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sk-text); }
+.cv-files small { color: var(--sk-mute); }
+.cv-x { border: 0; background: none; color: var(--sk-mute); cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 6px; }
+.cv-x:hover { color: var(--sk-err); background: rgba(255, 255, 255, .05); }
+.cv-h { margin: 18px 0 8px; font: 600 14px var(--font); color: var(--sk-text); }
+.cv-targets { display: flex; flex-wrap: wrap; gap: 6px; }
+.cv-t { border: 1px solid var(--sk-line); background: rgba(255, 255, 255, .03); color: var(--sk-text); font: 700 12.5px var(--font); letter-spacing: .4px; padding: 8px 14px; border-radius: 10px; cursor: pointer; transition: all .15s; }
+.cv-t.tool { font-weight: 600; letter-spacing: 0; }
+.cv-t:hover { border-color: var(--sk-violet); }
+.cv-t.on { background: var(--sk-royal); border-color: var(--sk-violet); box-shadow: 0 0 14px rgba(124, 58, 237, .45); }
+.cv-opts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; align-items: center; margin-top: 16px; }
+.cv-opts label { font-size: 12.5px; color: var(--sk-mute); }
+.cv-seg { display: flex; gap: 4px; flex-wrap: wrap; }
+.cv-seg button { border: 1px solid var(--sk-line); background: none; color: var(--sk-text); font: 600 12px var(--font); padding: 6px 11px; border-radius: 8px; cursor: pointer; }
+.cv-seg button.on { background: rgba(46, 230, 166, .12); border-color: var(--sk-em); color: var(--sk-em); }
+.cv-warn { margin-top: 14px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--sk-warn); color: var(--sk-warn); font-size: 12.5px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cv-go { margin-top: 16px; }
+.cv-go .btn { width: 100%; padding: 12px; font-size: 14px; }
+.cv-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.cv-jobs li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 9px; background: rgba(255, 255, 255, .03); font-size: 12.5px; }
+.cv-jobs li.error em { color: var(--sk-err); font-style: normal; }
+.cv-jobs li.done .cv-jn { color: var(--sk-em); }
+.cv-jn { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sk-text); }
+.cv-bar { width: 120px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.cv-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--sk-em2), var(--sk-em)); transition: width .4s; }
+.cv-jobs small { color: var(--sk-mute); min-width: 34px; text-align: right; }
