@@ -43,7 +43,7 @@ function skBuild() {
     <div class="sk-top">
       <div class="sk-altar" id="skAltar">
         <svg class="sk-ring" viewBox="0 0 300 300">
-          <defs><linearGradient id="skRingG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#2EE6A6"/></linearGradient></defs>
+          <defs><linearGradient id="skRingG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--sk-violet)" style="stop-color:var(--sk-violet)"/><stop offset="1" stop-color="#2EE6A6"/></linearGradient></defs>
           <circle cx="150" cy="150" r="${SK_RING_R}" fill="none" stroke="#1C1228" stroke-width="10"/>
           <circle class="sk-ring-fill" cx="150" cy="150" r="${SK_RING_R}" fill="none" stroke="url(#skRingG)" stroke-width="10" stroke-linecap="butt"
             stroke-dasharray="${SK_RING_C}" stroke-dashoffset="${SK_RING_C}" transform="rotate(-90 150 150)"/>
@@ -249,7 +249,7 @@ function skMoveSel(dir) {
 function skLiquidColors(d) {
   if (d.status === "complete") return ["#2EE6A6", "#0FA37A"];
   if (d.status === "error") return ["#FF4D6A", "#8E1D33"];
-  if (d.status === "active") return ["#7C4DFF", "#2EE6A6"];
+  if (d.status === "active") return [getComputedStyle(document.documentElement).getPropertyValue("--sk-violet").trim() || "#7C4DFF", "#2EE6A6"];
   return ["#4A3D63", "#2A2238"];
 }
 function skWave(color, amp) {

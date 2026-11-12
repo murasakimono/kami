@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 DEFAULTS: dict[str, Any] = {
     "language": "tr",              # tr | en
     "theme": "dark",               # dark | light
+    "accent_theme": "mor",         # mor | kizil | buz | altin | gece: tum arayuz (karakter dahil) bu renge doner
     "download_dir": "",            # bos = Windows Indirilenler klasoru
     "use_category_folders": True,  # Video, Muzik, Arsiv ... alt klasorleri
     "smart_series_folders": True,  # dizi bolumleri: Video/Diziler/<Dizi>/Sezon NN

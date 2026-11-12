@@ -926,6 +926,28 @@ class Api:
             self._genius.clear()
         return {"ok": True}
 
+    def system_fonts(self) -> list[str]:
+        """Altyazi font secici: Windows'ta kurulu font aileleri (makine + kullanici)."""
+        import re as _re
+        names: set[str] = set()
+        try:
+            import winreg
+            for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                try:
+                    with winreg.OpenKey(root, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts") as k:
+                        for i in range(winreg.QueryInfoKey(k)[1]):
+                            n = winreg.EnumValue(k, i)[0]
+                            n = _re.sub(r"\s*\((TrueType|OpenType|All res)\)\s*$", "", n)
+                            for part in n.split("&"):
+                                fam = _re.sub(r"\s+(Bold|Italic|Light|Semibold|SemiBold|Black|Regular|Medium|Thin|ExtraLight|Condensed|Oblique)\b.*$", "", part.strip())
+                                if fam and not fam.startswith("@"):
+                                    names.add(fam)
+                except OSError:
+                    continue
+        except ImportError:
+            pass
+        return sorted(names, key=str.lower)[:600]
+
     def open_web(self, url: str) -> bool:
         """Kami Lens sonuclari: http(s) adresini varsayilan tarayicida acar."""
         url = str(url or "")

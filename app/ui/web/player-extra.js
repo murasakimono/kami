@@ -654,3 +654,34 @@ document.addEventListener("click", async (e) => {
   if (a === "lvfolder") api.lyricvideo_open("folder");
 }, true);
 document.addEventListener("click", (e) => { if (e.target.closest?.("#plPanel .px-ptabs button")) setTimeout(lvPoll, 60); }, true);
+
+// ---------- altyazi fontu: aile, kalinlik, kenar cizgisi ----------
+const SUBF = { list: null };
+const SUBF_PRESET = ["Chakra Petch", "Segoe UI", "Arial", "Verdana", "Tahoma", "Trebuchet MS", "Georgia", "Calibri", "Bahnschrift", "Impact", "Comic Sans MS", "Consolas"];
+function subFontApply() {
+  const c = peCfg(), el = $("#player"); if (!el) return;
+  el.style.setProperty("--sub-font", `"${(c.subFont || "Chakra Petch").replace(/"/g, "")}"`);
+  el.style.setProperty("--sub-fw", c.subFw === "bold" ? "800" : c.subFw === "light" ? "400" : "600");
+  el.style.setProperty("--sub-stroke", { none: "0px", thin: "1.5px", thick: "3px" }[c.subStroke || "none"]);
+}
+const _peSub2 = window.pxExtraSubHtml;
+window.pxExtraSubHtml = () => {
+  const c = peCfg(), fonts = [...new Set(SUBF_PRESET.concat(SUBF.list || []))];
+  if (!SUBF.list) api.system_fonts?.().then((l) => { SUBF.list = l || []; }).catch(() => { SUBF.list = []; });
+  return (_peSub2?.() || "") + `<div class="px-shift"><span>${plL("Altyazı fontu", "Subtitle font")}</span>
+    <select class="pl-sel pe-subfont" style="max-width:190px">${fonts.map((f) => `<option ${f === (c.subFont || "Chakra Petch") ? "selected" : ""} style="font-family:'${esc2(f)}'">${esc2(f)}</option>`).join("")}</select></div>
+    ${peSeg("subFw", [["light", plL("İnce", "Light")], ["normal", "Normal"], ["bold", plL("Kalın", "Bold")]], c.subFw || "normal")}
+    ${peSeg("subStroke", [["none", plL("Kenar yok", "No outline")], ["thin", plL("İnce kenar", "Thin outline")], ["thick", plL("Kalın kenar", "Thick outline")]], c.subStroke || "none")}
+    <p class="pe-subprev" style="font-family:'${esc2(c.subFont || "Chakra Petch")}'">${plL("Örnek: Kami ile izliyorsun", "Sample: watching with Kami")}</p>`;
+};
+function esc2(t) { return String(t).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch])); }
+document.addEventListener("change", (e) => {
+  if (!e.target.matches?.(".pe-subfont")) return;
+  PX.cfg.subFont = e.target.value; pxSave(); subFontApply();
+  const pv = $(".pe-subprev"); if (pv) pv.style.fontFamily = `'${e.target.value}'`;
+});
+document.addEventListener("click", (e) => {
+  const seg = e.target.closest?.('#plPanel .px-xseg[data-x="subFw"], #plPanel .px-xseg[data-x="subStroke"]'), b = e.target.closest?.("button");
+  if (seg && b) { PX.cfg[seg.dataset.x] = b.dataset.v; pxSave(); setTimeout(subFontApply, 0); }
+}, true);
+setTimeout(subFontApply, 300);
