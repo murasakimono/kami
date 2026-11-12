@@ -1,6 +1,6 @@
 """Kami Picture yapay zeka arka ucu: IOPaint (Apache-2.0) yerel sunucusu, ayri ortamda (media-env/iopaint).
 
-LaMa nesne silme / leke iyilestirme (inpaint), SAM2 tikla-sec, RMBG arka plan kaldirma, Real-ESRGAN 4x buyutme,
+LaMa nesne silme / leke iyilestirme (inpaint), SAM-HQ tikla-sec (SAM2 Windows torch'unda "No available kernel" veriyor), RMBG arka plan kaldirma, Real-ESRGAN 4x buyutme,
 GFPGAN yuz duzeltme. Ilk kullanimda kurulur (onayla, ~4.5 GB); modeller kendi klasorune iner.
 Sunucu istek gelince acilir, 10 dk bos kalirsa kapanir (GPU bellegi oyunlara kalsin).
 """
@@ -73,7 +73,7 @@ class IOPaint:
                 mdir = aitools.models_dir("iopaint")
                 cmd = [aitools.python_exe("iopaint"), "-m", "iopaint", "start", "--host", "127.0.0.1", "--port", str(self.port),
                        "--model", "lama", "--device", dev, "--model-dir", mdir,
-                       "--enable-interactive-seg", "--interactive-seg-model", "sam2_1_small", "--interactive-seg-device", dev,
+                       "--enable-interactive-seg", "--interactive-seg-model", "sam_hq_vit_b", "--interactive-seg-device", dev,
                        "--enable-remove-bg", "--remove-bg-device", dev,
                        "--enable-realesrgan", "--realesrgan-device", dev,
                        "--enable-gfpgan", "--gfpgan-device", dev]
