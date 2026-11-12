@@ -423,16 +423,18 @@ def main() -> int:
         def loaded() -> None:
             room_front.request()
             try:   # mikrofon / ekran paylasimi izinleri: yalnizca kendi oda sayfamiza otomatik izin
-                core = w.native.browser.webview.CoreWebView2
-
                 def perm(sender, args):
                     u = str(args.Uri or "")
                     if u.startswith("http://127.0.0.1:") or ".trycloudflare.com/" in u:
                         from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState
                         args.State = CoreWebView2PermissionState.Allow
-                if not getattr(w, "_kami_perm", False):
-                    core.PermissionRequested += perm
-                    w._kami_perm = True
+                if not getattr(w, "_kami_perm", None):
+                    from System import Action   # CoreWebView2 yalnizca arayuz is parcacigindan
+
+                    def attach() -> None:
+                        w.native.browser.webview.CoreWebView2.PermissionRequested += perm
+                    w._kami_perm = (perm, attach)
+                    w.native.Invoke(Action(attach))
             except Exception:
                 log.exception("Oda izinleri baglanamadi (tarayici kendi sorar)")
         w.events.loaded += loaded
