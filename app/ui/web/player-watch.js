@@ -27,11 +27,37 @@ async function wpStart() {
   WP.stream = wpCapture(); wpPad(WP.stream);
   WP.core = new KamiRoom({ base: r.local, name: (r.name || "Kami") + " · " + plL("Oynatıcı", "Player"), kind: "stream", on: {
     quality: (from, q) => wpBadge(q),
+    msg: (from, m) => wpCtl(from, m),
+    roster: () => setTimeout(() => wpState(true), 1500),
   } });
   WP.sid = WP.core.addLocal("player", WP.stream);
   await WP.core.join();
   wpBtn(true);
 }
+// izleyenlere oynatici durumu: oynuyor mu, sure, altyazi listesi ve o anki satir (altyazi goruntuye girmiyor)
+function wpState(force) {
+  if (!WP.core) return;
+  const v = $("#plVideo");
+  const st = { paused: v.paused, t: +plNow().toFixed(1), dur: +(PL.dur || 0).toFixed(1),
+    subs: (PL.subList || []).map((x) => x.label), sub: PL.subIdx ?? -1,
+    line: ($("#plSubs")?.innerText || "").trim(), title: PL.info?.title || "" };
+  const key = JSON.stringify([st.paused, Math.round(st.t / 5), st.sub, st.line, st.subs.length]);
+  if (!force && key === WP.lastKey) return;
+  WP.lastKey = key;
+  WP.core.broadcast({ k: "pl", st });
+}
+function wpCtl(from, m) {
+  if (!m || m.k !== "plc") return;
+  const v = $("#plVideo");
+  if (m.act === "toggle") { if (v.paused) v.play().catch(() => {}); else v.pause(); }
+  else if (m.act === "seek" && isFinite(m.v)) plSeek(Math.max(0, Math.min(PL.dur || 1e9, +m.v)), !v.paused);
+  else if (m.act === "skip" && isFinite(m.v)) plSeek(Math.max(0, plNow() + +m.v), !v.paused);
+  else if (m.act === "sub") { const sel = $("#plSub"); if (sel) { sel.value = String(m.v); plLoadSub(+m.v); } }
+  setTimeout(() => wpState(true), 400);
+}
+setInterval(() => wpState(false), 500);
+setInterval(() => wpState(true), 5000);
+
 async function wpStop() {
   if (!WP.core) return;
   WP.core.removeLocal(WP.sid); await WP.core.leave();

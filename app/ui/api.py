@@ -85,7 +85,7 @@ class Api:
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
     JOB_METHODS = frozenset({
-        "add_url", "room_open", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
+        "add_url", "room_open", "room_relink", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
@@ -1608,6 +1608,17 @@ class Api:
     def room_status(self) -> dict[str, Any]:
         from app.core import room
         return {**room.SERVER.status(), "name": self._room_name()}
+
+    def room_relink(self) -> dict[str, Any]:
+        """Sabit adrese guncel tunel adresini yeniden bildirir (tunel yoksa acar)."""
+        from app.core import room
+        if not room.SERVER.room:
+            return self.room_open(False)
+        if room.SERVER.public:
+            room.SERVER._publish(room.SERVER.public)
+        else:
+            room.SERVER.start(self._room_name(), True, self._room_id())
+        return self.room_status()
 
     def room_stop(self) -> bool:
         from app.core import room

@@ -136,6 +136,8 @@
           P.q = d.q; this._applyQ(P); this.on.quality?.(from, d.q);
         } else if (d.t === "meta") {
           Object.assign(P.meta, d.meta);
+        } else if (d.t === "app") {
+          this.on.msg?.(from, d.m);
         }
       } catch (e) { console.warn("sinyal", e); }
     }
@@ -193,6 +195,9 @@
         } catch { /* ilk muzakereden once olabilir */ }
       }
     }
+    // uygulama mesaji (oynatici durumu, kontrol komutlari)
+    send(to, m) { this.post("sig", { to, data: { t: "app", m } }); }
+    broadcast(m) { for (const id of this.peers.keys()) this.send(id, m); }
     // izleyici: belli bir yayincidan (ya da hepsinden) istedigim kalite
     requestQuality(q, to) {
       this.myQ = q;

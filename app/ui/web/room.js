@@ -40,7 +40,7 @@ async function join() {
   }
   S.core = new KamiRoom({ base: BASE, name, kind: "user", quality: PREF.q || "auto", on: {
     roster: onRoster, events: onEvents, track: onTrack, trackgone: onTrackGone, peergone: onPeerGone,
-    peerstate: () => netDot(), error: () => toast("Bağlantı koptu, yeniden deneniyor…"),
+    peerstate: () => netDot(), msg: onAppMsg, error: () => toast("Bağlantı koptu, yeniden deneniyor…"),
   } });
   if (S.mic) S.micSid = S.core.addLocal("mic", new MediaStream([S.mic]));
   await S.core.join();
@@ -60,6 +60,15 @@ async function buildMic() {
     autoGainControl: true, channelCount: 1, sampleRate: 48000 } });
   S.micRaw?.getTracks().forEach((t) => t.stop());
   S.micRaw = raw;
+  try { await S.ctx.resume(); } catch { /* tiklama bekliyor */ }
+  if (S.ctx.state !== "running") {   // ses islemcisi askida: ham izle konus, ilk tiklamada guclu hatta gec
+    const t = raw.getAudioTracks()[0];
+    if (S.mic && S.core && S.micSid) S.core.replaceTrack(S.micSid, S.mic, t);
+    S.mic = t; S.micAn = null; S.needCtx = true;
+    applyMicState();
+    return;
+  }
+  S.needCtx = false;
   const src = S.ctx.createMediaStreamSource(raw);
   let node = src;
   if (ns === "rnnoise" && S.ctx.audioWorklet) {
@@ -169,7 +178,11 @@ function onPeerGone(pid) {
   for (const [k, a] of [...S.audios]) if (k.startsWith(pid + ":")) { a.srcObject = null; S.audios.delete(k); }
   S.meters.delete(pid);
 }
-document.addEventListener("click", () => { for (const a of S.audios.values()) if (a.paused) a.play().catch(() => {}); S.ctx?.resume?.(); }, { capture: true });
+document.addEventListener("click", async () => {
+  for (const a of S.audios.values()) if (a.paused) a.play().catch(() => {});
+  try { await S.ctx?.resume?.(); } catch { /* yok */ }
+  if (S.needCtx && S.ctx?.state === "running") { S.needCtx = false; buildMic().catch(() => {}); }
+}, { capture: true });
 
 function nameOf(pid) { return pid === "me" ? (PREF.name || "Ben") : (S.roster.find((p) => p.id === pid)?.name || "?"); }
 function addTile(pid, stream, kind, mine) {
@@ -185,14 +198,14 @@ function addTile(pid, stream, kind, mine) {
       <button class="fs" title="Tam ekran"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>`;
   const v = el.querySelector("video");
   v.srcObject = stream;
-  const T = { el, video: v, pid, kind, userMuted: false, q: PREF.q || "auto" };
+  const T = { el, video: v, pid, kind, userMuted: false, q: PREF.q || "auto", pst: null };
   v.muted = mine || S.deaf;
   v.play().catch(() => { const b = document.createElement("div"); b.className = "tapplay"; b.textContent = "▶ Yayını aç"; b.onclick = () => { v.play(); b.remove(); }; el.appendChild(b); });
   if (!mine) {
     const q = el.querySelector(".q"); q.value = T.q;
     q.onchange = () => { T.q = q.value; PREF.q = q.value; save(); if (q.value !== "auto") S.core.requestQuality(q.value, pid); else { T.autoQ = "src"; S.core.requestQuality("src", pid); } };
     if (T.q !== "auto") S.core.requestQuality(T.q, pid);
-    el.querySelector(".vol").oninput = (e) => { v.volume = +e.target.value; };
+    el.querySelector(".vol").oninput = (e) => { v.volume = +e.target.value; T.userMuted = +e.target.value === 0; v.muted = S.deaf || T.userMuted; };
   }
   el.insertAdjacentHTML("beforeend", `<div class="vt-ctl"><button data-c="mic" title="Mikrofon">${$("bMic").innerHTML}</button><button data-c="deaf" title="Kulaklık">${$("bDeaf").innerHTML}</button><button data-c="exit" title="Tam ekrandan çık"><svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>`);
   el.querySelector(".vt-ctl").onclick = (e) => {
@@ -201,6 +214,25 @@ function addTile(pid, stream, kind, mine) {
     syncFsCtl();
   };
   el.querySelector(".fs").onclick = (e) => { e.stopPropagation(); isFs(el) ? exitFs(el) : enterFs(el); };
+  if (kind === "player" && !mine) {   // izleyen de oynat/durdur, sar, altyazi secebilsin
+    el.insertAdjacentHTML("beforeend", `<div class="vt-sub"></div><div class="vt-pl">
+      <button data-p="back" title="10 sn geri">−10</button><button data-p="toggle" class="pp" title="Oynat / durdur">❚❚</button><button data-p="fwd" title="10 sn ileri">+10</button>
+      <span class="t">0:00</span><div class="bar"><i></i><b></b></div><span class="d">0:00</span>
+      <select class="sub" title="Altyazı"><option value="-1">Altyazı yok</option></select></div>`);
+    const pl = el.querySelector(".vt-pl");
+    pl.onclick = (e) => {
+      e.stopPropagation();
+      const b = e.target.closest("[data-p]"), bar = e.target.closest(".bar");
+      if (b) S.core.send(pid, { k: "plc", act: b.dataset.p === "toggle" ? "toggle" : "skip", v: b.dataset.p === "back" ? -10 : 10 });
+      else if (bar && T.pst?.dur) { const r = bar.getBoundingClientRect(); S.core.send(pid, { k: "plc", act: "seek", v: (e.clientX - r.left) / r.width * T.pst.dur }); }
+    };
+    pl.querySelector(".sub").onchange = (e) => S.core.send(pid, { k: "plc", act: "sub", v: +e.target.value });
+  }
+  const pubName = nameOf(pid);
+  if (!mine && kind === "player" && PREF.name && pubName.startsWith(PREF.name + " ·") && window.pywebview) {
+    T.userMuted = true; v.muted = true;   // kendi oynatici yayinin: Player'dan zaten duyuyorsun (cift ses olmasin)
+    const vol = el.querySelector(".vol"); if (vol) vol.value = 0;
+  }
   if (mine && kind === "cam") v.style.transform = "scaleX(-1)";
   let idleT; const wake = () => { el.classList.remove("idle"); clearTimeout(idleT); idleT = setTimeout(() => isFs(el) && el.classList.add("idle"), 3000); };
   el.addEventListener("pointermove", wake); el.addEventListener("pointerdown", wake);
@@ -229,6 +261,30 @@ function syncFsCtl() {
     c.querySelector('[data-c="deaf"]').classList.toggle("x", S.deaf);
   });
 }
+const fmtT = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = t % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
+function onAppMsg(from, m) {
+  if (m?.k !== "pl") return;
+  for (const T of S.tiles.values()) {
+    if (T.pid !== from || T.kind !== "player") continue;
+    const st = m.st; T.pst = { ...st, at: Date.now() };
+    const el = T.el;
+    el.querySelector(".vt-pl .pp").textContent = st.paused ? "▶" : "❚❚";
+    el.querySelector(".vt-pl .d").textContent = fmtT(st.dur);
+    el.querySelector(".vt-sub").innerHTML = st.line ? `<span>${esc(st.line).replace(/\n/g, "<br>")}</span>` : "";
+    const sel = el.querySelector(".vt-pl .sub");
+    const opts = `<option value="-1">Altyazı yok</option>` + st.subs.map((l, i) => `<option value="${i}">${esc(l)}</option>`).join("");
+    if (sel.dataset.o !== opts) { sel.innerHTML = opts; sel.dataset.o = opts; }
+    sel.value = String(st.sub);
+  }
+}
+setInterval(() => {   // oynatici zamanini aradaki surede tahmin et
+  for (const T of S.tiles.values()) {
+    if (!T.pst) continue;
+    const t = T.pst.t + (T.pst.paused ? 0 : (Date.now() - T.pst.at) / 1000);
+    T.el.querySelector(".vt-pl .t").textContent = fmtT(t);
+    T.el.querySelector(".vt-pl .bar b").style.width = (T.pst.dur ? Math.min(100, t / T.pst.dur * 100) : 0) + "%";
+  }
+}, 500);
 function removeTile(key) {
   const T = S.tiles.get(key); if (!T) return;
   T.video.srcObject = null; T.el.remove(); S.tiles.delete(key);

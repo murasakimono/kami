@@ -6,8 +6,16 @@
     $("#turnState").textContent = s.has ? "· kayıtlı" : "· yok";
     $("#turnClear").hidden = !s.has;
   }
+  async function linkState() {
+    const r = await api.room_status();
+    $("#roomLinkState").textContent = r.stable ? "· bağlı" : r.on ? (r.tunnel === "on" ? "· geçici link (sabit adres bağlanamadı)" : "· tünel açılıyor…") : "· oda kapalı";
+    $("#roomLinkCopy").dataset.url = r.url || "";
+  }
   function bind() {
     if (!$("#roomOpenBtn")) return;
+    $("#roomRelink").onclick = async () => { $("#roomLinkState").textContent = "· bağlanıyor…"; await slow("room_relink"); setTimeout(linkState, 2500); };
+    $("#roomLinkCopy").onclick = async () => { await linkState(); const u = $("#roomLinkCopy").dataset.url; if (u) { navigator.clipboard?.writeText(u).catch(() => api.copy_text(u)); toast("Oda linki kopyalandı"); } else toast("Önce odayı aç", true); };
+    $("#settingsBtn")?.addEventListener("click", () => setTimeout(linkState, 80));
     $("#roomOpenBtn").onclick = () => slow("room_open", true);
     $("#roomJoinBtn").onclick = async () => {
       const r = await api.room_join($("#roomJoinUrl").value.trim());

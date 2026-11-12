@@ -97,6 +97,10 @@ def _already_running_mutex() -> bool:
 
 
 def main() -> int:
+    # Kami Oda / Player: ses kullanici tiklamasi beklemeden baslasin (oda otomatik girince AudioContext askida kaliyordu)
+    _wv = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
+    if "autoplay-policy" not in _wv:
+        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (_wv + " --autoplay-policy=no-user-gesture-required").strip()
     paths.setup_frozen()
     paths.ensure_dirs()
     _setup_logging()
