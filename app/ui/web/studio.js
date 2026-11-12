@@ -579,10 +579,10 @@ function clipEl(c, t) {
   const m = a ? ST.media[a.path] : null;
   if (k === "video" && m?.thumbs?.sprite) {
     const s = document.createElement("div"); s.className = "strip";
-    const th = laneH(t) - 6 - 14, cnt = m.thumbs.count || 16, tw = th * ((a.w || 16) / (a.h || 9));
-    // kaynak araligina gore kaydir
-    const step = m.thumbs.step || 1, off = (c.in || 0) / step * tw;
-    s.style.backgroundImage = `url(${m.thumbs.sprite})`; s.style.backgroundSize = `${cnt * tw}px ${th}px`; s.style.backgroundPosition = `${-off}px 0`;
+    const th = laneH(t) - 6 - 14, sp = c.speed || 1;
+    // serit tum kaynagi kaplar: zaman cizelgesindeki uzunluga gerilir, klibin in noktasina kaydirilir
+    const full = (a.dur || c.dur) / sp * ST.px, off = (c.in || 0) / sp * ST.px;
+    s.style.backgroundImage = `url(${m.thumbs.sprite})`; s.style.backgroundSize = `${full}px ${th}px`; s.style.backgroundPosition = `${-off}px 0`;
     s.style.backgroundRepeat = "no-repeat";
     el.appendChild(s);
   } else if (k === "image" && a?.url) {
