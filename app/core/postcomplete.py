@@ -23,6 +23,7 @@ class PostComplete:
         self.notify = notify
         self.focused = focused     # pencere ondeyse sadece uygulama ici bildirim yeter
         self.media = None          # mediapost.MediaPost (Asama 6b): soz, arsiv, otomatik Whisper/UVR
+        self.toast = None          # main: dugmeli Windows bildirimi fn(download) -> bool (Oynat / Klasoru ac / Altyazi uret)
         self.after: list = []      # Asama 6c: bitis kurallari vb. -> fn(download_id)
         self._q: queue.Queue = queue.Queue()
         self._thread = threading.Thread(target=self._run, name="kami-post", daemon=True)
@@ -93,7 +94,14 @@ class PostComplete:
             msg = self._t("İndi: ", "Downloaded: ") + (d.filename or d.url)[:120]
             if notes:
                 msg += "\n⚠ " + " · ".join(notes)
-            self.notify("Kami", msg)
+            shown = False
+            if not notes and self.toast is not None:
+                try:
+                    shown = bool(self.toast(d))
+                except Exception:
+                    log.exception("Dugmeli bildirim")
+            if not shown:
+                self.notify("Kami", msg)
         if self.media is not None:
             try:
                 self.media.process(did)

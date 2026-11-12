@@ -101,7 +101,11 @@ DEFAULTS: dict[str, Any] = {
     "watch_min_mb": 20,            # inerken izle: oynatici acilmadan once bastan inmis olmasi gereken MB
     "watch_player": "kami",        # kami (Kami Player) | screenbox | default
     "uvr_quality": "fast",         # fast (overlap 2 + fp16, ~3x) | balanced | best (overlap 8, gercek zamanli)
-    "library_dirs": [],            # Kami Player kutuphanesi: taranan klasorler (indirme klasoru her zaman dahil)
+    "library_dirs": [],
+    "mini_card": True,
+    "auto_mirror": True,           # coklu kaynak: SourceForge / Metalink aynalarindan da cek
+    "song_hotkey_enabled": True,   # "Bu sarki ne?" genel kisayolu (bilgisayardan cikan sesi dinler)
+    "song_hotkey": "ctrl+shift+s",
 }
 
 

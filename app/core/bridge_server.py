@@ -37,6 +37,7 @@ class BridgeServer:
         self.on_show = on_show or (lambda: None)
         self.on_quit = on_quit or (lambda: None)
         self.on_play: Callable[[str], None] | None = None   # Kami Player (main baglar)
+        self.on_uri: Callable[[str], None] | None = None    # kami:// (bildirim dugmeleri)
         self.token = secrets.token_urlsafe(32)
         self.httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -92,6 +93,12 @@ class BridgeServer:
         except Exception:
             pass
 
+    def _errors(self) -> int:
+        try:
+            return sum(1 for d in self.manager.snapshot() if str(d.to_public().get("status") or "").lower().split(".")[-1] == "error")
+        except Exception:
+            return 0
+
     def _active(self) -> list[dict[str, Any]]:
         """Eklenti acilir penceresi: suren indirmeler (ad, yuzde, hiz)."""
         out = []
@@ -121,7 +128,7 @@ class BridgeServer:
             sites = self.manager.registry.url_patterns()   # eklentilerin URL desenleri -> tarayici eklentisi
             return 200, {"ok": True, "app": "kami", "version": APP_VERSION,
                          "capture_enabled": bool(self.manager.settings.get("capture_enabled")),
-                         "sites": sites, "active": self._active()}
+                         "sites": sites, "active": self._active(), "errors": self._errors()}
         if path == "/v1/show":
             self.on_show()
             return 200, {"ok": True}
@@ -130,6 +137,12 @@ class BridgeServer:
             if not self.on_play or not os.path.isfile(p):
                 return 400, {"ok": False, "error": "bad_path"}
             self.on_play(p)
+            return 200, {"ok": True}
+        if path == "/v1/uri":
+            u = str(body.get("uri") or "")
+            if not self.on_uri or not u.startswith("kami:"):
+                return 400, {"ok": False}
+            threading.Thread(target=self.on_uri, args=(u,), daemon=True).start()
             return 200, {"ok": True}
         if path == "/v1/selfcheck-whisper":   # tanilama: Kami surecinin icinden alt surec yolunu dene
             from app.core import aitools

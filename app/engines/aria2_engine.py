@@ -252,14 +252,25 @@ class Aria2Engine(Engine):
             opts["seed-ratio"] = "1.0"
         return opts
 
+    auto_mirror = True   # main ayardan baglar (auto_mirror)
+
     def start(self, download: Download) -> str:
+        uris = [download.url]
+        if download.kind != "torrent" and self.auto_mirror:
+            try:   # coklu kaynak: ayni dosyanin aynalari (SourceForge, Metalink/HTTP Link: rel=duplicate)
+                from app.core import mirrors
+                uris += mirrors.find(download.url, dict(download.headers or {}) if isinstance(download.headers, dict) else None)
+            except Exception:
+                log.debug("ayna arama basarisiz", exc_info=True)
         with self._lock:
             if download.kind == "torrent":
                 import base64
                 data = Path(download.options["torrent_file"]).read_bytes()
                 return self.call("aria2.addTorrent", base64.b64encode(data).decode("ascii"), [],
                                  self.build_torrent_options(download))
-            return self.call("aria2.addUri", [download.url], self.build_options(download))
+            if len(uris) > 1:
+                log.info("Coklu kaynak: %d ayna eklendi (%s)", len(uris) - 1, download.url[:80])
+            return self.call("aria2.addUri", uris, self.build_options(download))
 
     def pause(self, gid: str) -> None:
         try:

@@ -288,6 +288,7 @@ window.plSettings = () => {
     <label class="px-rng"><span>${plL("2. altyazı (DUAL)", "2nd subtitle (DUAL)")}</span><select class="pl-sel" id="pxSub2" style="grid-column: span 2"><option value="-1">${plL("Kapalı", "Off")}</option>${(PL.subList || []).map((x, i) => `<option value="${i}" ${i === PL.sub2Idx ? "selected" : ""}>${escapeHtml(x.label)}</option>`).join("")}</select></label>
     <div class="px-shift"><span>${plL("Kaydır (G / H)", "Offset (G / H)")}</span><button class="pl-b" data-act="sh-">−0.5</button><b id="pxShift">${(PL.subShift > 0 ? "+" : "") + (PL.subShift || 0).toFixed(1)} sn</b><button class="pl-b" data-act="sh+">+0.5</button><button class="pl-b" data-act="sh0">0</button></div>
     <div class="px-shift"><span>${plL("Müzik klibi: şarkı sözlerini altyazı yap", "Music video: lyrics as subtitles")}</span><button class="pl-b" onclick="window.pmPasteVideoLyrics?.(); document.getElementById('plPanel').hidden = true;">${plL("Yapıştır", "Paste")}</button></div>
+    ${window.pxExtraSubHtml?.() || ""}
     <div class="px-shift"><span>${plL("Kaymış altyazıyı sese hizala", "Auto-sync subtitles to audio")}</span><button class="pl-b" data-act="sync">${plL("Hizala", "Sync")}</button></div>
     <div class="px-shift"><span>${plL("Türkçeye çevir", "Translate to Turkish")}</span>
       <div class="px-seg" data-g="tr" style="margin:0">${[["nllb", "NLLB"], ["google", "Google"]].map(([v, l]) => `<button data-v="${v}" class="${c.trEngine === v ? "on" : ""}">${l}</button>`).join("")}</div>

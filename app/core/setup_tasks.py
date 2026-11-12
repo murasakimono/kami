@@ -56,7 +56,32 @@ def register_player(kami: str) -> None:
     _notify_assoc()
 
 
+AUMID = "Kami.DownloadManager"
+
+
+def _toast_icon(kami: str) -> str:
+    import os
+    for rel in (r"_internal\app\ui\web\kami.png", r"app\ui\web\kami.png"):
+        p = os.path.join(os.path.dirname(kami), rel)
+        if os.path.isfile(p):
+            return p
+    return kami
+
+
+def register_protocol(kami: str) -> None:
+    """kami:// linkleri (bildirim dugmeleri) + Windows bildirim kimligi (HKCU, yonetici gerekmez)."""
+    for sub, nm, val in [(r"Software\Classes\kami", "", "URL:Kami"), (r"Software\Classes\kami", "URL Protocol", ""),
+                         (r"Software\Classes\kami\DefaultIcon", "", f'"{kami}",0'),
+                         (r"Software\Classes\kami\shell\open\command", "", f'"{kami}" --uri "%1"'),
+                         (rf"Software\Classes\AppUserModelId\{AUMID}", "DisplayName", "Kami"),
+                         (rf"Software\Classes\AppUserModelId\{AUMID}", "IconUri", _toast_icon(kami))]:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
+            winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, val)
+
+
 def unregister_player() -> None:
+    _delete_tree(winreg.HKEY_CURRENT_USER, r"Software\Classes\kami")
+    _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\AppUserModelId\{AUMID}")
     for pid in PROGIDS:
         _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{pid}")
     for ext in PLAYER_VIDEO + PLAYER_AUDIO:
@@ -120,6 +145,8 @@ def register(exe_dir: Path | None = None) -> list[str]:
     done.append("magnet: Kami")
     register_player(kami)
     done.append("oynatici: video/ses uzantilari")
+    register_protocol(kami)
+    done.append("kami:// + bildirim kimligi")
     return done
 
 

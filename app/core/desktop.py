@@ -210,3 +210,27 @@ class HotKey:
 
 def icon_path() -> Path:
     return paths.ROOT / "extension" / "icons" / "128.png"
+
+
+# ---------------------------------------------------------------- dugmeli Windows bildirimi
+def toast(title: str, body: str, actions: list[tuple[str, str]] | None = None, launch: str = "kami://show") -> bool:
+    """WinRT ToastNotification (PowerShell). Dugmeler kami:// linki acar -> calisan Kami islem yapar."""
+    import subprocess
+    import xml.sax.saxutils as su
+    if os.name != "nt":
+        return False
+    acts = "".join(f'<action content="{su.escape(lbl)}" activationType="protocol" arguments="{su.escape(uri)}"/>' for lbl, uri in (actions or [])[:3])
+    xml = (f'<toast activationType="protocol" launch="{su.escape(launch)}"><visual><binding template="ToastGeneric">'
+           f'<text>{su.escape(title[:80])}</text><text>{su.escape(body[:200])}</text></binding></visual>'
+           + (f"<actions>{acts}</actions>" if acts else "") + "</toast>")
+    ps = ("[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;"
+          "[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null;"
+          "$x = New-Object Windows.Data.Xml.Dom.XmlDocument; $x.LoadXml([Console]::In.ReadToEnd());"
+          "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Kami.DownloadManager').Show([Windows.UI.Notifications.ToastNotification]::new($x))")
+    try:
+        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps], input=xml.encode("utf-8"),
+                           capture_output=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return r.returncode == 0
+    except Exception:
+        log.exception("Bildirim gosterilemedi")
+        return False

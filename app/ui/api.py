@@ -65,6 +65,11 @@ class Api:
         self._player_win = None                          # pywebview penceresi (kapaninca None)
         self._make_player_window = None                  # main: pencere fabrikasi
         self._front_player = None                        # main: pencereyi one getir (Win32)
+        self._osub = None                                # OpenSubtitles API anahtari (DPAPI, main baglar)
+        self._last_song: dict[str, Any] = {}
+        self._card_win = None                            # masaustu mini karti (main kurar)
+        self._card_hidden = False                        # kullanici bu oturumda kapatti
+        self._show_main = None                           # main: ana pencereyi geri getir
         self._warns: list[dict[str, Any]] = []
         self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
         manager.events.on("ui.warn", lambda **kw: self._on_warn(kw))
@@ -76,7 +81,7 @@ class Api:
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
-        "library_get", "library_albums", "lyrics_search", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
+        "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "library_organize", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     })
 
@@ -1133,6 +1138,136 @@ class Api:
             if len(hits) >= 8:
                 break
         return {"ok": True, "hits": hits}
+
+    # ---------- 1.1: Bu sarki ne?, OpenSubtitles, sezon klasorleri, mini kart ----------
+    def song_identify(self, path: str = "", start: float = 0) -> dict[str, Any]:
+        from app.core import aitools
+        src = str(path or "") if path and os.path.isfile(str(path)) else "loopback"
+        res = aitools.identify_song(src, float(start or 0))
+        if "error" in res:
+            return {"ok": False, "error": str(res["error"])[:200]}
+        self._last_song = res.get("done") or {}
+        return {"ok": True, "song": self._last_song}
+
+    def opensub_status(self) -> dict[str, Any]:
+        return {"has_key": bool(self._osub and self._osub.load())}
+
+    def opensub_set_key(self, key: str) -> dict[str, Any]:
+        if not self._osub:
+            return {"ok": False}
+        key = str(key or "").strip()
+        self._osub.save(key) if key else self._osub.clear()
+        return {"ok": True, "has_key": bool(key)}
+
+    def subtitle_fetch(self, path: str, lang: str = "tr") -> dict[str, Any]:
+        """OpenSubtitles: videonun yanina <ad>.<dil>.srt indirir, oynatici VTT'yi alir."""
+        from app.core import opensubs
+        from app.core.media_server import srt_to_vtt
+        key = self._osub.load() if self._osub else ""
+        if not key:
+            return {"ok": False, "error": "no_key"}
+        if not os.path.isfile(str(path or "")):
+            return {"ok": False, "error": "bad_input"}
+        res = opensubs.find_and_download(str(path), key, str(lang or "tr")[:5])
+        if not res.get("ok"):
+            return res
+        return {"ok": True, "path": res["path"], "release": res.get("release", ""), "vtt": srt_to_vtt(res.pop("srt"))}
+
+    def library_organize(self, paths: list | None = None, apply: bool = False) -> dict[str, Any]:
+        """Dizi bolumlerini 'Dizi / Sezon 01 / bolum' duzenine tasi (once onizleme, apply=True ile tasir; yan altyazilar da gider)."""
+        import re as _re
+        import shutil
+        from pathlib import Path
+        from app.core.library import parse_name
+        roots = [os.path.normcase(os.path.abspath(d)) for d in self._library_dirs()]
+        bad = '<>:"/\\|?*'
+        moves: list[list[str]] = []
+        for p in [Path(str(x)) for x in (paths or [])]:
+            if not p.is_file() or not any(os.path.normcase(str(p.resolve())).startswith(r + os.sep) for r in roots):
+                continue
+            info = parse_name(p.stem)
+            series = "".join(c for c in (info.get("series") or "") if c not in bad).strip(" .")
+            if not series:
+                continue
+            season = int(info.get("season") or 1)
+            parent = p.parent
+            if _re.match(r"^(sezon|season|s)\s*\d+$", parent.name, _re.I):
+                sdir = parent.parent
+            elif series.lower()[:12] in parent.name.lower():
+                sdir = parent
+            else:
+                sdir = parent / series
+            dst_dir = sdir / f"Sezon {season:02d}"
+            if dst_dir == parent:
+                continue
+            moves.append([str(p), str(dst_dir / p.name)])
+            for side in parent.glob(_re.sub(r"([\[\]])", r"[\1]", p.stem) + ".*"):
+                if side != p and side.suffix.lower() in (".srt", ".ass", ".ssa", ".vtt", ".lrc", ".sub", ".idx"):
+                    moves.append([str(side), str(dst_dir / side.name)])
+        if not apply:
+            return {"ok": True, "moves": moves, "count": len(moves)}
+        done = 0
+        for src, dst in moves:
+            try:
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                if not os.path.exists(dst):
+                    shutil.move(src, dst)
+                    done += 1
+            except OSError:
+                log.warning("Tasinamadi: %s", src)
+        return {"ok": True, "count": done}
+
+    def handle_uri(self, uri: str) -> None:
+        """kami://play?id=N | folder?id=N | subs?id=N | show (bildirim dugmeleri)."""
+        from urllib.parse import parse_qs, urlparse
+        u = urlparse(str(uri))
+        act = (u.netloc or u.path.strip("/")).lower()
+        q = parse_qs(u.query)
+        did = int((q.get("id") or ["0"])[0] or 0)
+        try:
+            if act == "play" and did:
+                self.player_show({"id": did})
+            elif act == "folder" and did:
+                self.open_folder(did)
+            elif act == "subs" and did:
+                self.ai_run("whisper", did)
+                self._show_main and self._show_main()
+            else:
+                self._show_main and self._show_main()
+        except Exception:
+            log.exception("kami:// islenemedi: %s", uri)
+
+    def card_state(self) -> dict[str, Any]:
+        """Masaustu mini karti: toplam hiz, aktif sayisi, toplam yuzde, kalan sure, goz durumu."""
+        n, size, done = 0, 0, 0
+        for d in self._manager.snapshot():
+            st = str(getattr(d.status, "value", d.status)).lower().split(".")[-1]
+            if st in ("active", "waiting"):
+                n += 1
+                size += int(getattr(d, "size", 0) or 0)
+                done += int(getattr(d, "downloaded", 0) or 0)
+        spd = int(self._manager.total_speed() or 0)
+        eta = int((size - done) / spd) if spd and size > done else 0
+        state = ("speed" if spd >= 8 * 1024 * 1024 else "down") if n else "idle"
+        return {"n": n, "speed": spd, "p": round(done / size, 3) if size else 0, "eta": eta, "state": state}
+
+    def card_open(self) -> None:
+        if self._card_win is not None:
+            self._card_win.hide()
+        if self._show_main:
+            self._show_main()
+
+    def card_close(self) -> None:
+        self._card_hidden = True   # bu oturumda gosterme
+        if self._card_win is not None:
+            self._card_win.hide()
+
+    def card_drop(self, text: str) -> None:
+        if str(text or "").strip():
+            try:
+                self.add_text(str(text).strip())
+            except Exception:
+                log.exception("Karta birakilan link eklenemedi")
 
     def library_add_dir(self) -> dict[str, Any]:
         d = ""

@@ -727,3 +727,17 @@ class AiQueue:
 
 class _JobError(Exception):
     pass
+
+
+def identify_song(src: str, start: float = 0.0) -> dict:
+    """'Bu sarki ne?': src = dosya yolu (start sn'den 12 sn) ya da 'loopback' (bilgisayardan cikan ses, 10 sn).
+    shazamio (+ loopback icin soundcard) Whisper ortamina ilk kullanimda kurulur."""
+    from app.engines.ytdlp_engine import find_ffmpeg
+    if not installed("whisper"):
+        return {"error": "tool_missing"}
+    if not _ensure_pkg("whisper", "shazamio", "shazamio"):
+        return {"error": "shazamio_install_failed"}
+    if src == "loopback" and not _ensure_pkg("whisper", "soundcard", "soundcard"):
+        return {"error": "soundcard_install_failed"}
+    return _run_once(["app.tools.shazam_run", src, str(float(start or 0)), find_ffmpeg() or ""], lambda m: None,
+                     threading.Event(), "whisper", {})

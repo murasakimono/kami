@@ -413,3 +413,12 @@ body.pl-open #sunak { visibility: hidden; }
 #player .pl-subs.kinetic.glitch > span { animation: pe-glitch .14s steps(2, end) 1; text-shadow: 2px 0 rgba(255, 0, 90, .85), -2px 0 rgba(0, 240, 255, .85), 0 2px 4px #000; }
 @keyframes pe-glitch { 0% { transform: translate(0); clip-path: inset(0 0 0 0); } 33% { transform: translate(-3px, 1px) skewX(-6deg); clip-path: inset(10% 0 55% 0); } 66% { transform: translate(3px, -1px) skewX(4deg); clip-path: inset(45% 0 15% 0); } 100% { transform: translate(0); clip-path: inset(0 0 0 0); } }
 .pl-lyr .pm-l.on span { filter: drop-shadow(0 0 calc(8px + var(--sub-bass, 0) * 22px) rgba(var(--pl-glow, 46, 230, 166), calc(.4 + var(--sub-bass, 0) * .5))); }
+
+/* 1.1: Anime4K tuvali, Bu sarki ne */
+#player .pl-a4k { position: absolute; z-index: 0; pointer-events: none; }
+#player.is-audio .pl-a4k { display: none; }
+.pe-song { display: flex; gap: 10px; align-items: center; margin-top: 6px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,.04); font-family: "Segoe UI", system-ui, sans-serif; }
+.pe-song img { width: 56px; height: 56px; border-radius: 6px; object-fit: cover; }
+.pe-song b { display: block; color: #fff; font-size: 14px; }
+.pe-song span { display: block; color: #A39BB5; font-size: 12px; margin-bottom: 6px; }
+.pe-song .pl-b { margin-right: 4px; }

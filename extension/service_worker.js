@@ -392,3 +392,27 @@ async function onMenuClicked(info, tab) {
     chrome.downloads.download({ url });
   }
 }
+
+
+// ---------- arac cubugu ikonu Kami'nin durumuna gore (bekliyor / indiriyor / tam hiz / bitti / hata) ----------
+const STATE_ICON = (st) => ({ 16: `icons/state/${st}16.png`, 32: `icons/state/${st}32.png`, 48: `icons/state/${st}48.png` });
+async function updateStateIcon() {
+  let st = "idle";
+  try {
+    const r = await native1({ type: "ping" });
+    if (r && r.ok) {
+      const act = r.active || [], spd = act.reduce((a, x) => a + (x.speed || 0), 0);
+      const prev = (await chrome.storage.session.get("kamiState")).kamiState || { n: 0, errors: 0 };
+      if ((r.errors || 0) > (prev.errors || 0)) st = "error";
+      else if (act.length) st = spd >= 8 * 1024 * 1024 ? "speed" : "down";
+      else if (prev.n > 0) st = "done";
+      await chrome.storage.session.set({ kamiState: { n: act.length, errors: r.errors || 0 } });
+    }
+  } catch (_) { st = "idle"; }
+  try { await chrome.action.setIcon({ path: STATE_ICON(st) }); } catch (_) {}
+  if (st === "done" || st === "error") setTimeout(() => updateStateIcon(), 8000);
+}
+chrome.alarms.create("kami-state", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "kami-state") updateStateIcon(); });
+chrome.runtime.onStartup.addListener(() => updateStateIcon());
+updateStateIcon();

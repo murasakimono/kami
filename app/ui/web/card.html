@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami Kart</title>
+<link rel="stylesheet" href="sunak.css">
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+  .card { position: absolute; inset: 0; display: flex; align-items: center; gap: 14px; padding: 10px 14px 10px 10px; box-sizing: border-box; cursor: pointer;
+    background: linear-gradient(135deg, #15101F, #0B0910 70%); border: 1px solid #3A2E52; border-radius: 14px; box-shadow: inset 0 0 30px rgba(124,58,237,.12); }
+  .av { width: 104px; height: 104px; flex: none; border-radius: 12px; border: 1.5px solid #7C3AED; background: #100B1A center / cover no-repeat; box-shadow: 0 0 18px rgba(124,58,237,.4); transition: box-shadow .3s; }
+  .card.speed .av { box-shadow: 0 0 24px rgba(46,230,166,.55); border-color: #2EE6A6; }
+  .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .name { font: 400 22px "Damnation", "Chakra Petch", sans-serif; letter-spacing: 1px; background: linear-gradient(180deg, #fff, #A78BFA); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .spd { font: 700 22px "Chakra Petch", sans-serif; color: #fff; white-space: nowrap; }
+  .spd small { font-size: 11px; color: #A39BB5; font-weight: 600; margin-left: 3px; }
+  .bar { height: 7px; border-radius: 4px; background: #241B33; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #14B88A, #2EE6A6); border-radius: 4px; transition: width .6s; }
+  .sub { font: 600 12px "Chakra Petch", sans-serif; color: #F5A65B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .x { position: absolute; top: 4px; right: 6px; width: 20px; height: 20px; border: 0; border-radius: 6px; background: none; color: #6B6280; font-size: 12px; cursor: pointer; }
+  .x:hover { background: rgba(255,255,255,.08); color: #fff; }
+  .card.drop { border-color: #2EE6A6; box-shadow: 0 0 22px rgba(46,230,166,.5); }
+</style>
+</head>
+<body>
+<div class="card" id="card" title="Kami'yi aç · link sürükleyip bırakabilirsin">
+  <div class="av" id="av"></div>
+  <div class="info">
+    <div class="top"><span class="name">KAMI</span><span class="spd" id="spd">0<small>Mbit/sn</small></span></div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="sub" id="sub">…</div>
+  </div>
+  <button class="x" id="x" title="Bu oturumda gizle">✕</button>
+</div>
+<script>
+  const $ = (s) => document.querySelector(s);
+  const api = () => window.pywebview && window.pywebview.api;
+  const eta = (s) => { if (!s) return ""; const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}` : `${m}:${String(x).padStart(2, "0")}`; };
+  let last = "";
+  async function tick() {
+    try {
+      const s = await api().card_state();
+      const mbit = s.speed * 8 / 1e6;
+      $("#spd").innerHTML = `${mbit >= 100 ? Math.round(mbit) : mbit.toFixed(1).replace(".", ",")}<small>Mbit/sn</small>`;
+      $("#bar").style.width = (s.p * 100).toFixed(1) + "%";
+      $("#sub").textContent = s.n ? `${s.n} indiriyor, toplam %${Math.round(s.p * 100)}${s.eta ? ", " + eta(s.eta) + " kaldı" : ""}` : "İndirmeler bitti";
+      const st = s.n ? s.state : "done";
+      if (st !== last) { last = st; $("#av").style.backgroundImage = `url("eye/assets/${st}.webp")`; $("#card").classList.toggle("speed", st === "speed"); }
+    } catch (_) { /* yok */ }
+  }
+  window.addEventListener("pywebviewready", () => { tick(); setInterval(tick, 1000); });
+  $("#x").addEventListener("click", (e) => { e.stopPropagation(); api().card_close(); });
+  $("#card").addEventListener("click", () => api().card_open());
+  const card = $("#card");
+  card.addEventListener("dragover", (e) => { e.preventDefault(); card.classList.add("drop"); });
+  card.addEventListener("dragleave", () => card.classList.remove("drop"));
+  card.addEventListener("drop", (e) => {
+    e.preventDefault(); card.classList.remove("drop");
+    const t = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
+    if (t) { api().card_drop(t.split("\n")[0].trim()); last = ""; $("#sub").textContent = "Eklendi ✓"; }
+  });
+</script>
+</body>
+</html>

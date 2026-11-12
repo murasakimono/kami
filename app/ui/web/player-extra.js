@@ -13,17 +13,24 @@ const SEG_NAMES = { op: ["İntroyu atla", "Skip intro"], ed: ["Kapanışı atla"
 const segName = (t) => plL(...(SEG_NAMES[t] || [t, t]));
 
 window.plExtraStart = async (r) => {
+  a4kStop();
   PE.segs = []; PE.skipped = new Set(); PE.clipA = PE.clipB = null;
   peDrawMarks();
   $("#plSkip")?.remove();
   peAmbient(r.kind === "video" && peCfg().ambient !== false);
-  if (!r.path) return;
+  if (!r.path) { if (r.kind === "video" && a4kWanted(r)) a4kStart(true); return; }
   let res;
   try { res = await slow("player_skips", r.path, r.duration || 0, r.tags || {}); } catch { res = null; }
   if (!res?.ok || PL.info !== r) return;
   PE.segs = res.segments || [];
   peDrawMarks();
+  peAfterInfo(r);
 };
+function peAfterInfo(r) {
+  if (PL.info !== r || r.kind !== "video") return;
+  if (a4kWanted(r)) a4kStart(true);
+  peAutoSub(r);
+}
 
 // ---------- seekbar: bolumler + atlama araliklari ----------
 function peDrawMarks() {
@@ -337,3 +344,158 @@ document.addEventListener("click", (e) => {
   const seg = e.target.closest?.('#plPanel .px-xseg[data-x="kinetic"]'); const b = e.target.closest?.("button");
   if (seg && b) { PX.cfg.kinetic = b.dataset.v === "1"; pxSave(); }
 }, true);
+
+// ---------- Anime4K (WebGPU): 720p ve alti animede otomatik, U tusu, Hafif / Dengeli / Guclu ----------
+const A4 = { on: false, dev: null, canvas: null, loading: null };
+const a4kLib = () => window["anime4k-webgpu"];
+function a4kLooksAnime(r) {
+  const n = String(r.path || r.title || "");
+  return /\[[^\]]{2,}\]/.test(n.split(/[\\/]/).pop()) || (PL.subList || []).some((x) => x.raw) || PE.segs.some((s) => s.src === "aniskip");
+}
+function a4kWanted(r) {
+  const m = peCfg().a4k || "auto";
+  if (m === "on") return true;
+  if (m === "off") return false;
+  return (r.height || 0) > 0 && r.height <= 720 && a4kLooksAnime(r);
+}
+function a4kLoad() {
+  if (a4kLib()) return Promise.resolve();
+  if (!A4.loading) A4.loading = new Promise((ok, bad) => { const sc = document.createElement("script"); sc.src = "vendor/anime4k/anime4k.js"; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); });
+  return A4.loading;
+}
+function a4kRect() {
+  const v = $("#plVideo"), r = v.getBoundingClientRect(), p = $("#player").getBoundingClientRect();
+  const sc = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
+  const w = v.videoWidth * sc, h = v.videoHeight * sc;
+  return { x: r.left - p.left + (r.width - w) / 2, y: r.top - p.top + (r.height - h) / 2, w, h };
+}
+function a4kPlace() {
+  if (!A4.canvas) return;
+  const b = a4kRect();
+  Object.assign(A4.canvas.style, { left: b.x + "px", top: b.y + "px", width: b.w + "px", height: b.h + "px" });
+}
+async function a4kStart(auto = false) {
+  const v = $("#plVideo");
+  if (A4.on || !PL.open || PL.info?.kind !== "video") return;
+  if (!navigator.gpu) { if (!auto) toast(plL("Anime4K için WebGPU desteklenmiyor", "WebGPU not supported"), true); return; }
+  if (!v.videoWidth) { v.addEventListener("loadeddata", () => a4kStart(auto), { once: true }); return; }
+  try { await a4kLoad(); } catch { toast(plL("Anime4K yüklenemedi", "Anime4K failed to load"), true); return; }
+  const lib = a4kLib(); if (!lib) return;
+  a4kStop();
+  const c = document.createElement("canvas"); c.id = "plA4k"; c.className = "pl-a4k";
+  v.after(c); A4.canvas = c;
+  const b = a4kRect(), dpr = window.devicePixelRatio || 1;
+  const q = peCfg().a4kQ || "light";
+  c.width = Math.round(Math.min(b.w * dpr, v.videoWidth * (q === "light" ? 2 : 4)));
+  c.height = Math.round(c.width * v.videoHeight / v.videoWidth);
+  a4kPlace();
+  try {
+    await lib.render({
+      video: v, canvas: c,
+      pipelineBuilder: (device, inputTexture) => {
+        A4.dev = device;
+        const dims = { nativeDimensions: { width: v.videoWidth, height: v.videoHeight }, targetDimensions: { width: c.width, height: c.height } };
+        if (q === "strong") return [new lib.ModeAA({ device, inputTexture, ...dims })];
+        if (q === "balanced") return [new lib.ModeA({ device, inputTexture, ...dims })];
+        return [new lib.CNNx2M({ device, inputTexture })];
+      },
+    });
+    A4.on = true;
+    toast(`Anime4K ${plL("açık", "on")} · ${{ light: plL("Hafif", "Light"), balanced: plL("Dengeli", "Balanced"), strong: plL("Güçlü", "Strong") }[q]}${auto ? plL(" (otomatik, U ile kapat)", " (auto, U to turn off)") : ""}`);
+  } catch (e) { a4kStop(); toast("Anime4K: " + String(e?.message || e).slice(0, 80), true); }
+}
+function a4kStop() {
+  try { A4.dev?.destroy(); } catch { /* yok */ }
+  A4.dev = null; A4.on = false;
+  A4.canvas?.remove(); A4.canvas = null;
+}
+function a4kToggle() { if (A4.on) { a4kStop(); toast(plL("Anime4K kapalı", "Anime4K off")); } else a4kStart(false); }
+window.addEventListener("resize", a4kPlace);
+document.addEventListener("fullscreenchange", () => setTimeout(a4kPlace, 120));
+setInterval(() => { if (A4.on) a4kPlace(); }, 1000);   // pencere boyutu / tam ekran / mini gecisleri
+PL_ACTIONS.a4k = ["Anime4K aç / kapat", "Anime4K on / off", () => a4kToggle()];
+if (!PL_KEYS_DEFAULT.u) PL_KEYS_DEFAULT.u = "a4k";
+const _peVid2 = window.pxExtraVideoHtml;
+window.pxExtraVideoHtml = () => _peVid2() + `<div class="px-shift"><span>Anime4K (${plL("netleştirme, U tuşu", "sharpen, U key")})</span></div>
+  ${peSeg("a4k", [["auto", plL("Otomatik (≤720p anime)", "Auto (≤720p anime)")], ["on", plL("Hep açık", "Always")], ["off", plL("Kapalı", "Off")]], peCfg().a4k || "auto")}
+  ${peSeg("a4kQ", [["light", plL("Hafif", "Light")], ["balanced", plL("Dengeli", "Balanced")], ["strong", plL("Güçlü", "Strong")]], peCfg().a4kQ || "light")}
+  <p class="px-hint">${plL("Ekran kartında çalışır. Güçlü mod laptopu ısıtabilir.", "Runs on the GPU. Strong mode can heat up laptops.")}</p>`;
+document.addEventListener("click", (e) => {
+  const seg = e.target.closest?.('#plPanel .px-xseg[data-x="a4k"], #plPanel .px-xseg[data-x="a4kQ"]'); const b = e.target.closest?.("button");
+  if (!seg || !b) return;
+  PX.cfg[seg.dataset.x] = b.dataset.v; pxSave();
+  if (seg.dataset.x === "a4kQ" && A4.on) { a4kStop(); a4kStart(false); }
+  if (seg.dataset.x === "a4k" && PL.info) { if (a4kWanted(PL.info)) a4kStart(false); else a4kStop(); }
+}, true);
+
+// ---------- OpenSubtitles: Turkce altyazi yoksa bul ----------
+PE.osKey = null;
+async function peOsKey() { if (PE.osKey == null) { try { PE.osKey = !!(await api.opensub_status()).has_key; } catch { PE.osKey = false; } } return PE.osKey; }
+async function peFetchSub(manual) {
+  const r = PL.info; if (!r?.path) return;
+  if (!(await peOsKey())) { if (manual) toast(plL("Önce Altyazı ayarlarına OpenSubtitles API anahtarını gir", "Enter your OpenSubtitles API key first"), true); return; }
+  if (manual) toast(plL("Türkçe altyazı aranıyor…", "Searching Turkish subtitles…"));
+  let res; try { res = await slow("subtitle_fetch", r.path, "tr"); } catch { res = { ok: false }; }
+  if (PL.info !== r) return;
+  if (!res?.ok) {
+    if (manual || res?.error === "bad_key") toast(plL("Altyazı bulunamadı: ", "Subtitle not found: ") + ({ not_found: plL("sonuç yok", "no results"), bad_key: plL("API anahtarı geçersiz", "invalid API key"), quota: plL("günlük indirme hakkı doldu", "daily quota reached") }[res?.error] || res?.error || "?"), true);
+    return;
+  }
+  const url = "data:text/vtt;charset=utf-8," + encodeURIComponent(res.vtt);
+  PL.subList.push({ label: "Türkçe · OpenSubtitles", url, raw: "", lang: "tr" });
+  const sel = $("#plSub");
+  sel.innerHTML = `<option value="-1">${plL("Altyazı yok", "No subtitles")}</option>` + PL.subList.map((x, i) => `<option value="${i}">${escapeHtml(x.label)}</option>`).join("");
+  sel.hidden = false; sel.value = String(PL.subList.length - 1); plLoadSub(PL.subList.length - 1);
+  toast(plL("Türkçe altyazı indirildi", "Turkish subtitle downloaded") + (res.release ? " · " + res.release : ""));
+}
+function peAutoSub(r) {
+  if (peCfg().osAuto === false || !r.path) return;
+  if ((PL.subList || []).some((x) => x.lang === "tr")) return;
+  peFetchSub(false);
+}
+window.pxExtraSubHtml = () => `<div class="px-shift"><span>${plL("Türkçe altyazı (OpenSubtitles)", "Turkish subtitles (OpenSubtitles)")}</span><button class="pl-b" data-xa="osfind">${plL("Bul", "Find")}</button></div>
+  ${peSeg("osAuto", [[1, plL("Yoksa otomatik bul", "Auto when missing")], [0, plL("Sadece elle", "Manual only")]], peCfg().osAuto === false ? 0 : 1)}
+  <div class="px-shift"><input class="px-in" id="peOsKey" type="password" placeholder="${plL("OpenSubtitles API anahtarı", "OpenSubtitles API key")}" style="flex:1"><button class="pl-b" data-xa="oskey">${plL("Kaydet", "Save")}</button></div>
+  <p class="px-hint">${plL("Ücretsiz anahtar: opensubtitles.com/consumers. Anahtar bu bilgisayarda şifreli saklanır.", "Free key at opensubtitles.com/consumers. Stored encrypted on this PC.")}</p>`;
+document.addEventListener("click", async (e) => {
+  const seg = e.target.closest?.('#plPanel .px-xseg[data-x="osAuto"]'); const b = e.target.closest?.("button");
+  if (seg && b) { PX.cfg.osAuto = b.dataset.v === "1"; pxSave(); return; }
+  if (!b || !b.closest("#plPanel")) return;
+  if (b.dataset.xa === "osfind") { e.stopPropagation(); peFetchSub(true); }
+  if (b.dataset.xa === "oskey") { e.stopPropagation(); const k = $("#peOsKey").value.trim(); const r = await api.opensub_set_key(k); PE.osKey = !!r?.has_key; $("#peOsKey").value = ""; toast(PE.osKey ? plL("Anahtar kaydedildi", "Key saved") : plL("Anahtar silindi", "Key removed")); }
+}, true);
+
+// ---------- Bu sarki ne? (oynaticidaki sesten) ----------
+const _peTools2 = window.pxExtraToolsHtml;
+window.pxExtraToolsHtml = () => _peTools2() + `<div class="px-shift"><span>${plL("Bu şarkı ne? (Ctrl+Shift+S her yerde)", "What's this song? (Ctrl+Shift+S anywhere)")}</span><button class="pl-b" data-xa="song">🎵 ${plL("Dinle", "Listen")}</button></div><div id="peSongRes"></div>`;
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest?.('#plPanel button[data-xa="song"]'); if (!b) return;
+  e.stopPropagation();
+  const box = $("#peSongRes"); box.innerHTML = `<p class="px-hint">${plL("Dinleniyor… (ilk seferde araç kurulur)", "Listening… (first time installs a helper)")}</p>`;
+  let r; try { r = await slow("song_identify", PL.info?.path || "", plNow()); } catch { r = { ok: false }; }
+  if (!r?.ok) { box.innerHTML = `<p class="px-hint">${plL("Tanınamadı", "Not recognized")}${r?.error && r.error !== "not_found" ? ": " + escapeHtml(r.error) : ""}</p>`; return; }
+  const s = r.song, q = encodeURIComponent(`${s.artist} ${s.title}`);
+  box.innerHTML = `<div class="pe-song">${s.cover ? `<img src="${escapeHtml(s.cover)}" alt="">` : ""}<div><b>${escapeHtml(s.title)}</b><span>${escapeHtml(s.artist)}${s.album ? " · " + escapeHtml(s.album) : ""}</span>
+    <div><button class="pl-b" data-u="https://www.youtube.com/results?search_query=${q}">YouTube</button><button class="pl-b" data-u="https://open.spotify.com/search/${q}">Spotify</button></div></div></div>`;
+  box.querySelectorAll("[data-u]").forEach((x) => x.onclick = (ev) => { ev.stopPropagation(); api.open_link(x.dataset.u); });
+}, true);
+
+// ---------- kutuphane: dizi bolumlerini sezon klasorlerine ayir ----------
+const _peRender2 = window.pxDrawerRender;
+window.pxDrawerRender = async (...a) => {
+  await _peRender2(...a);
+  const body = $("#pxBody"); if (!body || PX.libTab !== "lib" || !PX.libSeries) return;
+  const s = PX.lib?.series?.find((x) => x.name === PX.libSeries); if (!s?.paths?.length) return;
+  const back = body.querySelector(".px-back"); if (!back || body.querySelector("#peOrg")) return;
+  back.insertAdjacentHTML("afterend", `<button class="pl-b" id="peOrg" style="margin:6px 0 10px">📂 ${plL("Sezon klasörlerine ayır", "Organize into season folders")}</button>`);
+  $("#peOrg").onclick = async (ev) => {
+    ev.stopPropagation();
+    const pv = await slow("library_organize", s.paths, false);
+    if (!pv?.count) { toast(plL("Zaten düzenli görünüyor", "Already organized")); return; }
+    const sample = pv.moves.slice(0, 3).map((m) => "• " + m[1].split(/[\\/]/).slice(-3).join("\\")).join("\n");
+    if (!confirm(plL(`${pv.count} dosya "Dizi / Sezon XX" düzenine taşınacak (yan altyazılar dahil):\n${sample}${pv.count > 3 ? "\n…" : ""}\n\nDevam?`, `Move ${pv.count} files into season folders?`))) return;
+    const r = await slow("library_organize", s.paths, true);
+    toast(plL(`${r?.count || 0} dosya taşındı`, `${r?.count || 0} files moved`));
+    PX.lib = null; PX.libSeries = null; window.pxDrawerRender();
+  };
+};

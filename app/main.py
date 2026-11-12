@@ -113,6 +113,7 @@ def main() -> int:
         return 0
     magnet = _magnet_arg(sys.argv[1:])
     play = _play_arg(sys.argv[1:])
+    uri = next((sys.argv[i + 2] for i, a in enumerate(sys.argv[1:]) if a == "--uri" and i + 2 < len(sys.argv)), "")
 
     # Tek ornek: zaten calisiyorsa onu one getir ve cik
     if call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping"):
@@ -126,6 +127,9 @@ def main() -> int:
             res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/rd", {"url": magnet, "source": "magnet"},
                                         timeout=5.0)
             log.info("Magnet calisan Kami'ye iletildi: %s", bool(res and res.get("ok")))
+        if uri:   # bildirim dugmesi (kami://...)
+            call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/uri", {"uri": uri}, timeout=5.0)
+            return 0
         if play:   # Gezgin'de cift tik: calisan Kami oynaticiyi acar (pencereyi de one getirir)
             res = call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/play", {"path": os.path.abspath(play)}, timeout=5.0)
             log.info("Oynatma calisan Kami'ye iletildi: %s", bool(res and res.get("ok")))
@@ -178,6 +182,7 @@ def main() -> int:
         dht_file=paths.DATA_DIR / "dht.dat",
         disable_ipv6=no_v6,
     )
+    engine.auto_mirror = bool(settings.get("auto_mirror"))
     engine.start_service()
     from app.core.plugin_loader import PluginStore
     registry = load_plugins(paths.PLUGINS_DIR, events, settings, store=PluginStore(paths.DATA_DIR / "plugins.json"))
@@ -287,6 +292,30 @@ def main() -> int:
     api._front_player = player_front.request
 
     bridge.on_play = play_request
+    bridge.on_uri = lambda u: api.handle_uri(u)
+    if uri:   # Kami kapaliyken bildirim dugmesine basildi: acilinca isle
+        threading.Timer(4.0, lambda: api.handle_uri(uri)).start()
+    if paths.FROZEN:   # kami:// + bildirim kimligi (guncellemede yol degisebilir; her acilista ucuz)
+        try:
+            from app.core.setup_tasks import register_protocol
+            register_protocol(sys.executable)
+        except Exception:
+            log.exception("kami:// kaydedilemedi")
+
+    # ---- indirme bitince dugmeli bildirim (Oynat / Klasoru ac / Altyazi uret); PostComplete cagirir
+    def completed_toast(download) -> bool:
+        from app.core.media_server import AUDIO_EXT, VIDEO_EXT
+        en = settings.get("language") == "en"
+        ext = os.path.splitext(download.path or "")[1].lower()
+        acts = []
+        if ext in VIDEO_EXT | AUDIO_EXT:
+            acts.append(("Play" if en else "Oynat", f"kami://play?id={download.id}"))
+        acts.append(("Open folder" if en else "Klasörü aç", f"kami://folder?id={download.id}"))
+        if ext in VIDEO_EXT:
+            acts.append(("Make subtitles" if en else "Altyazı üret", f"kami://subs?id={download.id}"))
+        name = os.path.basename(download.path or "") or download.filename or "Kami"
+        return desktop.toast(name, "Download complete" if en else "İndirme tamamlandı", acts)
+    api._completed_toast = completed_toast
     if play:
         api._play_request(os.path.abspath(play))
 
@@ -347,6 +376,60 @@ def main() -> int:
     if settings.get("hotkey_enabled"):
         hotkey.start(settings.get("hotkey"))
 
+    # ---- "Bu sarki ne?" genel kisayolu: bilgisayardan cikan sesi 10 sn dinler, Shazam ile tanir, bildirim gosterir
+    def on_song_hotkey() -> None:
+        def run() -> None:
+            lang_en = settings.get("language") == "en"
+            tray.notify("Kami", "Listening… (10 s)" if lang_en else "Dinleniyor… (10 sn)") if tray.running else None
+            res = api.song_identify("")
+            if res.get("ok"):
+                s = res["song"]
+                msg = f"{s.get('artist', '')} — {s.get('title', '')}"
+                try:   # panoya kopyala (clip.exe UTF-16 + BOM ister)
+                    import subprocess as _sp
+                    _sp.run(["clip"], input=("\ufeff" + msg).encode("utf-16le"), creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0), timeout=5)
+                except Exception:
+                    pass
+                tray.notify("Kami: " + ("This song" if lang_en else "Bu şarkı"), msg + (" (copied)" if lang_en else " (panoya kopyalandı)"))
+            else:
+                err = res.get("error", "")
+                tray.notify("Kami", ("Not recognized" if lang_en else "Tanınamadı") + ("" if err in ("not_found", "silence") else f": {err}"))
+        threading.Thread(target=run, name="kami-song", daemon=True).start()
+
+    song_hotkey = desktop.HotKey(on_song_hotkey)
+    if settings.get("song_hotkey_enabled"):
+        song_hotkey.start(settings.get("song_hotkey"))
+
+    # ---- masaustu mini karti: Kami kucultulunce / tepsideyken indirme varsa kosede, hep ustte
+    api._show_main = show_window
+
+    def card_loop() -> None:
+        import time as _t
+        while not quitting["v"]:
+            _t.sleep(2)
+            try:
+                hwnd = front._hwnd()
+                away = bool(hwnd) and (not winwin.is_visible(hwnd) or bool(winwin.user32.IsIconic(hwnd)))
+                busy = api.card_state()["n"] > 0
+                want = settings.get("mini_card") and not api._card_hidden and away and busy
+                if want and api._card_win is None:
+                    sc = webview.screens[0] if webview.screens else None
+                    w, h = 380, 128
+                    x, y = ((sc.x + sc.width - w - 18), (sc.y + sc.height - h - 70)) if sc else (None, None)
+                    api._card_win = webview.create_window("Kami Kart", url=str(paths.WEB_DIR / "card.html"), js_api=api, width=w, height=h,
+                                                          x=x, y=y, frameless=True, easy_drag=True, on_top=True, resizable=False,
+                                                          background_color="#0B0910", focus=False)
+                    api._card_shown = True
+                elif api._card_win is not None:
+                    if want and not getattr(api, "_card_shown", False):
+                        api._card_win.show(); api._card_shown = True
+                    elif not want and getattr(api, "_card_shown", False):
+                        api._card_win.hide(); api._card_shown = False
+            except Exception:
+                log.debug("mini kart", exc_info=True)
+
+    threading.Thread(target=card_loop, name="kami-card", daemon=True).start()
+
     # Windows'la baslama ayari kayit defteriyle esit olsun (kullanici elle silmis olabilir)
     try:
         if bool(settings.get("autostart")) != desktop.autostart_enabled():
@@ -360,6 +443,10 @@ def main() -> int:
                 tray.start() if value else tray.stop()
             elif key == "autostart":
                 desktop.set_autostart(bool(value))
+            elif key in ("song_hotkey", "song_hotkey_enabled"):
+                song_hotkey.start(settings.get("song_hotkey")) if settings.get("song_hotkey_enabled") else song_hotkey.stop()
+            elif key == "auto_mirror":
+                engine.auto_mirror = bool(value)
             elif key in ("hotkey", "hotkey_enabled"):
                 if settings.get("hotkey_enabled"):
                     hotkey.start(settings.get("hotkey"))
@@ -377,12 +464,14 @@ def main() -> int:
     scheduler.start()
     post = PostComplete(manager, tray.notify,
                         focused=lambda: winwin.is_foreground(front._hwnd()))
+    post.toast = completed_toast if paths.FROZEN else None   # gelistirmede bildirim kimligi kayitli degil
 
     # ---- Asama 6b: soz + muzik arsivi + Whisper/UVR (alt surecte, sirali GPU kuyrugu)
     from app.core import aitools
     from app.core.debrid import TokenStore
     from app.core.mediapost import MediaPost
     genius = TokenStore(paths.DATA_DIR / "genius_token.bin")
+    api._osub = TokenStore(paths.DATA_DIR / "opensubtitles_key.bin")
     media_post = MediaPost(manager, None, genius.load)
     ai = aitools.AiQueue(settings, media_post.set_extra,
                          lambda did: (manager.store.get(did).path if manager.store.get(did) else ""),
@@ -498,6 +587,7 @@ def main() -> int:
                       storage_path=str(paths.DATA_DIR / "webview"))
     finally:
         log.info("Kami kapaniyor")
+        song_hotkey.stop()
         hotkey.stop()
         tray.stop()
         scheduler.stop()
