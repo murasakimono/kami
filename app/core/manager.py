@@ -514,9 +514,13 @@ class DownloadManager:
             targets = self._media_files(d, include_final=delete_file)
             if targets and self.media is not None:
                 time.sleep(0.5)  # iptal edilen is aria2/ffmpeg dosyalarini birakabilsin
+            from app.core.mediatools import remove_or_trash
             for p in targets:
                 try:
-                    os.remove(p)
+                    if p == d.path:
+                        remove_or_trash(p)   # bitmis dosya Geri Donusum Kutusu'na (geri alinabilir)
+                    else:
+                        os.remove(p)
                 except OSError:
                     log.warning("Dosya silinemedi: %s", p)
             self.store.delete(d.id)

@@ -673,6 +673,42 @@ class Api:
         self._manager.store.update(d.id, extra=extra)
         return {"ok": True, "sha256": got, "expected": exp, "match": (got == exp) if exp else None}
 
+    def set_favorite(self, download_id: int, on: bool = True) -> bool:
+        d = self._manager.store.get(int(download_id))
+        if not d:
+            return False
+        extra = {**(d.extra or {}), "fav": bool(on)}
+        if not on:
+            extra.pop("fav", None)
+        nd = self._manager.store.update(d.id, extra=extra)
+        self._manager.events.emit("download.updated", download=nd)
+        return True
+
+    def rename_download(self, download_id: int, new_name: str) -> dict[str, Any]:
+        """F2: bitmis dosyanin adini diskte ve listede degistirir (uzanti korunur, ayni klasorde)."""
+        d = self._manager.store.get(int(download_id))
+        name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(new_name or "")).strip().rstrip(". ")
+        if not d or not name:
+            return {"ok": False, "error": "bad_input"}
+        old = d.path or ""
+        if not old or not os.path.isfile(old):
+            return {"ok": False, "error": "no_file"}
+        ext = os.path.splitext(old)[1]
+        if not name.lower().endswith(ext.lower()):
+            name += ext
+        new = os.path.join(os.path.dirname(old), name)
+        if os.path.normcase(new) == os.path.normcase(old):
+            return {"ok": True, "path": old}
+        if os.path.exists(new):
+            return {"ok": False, "error": "exists"}
+        try:
+            os.rename(old, new)
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+        nd = self._manager.store.update(d.id, filename=name)
+        self._manager.events.emit("download.updated", download=nd)
+        return {"ok": True, "path": new}
+
     # ---------- surukle-birak ----------
     def drop_torrent(self, b64: str) -> dict[str, Any]:
         import base64

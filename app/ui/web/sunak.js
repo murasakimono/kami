@@ -1,7 +1,7 @@
 // Kami "Sunak" katmani. Eski DOM ve JS'e dokunmaz; ustune biner, durumu STATE_HOOKS ile alir.
 "use strict";
 
-const SK = { autoPlay: new Set(JSON.parse((() => { try { return localStorage.getItem("kami.autoplay") || "[]"; } catch { return "[]"; } })())), sel: null, page: 0, peak: 1, happyUntil: 0, prevStatus: new Map(), eye: null, orbit: 0, speedFrac: 0, built: false };
+const SK = { autoPlay: new Set(JSON.parse((() => { try { return localStorage.getItem("kami.autoplay") || "[]"; } catch { return "[]"; } })())), sel: null, page: 0, peak: 1, happyUntil: 0, prevStatus: new Map(), eye: null, orbit: 0, speedFrac: 0, built: false, multi: new Set(), hidden: new Set(), undo: null };
 const SK_RING_R = 132, SK_RING_C = 2 * Math.PI * SK_RING_R;
 const SK_STRIP_W = 162;   // 150 + bosluk
 
@@ -66,6 +66,7 @@ function skBuild() {
     </div>
     <div class="sk-dots" id="skDots"></div>
     <div class="sk-bar" id="skBar"></div>
+    <div class="sk-detail" id="skDetail"></div>
     <div class="sk-cmd" id="skCmd"><span>›</span></div>
   </div>
   <nav class="sk-dock" id="skDock">
@@ -112,7 +113,22 @@ function skBind() {
     const b = e.target.closest(".sk-strip"); const d = b && state.items.find((x) => String(x.id) === b.dataset.id);
     if (d && d.status === "complete" && ["video", "music"].includes(d.category)) playerOpen(d.id);
   });
-  $("#skTrack").addEventListener("click", (e) => { const b = e.target.closest(".sk-strip"); if (b) { SK.sel = skItems().find((d) => String(d.id) === b.dataset.id)?.id ?? null; skRender(); } });
+  $("#skTrack").addEventListener("click", (e) => {
+    if (e.target.closest(".sk-star")) { const id = e.target.closest(".sk-strip")?.dataset.id; const d = state.items.find((x) => String(x.id) === id); if (d) { e.stopPropagation(); skFav(d); } return; }
+    const b = e.target.closest(".sk-strip"); if (!b) return;
+    const its = skItems(), id = its.find((d) => String(d.id) === b.dataset.id)?.id;
+    if (id == null) return;
+    if (e.shiftKey && SK.sel != null) {   // aralik: secili karttan tiklanana kadar
+      const a = its.findIndex((d) => d.id === SK.sel), z = its.findIndex((d) => d.id === id);
+      if (!e.ctrlKey) SK.multi.clear();
+      for (let i = Math.min(a, z); i <= Math.max(a, z); i++) SK.multi.add(its[i].id);
+    } else if (e.ctrlKey || e.metaKey) {
+      if (!SK.multi.size && SK.sel != null) SK.multi.add(SK.sel);
+      SK.multi.has(id) ? SK.multi.delete(id) : SK.multi.add(id);
+      if (SK.multi.size === 1 && SK.multi.has(id) && id !== SK.sel) { /* tek secim */ }
+    } else SK.multi.clear();
+    SK.sel = id; skRender(true);
+  });
   $("#skDots").addEventListener("click", (e) => { const i = e.target.dataset.i; if (i != null) { SK.sel = skItems()[+i]?.id; skRender(); } });
   $("#skBar").addEventListener("click", skBarAction);
   $("#skDock").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) skDock(b.dataset.sk); });
@@ -120,8 +136,13 @@ function skBind() {
   $("#skBackdrop").addEventListener("click", skCloseDrawer);   // cekmece disina tiklayinca kapanir
   document.addEventListener("keydown", (e) => {
     if (e.target.matches("input, textarea, select") || document.querySelector("dialog[open]")) return;
+    if (e.key === "Escape" && SK.multi.size && !document.body.classList.contains("sk-drawer")) { SK.multi.clear(); skRender(true); return; }
     if (e.key === "Escape") skCloseDrawer();
     if (document.body.classList.contains("sk-drawer")) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") { e.preventDefault(); skItems().forEach((d) => SK.multi.add(d.id)); skRender(true); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && SK.undo) { e.preventDefault(); skUndo(); return; }
+    if (e.key === "Delete") { e.preventDefault(); skDeleteSel(e.shiftKey); return; }
+    if (e.key === "F2") { e.preventDefault(); skRename(); return; }
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") { skMoveSel(e.key === "ArrowRight" ? 1 : -1); e.preventDefault(); }
   });
   const altar = $("#skAltar");
@@ -141,8 +162,74 @@ function skBind() {
 // listede gosterilecekler: once aktif, sonra bekleyen/duraklatilan, sonra hata, en son biten
 const SK_ORDER = { active: 0, waiting: 1, queued: 1, confirm: 1, paused: 2, error: 3, complete: 4 };
 function skItems() {
-  return state.items.filter((d) => d.status !== "removed")
-    .map((d, i) => [d, i]).sort((a, b) => (SK_ORDER[a[0].status] ?? 5) - (SK_ORDER[b[0].status] ?? 5) || a[1] - b[1]).map((x) => x[0]);
+  const key = (d) => (d.status === "active" ? 0 : d.extra?.fav ? 0.5 : SK_ORDER[d.status] ?? 5);   // favoriler aktiflerden hemen sonra
+  return state.items.filter((d) => d.status !== "removed" && !SK.hidden.has(d.id))
+    .map((d, i) => [d, i]).sort((a, b) => key(a[0]) - key(b[0]) || a[1] - b[1]).map((x) => x[0]);
+}
+// ---------- coklu secim: sil / geri al / yeniden adlandir / favori ----------
+function skDeleteSel(withFiles) {
+  const its = skItems();
+  const ids = SK.multi.size ? [...SK.multi] : SK.sel != null ? [SK.sel] : [];
+  if (!ids.length) return;
+  if (SK.undo) skCommitUndo();   // onceki bekleyen silme kesinlessin
+  const firstIdx = Math.min(...ids.map((id) => its.findIndex((d) => d.id === id)).filter((i) => i >= 0));
+  ids.forEach((id) => SK.hidden.add(id));
+  SK.multi.clear();
+  const rest = skItems();
+  SK.sel = rest[Math.min(firstIdx, rest.length - 1)]?.id ?? null;   // yanindaki kart secilir: basa atmaz
+  const page = SK.page;
+  skRender(true); SK.page = page; skRender(true);
+  const n = ids.length;
+  SK.undo = { ids, withFiles, t: setTimeout(skCommitUndo, 6000) };
+  skUndoToast(withFiles ? skL(`${n} dosya Çöp Kutusu'na gidecek`, `${n} file(s) will go to the Recycle Bin`) : skL(`${n} indirme listeden kaldırıldı`, `${n} download(s) removed`));
+}
+function skCommitUndo() {
+  const u = SK.undo; if (!u) return;
+  clearTimeout(u.t); SK.undo = null;
+  $("#skUndo")?.remove();
+  u.ids.forEach((id) => api.remove(id, !!u.withFiles).catch?.(() => {}));
+  setTimeout(() => u.ids.forEach((id) => SK.hidden.delete(id)), 4000);   // liste yenilenince zaten gider
+}
+function skUndo() {
+  const u = SK.undo; if (!u) return;
+  clearTimeout(u.t); SK.undo = null;
+  u.ids.forEach((id) => SK.hidden.delete(id));
+  $("#skUndo")?.remove();
+  SK.sel = u.ids[0]; skRender();
+}
+function skUndoToast(msg) {
+  $("#skUndo")?.remove();
+  const el = document.createElement("div");
+  el.id = "skUndo"; el.className = "sk-undo";
+  el.innerHTML = `<span>${escapeHtml(msg)}</span><button type="button">${skL("Geri al", "Undo")} <kbd>Ctrl+Z</kbd></button><i></i>`;
+  el.querySelector("button").onclick = skUndo;
+  document.body.appendChild(el);
+}
+async function skFav(d) {
+  await api.set_favorite(d.id, !d.extra?.fav);
+  d.extra = { ...(d.extra || {}), fav: !d.extra?.fav };
+  skRender(true);
+}
+function skRename() {
+  const d = state.items.find((x) => x.id === SK.sel);
+  if (!d || d.status !== "complete") { toast(skL("Sadece biten dosyalar yeniden adlandırılabilir", "Only finished files can be renamed"), true); return; }
+  const name = $("#skBar .sk-bar-name"); if (!name) return;
+  const full = d.filename || "", dot = full.lastIndexOf(".");
+  const inp = document.createElement("input");
+  inp.className = "sk-rename"; inp.value = full; inp.spellcheck = false;
+  name.replaceWith(inp); inp.focus(); inp.setSelectionRange(0, dot > 0 ? dot : full.length);
+  let done = false;
+  const finish = async (save) => {
+    if (done) return; done = true;
+    if (save && inp.value.trim() && inp.value.trim() !== full) {
+      const r = await api.rename_download(d.id, inp.value.trim());
+      if (!r?.ok) toast(skL("Yeniden adlandırılamadı: ", "Rename failed: ") + ({ exists: skL("bu adda dosya var", "name exists"), no_file: skL("dosya bulunamadı", "file missing") }[r?.error] || r?.error || "?"), true);
+      else { d.filename = r.path.split(/[\\/]/).pop(); d.path = r.path; }
+    }
+    skRender(true);
+  };
+  inp.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") finish(true); if (e.key === "Escape") finish(false); });
+  inp.addEventListener("blur", () => finish(true));
 }
 function skPerPage() { return Math.max(1, Math.floor(($("#skWrap").clientWidth + 12) / SK_STRIP_W)); }
 function skPage(dir) {
@@ -188,7 +275,8 @@ function skStripHtml(d) {
   else sub = skL("sırada", "queued");
   const bubbles = d.status === "active" ? [18, 52, 88, 120].map((l, i) => `<i class="sk-bubble" style="left:${l}px;animation-delay:${i * 0.7}s"></i>`).join("") : "";
   const h = Math.max(pct, d.status === "active" ? 4 : 0), wavy = h >= 8;
-  return `<button class="sk-strip ${d.status === "active" ? "" : "calm"} ${d.id === SK.sel ? "sel" : ""}" data-id="${escapeHtml(d.id)}" title="${escapeHtml(d.filename || d.url)}">
+  return `<button class="sk-strip ${d.status === "active" ? "" : "calm"} ${d.id === SK.sel ? "sel" : ""} ${SK.multi.has(d.id) ? "msel" : ""} ${d.extra?.fav ? "fav" : ""}" data-id="${escapeHtml(d.id)}" title="${escapeHtml(d.filename || d.url)}">
+    <span class="sk-star" title="${skL("Favori", "Favorite")}">★</span>
     <div class="sk-paper">
       <div class="sk-liquid" style="height:${h}%;background:linear-gradient(180deg,${c1}cc,${c2})">${wavy ? skWave(c1 + "88", 5).replace("sk-wave", "sk-wave back") + skWave(c1 + "cc", 7) : ""}${bubbles}</div>
       <div class="sk-band"></div>
@@ -236,6 +324,8 @@ function skPatchStrips(track, its) {
         if (a && b2 && a.innerHTML !== b2.innerHTML) a.innerHTML = b2.innerHTML;
       }
       el.classList.toggle("sel", d.id === SK.sel);
+      el.classList.toggle("msel", SK.multi.has(d.id));
+      el.classList.toggle("fav", !!d.extra?.fav);
       el.classList.toggle("calm", d.status !== "active");
       el.title = nu.title;
     } else {
@@ -256,6 +346,7 @@ function skPatchStrips(track, its) {
 
 function skRenderBar(d) {
   const bar = $("#skBar");
+  if (bar.querySelector(".sk-rename")) return;   // yeniden adlandirma suruyor: kutu silinmesin
   if (!d) { bar.className = "sk-bar wait"; bar.innerHTML = `<span class="sk-bar-info">${skL("Seçili indirme yok", "Nothing selected")}</span>`; return; }
   bar.className = "sk-bar" + (d.status === "error" ? " err" : d.status === "active" || d.status === "complete" ? "" : " wait");
   const B = (act, icon, label, cls = "") => `<button class="sk-btn ${cls}" data-act="${act}">${skIcon[icon]}${label}</button>`;
@@ -279,7 +370,45 @@ function skRenderBar(d) {
   if (d.status === "error") info = d.error || skL("hata", "error");
   else if (d.size) info = `${fmtBytes(d.downloaded)} / ${fmtBytes(d.size)}${d.connections ? " · " + d.connections + skL(" bağlantı", " conn") : ""}`;
   else if (d.downloaded) info = fmtBytes(d.downloaded);
-  bar.innerHTML = `<span class="sk-bar-name">${escapeHtml(d.filename || d.url)}</span><span class="sk-bar-info">${escapeHtml(info)}</span>${btns.join("")}`;
+  bar.innerHTML = `<span class="sk-bar-name" title="${escapeHtml(d.filename || d.url)}">${escapeHtml(d.filename || d.url)}</span><span class="sk-bar-info">${escapeHtml(info)}</span>${btns.join("")}`;
+  skRenderDetail(d);
+}
+
+// ---------- ayrinti paneli (yuksek pencerede alttaki bosluk) ----------
+const SK_HIST = new Map();   // id -> son hizlar (her tick)
+function skTrackSpeeds() {
+  for (const d of state.items || []) {
+    if (d.status !== "active") continue;
+    const h = SK_HIST.get(d.id) || [];
+    h.push(d.speed || 0); if (h.length > 120) h.shift();
+    SK_HIST.set(d.id, h);
+  }
+}
+function skHost(u) { try { return new URL(u).host.replace(/^www\./, ""); } catch { return ""; } }
+function skRenderDetail(d) {
+  const box = $("#skDetail"); if (!box) return;
+  if (!d) { box.innerHTML = ""; return; }
+  const x = d.extra || {};
+  const when = (t) => { if (!t) return ""; const dt = new Date(typeof t === "number" ? t * 1000 : t); return isNaN(dt) ? "" : dt.toLocaleString(skTr() ? "tr-TR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }); };
+  const rows = [
+    [skL("Kaynak", "Source"), skHost(d.page_url || d.url) || "—", d.page_url || d.url],
+    [skL("Klasör", "Folder"), d.directory || "—", d.directory],
+    [skL("Boyut", "Size"), d.size ? fmtBytes(d.size) : d.downloaded ? fmtBytes(d.downloaded) : "—"],
+    [skL("Eklendi", "Added"), when(d.created_at) || "—"],
+    [skL("Bitti", "Finished"), when(d.finished_at) || (d.status === "complete" ? "—" : skL("sürüyor", "in progress"))],
+    [skL("Bağlantı", "Connections"), d.connections ? String(d.connections) : "—"],
+  ];
+  if (x.sha256) rows.push(["SHA-256", x.sha256.slice(0, 16) + "…", x.sha256]);
+  if (x.scan) rows.push([skL("Tarama", "Scan"), String(x.scan)]);
+  const hist = SK_HIST.get(d.id) || [];
+  box.innerHTML = `<div class="sk-dt-grid">${rows.map(([k, v, full]) => `<div><span>${escapeHtml(k)}</span><b title="${escapeHtml(full || v)}">${escapeHtml(v)}</b></div>`).join("")}</div>
+    <div class="sk-dt-graph"><span>${skL("Bu indirmenin hızı", "This download's speed")}</span>${hist.length > 1 ? skSparkSvg(hist) : `<em>${d.status === "complete" ? skL("İndirme bitti", "Finished") : skL("Hız verisi bekleniyor", "Waiting for speed data")}</em>`}</div>`;
+}
+function skSparkSvg(h) {
+  const max = Math.max(...h, 1), w = 400, ht = 70;
+  const pts = h.map((v, i) => `${(i / (h.length - 1)) * w},${ht - (v / max) * (ht - 6) - 3}`).join(" ");
+  return `<svg viewBox="0 0 ${w} ${ht}" preserveAspectRatio="none"><defs><linearGradient id="skDtG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2EE6A6" stop-opacity=".35"/><stop offset="1" stop-color="#2EE6A6" stop-opacity="0"/></linearGradient></defs>
+    <polygon points="0,${ht} ${pts} ${w},${ht}" fill="url(#skDtG)"/><polyline points="${pts}" fill="none" stroke="#2EE6A6" stroke-width="2" vector-effect="non-scaling-stroke"/></svg><small>${skL("en yüksek", "peak")} ${fmtBytes(max)}/s</small>`;
 }
 
 async function skBarAction(e) {
@@ -358,6 +487,7 @@ function skState(s) {
     isError: !s.engine_ok || (sel && sel.status === "error"),
     mood: Date.now() < SK.happyUntil ? "happy" : $("#skAltar").classList.contains("drop") ? "alert" : "idle",
   });
+  skTrackSpeeds();
   const fc = $("#followCount")?.textContent; const fn = $("#skFollowN");
   if (fn) { fn.hidden = !fc || fc === "0"; fn.textContent = fc || ""; }
   skRender();
