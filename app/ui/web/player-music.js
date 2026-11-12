@@ -91,6 +91,7 @@ window.plMusicStart = async (r) => {
 function pmShow(res) {
   const list = $("#pmList"), empty = $("#pmEmpty");
   PM.lines = res?.synced ? pmParseLrc(res.synced) : [];
+  PM.rawSynced = res?.synced || "";
   PM.plain = res?.plain || "";
   PM.src = res?.source || "";
   PM.links = res?.links || {};
@@ -389,3 +390,4 @@ window.pmPasteVideoLyrics = () => {
     box.remove(); toast(plL("Sözler altyazı olarak eklendi", "Lyrics added as subtitles"));
   };
 };
+window.pmSyncedLrc = () => (typeof PM !== "undefined" && PM.rawSynced) || "";

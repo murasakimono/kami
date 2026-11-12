@@ -613,3 +613,44 @@ window.KPAL.push(() => {
   ["Altyazı", "Görüntü", "Ses", "Müzik", "Kısayollar", "Genel", "Araçlar"].forEach((n, i) => out.push({ ic: "⚙", t: plL("Ayarlar: ", "Settings: ") + n, sub: plL("ayar", "setting"), run: () => { if ($("#plPanel")?.hidden !== false) window.plSettings?.(); setTimeout(() => document.querySelector(`.px-ptabs button[data-tab="${i}"]`)?.click(), 80); } }));
   return out;
 });
+
+// ---------- Lyric video (HyperFrames): Araclar sekmesi ----------
+const LV = { timer: null };
+const _peTools4 = window.pxExtraToolsHtml;
+window.pxExtraToolsHtml = () => _peTools4() + `<div class="px-shift"><span>${plL("Lyric video (senkron sözlerden)", "Lyric video (from synced lyrics)")}</span><button class="pl-b" data-xa="lv">🎬 ${plL("Yap", "Make")}</button></div>
+  ${peSeg("lvStyle", [["kinetic", plL("Kinetik", "Kinetic")], ["simple", plL("Sade", "Simple")], ["karaoke", "Karaoke"]], peCfg().lvStyle || "kinetic")}
+  ${peSeg("lvAspect", [["h", "16:9 YouTube"], ["v", "9:16 Reels / TikTok"]], peCfg().lvAspect || "h")}
+  ${(peCfg().lvAspect || "h") === "v" ? peSeg("lvLen", [[15, "15 sn"], [30, "30 sn"], [60, "60 sn"]], peCfg().lvLen || 30) + `<p class="px-hint">${plL("Reels şu anki saniyeden başlar.", "The clip starts at the current position.")}</p>` : ""}
+  <div id="peLvRes"></div>`;
+function lvDraw(j) {
+  const box = $("#peLvRes"); if (!box || !j) return;
+  if (j.state === "running") box.innerHTML = `<p class="px-hint">${j.stage === "render" ? plL("İşleniyor: ", "Rendering: ") + escapeHtml(j.line || "") : plL("Hazırlanıyor…", "Preparing…")}</p><button class="pl-b" data-xa="lvstop">${plL("İptal", "Cancel")}</button>`;
+  else if (j.state === "done") box.innerHTML = `<p class="px-hint">✓ ${escapeHtml(String(j.out || "").split(/[\\/]/).pop())}</p><button class="pl-b" data-xa="lvplay">${plL("Oynat", "Play")}</button><button class="pl-b" data-xa="lvfolder">${plL("Klasörü aç", "Open folder")}</button>`;
+  else if (j.state === "error") box.innerHTML = `<p class="px-hint">${({ cancelled: plL("İptal edildi", "Cancelled"), no_synced: plL("Bu şarkının senkron sözü yok (LRC/SRT ya da LRCLIB)", "No synced lyrics"), node_yok: plL("Node.js gerekli (nodejs.org)", "Node.js required") })[j.error] || plL("Olmadı: ", "Failed: ") + escapeHtml(j.error || "?")}</p>`;
+  else box.innerHTML = "";
+}
+async function lvPoll() {
+  clearTimeout(LV.timer);
+  let j; try { j = await api.lyricvideo_status(); } catch { return; }
+  lvDraw(j);
+  if (j?.state === "running") LV.timer = setTimeout(lvPoll, 1500);
+}
+document.addEventListener("click", async (e) => {
+  const seg = e.target.closest?.('#plPanel .px-xseg[data-x="lvStyle"], #plPanel .px-xseg[data-x="lvAspect"], #plPanel .px-xseg[data-x="lvLen"]');
+  const b = e.target.closest?.("button");
+  if (seg && b) { PX.cfg[seg.dataset.x] = seg.dataset.x === "lvLen" ? +b.dataset.v : b.dataset.v; pxSave(); if (seg.dataset.x === "lvAspect") window.plSettings?.(), window.plSettings?.(); return; }
+  if (!b || !b.closest("#plPanel") || !String(b.dataset.xa || "").startsWith("lv")) return;
+  e.stopPropagation();
+  const a = b.dataset.xa, c = peCfg();
+  if (a === "lv") {
+    if (!PL.info?.path) { toast(plL("Önce bir şarkı aç", "Open a song first"), true); return; }
+    const v = (c.lvAspect || "h") === "v";
+    const r = await api.lyricvideo_start(PL.info.path, c.lvStyle || "kinetic", v, v ? plNow() : 0, v ? (c.lvLen || 30) : 0, window.pmSyncedLrc?.() || "");
+    if (!r?.ok) { lvDraw({ state: "error", error: r?.error }); return; }
+    toast(plL("Lyric video başladı; bitince bildirim gelir", "Lyric video started; you'll be notified")); lvPoll();
+  }
+  if (a === "lvstop") { await api.lyricvideo_cancel(); setTimeout(lvPoll, 600); }
+  if (a === "lvplay") api.lyricvideo_open("play");
+  if (a === "lvfolder") api.lyricvideo_open("folder");
+}, true);
+document.addEventListener("click", (e) => { if (e.target.closest?.("#plPanel .px-ptabs button")) setTimeout(lvPoll, 60); }, true);

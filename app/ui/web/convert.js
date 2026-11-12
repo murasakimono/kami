@@ -134,7 +134,43 @@ skRenderBar = function (d) {   // eslint-disable-line no-global-assign
   btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>${cvL("Dönüştür", "Convert")}`;
   btn.onclick = async (ev) => { ev.stopPropagation(); cvOpen(await api.convert_info([d.path])); };
   rm ? rm.before(btn) : $("#skBar").appendChild(btn);
+  if (["music", "video"].includes(d.category) && (d.category === "music" || (d.extra || {}).ai_whisper === "done")) {
+    const lv = document.createElement("button");
+    lv.className = "sk-btn ai";
+    lv.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7M17 14l4 3-4 3z"/></svg>${cvL("Lyric video", "Lyric video")}`;
+    lv.onclick = (ev) => { ev.stopPropagation(); lvDialog(d); };
+    btn.before(lv);
+  }
 };
+
+// Lyric video (indirilenler): stil + oran secip baslat
+function lvDialog(d) {
+  $("#lvDlg")?.remove();
+  const box = document.createElement("div"); box.id = "lvDlg"; box.className = "lv-dlg";
+  const st = { style: "kinetic", v: false, len: 30 };
+  const draw = () => {
+    box.innerHTML = `<div class="lv-w"><h3>${cvL("Lyric video", "Lyric video")}</h3><p class="hint">${escapeHtml(d.filename || "")}</p>
+      <label>${cvL("Stil", "Style")}</label>${cvSeg("style", [["kinetic", cvL("Kinetik", "Kinetic")], ["simple", cvL("Sade", "Simple")], ["karaoke", "Karaoke"]], st.style)}
+      <label>${cvL("Oran", "Aspect")}</label>${cvSeg("v", [[0, "16:9 YouTube"], [1, "9:16 Reels / TikTok"]], st.v ? 1 : 0)}
+      ${st.v ? `<label>${cvL("Süre (baştan)", "Length (from start)")}</label>${cvSeg("len", [[15, "15 sn"], [30, "30 sn"], [60, "60 sn"]], st.len)}` : ""}
+      <p class="hint">${cvL("Senkron söz gerekir: yanında .lrc / .srt ya da LRCLIB'de kaydı olmalı. Bitince bildirim gelir.", "Needs synced lyrics (.lrc / .srt next to it or on LRCLIB). You'll be notified.")}</p>
+      <div class="lv-b"><button type="button" class="btn ghost" data-a="x">${cvL("Vazgeç", "Cancel")}</button><button type="button" class="btn primary" data-a="go">${cvL("Başlat", "Start")}</button></div></div>`;
+  };
+  draw();
+  box.addEventListener("click", async (e) => {
+    if (e.target === box) return box.remove();
+    const b = e.target.closest("button"); if (!b) return;
+    const seg = b.closest(".cv-seg");
+    if (seg) { const k = seg.dataset.k; st[k] = k === "style" ? b.dataset.v : k === "v" ? b.dataset.v === "1" : +b.dataset.v; draw(); return; }
+    if (b.dataset.a === "x") return box.remove();
+    if (b.dataset.a === "go") {
+      box.remove();
+      const r = await api.lyricvideo_start(d.path, st.style, st.v, 0, st.v ? st.len : 0, "");
+      toast(r?.ok ? cvL("Lyric video başladı; bitince bildirim gelir", "Lyric video started") : ({ no_synced: cvL("Senkron söz bulunamadı", "No synced lyrics found"), node_yok: cvL("Node.js gerekli (nodejs.org)", "Node.js required"), busy: cvL("Zaten bir lyric video işleniyor", "Already rendering") }[r?.error] || r?.error || "?"), !r?.ok);
+    }
+  });
+  document.body.appendChild(box);
+}
 
 // Ctrl+K paleti: indirilen dosyalar + ozellikler
 window.KPAL = window.KPAL || [];

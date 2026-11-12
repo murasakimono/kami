@@ -72,6 +72,8 @@ class Api:
         self._conv_cancel = threading.Event()
         self._conv_lock = threading.Lock()
         self._conv_view = False                          # Donusturucu acik: birakilan dosyalar ona gider
+        self._lv: dict[str, Any] = {"state": "idle"}     # lyric video isi (tek seferde bir)
+        self._lv_cancel = threading.Event()
         self._card_win = None                            # masaustu mini karti (main kurar)
         self._card_hidden = False                        # kullanici bu oturumda kapatti
         self._show_main = None                           # main: ana pencereyi geri getir
@@ -1296,6 +1298,95 @@ class Api:
         subprocess.Popen(["explorer", "/select,", os.path.normpath(j["out"])])
         return True
 
+    # ---------- Lyric video (HyperFrames) ----------
+    def lyricvideo_start(self, path: str, style: str = "kinetic", vertical: bool = False, start: float = 0,
+                         length: float = 0, lrc: str = "") -> dict[str, Any]:
+        """Senkron sozlerden MP4. lrc verilmezse dosyanin LRC/SRT/etiket sozleri aranir (player_lyrics)."""
+        import tempfile
+        from pathlib import Path as _P
+        from app.core import lyricvideo as lv
+        from app.engines.ytdlp_engine import find_ffmpeg
+        path = str(path or "")
+        if self._lv.get("state") == "running":
+            return {"ok": False, "error": "busy"}
+        if not os.path.isfile(path):
+            return {"ok": False, "error": "no_file"}
+        if not lv.find_node():
+            return {"ok": False, "error": "node_yok"}
+        lines = lv.parse_lrc(lrc) if lrc else []
+        if not lines:
+            p = _P(path)
+            for side in [p.with_suffix(".lrc")] + sorted(p.parent.glob(p.stem + "*.srt")):
+                if side.is_file():
+                    t = side.read_text(encoding="utf-8-sig", errors="replace")
+                    lines = lv.parse_lrc(t) if side.suffix == ".lrc" else lv.parse_srt(t)
+                    if lines:
+                        break
+        if not lines:
+            try:
+                ly = self.player_lyrics(path, online=True)
+                lines = lv.parse_lrc(ly.get("synced") or "")
+            except Exception:
+                lines = []
+        if not lines:
+            return {"ok": False, "error": "no_synced"}
+        from app.core.media_server import find_ffprobe, probe
+        ff = find_ffmpeg()
+        tg = probe(find_ffprobe(ff), path).get("tags", {}) if ff else {}
+        title = " - ".join(x for x in (tg.get("artist"), tg.get("title")) if x) or _P(path).stem
+        vertical = bool(vertical)
+        start = max(0.0, float(start or 0))
+        length = float(length or 0) or (30.0 if vertical else 0.0)
+        tag = "Reels" if vertical else "Lyric"
+        out = str(_P(path).with_name(f"{_P(path).stem} ({tag} video).mp4"))
+        n = 2
+        while os.path.exists(out):
+            out = str(_P(path).with_name(f"{_P(path).stem} ({tag} video {n}).mp4"))
+            n += 1
+        job = _P(tempfile.mkdtemp(prefix="kami_lyric_"))
+        self._lv_cancel = threading.Event()
+        self._lv = {"state": "running", "stage": "hazirlik", "line": "", "out": out, "src": path}
+
+        def run() -> None:
+            import shutil as _sh
+            try:
+                lv.build(job, path, lines, title, "", ff, style if style in ("kinetic", "simple", "karaoke") else "kinetic",
+                         vertical, start, length)
+                self._lv["stage"] = "render"
+                res = lv.render(job, out, lambda ln: self._lv.update(line=ln[-140:]), self._lv_cancel)
+            except Exception as exc:
+                log.exception("Lyric video")
+                res = {"ok": False, "error": str(exc)[:160]}
+            _sh.rmtree(job, ignore_errors=True)
+            self._lv = {**self._lv, "state": "done" if res.get("ok") else "error", "error": res.get("error", "")}
+            if res.get("ok"):
+                en = self._manager.settings.get("language") == "en"
+                try:
+                    from app.core import desktop
+                    desktop.toast(_P(out).name, "Lyric video ready" if en else "Lyric video hazır",
+                                  [("Play" if en else "Oynat", "kami://lvplay"), ("Open folder" if en else "Klasörü aç", "kami://lvfolder")])
+                except Exception:
+                    log.exception("Lyric video bildirimi")
+
+        threading.Thread(target=run, name="kami-lyricvideo", daemon=True).start()
+        return {"ok": True, "out": out, "lines": len(lines)}
+
+    def lyricvideo_status(self) -> dict[str, Any]:
+        return dict(self._lv)
+
+    def lyricvideo_cancel(self) -> None:
+        self._lv_cancel.set()
+
+    def lyricvideo_open(self, what: str = "play") -> bool:
+        out = str(self._lv.get("out") or "")
+        if self._lv.get("state") != "done" or not os.path.isfile(out):
+            return False
+        if what == "folder":
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(out)])
+        else:
+            self._play_request(out)
+        return True
+
     def opensub_status(self) -> dict[str, Any]:
         return {"has_key": bool(self._osub and self._osub.load())}
 
@@ -1390,6 +1481,8 @@ class Api:
                 self.player_show({"id": did})
             elif act == "folder" and did:
                 self.open_folder(did)
+            elif act in ("lvplay", "lvfolder"):   # yol URI'de degil: son lyric video
+                self.lyricvideo_open("folder" if act == "lvfolder" else "play")
             elif act == "subs" and did:
                 self.ai_run("whisper", did)
                 self._show_main and self._show_main()
