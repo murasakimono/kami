@@ -13,7 +13,7 @@ import bmesh
 from mathutils import Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-WEB = os.path.normpath(os.path.join(HERE, "..", "..", "app", "ui", "web"))
+WEB = os.environ.get("KAMI_WEB") or os.path.normpath(os.path.join(HERE, "..", "..", "app", "ui", "web"))
 PURPLE = (0.30, 0.10, 0.62)
 EMERALD = (0.10, 1.0, 0.55)
 W, D, H = 1.0, 0.78, 2.7          # govde genislik / derinlik / yukseklik
