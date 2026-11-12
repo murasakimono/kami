@@ -57,7 +57,7 @@ def principled(name, color, rough=0.5, metal=0.0, film=0.0, emit=None, es=0.0, c
 
 def mat_body():
     """Karbon dokulu koyu mor kumas + UV'ye gore zikzak etekte zumrut isik (geometriyle ayni formul)."""
-    m, b = principled("Govde", (0.075, 0.03, 0.14), 0.62, coat=0.15)
+    m, b = principled("Govde", (0.12, 0.04, 0.24), 0.6, coat=0.2)
     nt, L = m.node_tree, m.node_tree.links
     uvn = nt.nodes.new("ShaderNodeUVMap")
     sep = nt.nodes.new("ShaderNodeSeparateXYZ")
@@ -65,8 +65,8 @@ def mat_body():
     # karbon: ince kare desen
     chk = nt.nodes.new("ShaderNodeTexChecker")
     chk.inputs["Scale"].default_value = 140
-    chk.inputs["Color1"].default_value = (*lin((0.085, 0.035, 0.16)), 1)
-    chk.inputs["Color2"].default_value = (*lin((0.05, 0.02, 0.10)), 1)
+    chk.inputs["Color1"].default_value = (*lin((0.16, 0.06, 0.3)), 1)
+    chk.inputs["Color2"].default_value = (*lin((0.09, 0.035, 0.18)), 1)
     L.new(uvn.outputs["UV"], chk.inputs["Vector"])
     # zikzak: tri(u*TEETH*4) -> etek cizgisi; v (yukseklik 0..1) cizginin hemen ustundeyse isik
     mul = nt.nodes.new("ShaderNodeMath"); mul.operation = "MULTIPLY"; mul.inputs[1].default_value = TEETH * 4
@@ -95,14 +95,14 @@ def mat_belt():
     m, b = principled("Kemer", (0.03, 0.02, 0.05), 0.4, 0.3)
     nt, L = m.node_tree, m.node_tree.links
     tc = nt.nodes.new("ShaderNodeTexCoord")
-    mp = nt.nodes.new("ShaderNodeMapping"); mp.inputs["Scale"].default_value = (5.0, 5.0, 14.0)
+    mp = nt.nodes.new("ShaderNodeMapping"); mp.inputs["Scale"].default_value = (2.2, 2.2, 6.0)
     L.new(tc.outputs["Object"], mp.inputs["Vector"])
-    wave = nt.nodes.new("ShaderNodeTexWave"); wave.bands_direction = "Z"
-    wave.inputs["Scale"].default_value = 1.2; wave.inputs["Distortion"].default_value = 9.0
-    wave.inputs["Detail"].default_value = 3.0
+    wave = nt.nodes.new("ShaderNodeTexWave"); wave.bands_direction = "X"
+    wave.inputs["Scale"].default_value = 1.6; wave.inputs["Distortion"].default_value = 14.0
+    wave.inputs["Detail"].default_value = 2.0; wave.inputs["Detail Scale"].default_value = 1.5
     L.new(mp.outputs[0], wave.inputs["Vector"])
     ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].position = 0.62; ramp.color_ramp.elements[1].position = 0.7
+    ramp.color_ramp.elements[0].position = 0.55; ramp.color_ramp.elements[1].position = 0.62
     L.new(wave.outputs["Fac"], ramp.inputs["Fac"])
     b.inputs["Emission Color"].default_value = (*lin(EMERALD), 1)
     sm = nt.nodes.new("ShaderNodeMath"); sm.operation = "MULTIPLY"; sm.inputs[1].default_value = 5.0
@@ -118,13 +118,15 @@ def mat_iris(red=False):
     img = os.path.join(WEB, "eye", "iris.webp")
     tex.image = bpy.data.images.load(img)
     tex.extension = "CLIP"
-    tc = nt.nodes.new("ShaderNodeTexCoord")
-    mp = nt.nodes.new("ShaderNodeMapping")   # gozun on yuzune duz yansit (nesne X,Z -> UV)
-    mp.inputs["Location"].default_value = (0.5, 0.5, 0)
-    mp.inputs["Scale"].default_value = (2.4, 2.4, 1)
-    mp.inputs["Rotation"].default_value = (math.radians(90), 0, 0)
-    L.new(tc.outputs["Object"], mp.inputs["Vector"])
-    L.new(mp.outputs[0], tex.inputs["Vector"])
+    tc = nt.nodes.new("ShaderNodeTexCoord")   # gozun on yuzune duz yansit: (x, z) -> UV
+    sx = nt.nodes.new("ShaderNodeSeparateXYZ")
+    L.new(tc.outputs["Object"], sx.inputs[0])
+    cmb = nt.nodes.new("ShaderNodeCombineXYZ")
+    for ax, out in (("X", "X"), ("Z", "Y")):
+        mm = nt.nodes.new("ShaderNodeMath"); mm.operation = "MULTIPLY_ADD"
+        mm.inputs[1].default_value = 2.5 if ax == "X" else 2.5; mm.inputs[2].default_value = 0.5
+        L.new(sx.outputs[ax], mm.inputs[0]); L.new(mm.outputs[0], cmb.inputs[out])
+    L.new(cmb.outputs[0], tex.inputs["Vector"])
     white = (*lin((0.92, 0.9, 0.95)), 1)
     mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"
     mix.inputs["A"].default_value = white
@@ -195,7 +197,7 @@ def body():
     bm.free()
     ob = link(bpy.data.objects.new("Govde", me))
     sol = ob.modifiers.new("kalinlik", "SOLIDIFY"); sol.thickness = 0.03
-    bev = ob.modifiers.new("yuvarlak", "BEVEL"); bev.width = 0.12; bev.segments = 6; bev.limit_method = "ANGLE"
+    bev = ob.modifiers.new("yuvarlak", "BEVEL"); bev.width = 0.2; bev.segments = 8; bev.limit_method = "ANGLE"
     bev.angle_limit = math.radians(50)
     ob.modifiers.new("yumusak", "WEIGHTED_NORMAL")
     for p in me.polygons:
@@ -279,7 +281,7 @@ def build():
     eye.data.materials.append(mat_iris(False)); eye.data.materials.append(mat_iris(True))
     eye.parent = root
     lids = []
-    lid_m = principled("Kapak", (0.07, 0.03, 0.13), 0.55)[0]
+    lid_m = principled("Kapak", (0.13, 0.05, 0.25), 0.5)[0]
     for s in (1, -1):   # ust / alt kapak: yarim kure kabuk, X ekseninde doner
         bpy.ops.mesh.primitive_uv_sphere_add(radius=0.262, segments=48, ring_count=24)
         lid = bpy.context.active_object
@@ -299,10 +301,6 @@ def build():
     brow.parent = root
 
     # zemin isigi
-    floor_m = principled("Zemin", (0.02, 0.015, 0.03), 0.3)[0]
-    bpy.ops.mesh.primitive_plane_add(size=12, location=(0, 0, 0))
-    fl = bpy.context.active_object; fl.data.materials.append(floor_m)
-    fl.is_shadow_catcher = True if hasattr(fl, "is_shadow_catcher") else False
     gl = bpy.data.lights.new("EtekIsik", "POINT"); gl.energy = 60; gl.color = EMERALD; gl.shadow_soft_size = 0.8
     link(bpy.data.objects.new("EtekIsik", gl)).location = (0, -0.9, 0.15)
 
@@ -312,10 +310,10 @@ def build():
         lo = link(bpy.data.objects.new(nm, ld)); lo.location = loc
         c = lo.constraints.new("TRACK_TO"); c.target = root; c.track_axis = "TRACK_NEGATIVE_Z"; c.up_axis = "UP_Y"
 
-    cam_d = bpy.data.cameras.new("Kamera"); cam_d.lens = 70
+    cam_d = bpy.data.cameras.new("Kamera"); cam_d.lens = 58
     cam = link(bpy.data.objects.new("Kamera", cam_d))
     cam.location = (1.9, -7.4, 2.4)
-    tgt = link(bpy.data.objects.new("Hedef", None)); tgt.location = (0, 0, H / 2 + 0.25)
+    tgt = link(bpy.data.objects.new("Hedef", None)); tgt.location = (0, 0, H / 2 + 0.45)
     c = cam.constraints.new("TRACK_TO"); c.target = tgt; c.track_axis = "TRACK_NEGATIVE_Z"; c.up_axis = "UP_Y"
     sc.camera = cam
 
@@ -346,12 +344,12 @@ def build():
 
 
 # durum: (ust kapak acisi, alt kapak acisi, kas yuksekligi, kas egimi, kirmizi, goz olcegi)
-POSE = {
-    "idle": (35, -12, 0.0, 0.0, False, 1.0),     # yari kapali, rahat
-    "down": (48, -28, -0.04, 0.0, False, 0.95),  # odakli, kisik
-    "speed": (-8, 8, 0.07, 0.0, False, 1.12),    # fal tasi gibi acik
-    "done": (98, -70, 0.03, 0.0, False, 1.0),    # kapali (memnun)
-    "error": (30, -10, -0.05, 18, True, 1.05),   # kizgin, kirmizi
+POSE = {   # (ust kapak kapanma 0..0.5, alt kapak 0..0.5, kas yuksekligi, kas egimi, kirmizi, goz olcegi)
+    "idle": (0.36, 0.12, 0.0, 0.0, False, 1.0),     # yari kapali, rahat
+    "down": (0.42, 0.26, -0.04, 0.0, False, 0.95),  # odakli, kisik
+    "speed": (0.04, 0.02, 0.07, 0.0, False, 1.1),   # fal tasi gibi acik
+    "done": (0.52, 0.5, 0.03, 0.0, False, 1.0),     # kapali (memnun)
+    "error": (0.3, 0.1, -0.05, 14, True, 1.05),     # kizgin, kirmizi
 }
 
 
@@ -360,8 +358,10 @@ def pose(o, st, t=0.0):
     blink = 0.0
     if ANIM and st != "done":   # dongude bir kez goz kirpma (t: 0..1)
         blink = max(0.0, 1 - abs(t - 0.62) / 0.05)
-    o["lids"][0].rotation_euler.x = math.radians(-(up + (100 - up) * blink))
-    o["lids"][1].rotation_euler.x = math.radians(-(lo - (lo + 70) * blink * 0.4))
+    up = up + (0.52 - up) * blink
+    lo = lo + (0.5 - lo) * blink
+    o["lids"][0].rotation_euler.x = math.radians(-90 + up * 180)   # ust kapak: -90 acik (arkada), 0 yarim, +90 kapali
+    o["lids"][1].rotation_euler.x = math.radians(90 - lo * 180)
     o["brow"].location.z = by
     o["brow"].rotation_euler.y = math.radians(tilt)
     o["eye"].active_material_index = 0
