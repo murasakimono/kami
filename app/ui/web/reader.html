@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami Reader</title>
+<link rel="stylesheet" href="reader.css">
+</head>
+<body>
+  <!-- Kitaplik (belge yokken) -->
+  <section id="rdHome">
+    <div class="rh-head">
+      <span class="rh-logo">KAMI <b>Reader</b></span>
+      <p data-tr="Manga, çizgi roman ve PDF. Bırak, aç, kaldığın yerden devam et." data-en="Manga, comics and PDFs. Drop, open, continue where you left off."></p>
+      <div class="rh-acts">
+        <button data-a="pick" class="pri" data-tr="Dosya aç" data-en="Open file"></button>
+        <button data-a="pickdir" data-tr="Resim klasörü aç" data-en="Open image folder"></button>
+      </div>
+    </div>
+    <h3 data-tr="Son okunanlar" data-en="Recently read"></h3>
+    <div id="rhShelf" class="rh-shelf"></div>
+  </section>
+
+  <!-- Okuyucu -->
+  <section id="rd" hidden>
+    <header class="rd-top">
+      <button data-a="home" title="Kitaplık">⌂</button>
+      <b id="rdTitle">—</b>
+      <span class="sp"></span>
+      <div class="rd-seg" id="rdMode">
+        <button data-mode="single" data-tr="Tek" data-en="Single"></button>
+        <button data-mode="double" data-tr="Çift" data-en="Double"></button>
+        <button data-mode="scroll" data-tr="Dikey" data-en="Vertical"></button>
+      </div>
+      <button data-a="dir" id="rdDir" title="R">⇢</button>
+      <button data-a="fit" id="rdFit" title="F"></button>
+      <button data-a="night" id="rdNight" title="N" data-tr="Gece" data-en="Night"></button>
+      <button data-a="mark" id="rdMarkBtn" title="B">☆</button>
+      <button data-a="tts" id="rdTtsBtn" class="pdf-only" title="Sesli oku (T)">🔊</button>
+      <button data-a="drawer" title="Çalışma paneli">☰</button>
+    </header>
+    <main class="rd-main">
+      <aside class="rd-rail" id="rdRail"></aside>
+      <div class="rd-stage" id="rdStage">
+        <div class="rd-spread" id="rdSpread"></div>
+        <div class="rd-zone l" data-a="zl"></div><div class="rd-zone r" data-a="zr"></div>
+      </div>
+      <aside class="rd-drawer" id="rdDrawer" hidden>
+        <nav class="rd-tabs">
+          <button data-tab="hl" class="on" data-tr="Vurgular" data-en="Highlights"></button>
+          <button data-tab="toc" data-tr="İçindekiler" data-en="Contents"></button>
+          <button data-tab="find" data-tr="Ara" data-en="Search"></button>
+          <button data-tab="marks" data-tr="Yer imleri" data-en="Bookmarks"></button>
+        </nav>
+        <div class="rd-tabbody" id="rdTab"></div>
+      </aside>
+    </main>
+    <footer class="rd-spine">
+      <span id="rdPg">1 / 1</span>
+      <input type="range" id="rdSlider" min="1" max="1" value="1">
+      <span id="rdPct">%0</span>
+    </footer>
+    <div class="rd-tts" id="rdTts" hidden>
+      <button data-a="ttsprev">⏮</button><button data-a="ttsplay" id="rdTtsPlay">⏸</button><button data-a="ttsnext">⏭</button>
+      <select id="rdTtsRate"><option value="0.8">0.8×</option><option value="1" selected>1×</option><option value="1.2">1.2×</option><option value="1.4">1.4×</option></select>
+      <select id="rdTtsLang"><option value="">Otomatik</option><option value="tr">Türkçe</option><option value="en">English</option></select>
+      <p id="rdTtsLine"></p>
+      <button data-a="ttsstop">✕</button>
+    </div>
+    <div class="rd-pop" id="rdPop" hidden>
+      <button data-hl="y" class="c-y"></button><button data-hl="g" class="c-g"></button><button data-hl="b" class="c-b"></button><button data-hl="p" class="c-p"></button>
+      <button data-a="popnote" data-tr="Not" data-en="Note"></button>
+      <button data-a="popsay" data-tr="Sesli oku" data-en="Read aloud"></button>
+      <button data-a="popcopy" data-tr="Kopyala" data-en="Copy"></button>
+    </div>
+  </section>
+  <div class="rd-drop" id="rdDrop" hidden><span data-tr="Bırak, açayım" data-en="Drop to open"></span></div>
+  <script src="reader.js"></script>
+</body>
+</html>

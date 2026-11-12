@@ -134,6 +134,11 @@ def main() -> int:
     lens = next((os.path.abspath(sys.argv[i + 2]) for i, a in enumerate(sys.argv[1:]) if a == "--lens" and i + 2 < len(sys.argv)), "")
     if "--lens-screen" in sys.argv[1:]:
         lens = "screen"
+    read = next((os.path.abspath(sys.argv[i + 2]) for i, a in enumerate(sys.argv[1:]) if a == "--read" and i + 2 < len(sys.argv)), "")
+    if not read:
+        from app.core.reader import COMIC as _COMIC
+        read = next((os.path.abspath(a) for a in sys.argv[1:] if not a.startswith("-") and a.lower().endswith(_COMIC[:4])
+                     and os.path.isfile(a)), "")
     uri = next((sys.argv[i + 2] for i, a in enumerate(sys.argv[1:]) if a == "--uri" and i + 2 < len(sys.argv)), "")
     convert = [os.path.abspath(a) for a in sys.argv[sys.argv.index("--convert") + 1:]] if "--convert" in sys.argv else []
     if convert and not call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/ping") and _already_running_mutex():
@@ -163,6 +168,9 @@ def main() -> int:
             return 0
         if view:   # gorsel: calisan Kami'nin fotograf goruntuleyicisi
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/view", {"path": view}, timeout=5.0)
+            return 0
+        if read:   # Kami Reader: manga / PDF / klasor
+            call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/read", {"path": read}, timeout=5.0)
             return 0
         if lens:   # Gezgin sag tik "Kami Lens ile ara"
             call_running_instance(paths.BRIDGE_INFO_PATH, "/v1/lens", {"path": lens}, timeout=5.0)
@@ -302,6 +310,9 @@ def main() -> int:
                     return
                 for f in (e.get("dataTransfer") or {}).get("files") or []:
                     p = f.get("pywebviewFullPath") or ""
+                    if p and os.path.splitext(p)[1].lower() in (".cbz", ".cbr", ".cb7", ".cbt"):
+                        api.reader_show(p)
+                        break
                     if p and os.path.splitext(p)[1].lower() in VIDEO_EXT | AUDIO_EXT:
                         api._play_request(p)
                         break
@@ -347,6 +358,36 @@ def main() -> int:
     api._make_picture_window = make_picture_window
     api._front_picture = picture_front.request
 
+    reader_front = WindowFront("Kami Reader")
+
+    def make_reader_window():
+        w = webview.create_window("Kami Reader", url=str(paths.WEB_DIR / "reader.html"), js_api=api,
+                                  width=1360, height=880, min_size=(560, 400), background_color="#07060B", text_select=True)
+
+        def closed() -> None:
+            api._reader_win = None
+            api.reader_close()
+        w.events.closed += closed
+        def loaded() -> None:
+            reader_front.request(); threading.Timer(0.6, reader_front.request).start()
+            try:
+                from webview.dom import DOMEventHandler
+                from app.core.reader import READ_EXT
+
+                def on_drop(e) -> None:
+                    for f in (e.get("dataTransfer") or {}).get("files") or []:
+                        p = f.get("pywebviewFullPath") or ""
+                        if p and (os.path.isdir(p) or p.lower().endswith(READ_EXT)):
+                            api.reader_show(p)
+                            break
+                w.dom.document.events.drop += DOMEventHandler(on_drop, True, False)
+            except Exception:
+                log.exception("Reader surukle-birak")
+        w.events.loaded += loaded
+        return w
+    api._make_reader_window = make_reader_window
+    api._front_reader = reader_front.request
+
     def make_grab_window():   # Kami Lens: ekrandan alan sec (cercevesiz, tam ekran, hep ustte)
         api._grab_win = webview.create_window("Kami Lens", url=str(paths.WEB_DIR / "grab.html"), js_api=api, frameless=True,
                                               on_top=True, fullscreen=True, background_color="#000000")
@@ -356,11 +397,14 @@ def main() -> int:
     bridge.on_uri = lambda u: api.handle_uri(u)
     bridge.on_convert = api.convert_add
     bridge.on_view = api.picture_open
+    bridge.on_read = api.reader_show
     bridge.on_lens = lambda p: api.picture_open(p, True)
     if view:
         threading.Timer(1.5, lambda: api.picture_open(view)).start()
     if lens:
         threading.Timer(1.5, lambda: api.picture_open(lens, True)).start()
+    if read:
+        threading.Timer(1.5, lambda: api.reader_show(read)).start()
     if convert:
         api.convert_add(convert)
     if uri:   # Kami kapaliyken bildirim dugmesine basildi: acilinca isle

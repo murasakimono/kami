@@ -30,7 +30,8 @@ MAGNET = r"Software\Classes\magnet"
 PLAYER_VIDEO = (".mkv", ".mp4", ".m4v", ".webm", ".avi", ".mov", ".ts", ".m2ts", ".wmv", ".flv", ".mpg", ".mpeg", ".3gp", ".ogv")
 PLAYER_AUDIO = (".mp3", ".flac", ".wav", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wma", ".ape", ".aiff", ".mka", ".wv")
 PLAYER_IMAGE = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".jfif", ".heic", ".tif", ".tiff")
-PROGIDS = {"Kami.Video": "Kami video", "Kami.Audio": "Kami ses", "Kami.Image": "Kami görsel"}
+READER_COMIC = (".cbz", ".cbr", ".cb7", ".cbt")
+PROGIDS = {"Kami.Video": "Kami video", "Kami.Audio": "Kami ses", "Kami.Image": "Kami görsel", "Kami.Book": "Kami çizgi roman"}
 CAPS = r"Software\Kami\Capabilities"
 
 
@@ -39,17 +40,18 @@ def register_player(kami: str) -> None:
     for pid, name in PROGIDS.items():
         for sub, nm, val in [(rf"Software\Classes\{pid}", "", name),
                              (rf"Software\Classes\{pid}\DefaultIcon", "", f'"{kami}",0'),
-                             (rf"Software\Classes\{pid}\shell\open", "FriendlyAppName", "Kami" if pid == "Kami.Image" else "Kami Player"),
+                             (rf"Software\Classes\{pid}\shell\open", "FriendlyAppName", {"Kami.Image": "Kami Picture", "Kami.Book": "Kami Reader"}.get(pid, "Kami Player")),
                              (rf"Software\Classes\{pid}\shell\open\command", "",
-                              f'"{kami}" --view "%1"' if pid == "Kami.Image" else f'"{kami}" --play "%1"')]:
+                              {"Kami.Image": f'"{kami}" --view "%1"', "Kami.Book": f'"{kami}" --read "%1"'}.get(pid, f'"{kami}" --play "%1"'))]:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
                 winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, val)
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, CAPS) as k:
         winreg.SetValueEx(k, "ApplicationName", 0, winreg.REG_SZ, "Kami")
         winreg.SetValueEx(k, "ApplicationDescription", 0, winreg.REG_SZ, "Kami Download Manager & Player")
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, CAPS + r"\FileAssociations") as fa:
-        for ext in PLAYER_VIDEO + PLAYER_AUDIO + PLAYER_IMAGE:
-            pid = "Kami.Video" if ext in PLAYER_VIDEO else "Kami.Image" if ext in PLAYER_IMAGE else "Kami.Audio"
+        for ext in PLAYER_VIDEO + PLAYER_AUDIO + PLAYER_IMAGE + READER_COMIC:
+            pid = ("Kami.Video" if ext in PLAYER_VIDEO else "Kami.Image" if ext in PLAYER_IMAGE
+                   else "Kami.Book" if ext in READER_COMIC else "Kami.Audio")
             winreg.SetValueEx(fa, ext, 0, winreg.REG_SZ, pid)
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{ext}\OpenWithProgids") as k:
                 winreg.SetValueEx(k, pid, 0, winreg.REG_NONE, b"")
@@ -93,6 +95,12 @@ def register_convert_menu(kami: str) -> None:
                              (base + r"\command", "", f'"{kami}" --lens "%1"')]:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
                 winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, val)
+    keys = [rf"Software\Classes\SystemFileAssociations\{e}\shell\KamiReader" for e in (".pdf", ".zip", ".rar", ".7z") + READER_COMIC]
+    for base in keys + [r"Software\Classes\Directory\shell\KamiReader"]:   # PDF varsayilanini degistirmeden; klasor = manga
+        for sub, nm, val in [(base, "MUIVerb", "Kami Reader ile aç"), (base, "Icon", f'"{kami}",0'),
+                             (base + r"\command", "", f'"{kami}" --read "%1"')]:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
+                winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, val)
     for ext in CONVERT_EXTS:
         base = rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiConvert"
         for sub, nm, val in [(base, "MUIVerb", "Kami ile dönüştür"), (base, "Icon", f'"{kami}",0'),
@@ -106,11 +114,14 @@ def unregister_player() -> None:
         _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiConvert")
     for ext in PLAYER_IMAGE:
         _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiLens")
+    for ext in (".pdf", ".zip", ".rar", ".7z") + READER_COMIC:
+        _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\SystemFileAssociations\{ext}\shell\KamiReader")
+    _delete_tree(winreg.HKEY_CURRENT_USER, r"Software\Classes\Directory\shell\KamiReader")
     _delete_tree(winreg.HKEY_CURRENT_USER, r"Software\Classes\kami")
     _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\AppUserModelId\{AUMID}")
     for pid in PROGIDS:
         _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{pid}")
-    for ext in PLAYER_VIDEO + PLAYER_AUDIO:
+    for ext in PLAYER_VIDEO + PLAYER_AUDIO + PLAYER_IMAGE + READER_COMIC:
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{ext}\OpenWithProgids", 0, winreg.KEY_ALL_ACCESS) as k:
                 for pid in PROGIDS:

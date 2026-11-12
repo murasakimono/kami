@@ -97,3 +97,20 @@ window.KPAL.push(() => [
   { ic: "⟲", t: vwL("Son anları klip olarak kaydet", "Save last moments as a clip"), sub: "Alt+F10", run: () => api.rec_save_replay() },
   { ic: "📁", t: vwL("Kami Klipler klasörü", "Kami Clips folder"), sub: vwL("kayıtlar", "recordings"), run: () => api.rec_open_folder() },
 ]);
+window.KPAL.push(() => [{ ic: "📖", t: "Kami Reader", sub: vwL("manga, çizgi roman, PDF", "manga, comics, PDF"), run: () => api.reader_show("") }]);
+// indirilen manga/PDF: alt cubukta "Oku" -> Kami Reader; cift tikla da acar
+const RD_EXT = /\.(pdf|cbz|cbr|cb7|cbt)$/i;
+const _rdBar = skRenderBar;
+skRenderBar = function (d) {   // eslint-disable-line no-global-assign
+  _rdBar(d);
+  if (!d || d.status !== "complete" || !RD_EXT.test(d.filename || "") || $("#skBar .sk-rename")) return;
+  const b = document.createElement("button");
+  b.className = "sk-btn pri";
+  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 1-2-2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 0 2-2z"/></svg>${vwL("Oku", "Read")}`;
+  b.onclick = (ev) => { ev.stopPropagation(); api.reader_show(d.path); };
+  $("#skBar .sk-bar-info")?.after(b);
+};
+document.addEventListener("dblclick", (e) => {
+  const b = e.target.closest(".sk-strip"); const d = b && state.items.find((x) => String(x.id) === b.dataset.id);
+  if (d && d.status === "complete" && RD_EXT.test(d.filename || "")) api.reader_show(d.path);
+});

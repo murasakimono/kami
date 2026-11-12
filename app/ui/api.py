@@ -84,7 +84,7 @@ class Api:
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
     JOB_METHODS = frozenset({
-        "add_url", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
+        "add_url", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
@@ -1421,6 +1421,148 @@ class Api:
         else:
             self._play_request(out)
         return True
+
+    # ---------- Kami Reader ----------
+    _rdoc = None
+
+    def reader_show(self, path: str = "") -> dict[str, Any]:
+        """Kami Reader penceresini acar (path verilirse o belgeyle)."""
+        path = str(path or "")
+        if path:
+            with self._inbox_lock:
+                self._reader_q = getattr(self, "_reader_q", []) + [path]
+        if getattr(self, "_reader_win", None) is None and getattr(self, "_make_reader_window", None):
+            self._reader_win = self._make_reader_window()
+        elif getattr(self, "_front_reader", None):
+            self._front_reader()
+        return {"ok": True}
+
+    def reader_poll(self) -> list[str]:
+        with self._inbox_lock:
+            q, self._reader_q = getattr(self, "_reader_q", []), []
+        return q
+
+    def reader_open(self, path: str) -> dict[str, Any]:
+        from app.core import reader
+        path = str(path or "")
+        if not os.path.exists(path):
+            return {"ok": False, "error": "no_file"}
+        try:
+            doc = reader.Doc(path)
+        except Exception as exc:
+            log.exception("Reader acilamadi")
+            return {"ok": False, "error": str(exc)[:160]}
+        if not doc.count:
+            return {"ok": False, "error": "empty"}
+        self.reader_close()
+        self._rdoc = doc
+        st = reader.load_state(doc.key)
+        st["count"] = doc.count
+        reader.save_state(doc.key, st, doc.path, doc.title)
+        return {"ok": True, "kind": doc.kind, "count": doc.count, "title": doc.title, "path": doc.path,
+                "state": st, "outline": doc.outline()}
+
+    def reader_page(self, i: int, width: int = 1400, words: bool = False) -> dict[str, Any]:
+        d = self._rdoc
+        if not d or not 0 <= int(i) < d.count:
+            return {"ok": False}
+        try:
+            r = d.page_image(int(i), max(200, min(4000, int(width))))
+            if words:
+                r["words"] = d.words(int(i))
+            return {"ok": True, "i": int(i), **r}
+        except Exception as exc:
+            log.exception("Reader sayfa")
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def reader_thumb(self, i: int) -> str:
+        d = self._rdoc
+        try:
+            return d.thumb(int(i)) if d else ""
+        except Exception:
+            return ""
+
+    def reader_cover(self, path: str) -> str:
+        from app.core import reader
+        try:
+            return reader.cover(str(path))
+        except Exception:
+            return ""
+
+    def reader_text(self, i: int) -> str:
+        d = self._rdoc
+        return d.text(int(i)) if d else ""
+
+    def reader_search(self, q: str) -> list[dict[str, Any]]:
+        d = self._rdoc
+        return d.search(str(q)) if d else []
+
+    def reader_save(self, state: dict[str, Any]) -> bool:
+        from app.core import reader
+        d = self._rdoc
+        if not d or not isinstance(state, dict):
+            return False
+        state["count"] = d.count
+        reader.save_state(d.key, state, d.path, d.title)
+        return True
+
+    def reader_recent(self) -> list[dict[str, Any]]:
+        from app.core import reader
+        return reader.recent()
+
+    def reader_pick(self, folder: bool = False) -> str:
+        import webview
+        w = getattr(self, "_reader_win", None) or (webview.windows[0] if webview.windows else None)
+        if not w:
+            return ""
+        if folder:
+            r = w.create_file_dialog(webview.FOLDER_DIALOG)
+        else:
+            r = w.create_file_dialog(webview.OPEN_DIALOG, file_types=(
+                "Kitap ve çizgi roman (*.pdf;*.cbz;*.cbr;*.cb7;*.zip;*.rar;*.7z)", "Tüm dosyalar (*.*)"))
+        return str(r[0]) if r else ""
+
+    def reader_speak(self, text: str, lang: str = "", rate: float = 1.0) -> dict[str, Any]:
+        from app.core import reader
+        text = str(text or "").strip()
+        if not text:
+            return {"ok": False, "error": "empty"}
+        try:
+            return {"ok": True, "src": reader.speak(text[:1500], str(lang or ""), float(rate or 1.0))}
+        except Exception as exc:
+            log.exception("Piper")
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def reader_tts_status(self) -> dict[str, Any]:
+        from app.core import reader
+        return {**reader.TTS_STATE, "tr": reader.tts_installed("tr"), "en": reader.tts_installed("en")}
+
+    def reader_split(self, text: str) -> list[str]:
+        from app.core import reader
+        return reader.split_sentences(str(text or ""))
+
+    def reader_close(self) -> None:
+        d, self._rdoc = self._rdoc, None
+        if d:
+            d.close()
+
+    def reader_export_notes(self) -> dict[str, Any]:
+        """Vurgu ve notlari belgenin yanina Markdown olarak yazar."""
+        from app.core import reader
+        d = self._rdoc
+        if not d:
+            return {"ok": False}
+        st = reader.load_state(d.key)
+        lines = [f"# {d.title}", ""]
+        for h in sorted(st.get("hl", []), key=lambda x: (x.get("page", 0), x.get("y", 0))):
+            lines.append(f"- **s. {h.get('page', 0) + 1}** — {h.get('text', '').strip()}")
+            if h.get("note"):
+                lines.append(f"  - Not: {h['note']}")
+        base = d.path if os.path.isfile(d.path) else os.path.join(d.path, d.title)
+        out = os.path.splitext(base)[0] + " - notlar.md"
+        with open(out, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        return {"ok": True, "path": out}
 
     # ---------- Ekran kaydi ----------
     recorder = None   # main.py baglar
