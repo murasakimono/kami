@@ -388,6 +388,59 @@ def main() -> int:
     api._make_reader_window = make_reader_window
     api._front_reader = reader_front.request
 
+    room_front = WindowFront("Kami Oda")
+    room_keys = {"mute": desktop.HotKey(lambda: room_js("kamiKey('mute')")),
+                 "deaf": desktop.HotKey(lambda: room_js("kamiKey('deaf')")),
+                 "ptt": desktop.KeyHold(lambda down: room_js(f"kamiKey('ptt', {str(down).lower()})"))}
+
+    def room_js(code: str) -> None:
+        w = getattr(api, "_room_win", None)
+        if w is not None:
+            try:
+                w.evaluate_js(code)
+            except Exception:
+                pass
+
+    def room_keys_on(on: bool) -> None:
+        if on:
+            room_keys["mute"].start(settings.get("room_mute_hotkey") or "ctrl+shift+m")
+            room_keys["deaf"].start(settings.get("room_deaf_hotkey") or "ctrl+shift+d")
+            if settings.get("room_ptt_key"):
+                room_keys["ptt"].start(settings.get("room_ptt_key"))
+        else:
+            for k in room_keys.values():
+                k.stop()
+
+    def make_room_window(url: str):
+        w = webview.create_window("Kami Oda", url=url, js_api=api, width=1280, height=820, min_size=(420, 520),
+                                  background_color="#07060B", text_select=True)
+
+        def closed() -> None:
+            api._room_win = None
+            room_keys_on(False)
+        w.events.closed += closed
+
+        def loaded() -> None:
+            room_front.request()
+            try:   # mikrofon / ekran paylasimi izinleri: yalnizca kendi oda sayfamiza otomatik izin
+                core = w.native.browser.webview.CoreWebView2
+
+                def perm(sender, args):
+                    u = str(args.Uri or "")
+                    if u.startswith("http://127.0.0.1:") or ".trycloudflare.com/" in u:
+                        from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState
+                        args.State = CoreWebView2PermissionState.Allow
+                if not getattr(w, "_kami_perm", False):
+                    core.PermissionRequested += perm
+                    w._kami_perm = True
+            except Exception:
+                log.exception("Oda izinleri baglanamadi (tarayici kendi sorar)")
+        w.events.loaded += loaded
+        room_keys_on(True)
+        return w
+    api._make_room_window = make_room_window
+    api._front_room = room_front.request
+
     def make_grab_window():   # Kami Lens: ekrandan alan sec (cercevesiz, tam ekran, hep ustte)
         api._grab_win = webview.create_window("Kami Lens", url=str(paths.WEB_DIR / "grab.html"), js_api=api, frameless=True,
                                               on_top=True, fullscreen=True, background_color="#000000")
@@ -622,6 +675,9 @@ def main() -> int:
     media_post.ai = ai
     post.media = media_post
     api._media_post, api._ai, api._genius = media_post, ai, genius
+    from app.core import room as _room
+    api._turn_store = TokenStore(paths.DATA_DIR / "turn_key.bin")
+    _room.SERVER.turn_key = lambda: tuple((api._turn_store.load() or ":").split(":", 1))
     ytdlp_engine.SOCIAL_COOKIES = lambda: bool(settings.get("social_cookies"))
     from app.core.follow import FollowService
     follow = FollowService(paths.DATA_DIR / "follows.json", settings,
@@ -734,6 +790,11 @@ def main() -> int:
         song_hotkey.stop()
         lens_hotkey.stop()
         rec_replay_key.stop(); rec_record_key.stop()
+        try:
+            from app.core import room as _room
+            _room.SERVER.stop()
+        except Exception:
+            pass
         try:
             api.recorder.shutdown()
         except Exception:

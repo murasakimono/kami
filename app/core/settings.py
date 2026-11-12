@@ -116,7 +116,10 @@ DEFAULTS: dict[str, Any] = {
     "rec_record_hotkey": "alt+f9",
     "rec_fps": 60,
     "rec_mic": True,                 # mikrofon ayri ses izi
-    "watch_name": "Metehan",         # Birlikte izle: sohbette gorunen ad
+    "watch_name": "Metehan",         # Kami Oda: odada gorunen ad
+    "room_mute_hotkey": "ctrl+shift+m",   # Kami Oda acikken genel kisayollar
+    "room_deaf_hotkey": "ctrl+shift+d",
+    "room_ptt_key": "",              # bas-konus genel tusu (bos: yalnizca oda penceresi odaktayken)
 }
 
 

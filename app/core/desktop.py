@@ -235,3 +235,79 @@ def toast(title: str, body: str, actions: list[tuple[str, str]] | None = None, l
     except Exception:
         log.exception("Bildirim gosterilemedi")
         return False
+
+
+class KeyHold:
+    """Bas-konus icin genel tus dinleyici (WH_KEYBOARD_LL): tus basili / birakildi. Tusu yutmaz."""
+
+    def __init__(self, callback: Callable[[bool], None]) -> None:
+        self.callback = callback
+        self.vk = 0
+        self._thread: threading.Thread | None = None
+        self._tid = 0
+        self._down = False
+        self._proc = None
+
+    def start(self, key: str) -> bool:
+        self.stop()
+        if os.name != "nt" or not key:
+            return False
+        k = key.strip().lower()
+        names = {"space": 0x20, "capslock": 0x14, "tab": 0x09, "lalt": 0xA4, "ralt": 0xA5, "lctrl": 0xA2, "rctrl": 0xA3,
+                 "lshift": 0xA0, "rshift": 0xA1, "`": 0xC0, "insert": 0x2D, "home": 0x24,
+                 "end": 0x23, "pageup": 0x21, "pagedown": 0x22}
+        if k in names:
+            self.vk = names[k]
+        elif len(k) == 1 and k.isascii() and k.isalnum():
+            self.vk = ord(k.upper())
+        elif k.startswith("f") and k[1:].isdigit() and 1 <= int(k[1:]) <= 24:
+            self.vk = 0x70 + int(k[1:]) - 1
+        else:
+            return False
+
+        def run() -> None:
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            self._tid = kernel32.GetCurrentThreadId()
+            LRESULT = ctypes.c_ssize_t
+            HOOKPROC = ctypes.WINFUNCTYPE(LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+
+            class KBD(ctypes.Structure):
+                _fields_ = [("vkCode", wintypes.DWORD), ("scanCode", wintypes.DWORD), ("flags", wintypes.DWORD),
+                            ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t)]
+            user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+            user32.CallNextHookEx.restype = LRESULT
+            user32.SetWindowsHookExW.argtypes = [ctypes.c_int, HOOKPROC, wintypes.HINSTANCE, wintypes.DWORD]
+            user32.SetWindowsHookExW.restype = wintypes.HHOOK
+
+            def proc(n, wp, lp):
+                if n == 0:
+                    kb = ctypes.cast(lp, ctypes.POINTER(KBD)).contents
+                    if kb.vkCode == self.vk:
+                        down = wp in (0x100, 0x104)
+                        if down != self._down:
+                            self._down = down
+                            try:
+                                self.callback(down)
+                            except Exception:
+                                log.exception("bas-konus")
+                return user32.CallNextHookEx(None, n, wp, lp)
+            self._proc = HOOKPROC(proc)
+            hook = user32.SetWindowsHookExW(13, self._proc, None, 0)
+            if not hook:
+                log.warning("Bas-konus kancasi kurulamadi")
+                return
+            msg = wintypes.MSG()
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                pass
+            user32.UnhookWindowsHookEx(hook)
+
+        self._thread = threading.Thread(target=run, name="kami-ptt", daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self) -> None:
+        if self._tid:
+            ctypes.windll.user32.PostThreadMessageW(self._tid, 0x0012, 0, 0)   # WM_QUIT
+            self._tid = 0
+        self._down = False

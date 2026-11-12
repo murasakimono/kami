@@ -50,6 +50,7 @@ class Api:
         self._media_post = None                          # Asama 6b (main baglar)
         self._ai = None
         self._genius = None
+        self._turn_store = None                          # Kami Oda: Cloudflare TURN anahtari (DPAPI)
         self._ai_events: list[str] = []
         self._follow = None                              # follow.FollowService
         # Asama 6c (main baglar)
@@ -84,7 +85,7 @@ class Api:
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
     JOB_METHODS = frozenset({
-        "add_url", "watch_start", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
+        "add_url", "room_open", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
@@ -1564,31 +1565,78 @@ class Api:
             f.write("\n".join(lines) + "\n")
         return {"ok": True, "path": out}
 
-    # ---------- Birlikte izle ----------
-    def watch_start(self, info: dict[str, Any], tunnel: bool = True) -> dict[str, Any]:
-        """Oynatici bilgisiyle oda acar; disari Cloudflare tuneli (ilk seferde cloudflared indirilir)."""
-        from app.core import watchparty
-        if not self._media or not isinstance(info, dict):
-            return {"on": False, "error": "no_media"}
-        name = str(self._manager.settings.get("watch_name") or os.environ.get("USERNAME") or "Kami")
-        return watchparty.SERVER.start(self._media.base, info, name, bool(tunnel))
+    # ---------- Kami Oda (sesli oda + ekran paylasimi + oynatici yayini) ----------
+    def _room_name(self) -> str:
+        return str(self._manager.settings.get("watch_name") or os.environ.get("USERNAME") or "Kami")
 
-    def watch_stop(self) -> bool:
-        from app.core import watchparty
-        watchparty.SERVER.stop()
+    def room_open(self, show: bool = True) -> dict[str, Any]:
+        """Odayi acar (tunel ilk seferde cloudflared indirir) ve Kami Oda penceresini gosterir."""
+        from app.core import room
+        st = room.SERVER.start(self._room_name(), True)
+        if show:
+            self._show_room(st["local"])
+        return {**st, "name": self._room_name()}
+
+    def room_join(self, url: str) -> dict[str, Any]:
+        """Baskasinin oda baglantisini Kami penceresinde acar."""
+        url = str(url or "").strip()
+        if not re.match(r"^https://[a-z0-9-]+\.trycloudflare\.com/[A-Za-z0-9_-]+/?$", url) and not url.startswith("http://127.0.0.1:"):
+            return {"ok": False, "error": "bad_url"}
+        self._show_room(url if url.endswith("/") else url + "/")
+        return {"ok": True}
+
+    def _show_room(self, url: str) -> None:
+        w = getattr(self, "_room_win", None)
+        if w is None and getattr(self, "_make_room_window", None):
+            self._room_win = self._make_room_window(url)
+        elif w is not None:
+            try:
+                if (w.get_current_url() or "").rstrip("/") != url.rstrip("/"):
+                    w.load_url(url)
+            except Exception:
+                pass
+            getattr(self, "_front_room", None) and self._front_room()
+
+    def room_status(self) -> dict[str, Any]:
+        from app.core import room
+        return {**room.SERVER.status(), "name": self._room_name()}
+
+    def room_stop(self) -> bool:
+        from app.core import room
+        room.SERVER.stop()
+        w = getattr(self, "_room_win", None)
+        if w is not None:
+            try:
+                w.destroy()
+            except Exception:
+                pass
         return True
 
-    def watch_status(self) -> dict[str, Any]:
-        from app.core import watchparty
-        return watchparty.SERVER.status()
+    def room_turn_set(self, key_id: str, token: str) -> dict[str, Any]:
+        """Cloudflare Realtime TURN: 'Turn Token ID' + 'API Token'. Denenir, DPAPI ile saklanir."""
+        from app.core import room
+        key_id, token = str(key_id or "").strip(), str(token or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9]{16,64}", key_id) or not re.fullmatch(r"[A-Za-z0-9_\-]{20,200}", token):
+            return {"ok": False, "error": "bad_format"}
+        store = self._turn_store
+        old = store.load() if store else ""
+        if not store:
+            return {"ok": False, "error": "no_store"}
+        store.save(key_id + ":" + token)
+        r = room.SERVER.test_turn()
+        if not r["ok"]:
+            store.save(old) if old else store.clear()
+            room.SERVER.test_turn()
+            return {"ok": False, "error": "rejected"}
+        return {"ok": True}
 
-    def watch_poll(self, since_v: int = 0, since_n: int = 0) -> dict[str, Any]:
-        from app.core import watchparty
-        return watchparty.host_poll(int(since_v or 0), int(since_n or 0))
+    def room_turn_status(self) -> dict[str, Any]:
+        return {"has": bool(self._turn_store and self._turn_store.load())}
 
-    def watch_act(self, kind: str, playing: bool = False, t: float = 0.0, text: str = "") -> bool:
-        from app.core import watchparty
-        return watchparty.host_act(str(kind), bool(playing), float(t or 0), str(text or ""))
+    def room_turn_clear(self) -> dict[str, Any]:
+        if self._turn_store:
+            self._turn_store.clear()
+        return {"ok": True}
 
     def copy_text(self, text: str) -> bool:
         try:

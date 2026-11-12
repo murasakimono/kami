@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#07060B">
+<title>Kami Oda</title>
+<link rel="stylesheet" href="s/room.css">
+</head>
+<body>
+<section class="jn" id="join">
+  <div class="jn-box">
+    <div class="jn-sigil"><i></i><i></i><i></i><b>KAMI</b></div>
+    <h1>Oda</h1>
+    <p id="jnTxt">Sesli odaya davet edildin.</p>
+    <input id="jnName" placeholder="Adın" maxlength="40" autocomplete="nickname">
+    <select id="jnMic"><option value="">Varsayılan mikrofon</option></select>
+    <button id="jnGo">Odaya gir</button>
+    <small id="jnErr"></small>
+  </div>
+</section>
+
+<section class="rm" id="room" hidden>
+  <header class="rm-top">
+    <span class="rm-logo">KAMI <b>ODA</b></span>
+    <span class="rm-count" id="rmCount"></span>
+    <span class="rm-net" id="rmNet" title="Bağlantı"></span>
+    <span class="sp"></span>
+    <div class="rm-invite" id="rmInvite" hidden><input id="rmUrl" readonly><button id="rmCopy">Kopyala</button></div>
+    <button class="rm-ib" id="rmChatBtn" title="Sohbet"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><em id="rmUnread" hidden></em></button>
+  </header>
+  <main class="rm-main">
+    <section class="rm-stage" id="stage">
+      <div class="rm-videos" id="videos"></div>
+      <div class="rm-circle" id="circle"></div>
+    </section>
+    <aside class="rm-chat" id="chat">
+      <div class="rm-msgs" id="msgs"></div>
+      <form class="rm-send" id="send"><input id="msg" placeholder="Mesaj yaz…" maxlength="800" autocomplete="off"><button aria-label="Gönder"><svg viewBox="0 0 24 24"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg></button></form>
+    </aside>
+  </main>
+  <nav class="rm-dock">
+    <button id="bMic" title="Mikrofon (Ctrl+Shift+M)"><svg viewBox="0 0 24 24"><path class="on" d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4M8 21h8"/><path class="off" d="M3 3l18 18"/></svg></button>
+    <button id="bDeaf" title="Sağırlaştır (Ctrl+Shift+D)"><svg viewBox="0 0 24 24"><path class="on" d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H4zM17 14h3v6h-3z"/><path class="off" d="M3 3l18 18"/></svg></button>
+    <button id="bShare" title="Ekranı paylaş"><svg viewBox="0 0 24 24"><path d="M3 5h18v11H3zM8 20h8M12 16v4M12 13V8M9 10l3-3 3 3"/></svg></button>
+    <button id="bSet" title="Ayarlar"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-1-3-2 .5-1.5-1.5.5-2-3-1-1 2h-2L9 3 6 4l.5 2L5 7.5 3 7l-1 3 2 1v2l-2 1 1 3 2-.5 1.5 1.5-.5 2 3 1 1-2h2l1 2 3-1-.5-2 1.5-1.5 2 .5 1-3-2-1z"/></svg></button>
+    <button id="bLeave" class="bad" title="Ayrıl"><svg viewBox="0 0 24 24"><path d="M3 15c5-5 13-5 18 0l-3 3-3-2v-2a10 10 0 0 0-6 0v2l-3 2z"/></svg></button>
+  </nav>
+  <div class="rm-set" id="set" hidden>
+    <h3>Ses</h3>
+    <label>Mikrofon <select id="sMic"></select></label>
+    <label>Gürültü engelleme
+      <select id="sNs"><option value="rnnoise">Güçlü (RNNoise, yerel)</option><option value="browser">Tarayıcınınki</option><option value="off">Kapalı</option></select></label>
+    <label>Konuşma <select id="sMode"><option value="vad">Ses algılama</option><option value="ptt">Bas-konuş</option></select></label>
+    <label id="sPttRow">Bas-konuş tuşu <button id="sPtt" type="button">Bir tuşa bas…</button></label>
+    <label>Mikrofon seviyesi <span class="meter"><i id="sMeter"></i></span></label>
+    <h3>Yayınlar</h3>
+    <label>İzlediğim kalite <select id="sQ"><option value="auto">Otomatik</option><option value="src">Kaynak</option><option value="1080">1080p 60</option><option value="720">720p 30</option><option value="480">480p 30</option></select></label>
+    <p class="hint" id="sTurn"></p>
+  </div>
+</section>
+<div class="rm-toast" id="toast" hidden></div>
+<script src="s/room-core.js"></script>
+<script src="s/room.js"></script>
+</body>
+</html>

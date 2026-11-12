@@ -302,6 +302,24 @@
       </fieldset>
 
       <fieldset>
+        <legend>Kami Oda</legend>
+        <div class="row"><span>Sesli oda, ekran paylaşımı, oynatıcı yayını</span><span>
+          <button type="button" class="btn" id="roomOpenBtn">Odayı aç</button>
+          <input type="text" id="roomJoinUrl" placeholder="Davet bağlantısı" spellcheck="false" style="width:220px">
+          <button type="button" class="btn ghost" id="roomJoinBtn">Katıl</button></span></div>
+        <label class="row"><span>Odada görünen adın</span><input type="text" name="watch_name" spellcheck="false" style="width:160px"></label>
+        <label class="row"><span>Mikrofonu kapat/aç kısayolu</span><input type="text" name="room_mute_hotkey" spellcheck="false" style="width:140px"></label>
+        <label class="row"><span>Sağırlaştır kısayolu</span><input type="text" name="room_deaf_hotkey" spellcheck="false" style="width:140px"></label>
+        <label class="row"><span>Bas-konuş genel tuşu (boş: yalnızca oda penceresinde)</span><input type="text" name="room_ptt_key" spellcheck="false" placeholder="ör. capslock, f8, `" style="width:140px"></label>
+        <div class="row"><span>Cloudflare TURN <span class="hint" id="turnState"></span></span><span>
+          <input type="text" id="turnId" placeholder="Turn Token ID" spellcheck="false" autocomplete="off" style="width:180px">
+          <input type="password" id="turnTok" placeholder="API Token" spellcheck="false" autocomplete="off" style="width:180px">
+          <button type="button" class="btn ghost" id="turnSave">Kaydet</button>
+          <button type="button" class="btn ghost" id="turnClear" hidden>Sil</button></span></div>
+        <details class="howto"><summary>TURN anahtarı nasıl alınır?</summary><div class="hint">dash.cloudflare.com → sol menü Realtime → TURN Server → Create. Çıkan Turn Token ID ve API Token'ı buraya yapıştır. Ayda 1000 GB röle ücretsiz. Anahtar bu bilgisayarda şifreli saklanır, davet edilenlere yalnızca 24 saatlik geçici kimlik gider.</div></details>
+      </fieldset>
+
+      <fieldset>
         <legend data-i18n="s_mx"></legend>
         <label class="check"><input type="checkbox" name="lyrics_auto"><span data-i18n="s_lyrics_auto"></span></label>
         <label class="check"><input type="checkbox" name="lyrics_embed"><span data-i18n="s_lyrics_embed"></span></label>
@@ -555,5 +573,6 @@
   <script src="convert.js"></script>
   <script src="viewer.js"></script>
   <script src="accent.js"></script>
+  <script src="room-settings.js"></script>
 </body>
 </html>
