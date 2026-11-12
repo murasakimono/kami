@@ -70,6 +70,8 @@ document.addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-a]"); if (!b) return;
   const a = b.dataset.a, p = PC.list[PC.i];
   if (a === "prev") step(-1); else if (a === "next") step(1);
+  else if (a === "edit") window.kamiEditor.open(p || "");
+  else if (a === "new") window.kamiEditor.open("");
   else if (a === "rot") { PC.rot = (PC.rot + 90) % 360; apply(); }
   else if (a === "fit") { PC.z = 1; PC.x = PC.y = 0; apply(); }
   else if (a === "folder" && p) api.open_path_folder(p);
@@ -84,8 +86,9 @@ addEventListener("mousemove", (e) => { if (drag) { PC.x = e.clientX - drag.sx; P
 addEventListener("mouseup", () => { drag = null; stage.classList.remove("drag"); });
 stage.addEventListener("dblclick", () => { PC.z = PC.z > 1.01 ? 1 : 2.5; PC.x = PC.y = 0; apply(); });
 document.addEventListener("keydown", (e) => {
-  if (e.target.matches?.("input, textarea")) return;
+  if (e.target.matches?.("input, textarea") || window.ED?.on || (typeof ED !== "undefined" && ED.on)) return;
   const k = e.key;
+  if (k.toLowerCase() === "e" && PC.list[PC.i]) { window.kamiEditor.open(PC.list[PC.i]); e.preventDefault(); return; }
   if (k === "ArrowRight") step(1); else if (k === "ArrowLeft") step(-1);
   else if (k.toLowerCase() === "r") { PC.rot = (PC.rot + 90) % 360; apply(); } else if (k === "0") { PC.z = 1; PC.x = PC.y = 0; apply(); }
   else if (k === "+" || k === "=") { PC.z = Math.min(12, PC.z * 1.2); apply(); } else if (k === "-") { PC.z = Math.max(0.1, PC.z / 1.2); apply(); }
@@ -98,6 +101,6 @@ window.addEventListener("pywebviewready", async () => {
   api = window.pywebview.api;
   try { LANG = (await api.get_settings())?.language === "en" ? "en" : "tr"; } catch { /* yok */ }
   i18n();
-  const poll = async () => { try { for (const it of (await api.picture_poll()) || []) await open(it.path, it.lens); } catch { /* yok */ } };
+  const poll = async () => { try { for (const it of (await api.picture_poll()) || []) { if (it.edit) { if (it.path) await open(it.path, false); window.kamiEditor.open(it.path || ""); } else await open(it.path, it.lens); } } catch { /* yok */ } };
   poll(); setInterval(poll, 700);
 });

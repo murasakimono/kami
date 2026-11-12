@@ -5,12 +5,15 @@
 <title>Kami Picture</title>
 <link rel="stylesheet" href="scroll.css">
 <link rel="stylesheet" href="picture.css">
+<link rel="stylesheet" href="editor.css">
 </head>
 <body>
   <div id="pic">
     <header class="pc-top">
       <span class="pc-logo">KAMI <b>Picture</b></span>
       <b id="pcName">—</b><span id="pcInfo"></span><span class="sp"></span>
+      <button data-a="edit" class="edit" title="E">✎ <span data-tr="Düzenle" data-en="Edit"></span></button>
+      <button data-a="new" title="N">＋ <span data-tr="Yeni" data-en="New"></span></button>
       <button data-a="rot" title="R">⟳ <span data-tr="Döndür" data-en="Rotate"></span></button>
       <button data-a="fit" title="0"><span data-tr="Sığdır" data-en="Fit"></span></button>
       <button data-a="nobg">✦ <span data-tr="Arka planı kaldır" data-en="Remove background"></span></button>
@@ -28,5 +31,7 @@
     </main>
   </div>
   <script src="picture.js"></script>
+  <script src="editor.js"></script>
+  <script src="editor-ai.js"></script>
 </body>
 </html>

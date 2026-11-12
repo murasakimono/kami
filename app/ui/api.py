@@ -85,7 +85,7 @@ class Api:
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
     JOB_METHODS = frozenset({
-        "add_url", "room_open", "room_relink", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
+        "add_url", "pic_ai", "editor_vectorize", "editor_gif", "room_open", "room_relink", "editor_export", "editor_project_save", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
@@ -1752,23 +1752,159 @@ class Api:
             return {"ok": False, "error": str(exc)[:120]}
 
     # ---------- Kami Picture + Kami Lens ----------
-    def picture_open(self, path: str, lens: bool = False) -> dict[str, Any]:
-        """Kami Picture penceresini acar; lens=True ise hemen gorsel aramasi yapar. path='screen': ekrandan alan sec."""
+    def picture_open(self, path: str, lens: bool = False, edit: bool = False) -> dict[str, Any]:
+        """Kami Picture penceresini acar; lens=True ise hemen gorsel aramasi, edit=True ise editorde acar.
+        path='screen': ekrandan alan sec."""
         path = str(path or "")
         if path == "screen":
             path = self.lens_screen_grab()
             if not path:
                 return {"ok": False, "error": "cancelled"}
-            lens = True
+            lens = not edit
         if not os.path.isfile(path):
             return {"ok": False, "error": "no_file"}
         with self._inbox_lock:
-            self._picture_q = getattr(self, "_picture_q", []) + [{"path": path, "lens": bool(lens)}]
+            self._picture_q = getattr(self, "_picture_q", []) + [{"path": path, "lens": bool(lens), "edit": bool(edit)}]
         if getattr(self, "_picture_win", None) is None and getattr(self, "_make_picture_window", None):
             self._picture_win = self._make_picture_window()
         elif getattr(self, "_front_picture", None):
             self._front_picture()
         return {"ok": True}
+
+    # ---------- Picture editoru: yapay zeka (IOPaint) ----------
+    def pic_ai_status(self) -> dict[str, Any]:
+        from app.core import aitools, iopaint_srv
+        return {"installed": aitools.installed("iopaint"), "size_gb": aitools.TOOLS["iopaint"]["size_gb"],
+                "installing": (self._ai.installing.get("iopaint") if self._ai else None),
+                "state": iopaint_srv.SERVER.state, "device": iopaint_srv.SERVER.device, "error": aitools.LAST_ERROR.get("iopaint", "")}
+
+    def pic_ai(self, op: str, image: str, mask: str = "", clicks: list | None = None, scale: float = 4.0) -> dict[str, Any]:
+        """op: erase (LaMa, maske gerekli) | seg (SAM2 tikla-sec maskesi) | nobg | upscale | face"""
+        from app.core import iopaint_srv
+        S = iopaint_srv.SERVER
+        try:
+            if op == "erase":
+                return {"ok": True, "image": S.inpaint(image, mask)}
+            if op == "seg":
+                return {"ok": True, "image": S.plugin("InteractiveSeg", image, clicks=[[int(c[0]), int(c[1]), int(c[2])] for c in (clicks or [])], mask=True)}
+            name = {"nobg": "RemoveBG", "upscale": "RealESRGAN", "face": "GFPGAN"}.get(op)
+            if not name:
+                return {"ok": False, "error": "bad_op"}
+            return {"ok": True, "image": S.plugin(name, image, scale=float(scale or 4))}
+        except Exception as exc:
+            log.exception("Picture AI: %s", op)
+            return {"ok": False, "error": str(exc)[:200]}
+
+    # ---------- Picture editoru ----------
+    def picture_open_editor(self) -> dict[str, Any]:
+        """Kami Picture'i bos editorle (sablon secimi) acar."""
+        with self._inbox_lock:
+            self._picture_q = getattr(self, "_picture_q", []) + [{"path": "", "lens": False, "edit": True}]
+        if getattr(self, "_picture_win", None) is None and getattr(self, "_make_picture_window", None):
+            self._picture_win = self._make_picture_window()
+        elif getattr(self, "_front_picture", None):
+            self._front_picture()
+        return {"ok": True}
+
+    def _edit_out_dir(self, near: str) -> str:
+        if near and os.path.isfile(near):
+            return os.path.dirname(near)
+        d = os.path.join(os.path.expanduser("~"), "Pictures", "Kami")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def editor_export(self, near: str, name: str, fmt: str, data_url: str) -> dict[str, Any]:
+        """Duzenlenen gorseli orijinalin yanina '<ad> (düzenlendi).png' olarak yazar (uzerine yazmaz)."""
+        import base64
+        fmt = fmt if fmt in ("png", "jpg", "webp") else "png"
+        try:
+            raw = base64.b64decode(str(data_url).split(",", 1)[1])
+        except Exception:
+            return {"ok": False, "error": "bad_data"}
+        base = re.sub(r'[\\/:*?"<>|]+', "_", str(name or "Kami"))[:80] or "Kami"
+        d = self._edit_out_dir(str(near or ""))
+        out = os.path.join(d, f"{base} (düzenlendi).{fmt}")
+        n = 2
+        while os.path.exists(out):
+            out = os.path.join(d, f"{base} (düzenlendi {n}).{fmt}")
+            n += 1
+        with open(out, "wb") as f:
+            f.write(raw)
+        return {"ok": True, "path": out}
+
+    def editor_vectorize(self, near: str, name: str, data_url: str, preset: str = "color") -> dict[str, Any]:
+        """Bitmap -> SVG (vtracer). preset: color (logo/cizim, renkli) | bw (siyah-beyaz cizgi) | photo (ayrintili)."""
+        import base64
+        import vtracer
+        raw = base64.b64decode(str(data_url).split(",", 1)[1])
+        opts = {"color": dict(colormode="color", hierarchical="stacked", mode="spline", filter_speckle=4, color_precision=6,
+                              layer_difference=16, corner_threshold=60, length_threshold=4.0, splice_threshold=45),
+                "bw": dict(colormode="binary", mode="spline", filter_speckle=4, corner_threshold=60),
+                "photo": dict(colormode="color", hierarchical="stacked", mode="spline", filter_speckle=8, color_precision=8,
+                              layer_difference=8, corner_threshold=60)}.get(preset, {})
+        try:
+            svg = vtracer.convert_raw_image_to_svg(raw, img_format="png", **opts)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:160]}
+        base = re.sub(r'[\\/:*?"<>|]+', "_", str(name or "Kami"))[:80] or "Kami"
+        out = os.path.join(self._edit_out_dir(str(near or "")), base + ".svg")
+        n = 2
+        while os.path.exists(out):
+            out = os.path.join(self._edit_out_dir(str(near or "")), f"{base} ({n}).svg")
+            n += 1
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(svg)
+        return {"ok": True, "path": out, "svg": svg}
+
+    def editor_gif(self, near: str, name: str, frames: list, ms: int = 120, fmt: str = "gif") -> dict[str, Any]:
+        """Katmanlar = kareler: GIF ya da MP4 (ffmpeg)."""
+        import base64
+        import io
+        from PIL import Image
+        imgs = [Image.open(io.BytesIO(base64.b64decode(str(f).split(",", 1)[1]))).convert("RGBA") for f in frames[:400]]
+        if not imgs:
+            return {"ok": False, "error": "no_frames"}
+        base = re.sub(r'[\\/:*?"<>|]+', "_", str(name or "Kami"))[:80] or "Kami"
+        d = self._edit_out_dir(str(near or ""))
+        out = os.path.join(d, f"{base} (animasyon).{'mp4' if fmt == 'mp4' else 'gif'}")
+        if fmt == "mp4":
+            import subprocess
+            import tempfile
+            from app.engines.ytdlp_engine import find_ffmpeg
+            tmp = tempfile.mkdtemp(prefix="kami_anim_")
+            for i, im in enumerate(imgs):
+                bg = Image.new("RGB", im.size, (0, 0, 0)); bg.paste(im, mask=im.split()[3]); bg.save(os.path.join(tmp, f"{i:04d}.png"))
+            r = subprocess.run([find_ffmpeg(), "-y", "-loglevel", "error", "-framerate", f"{1000 / max(20, ms):.3f}", "-i", os.path.join(tmp, "%04d.png"),
+                                "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-crf", "18", out],
+                               capture_output=True, creationflags=0x08000000)
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+            if r.returncode != 0:
+                return {"ok": False, "error": "ffmpeg"}
+        else:
+            imgs[0].save(out, save_all=True, append_images=imgs[1:], duration=max(20, int(ms)), loop=0, disposal=2, optimize=False)
+        return {"ok": True, "path": out}
+
+    def editor_project_save(self, path: str, name: str, data: str) -> dict[str, Any]:
+        """.kami projesi (katmanlar, metinler, ayarlar) — JSON."""
+        path = str(path or "")
+        if not path:
+            base = re.sub(r'[\\/:*?"<>|]+', "_", str(name or "Kami"))[:80] or "Kami"
+            path = os.path.join(self._edit_out_dir(""), base + ".kami")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(str(data))
+        return {"ok": True, "path": path}
+
+    def editor_project_open(self) -> dict[str, Any]:
+        import webview
+        w = getattr(self, "_picture_win", None)
+        if not w:
+            return {"ok": False}
+        r = w.create_file_dialog(webview.OPEN_DIALOG, directory=self._edit_out_dir(""), file_types=("Kami projesi (*.kami)",))
+        if not r:
+            return {"ok": False}
+        with open(r[0], encoding="utf-8") as f:
+            return {"ok": True, "path": r[0], "data": f.read()}
 
     def picture_poll(self) -> list[dict[str, Any]]:
         with self._inbox_lock:

@@ -49,3 +49,5 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .ln-sim img:hover { outline: 2px solid var(--violet); }
 .ln-err { color: #F5B94A; font-size: 12px; }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 9px 14px; border-radius: 10px; background: #1C1228; border: 1px solid var(--line); font-size: 13px; z-index: 50; }
+
+.pc-top button.edit { background: #6D28D9; color: #fff; }

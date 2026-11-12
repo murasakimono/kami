@@ -114,3 +114,7 @@ document.addEventListener("dblclick", (e) => {
   const b = e.target.closest(".sk-strip"); const d = b && state.items.find((x) => String(x.id) === b.dataset.id);
   if (d && d.status === "complete" && RD_EXT.test(d.filename || "")) api.reader_show(d.path);
 });
+window.KPAL.push(() => [
+  { ic: "✎", t: vwL("Kami Picture editörü", "Kami Picture editor"), sub: vwL("yeni belge, şablonlar", "new document, templates"), run: () => api.picture_open_editor?.() },
+  { ic: "⌗", t: vwL("Ekrandan al ve düzenle", "Capture screen and edit"), sub: vwL("alan seç → editör", "select area → editor"), run: () => api.picture_open("screen", false, true) },
+]);

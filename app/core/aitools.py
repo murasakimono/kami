@@ -39,6 +39,14 @@ TOOLS: dict[str, dict[str, Any]] = {
         "extra_index": "https://download.pytorch.org/whl/cu128",
         "size_gb": 4.0,    # torch CUDA ~2.8 GB + onnxruntime-gpu + model ~0.6 GB
     },
+    "iopaint": {   # Kami Picture yapay zeka: LaMa silme, SAM tikla-sec, arka plan, 4x buyutme, yuz duzeltme
+        "module": "iopaint",
+        "packages": ["iopaint==1.6.0", "torch>=2.3,<2.9", "torchvision<0.24"],
+        "extra_index": "https://download.pytorch.org/whl/cu128",
+        "size_gb": 4.5,    # torch CUDA ~2.8 GB + diffusers/transformers + modeller (LaMa, SAM2, RMBG, ESRGAN, GFPGAN) ~1 GB
+        "python": "3.11",  # IOPaint Pillow 9.5.0'a bagli (3.12 tekerlegi yok)
+        "separate": True,  # gelistirmede de ayri ortam: repo .venv'in Pillow'u bozulmasin
+    },
 }
 # Is turu -> gereken araclar. "lyrics": UVR ile vokali ayir + Whisper ile sozleri yaziya dok (soz bulunamazsa)
 JOBS: dict[str, tuple[str, ...]] = {"whisper": ("whisper",), "uvr": ("uvr",), "lyrics": ("uvr", "whisper")}
@@ -58,9 +66,13 @@ def _venv_has(venv, module: str) -> bool:
     return (venv / "Scripts" / "python.exe").is_file() and (venv / "Lib" / "site-packages" / module).is_dir()
 
 
+def _separate(name: str) -> bool:
+    return paths.FROZEN or bool(TOOLS.get(name, {}).get("separate"))
+
+
 def python_exe(name: str = "") -> str:
     """pythonw ile calisiyorsak ayni klasordeki python.exe (stdout borusu icin; pencere acilmaz)."""
-    if paths.FROZEN:
+    if _separate(name) and name:
         return fix_venv_home(name) or str(tool_env(name) / "Scripts" / "python.exe")
     exe = sys.executable
     d, b = os.path.split(exe)
@@ -72,7 +84,7 @@ def python_exe(name: str = "") -> str:
 
 
 def installed(name: str) -> bool:
-    if paths.FROZEN:
+    if _separate(name):
         return _venv_has(tool_env(name), TOOLS[name]["module"])
     try:
         return importlib.util.find_spec(TOOLS[name]["module"]) is not None
@@ -268,7 +280,7 @@ def install(name: str, on_line: Callable[[str], None] = lambda s: None) -> bool:
 def _install(name: str, on_line: Callable[[str], None]) -> bool:
     t = TOOLS[name]
     uv = shutil.which("uv")
-    if paths.FROZEN:   # ayri araclar ortami: yoksa uv ile Python 3.12 venv olustur (uv Python'u kendisi indirir)
+    if _separate(name):   # ayri araclar ortami: yoksa uv ile Python venv olustur (uv Python'u kendisi indirir)
         uv = str(paths.BIN_DIR / "uv.exe") if (paths.BIN_DIR / "uv.exe").is_file() else uv
         if not uv:
             return _fail(name, "uv.exe bulunamadi (bin klasoru)")
@@ -276,7 +288,7 @@ def _install(name: str, on_line: Callable[[str], None]) -> bool:
         if not (env_dir / "Scripts" / "python.exe").is_file():
             on_line("Python ortami olusturuluyor...")
             env_dir.parent.mkdir(parents=True, exist_ok=True)
-            if _run_logged(name, [uv, "venv", "--python", "3.12", "--seed", str(env_dir)], on_line) != 0                     or not (env_dir / "Scripts" / "python.exe").is_file():
+            if _run_logged(name, [uv, "venv", "--python", t.get("python", "3.12"), "--seed", str(env_dir)], on_line) != 0                     or not (env_dir / "Scripts" / "python.exe").is_file():
                 return _fail(name, "Python ortami olusturulamadi: " + LAST_ERROR.get(name, "python.exe yok"))
     if uv:
         cmd = [uv, "pip", "install", "--python", python_exe(name)]

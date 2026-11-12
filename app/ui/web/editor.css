@@ -1,0 +1,88 @@
+/* Kami Picture editoru: odak modu. Ekranda yalniz resim; sag tik / bosluk = radyal arac carki. */
+#ed { position: fixed; inset: 0; z-index: 40; background: #050408; display: none; user-select: none; }
+#ed.on { display: block; }
+#edView { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+#ed.pan #edView, #ed.tool-move #edView { cursor: grab; }
+#ed.tool-text #edView { cursor: text; }
+.ed-checker { background-image: conic-gradient(#1a1622 25%, #121017 0 50%, #1a1622 0 75%, #121017 0); background-size: 16px 16px; }
+
+/* ust ince serit: belge adi + kayit, kendiliginden solar */
+.ed-top { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 5px 6px 5px 14px; background: rgba(16, 12, 23, .88); border: 1px solid #2A2140; z-index: 3; transition: opacity .3s; backdrop-filter: blur(8px); }
+.ed-top b { font-size: 13px; color: #EDE9F6; max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-top span { color: #8E86A3; font-size: 11px; margin-right: 6px; }
+.ed-top button, .ed-opt button { border: 0; background: #1E1730; color: #D9CCFF; padding: 6px 11px; cursor: pointer; font: inherit; font-size: 12px; }
+.ed-top button:hover, .ed-opt button:hover { background: #2A1650; color: #fff; }
+.ed-top button.pri { background: #6D28D9; color: #fff; }
+#ed.idle .ed-top, #ed.idle .ed-opt, #ed.idle .ed-hint { opacity: .18; }
+
+/* arac secenekleri: secili aracin kapsulu */
+.ed-opt { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: rgba(16, 12, 23, .9); border: 1px solid #2A2140; z-index: 3; font-size: 12px; color: #C9C0DC; transition: opacity .3s; white-space: nowrap; }
+.ed-opt label { display: flex; align-items: center; gap: 6px; }
+.ed-opt input[type=range] { width: 90px; accent-color: #8B5CF6; }
+.ed-opt input[type=color] { width: 28px; height: 24px; border: 1px solid #3A2D55; padding: 0; background: none; }
+.ed-opt select, .ed-opt input[type=number], .ed-opt input[type=text] { background: #0A0810; color: #EDE9F6; border: 1px solid #2A2140; padding: 4px; font: inherit; font-size: 12px; }
+.ed-opt .tl { color: #2EE6A6; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-size: 11px; }
+
+/* radyal arac carki */
+.ed-wheel { position: fixed; width: 320px; height: 320px; margin: -160px 0 0 -160px; z-index: 10; pointer-events: none; opacity: 0; transform: scale(.7); transition: opacity .14s, transform .14s; }
+.ed-wheel.on { opacity: 1; transform: scale(1); pointer-events: auto; }
+.ed-wheel::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, rgba(16, 12, 23, .2) 40%, rgba(16, 12, 23, .92) 42%, rgba(16, 12, 23, .92) 69%, rgba(16, 12, 23, 0) 70%); border: 1px solid #3A2D55; box-shadow: 0 0 40px rgba(109, 40, 217, .35); }
+.ed-wheel button { position: absolute; width: 52px; height: 52px; margin: -26px 0 0 -26px; border: 0; border-radius: 50%; background: transparent; color: #C4B5FD; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font: inherit; font-size: 10px; }
+.ed-wheel button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ed-wheel button:hover, .ed-wheel button.hot { background: #6D28D9; color: #fff; box-shadow: 0 0 18px #8B5CF6; }
+.ed-wheel button.cur { color: #2EE6A6; }
+.ed-wheel .mid { left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; background: #1E1730; color: #EDE9F6; }
+
+/* katmanlar: alttan acilan serit */
+.ed-layers { position: absolute; left: 50%; bottom: 0; transform: translate(-50%, calc(100% - 26px)); width: min(980px, 94vw); z-index: 4; background: rgba(16, 12, 23, .95); border: 1px solid #2A2140; border-bottom: 0; transition: transform .25s; }
+.ed-layers.open, .ed-layers:hover { transform: translate(-50%, 0); }
+.ed-layers .grip { height: 26px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #8E86A3; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; }
+.ed-layers .row { display: flex; gap: 10px; padding: 8px 12px 12px; overflow-x: auto; align-items: stretch; }
+.ed-ly { flex: none; width: 128px; background: #0D0A14; border: 1px solid #2A2140; padding: 6px; cursor: pointer; position: relative; }
+.ed-ly.on { border-color: #2EE6A6; box-shadow: 0 0 0 1px #2EE6A6; }
+.ed-ly canvas { width: 116px; height: 72px; display: block; object-fit: contain; }
+.ed-ly .nm { font-size: 11px; color: #EDE9F6; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; outline: none; }
+.ed-ly .ctl { display: flex; gap: 4px; margin-top: 4px; align-items: center; }
+.ed-ly .ctl button { border: 0; background: #1E1730; color: #C4B5FD; width: 22px; height: 20px; cursor: pointer; font-size: 11px; padding: 0; }
+.ed-ly .ctl input { width: 52px; accent-color: #8B5CF6; }
+.ed-ly .ctl select { width: 100%; background: #0A0810; color: #C9C0DC; border: 1px solid #2A2140; font-size: 10px; }
+.ed-ly.hidden canvas { opacity: .25; }
+.ed-ly.drop { outline: 2px dashed #8B5CF6; }
+.ed-addly { flex: none; width: 70px; display: flex; flex-direction: column; gap: 6px; }
+.ed-addly button { flex: 1; border: 1px dashed #3A2D55; background: transparent; color: #C4B5FD; cursor: pointer; font: inherit; font-size: 11px; }
+.ed-addly button:hover { border-color: #8B5CF6; color: #fff; }
+
+/* ayarlar karti (egriler, seviyeler, renk, filtreler) */
+.ed-card { position: absolute; right: 16px; top: 100px; width: 300px; max-height: calc(100vh - 170px); overflow: auto; z-index: 5; background: rgba(16, 12, 23, .96); border: 1px solid #3A2D55; padding: 12px 14px; color: #C9C0DC; font-size: 12px; }
+.ed-card h4 { margin: 10px 0 8px; font-size: 10px; letter-spacing: 3px; color: #8E86A3; text-transform: uppercase; }
+.ed-card h4:first-child { margin-top: 0; }
+.ed-card label { display: grid; grid-template-columns: 92px 1fr 34px; align-items: center; gap: 6px; margin-bottom: 6px; }
+.ed-card label input[type=range] { accent-color: #8B5CF6; width: 100%; }
+.ed-card label em { font-style: normal; color: #8E86A3; text-align: right; font-variant-numeric: tabular-nums; }
+.ed-card .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ed-card .btns button { border: 0; background: #1E1730; color: #D9CCFF; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 11px; }
+.ed-card .btns button.pri { background: #6D28D9; color: #fff; }
+.ed-card .btns button:hover { background: #2A1650; }
+.ed-curve { width: 100%; aspect-ratio: 1; background: #0A0810; border: 1px solid #2A2140; display: block; cursor: crosshair; }
+.ed-chan { display: flex; gap: 4px; margin-bottom: 6px; }
+.ed-chan button { flex: 1; border: 0; background: #1E1730; color: #C9C0DC; padding: 4px; cursor: pointer; font: inherit; font-size: 11px; }
+.ed-chan button.on { background: #2A1650; color: #fff; box-shadow: inset 0 -2px 0 #2EE6A6; }
+.ed-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ed-presets button { border: 1px solid #2A2140; background: #0D0A14; color: #C9C0DC; padding: 0 0 4px; cursor: pointer; font: inherit; font-size: 10px; }
+.ed-presets button canvas { width: 100%; display: block; margin-bottom: 3px; }
+.ed-presets button:hover { border-color: #8B5CF6; color: #fff; }
+
+/* metin duzenleme kutusu */
+.ed-textbox { position: absolute; z-index: 6; min-width: 40px; background: transparent; border: 1px dashed #2EE6A6; outline: none; resize: none; overflow: hidden; color: transparent; caret-color: #2EE6A6; padding: 0; line-height: 1.15; white-space: pre; }
+.ed-hint { position: absolute; left: 14px; bottom: 34px; z-index: 3; color: #6E6684; font-size: 11px; line-height: 1.6; transition: opacity .3s; pointer-events: none; }
+.ed-busy { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(5, 4, 8, .55); color: #2EE6A6; font-size: 14px; }
+
+/* yeni belge / sablonlar */
+.ed-modal { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(5, 4, 8, .7); }
+.ed-modal > div { width: min(760px, 92vw); background: #100C17; border: 1px solid #3A2D55; padding: 18px 20px; color: #C9C0DC; }
+.ed-modal h3 { margin: 0 0 14px; color: #EDE9F6; font-size: 15px; }
+.ed-tpls { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.ed-tpls button { border: 1px solid #2A2140; background: #0D0A14; color: #EDE9F6; padding: 12px 8px; cursor: pointer; font: inherit; font-size: 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ed-tpls button:hover { border-color: #8B5CF6; }
+.ed-tpls i { display: block; background: linear-gradient(140deg, #2A1650, #0FA37A); }
+.ed-tpls small { color: #8E86A3; font-size: 10px; }

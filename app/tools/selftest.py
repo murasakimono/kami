@@ -73,8 +73,18 @@ def test_uvr(audio: str) -> dict:
     return {"ok": True, "device": device}
 
 
+def test_iopaint(_audio: str) -> dict:
+    import iopaint  # noqa: F401
+    import torch
+    return {"ok": True, "device": "cuda" if torch.cuda.is_available() else "cpu"}
+
+
 def main(argv: list[str]) -> int:
     name, folder = argv[:2]
+    if name == "iopaint":
+        res = test_iopaint("")
+        emit(**res)
+        return 0 if res.get("ok") else 1
     audio = make_audio(folder)
     try:
         res = {"whisper": test_whisper, "uvr": test_uvr}[name](audio)
