@@ -32,19 +32,21 @@ STATIC = {   # oda sayfasinin kullandigi dosyalar (WEB_DIR altinda)
     "room.js": "room.js", "room-core.js": "room-core.js", "room.css": "room.css", "ns.js": "vendor/ns/ns.js",
     "rnnoise-worklet.js": "vendor/ns/rnnoise-worklet.js", "rnnoise.wasm": "vendor/ns/rnnoise.wasm",
     "rnnoise_simd.wasm": "vendor/ns/rnnoise_simd.wasm",
+    "icon-192.png": "room-icon-192.png", "icon-512.png": "room-icon-512.png",
 }
-MIME = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".wasm": "application/wasm",
+MIME = {".png": "image/png", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".wasm": "application/wasm",
         ".ttf": "font/ttf", ".html": "text/html; charset=utf-8"}
 
 
 class Room:
-    def __init__(self, host_name: str) -> None:
-        self.id = secrets.token_urlsafe(9)
+    def __init__(self, host_name: str, room_id: str = "") -> None:
+        self.id = room_id or secrets.token_urlsafe(9)
         self.host_name = host_name
         self.events: list[dict[str, Any]] = []           # sohbet + sistem satirlari
         self.seq = 0
         self.peers: dict[str, dict[str, Any]] = {}       # id -> {name, kind, seen, muted, deaf, sharing, q}
         self.cv = threading.Condition()
+        self.on_join: Callable[[str], None] | None = None
 
     def say(self, who: str, text: str, kind: str = "chat") -> None:
         text = str(text or "").strip()[:800]
@@ -69,6 +71,11 @@ class Room:
             self.cv.notify_all()
         if new and kind == "user":
             self.say(p["name"], "odaya girdi", "sys")
+            if self.on_join:
+                try:
+                    self.on_join(p["name"])
+                except Exception:
+                    log.exception("oda katilim bildirimi")
 
     def leave(self, pid: str) -> None:
         with self.cv:
@@ -136,11 +143,14 @@ class RoomServer:
         self.lock = threading.Lock()
         self.turn_key: Callable[[], tuple[str, str]] = lambda: ("", "")
         self._ice: tuple[float, list] = (0.0, [])
+        self.stable: Callable[[], tuple[str, str]] = lambda: ("", "")   # (workers.dev adresi, gizli anahtar)
+        self.on_join: Callable[[str], None] | None = None
 
-    def start(self, host_name: str, tunnel: bool = True) -> dict[str, Any]:
+    def start(self, host_name: str, tunnel: bool = True, room_id: str = "") -> dict[str, Any]:
         with self.lock:
             if not self.room:
-                self.room = Room(host_name)
+                self.room = Room(host_name, room_id)
+                self.room.on_join = self.on_join
             if not self.httpd:
                 from app.core.net import ExclusiveHTTPServer
                 self.httpd = ExclusiveHTTPServer.make(("127.0.0.1", 0), _handler(self))
@@ -151,6 +161,7 @@ class RoomServer:
         return self.status()
 
     def stop(self) -> None:
+        threading.Thread(target=self._publish, args=("",), daemon=True).start()
         with self.lock:
             self.room = None
             t, self.tunnel = self.tunnel, None
@@ -165,7 +176,11 @@ class RoomServer:
     def status(self) -> dict[str, Any]:
         r = self.room
         local = f"http://127.0.0.1:{self.port}/{r.id}/" if r else ""
-        return {"on": bool(r), "local": local, "url": (self.public + f"/{r.id}/") if (r and self.public) else "",
+        base = self.stable()[0].rstrip("/")
+        url = ""
+        if r and self.public:
+            url = f"{base}/{r.id}/" if base and self.published else self.public + f"/{r.id}/"
+        return {"on": bool(r), "local": local, "url": url, "stable": bool(base and self.published),
                 "tunnel": self.tunnel_state, "error": self.tunnel_error,
                 "people": [p["name"] for p in (list(r.peers.values()) if r else []) if p["kind"] == "user"],
                 "turn": bool(self.turn_key()[0])}
@@ -202,6 +217,27 @@ class RoomServer:
         s = self.ice()
         return {"ok": any("turn:" in json.dumps(x) for x in s), "servers": len(s)}
 
+    published = False
+
+    def _publish(self, target: str) -> None:
+        """Sabit adrese (Cloudflare Worker) guncel tunel adresini bildirir."""
+        base, key = self.stable()
+        if not base or not key:
+            return
+        for _ in range(5):
+            try:
+                req = urllib.request.Request(base.rstrip("/") + "/_kami/set", method="POST",
+                                             data=json.dumps({"target": target, "host": self.room.host_name if self.room else ""}).encode(),
+                                             headers={"Content-Type": "application/json", "x-kami-key": key, "User-Agent": "Kami"})
+                with urllib.request.urlopen(req, timeout=10):
+                    pass
+                self.published = bool(target)
+                log.info("Kami Oda sabit adresi guncellendi")
+                return
+            except Exception as exc:
+                log.warning("Sabit adres guncellenemedi: %s", exc)
+                time.sleep(3)
+
     # ---- cloudflared
     def _ensure_cf(self) -> str:
         if CF_EXE.exists() and CF_EXE.stat().st_size > 1_000_000:
@@ -233,6 +269,7 @@ class RoomServer:
                 if m:
                     self.public, self.tunnel_state = m.group(0), "on"
                     log.info("Kami Oda tuneli: %s", self.public)
+                    self._publish(self.public)
                     break
                 if time.time() > deadline:
                     raise RuntimeError("tunel adresi gelmedi")
@@ -294,6 +331,12 @@ def _handler(srv: RoomServer):
             try:
                 if not rest or rest == [""]:
                     self._send((paths.WEB_DIR / "room.html").read_bytes(), MIME[".html"])
+                elif rest[0] == "manifest.webmanifest":
+                    m = {"name": "Kami Oda", "short_name": "Kami Oda", "start_url": "./", "scope": "./", "display": "standalone",
+                         "background_color": "#07060B", "theme_color": "#07060B", "orientation": "any",
+                         "icons": [{"src": "s/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                                   {"src": "s/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}]}
+                    self._send(json.dumps(m).encode(), "application/manifest+json")
                 elif rest[0] == "info":
                     self._json({"host": r.host_name, "id": r.id})
                 elif rest[0] == "ice":

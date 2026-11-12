@@ -117,6 +117,9 @@ DEFAULTS: dict[str, Any] = {
     "rec_fps": 60,
     "rec_mic": True,                 # mikrofon ayri ses izi
     "watch_name": "Metehan",         # Kami Oda: odada gorunen ad
+    "room_id": "",                   # sabit oda anahtari (ilk acilista uretilir)
+    "room_worker_url": "",           # sabit adres: https://kami-oda.<hesap>.workers.dev (anahtar DPAPI: room_worker.bin)
+    "room_always": True,             # sabit adres varsa Kami acikken oda hep acik (Ilayda istedigi zaman girer)
     "room_mute_hotkey": "ctrl+shift+m",   # Kami Oda acikken genel kisayollar
     "room_deaf_hotkey": "ctrl+shift+d",
     "room_ptt_key": "",              # bas-konus genel tusu (bos: yalnizca oda penceresi odaktayken)

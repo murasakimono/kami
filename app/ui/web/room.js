@@ -85,13 +85,14 @@ function applyMicState() {
   $("bMic")?.classList.toggle("ptt-on", S.ptt && S.pttDown && !S.muted);
   $("bDeaf")?.classList.toggle("x", S.deaf);
   for (const a of S.audios.values()) a.muted = S.deaf;
-  for (const t of S.tiles.values()) t.video.muted = S.deaf || t.userMuted;
+  for (const t of S.tiles.values()) if (t.pid !== "me") t.video.muted = S.deaf || t.userMuted;
+  syncFsCtl();
 }
 function setMuted(v) { S.muted = v; PREF.muted = v; save(); applyMicState(); S.core?.setMe({ muted: v }); }
 function setDeaf(v) { S.deaf = v; applyMicState(); S.core?.setMe({ deaf: v }); }
 $("bMic").onclick = () => setMuted(!S.muted);
 $("bDeaf").onclick = () => setDeaf(!S.deaf);
-$("bLeave").onclick = async () => { await S.core?.leave(); stopShare(); document.body.innerHTML = `<div class="jn"><div class="jn-box"><div class="jn-sigil"><i></i><i></i><i></i><b>KAMI</b></div><p>Odadan ayrıldın.</p><button onclick="location.reload()">Tekrar gir</button></div></div>`; };
+$("bLeave").onclick = async () => { await S.core?.leave(); stopShare(); stopCam(); document.body.innerHTML = `<div class="jn"><div class="jn-box"><div class="jn-sigil"><i></i><i></i><i></i><b>KAMI</b></div><p>Odadan ayrıldın.</p><button onclick="location.reload()">Tekrar gir</button></div></div>`; };
 
 // bas-konus / kisayollar (sayfa odaktayken; Kami penceresinde genel kisayol Python'dan gelir)
 function pttKey(down) { if (!S.ptt) return; S.pttDown = down; applyMicState(); }
@@ -131,6 +132,22 @@ function stopShare() {
   removeTile("me:" + S.share.id); S.share = null; $("bShare").classList.remove("act");
 }
 
+// ---------------------------------------------------------------- kamera
+$("bCam").onclick = async () => {
+  if (S.cam) { stopCam(); return; }
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: "user" } });
+    S.cam = st; S.camSid = S.core.addLocal("cam", st);
+    $("bCam").classList.add("act");
+    addTile("me", st, "cam", true);
+  } catch (e) { toast("Kamera açılamadı: " + (e.message || e.name)); }
+};
+function stopCam() {
+  if (!S.cam) return;
+  S.cam.getTracks().forEach((t) => t.stop());
+  S.core?.removeLocal(S.camSid); removeTile("me:" + S.cam.id); S.cam = null; $("bCam").classList.remove("act");
+}
+
 // ---------------------------------------------------------------- uzak izler
 function onTrack(pid, stream, kind, track) {
   if (kind === "mic" || (track.kind === "audio" && !stream.getVideoTracks().length && kind !== "player" && kind !== "screen")) {
@@ -160,10 +177,10 @@ function addTile(pid, stream, kind, mine) {
   if (S.tiles.has(key)) return;
   const el = document.createElement("div");
   el.className = "vt"; el.dataset.key = key;
-  const who = nameOf(pid), lbl = kind === "player" ? "Oynatıcı" : "Ekran";
+  const who = nameOf(pid), lbl = kind === "player" ? "Oynatıcı" : kind === "cam" ? "Kamera" : "Ekran";
   el.innerHTML = `<video autoplay playsinline ${mine ? "muted" : ""}></video>
-    <div class="vt-bar"><span class="live">CANLI</span><b>${esc(who.includes(lbl) ? who : who + " · " + lbl)}</b><span class="info"></span><span class="sp"></span>
-      ${mine ? "" : `<select class="q" title="Kalite"><option value="auto">Otomatik</option><option value="src">Kaynak</option><option value="1080">1080p60</option><option value="720">720p30</option><option value="480">480p30</option></select>
+    <div class="vt-bar">${kind === "cam" ? "" : `<span class="live">CANLI</span>`}<b>${esc(who.includes(lbl) ? who : who + " · " + lbl)}</b><span class="info"></span><span class="sp"></span>
+      ${mine ? "" : `<select class="q" title="Kalite"><option value="auto">Otomatik</option><option value="src">Kaynak</option><option value="1080">1080p60</option><option value="1080_30">1080p30</option><option value="720">720p30</option><option value="480">480p30</option></select>
       <input type="range" class="vol" min="0" max="1" step="0.05" value="1" title="Ses">`}
       <button class="fs" title="Tam ekran"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>`;
   const v = el.querySelector("video");
@@ -177,12 +194,40 @@ function addTile(pid, stream, kind, mine) {
     if (T.q !== "auto") S.core.requestQuality(T.q, pid);
     el.querySelector(".vol").oninput = (e) => { v.volume = +e.target.value; };
   }
-  el.querySelector(".fs").onclick = (e) => { e.stopPropagation(); document.fullscreenElement ? document.exitFullscreen() : (el.requestFullscreen?.() || v.webkitEnterFullscreen?.()); };
+  el.insertAdjacentHTML("beforeend", `<div class="vt-ctl"><button data-c="mic" title="Mikrofon">${$("bMic").innerHTML}</button><button data-c="deaf" title="Kulaklık">${$("bDeaf").innerHTML}</button><button data-c="exit" title="Tam ekrandan çık"><svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>`);
+  el.querySelector(".vt-ctl").onclick = (e) => {
+    e.stopPropagation(); const c = e.target.closest("[data-c]")?.dataset.c;
+    if (c === "mic") setMuted(!S.muted); else if (c === "deaf") setDeaf(!S.deaf); else if (c === "exit") exitFs(el);
+    syncFsCtl();
+  };
+  el.querySelector(".fs").onclick = (e) => { e.stopPropagation(); isFs(el) ? exitFs(el) : enterFs(el); };
+  if (mine && kind === "cam") v.style.transform = "scaleX(-1)";
+  let idleT; const wake = () => { el.classList.remove("idle"); clearTimeout(idleT); idleT = setTimeout(() => isFs(el) && el.classList.add("idle"), 3000); };
+  el.addEventListener("pointermove", wake); el.addEventListener("pointerdown", wake);
   el.addEventListener("click", () => { el.classList.add("tap"); setTimeout(() => el.classList.remove("tap"), 2500); if (S.tiles.size > 1) { const f = el.classList.toggle("focus"); $("videos").classList.toggle("focused", f); document.querySelectorAll(".vt").forEach((x) => x !== el && x.classList.remove("focus")); } });
   $("videos").appendChild(el);
   S.tiles.set(key, T);
   if (kind === "player" && !mine) toast(`${who} oynatıcıdan yayın başlattı`);
   layout();
+}
+function isFs(el) { return document.fullscreenElement === el || document.webkitFullscreenElement === el || el.classList.contains("pfs"); }
+function enterFs(el) {
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (req) { Promise.resolve(req.call(el)).catch(() => el.classList.add("pfs")); }
+  else el.classList.add("pfs");   // iPhone: ogeyi tam ekran yap (PWA'da tarayici cubugu yok)
+  try { screen.orientation?.lock?.("landscape").catch(() => {}); } catch { /* yok */ }
+  syncFsCtl();
+}
+function exitFs(el) {
+  if (el.classList.contains("pfs")) el.classList.remove("pfs");
+  else (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+  try { screen.orientation?.unlock?.(); } catch { /* yok */ }
+}
+function syncFsCtl() {
+  document.querySelectorAll(".vt-ctl").forEach((c) => {
+    c.querySelector('[data-c="mic"]').classList.toggle("x", S.muted || S.deaf);
+    c.querySelector('[data-c="deaf"]').classList.toggle("x", S.deaf);
+  });
 }
 function removeTile(key) {
   const T = S.tiles.get(key); if (!T) return;
@@ -261,8 +306,8 @@ async function statsLoop() {
     if (info) info.textContent = `${s.h ? s.h + "p" : ""}${s.fps ? " " + s.fps + "fps" : ""} · ${s.rtt}ms${s.relay ? " · röle" : ""}`;
     if (T.q === "auto") {   // kayip artarsa bir kademe dus, uzun sure temizse cik
       const lost = s.loss - (T.lastLoss ?? s.loss); T.lastLoss = s.loss;
-      const order = ["src", "1080", "720", "480"], i = order.indexOf(T.autoQ || "src");
-      if ((lost > 40 || (s.fps && s.fps < 18)) && i < 3) { T.autoQ = order[i + 1]; T.clean = 0; S.core.requestQuality(T.autoQ, T.pid); toast(`Bağlantı zayıf: yayın ${T.autoQ === "src" ? "kaynak" : T.autoQ + "p"} kaliteye indi`); }
+      const order = ["src", "1080", "1080_30", "720", "480"], i = order.indexOf(T.autoQ || "src");
+      if ((lost > 40 || (s.fps && s.fps < 18)) && i < order.length - 1) { T.autoQ = order[i + 1]; T.clean = 0; S.core.requestQuality(T.autoQ, T.pid); toast(`Bağlantı zayıf: yayın ${T.autoQ.replace("_", "p ").replace(/^(\d+)$/, "$1p")} kaliteye indi`); }
       else if (lost < 3) { T.clean = (T.clean || 0) + 1; if (T.clean > 10 && i > 0) { T.autoQ = order[i - 1]; T.clean = 0; S.core.requestQuality(T.autoQ, T.pid); } }
     }
     if (s.rtt > 250) worst = "bad"; else if (s.rtt > 120 && worst === "ok") worst = "mid";

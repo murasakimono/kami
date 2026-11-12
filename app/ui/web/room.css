@@ -129,3 +129,13 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   .rm-main { grid-template-columns: minmax(0, 1fr) 260px; grid-template-rows: minmax(0, 1fr); }
   .rm-top { padding: 4px 10px; } .rm-dock { padding: 4px; } .rm-dock button { height: 38px; }
 }
+
+/* tam ekran: yayin + mikrofon/kulaklik dugmeleri */
+.vt-ctl { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: none; gap: 10px; z-index: 5; padding: 8px; background: rgba(11, 8, 17, .72); clip-path: var(--cut); transition: opacity .3s; }
+.vt:fullscreen .vt-ctl, .vt.pfs .vt-ctl { display: flex; }
+.vt-ctl button { width: 54px; height: 46px; border: 0; background: #1A1426; color: #C4B5FD; cursor: pointer; display: grid; place-items: center; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+.vt-ctl button .off { display: none; }
+.vt-ctl button.x { background: #3A1020; color: #FF8095; } .vt-ctl button.x .off { display: inline; }
+.vt:fullscreen .vt-bar, .vt.pfs .vt-bar { opacity: 1; }
+.vt.pfs { position: fixed; inset: 0; z-index: 50; width: 100vw; height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.vt.idle .vt-ctl, .vt.idle .vt-bar { opacity: 0; }

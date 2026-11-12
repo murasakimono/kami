@@ -289,3 +289,10 @@ body.sunak > .topbar, body.sunak > .layout { position: relative; z-index: 2; }
 .kvw-top button:hover { background: #2A1F3B; } .kvw-top button.x { background: none; font-size: 16px; }
 .kvw-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 90px; border: 0; border-radius: 12px; background: rgba(28, 21, 40, .6); color: #fff; font-size: 34px; cursor: pointer; }
 .kvw-nav.l { left: 14px; } .kvw-nav.r { right: 14px; } .kvw-nav:hover { background: rgba(109, 40, 217, .6); }
+
+#sunak .sk-room { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; background: #1A1426; color: var(--sk-lav); cursor: pointer; font: inherit; font-size: 12px; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+#sunak .sk-room:hover { background: #2A1650; color: #fff; }
+#sunak .sk-room svg { width: 15px; height: 15px; }
+#sunak .sk-room.on { box-shadow: inset 0 -2px 0 var(--sk-em); }
+#sunak .sk-room i { font-style: normal; color: var(--sk-em); font-weight: 700; }
+#sunak .sk-room i:empty { display: none; }

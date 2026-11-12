@@ -1572,15 +1572,23 @@ class Api:
     def room_open(self, show: bool = True) -> dict[str, Any]:
         """Odayi acar (tunel ilk seferde cloudflared indirir) ve Kami Oda penceresini gosterir."""
         from app.core import room
-        st = room.SERVER.start(self._room_name(), True)
+        st = room.SERVER.start(self._room_name(), True, self._room_id())
         if show:
             self._show_room(st["local"])
         return {**st, "name": self._room_name()}
 
+    def _room_id(self) -> str:
+        import secrets as _s
+        rid = str(self._manager.settings.get("room_id") or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{10,40}", rid):
+            rid = _s.token_urlsafe(12)
+            self._manager.settings.set("room_id", rid)
+        return rid
+
     def room_join(self, url: str) -> dict[str, Any]:
         """Baskasinin oda baglantisini Kami penceresinde acar."""
         url = str(url or "").strip()
-        if not re.match(r"^https://[a-z0-9-]+\.trycloudflare\.com/[A-Za-z0-9_-]+/?$", url) and not url.startswith("http://127.0.0.1:"):
+        if not re.match(r"^https://[a-z0-9.-]+\.(trycloudflare\.com|workers\.dev)/[A-Za-z0-9_-]+/?$", url) and not url.startswith("http://127.0.0.1:"):
             return {"ok": False, "error": "bad_url"}
         self._show_room(url if url.endswith("/") else url + "/")
         return {"ok": True}
@@ -1940,6 +1948,8 @@ class Api:
                 self.player_show({"id": did})
             elif act == "folder" and did:
                 self.open_folder(did)
+            elif act == "room":
+                self.room_open(True)
             elif act in ("recplay", "recfolder"):    # son ekran kaydi / klip
                 out = str(getattr(self, "_rec_last", "") or "")
                 if os.path.isfile(out):

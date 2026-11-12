@@ -5,6 +5,7 @@
   const QUALITY = {   // izleyicinin istedigi kalite -> yayincinin gonderim ayari
     src: { h: 0, fps: 60, br: 14_000_000 },
     "1080": { h: 1080, fps: 60, br: 8_000_000 },
+    "1080_30": { h: 1080, fps: 30, br: 5_000_000 },
     "720": { h: 720, fps: 30, br: 3_000_000 },
     "480": { h: 480, fps: 30, br: 1_200_000 },
   };
@@ -170,7 +171,7 @@
             const pref = [...caps.filter((c) => /h264/i.test(c.mimeType)), ...caps.filter((c) => !/h264/i.test(c.mimeType))];
             if (tc && pref.length) tc.setCodecPreferences(pref);
           } catch { /* desteklenmiyor */ }
-          tr.contentHint = L.kind === "player" ? "motion" : "detail";
+          tr.contentHint = L.kind === "player" || L.kind === "cam" ? "motion" : "detail";
         }
         this._applyQ(P);
       }
