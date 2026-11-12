@@ -186,6 +186,10 @@ def _activate(info: PluginInfo, registry: PluginRegistry, events: EventBus, sett
         module_name = f"kami_plugins.{folder.name}"
         for m in [m for m in sys.modules if m == module_name or m.startswith(module_name + ".")]:
             del sys.modules[m]   # yeniden yukleme: alt moduller dahil temiz
+        # ayni saniyede ayni boyutta degisen dosyada eski .pyc kullanilmasin
+        import shutil
+        shutil.rmtree(folder / "__pycache__", ignore_errors=True)
+        importlib.invalidate_caches()
         spec = importlib.util.spec_from_file_location(
             module_name, folder / "plugin.py", submodule_search_locations=[str(folder)])
         if spec is None or spec.loader is None:
