@@ -519,3 +519,85 @@ window.pxDrawerRender = async (...a) => {
   };
 };
 
+
+// ---------- altyazi secici: uzun liste yerine CC dugmesi + dil rozeti ----------
+function plCcSync() {
+  const sel = $("#plSub"), b = $("#plCC"); if (!sel || !b) return;
+  b.hidden = sel.hidden;
+  const opt = sel.options[sel.selectedIndex];
+  const on = sel.value !== "-1" && opt;
+  const lab = on ? opt.textContent : "";
+  const code = !on ? "" : /türk|turk|\btr\b/i.test(lab) ? "TR" : /ingiliz|english|\ben\b/i.test(lab) ? "EN" : /japon|japan|\bja\b/i.test(lab) ? "JA" : lab.slice(0, 2).toUpperCase();
+  b.classList.toggle("on", !!on);
+  b.querySelector("i").textContent = code;
+  b.title = plL("Altyazı (C)", "Subtitles (C)") + (lab ? " · " + lab : "");
+}
+window.plCcSync = plCcSync;
+function plCcInit() {
+  const sel = $("#plSub"); if (!sel || $("#plCC")) return;
+  sel.classList.add("pl-sub-hidden");
+  const b = document.createElement("button");
+  b.className = "pl-b pl-cc"; b.id = "plCC"; b.innerHTML = `CC<i></i>`;
+  sel.after(b);
+  const menu = document.createElement("div"); menu.className = "pl-ccmenu"; menu.hidden = true; b.after(menu);
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!menu.hidden) { menu.hidden = true; return; }
+    menu.innerHTML = [...sel.options].map((o) => `<button data-v="${o.value}" class="${o.value === sel.value ? "on" : ""}">${escapeHtml(o.textContent)}</button>`).join("");
+    menu.hidden = false;
+    const r = b.getBoundingClientRect();
+    Object.assign(menu.style, { position: "fixed", left: Math.max(8, r.right - 240) + "px", bottom: (innerHeight - r.top + 8) + "px", right: "auto" });
+  });
+  menu.addEventListener("click", (e) => {
+    const o = e.target.closest("button[data-v]"); if (!o) return;
+    e.stopPropagation(); sel.value = o.dataset.v; sel.dispatchEvent(new Event("change")); menu.hidden = true; plCcSync();
+  });
+  document.addEventListener("click", () => { menu.hidden = true; });
+  sel.addEventListener("change", plCcSync);
+  new MutationObserver(plCcSync).observe(sel, { attributes: true, attributeFilter: ["hidden"], childList: true });
+  plCcSync();
+}
+plCcInit(); setInterval(plCcInit, 800);   // oynatici arayuzu sonradan kurulur
+
+// ---------- ayar sekmeleri: acilir alt basliklar (son acik hatirlanir) ----------
+function pxGroupSec(sec) {
+  const tab = sec.dataset.t;
+  const kids = [...sec.children];
+  if (kids.length < 4) return;
+  const groups = [];
+  let cur = null;
+  for (const el of kids) {
+    const isHead = el.classList.contains("px-shift") && el.querySelector(":scope > span");
+    if (isHead || !cur) { cur = { head: isHead ? el : null, body: isHead ? [] : [el] }; groups.push(cur); }
+    else cur.body.push(el);
+  }
+  let open; try { open = JSON.parse(localStorage.getItem("kami.pgrp") || "{}"); } catch { open = {}; }
+  groups.forEach((g, gi) => {
+    if (!g.body.length) return;   // tek satir: oldugu gibi kalir
+    const key = (g.head?.querySelector("span")?.textContent || "temel").slice(0, 40);
+    const wrap = document.createElement("div"); wrap.className = "px-grp";
+    let head = g.head;
+    if (!head) { head = document.createElement("div"); head.className = "px-shift"; head.innerHTML = `<span>${plL("Temel ayarlar", "Basics")}</span>`; }
+    head.classList.add("px-gh");
+    const body = document.createElement("div"); body.className = "px-gb";
+    (g.head || g.body[0]).before(wrap);
+    wrap.append(head, body); g.body.forEach((x) => body.appendChild(x));
+    const isOpen = open[tab] ? open[tab] === key : gi === 0;
+    wrap.classList.toggle("open", isOpen);
+    head.addEventListener("click", (e) => {
+      if (e.target.closest("button, input, select, label")) return;
+      e.stopPropagation();
+      const now = !wrap.classList.contains("open");
+      sec.querySelectorAll(".px-grp.open").forEach((x) => x.classList.remove("open"));
+      wrap.classList.toggle("open", now);
+      open[tab] = now ? key : ""; try { localStorage.setItem("kami.pgrp", JSON.stringify(open)); } catch { /* yok */ }
+    });
+  });
+}
+const _pxTabify = window.pxTabify || (typeof pxTabify === "function" ? pxTabify : null);
+if (_pxTabify) {
+  window.pxTabify = pxTabify = function (p) {   // eslint-disable-line no-func-assign
+    _pxTabify(p);
+    p.querySelectorAll(".px-sec").forEach(pxGroupSec);
+  };
+}

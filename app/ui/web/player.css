@@ -434,3 +434,22 @@ body.pl-open #sunak { visibility: hidden; }
 .pe-os-i:hover { border-color: #8B5CF6; }
 .pe-os-i b { font-size: 12.5px; } .pe-os-i span { font-size: 11px; color: #A39BB5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pe-os-i small { font-size: 10.5px; color: #2EE6A6; } .pe-os-i.bad small { color: #F5B94A; } .pe-os-i.bad { opacity: .75; }
+/* CC dugmesi */
+#player .pl-sub-hidden { display: none !important; }
+#player .pl-cc { position: relative; font-weight: 800; letter-spacing: .5px; min-width: 44px; }
+#player .pl-cc[hidden] { display: none; }
+#player .pl-cc.on { color: #2EE6A6; }
+#player .pl-cc i { position: absolute; right: -2px; top: -4px; font: 700 9px "Chakra Petch", sans-serif; font-style: normal; padding: 1px 4px; border-radius: 6px; background: #2EE6A6; color: #08070C; }
+#player .pl-cc i:empty { display: none; }
+#player .pl-ccmenu { position: absolute; bottom: 64px; right: 120px; z-index: 30; min-width: 220px; max-height: 300px; overflow-y: auto; padding: 6px; border-radius: 12px; background: #120E1A; border: 1px solid #3A2E52; box-shadow: 0 12px 30px rgba(0,0,0,.55); display: grid; gap: 2px; }
+#player .pl-ccmenu[hidden] { display: none; }
+#player .pl-ccmenu button { text-align: left; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: #EDE9F6; font: 500 13px "Chakra Petch", sans-serif; cursor: pointer; }
+#player .pl-ccmenu button:hover { background: #1C1228; }
+#player .pl-ccmenu button.on { color: #2EE6A6; background: rgba(46,230,166,.08); }
+/* ayar alt basliklari */
+.px-grp { border-bottom: 1px solid rgba(255,255,255,.06); }
+.px-grp > .px-gh { cursor: pointer; user-select: none; }
+.px-grp > .px-gh > span:first-child::before { content: "›"; display: inline-block; width: 14px; color: #8B5CF6; font-weight: 700; transition: transform .15s; }
+.px-grp.open > .px-gh > span:first-child::before { transform: rotate(90deg); }
+.px-grp > .px-gb { display: none; padding: 2px 0 8px 14px; }
+.px-grp.open > .px-gb { display: block; }
