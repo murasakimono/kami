@@ -103,6 +103,7 @@ DEFAULTS: dict[str, Any] = {
     "uvr_quality": "fast",         # fast (overlap 2 + fp16, ~3x) | balanced | best (overlap 8, gercek zamanli)
     "library_dirs": [],
     "mini_card": True,
+    "blender_path": "",            # bos = otomatik bul (PATH, Program Files, Steam)
     "auto_mirror": True,           # coklu kaynak: SourceForge / Metalink aynalarindan da cek
     "song_hotkey_enabled": True,   # "Bu sarki ne?" genel kisayolu (bilgisayardan cikan sesi dinler)
     "song_hotkey": "ctrl+shift+s",

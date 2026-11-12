@@ -422,3 +422,5 @@ body.pl-open #sunak { visibility: hidden; }
 .pe-song b { display: block; color: #fff; font-size: 14px; }
 .pe-song span { display: block; color: #A39BB5; font-size: 12px; margin-bottom: 6px; }
 .pe-song .pl-b { margin-right: 4px; }
+.pe-vzbar { height: 6px; border-radius: 3px; background: #241B33; overflow: hidden; margin: 4px 0 8px; }
+.pe-vzbar i { display: block; height: 100%; background: linear-gradient(90deg, #14B88A, #2EE6A6); transition: width .6s; }

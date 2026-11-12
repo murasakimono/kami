@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+from pathlib import Path
 import re
 import logging
 import os
@@ -67,6 +68,8 @@ class Api:
         self._front_player = None                        # main: pencereyi one getir (Win32)
         self._osub = None                                # OpenSubtitles API anahtari (DPAPI, main baglar)
         self._last_song: dict[str, Any] = {}
+        self._viz: dict[str, Any] = {"state": "idle"}   # Blender 3D video isi (tek seferde bir tane)
+        self._viz_cancel = threading.Event()
         self._card_win = None                            # masaustu mini karti (main kurar)
         self._card_hidden = False                        # kullanici bu oturumda kapatti
         self._show_main = None                           # main: ana pencereyi geri getir
@@ -1149,6 +1152,66 @@ class Api:
         self._last_song = res.get("done") or {}
         return {"ok": True, "song": self._last_song}
 
+    # ---------- Blender: 3D muzik videosu ----------
+    def viz3d_info(self) -> dict[str, Any]:
+        from app.core import blender
+        exe = blender.find_blender(str(self._manager.settings.get("blender_path") or ""))
+        return {"blender": exe, "job": dict(self._viz)}
+
+    def viz3d_start(self, path: str, quality: str = "hd") -> dict[str, Any]:
+        from app.core import blender
+        from app.core.media_server import find_ffprobe, probe
+        from app.engines.ytdlp_engine import find_ffmpeg
+        path = str(path or "")
+        if self._viz.get("state") == "running":
+            return {"ok": False, "error": "busy"}
+        if not os.path.isfile(path):
+            return {"ok": False, "error": "no_file"}
+        exe = blender.find_blender(str(self._manager.settings.get("blender_path") or ""))
+        if not exe:
+            return {"ok": False, "error": "no_blender"}
+        ff = find_ffmpeg()
+        tg = probe(find_ffprobe(ff), path).get("tags", {}) if ff else {}
+        title = " - ".join(x for x in (tg.get("artist"), tg.get("title")) if x) or Path(path).stem
+        out = blender.output_path(path)
+        self._viz_cancel = threading.Event()
+        self._viz = {"state": "running", "stage": "analiz", "done": 0, "total": 0, "src": path, "out": out}
+
+        def prog(stage: str, done: int, total: int) -> None:
+            self._viz.update(stage=stage, done=done, total=total)
+
+        def run() -> None:
+            res = blender.render(exe, path, out, title, ff, quality, prog, self._viz_cancel)
+            self._viz = {**self._viz, "state": "done" if res.get("ok") else "error", "error": res.get("error", "")}
+            if res.get("ok"):
+                en = self._manager.settings.get("language") == "en"
+                try:
+                    from app.core import desktop
+                    desktop.toast(Path(out).name, "3D video ready" if en else "3D video hazır",
+                                  [("Play" if en else "Oynat", "kami://vizplay"), ("Open folder" if en else "Klasörü aç", "kami://vizfolder")])
+                except Exception:
+                    log.exception("3D video bildirimi")
+
+        threading.Thread(target=run, name="kami-viz3d", daemon=True).start()
+        return {"ok": True, "out": out}
+
+    def viz3d_status(self) -> dict[str, Any]:
+        return dict(self._viz)
+
+    def viz3d_cancel(self) -> dict[str, Any]:
+        self._viz_cancel.set()
+        return {"ok": True}
+
+    def viz3d_open(self, what: str = "play") -> dict[str, Any]:
+        out = str(self._viz.get("out") or "")
+        if self._viz.get("state") != "done" or not os.path.isfile(out):
+            return {"ok": False}
+        if what == "folder":
+            subprocess.Popen(["explorer", "/select,", out])
+        else:
+            self._play_request(out)
+        return {"ok": True}
+
     def opensub_status(self) -> dict[str, Any]:
         return {"has_key": bool(self._osub and self._osub.load())}
 
@@ -1229,6 +1292,8 @@ class Api:
                 self.player_show({"id": did})
             elif act == "folder" and did:
                 self.open_folder(did)
+            elif act in ("vizplay", "vizfolder"):   # yol URI'de degil: son 3D video (web sayfalari yol veremez)
+                self.viz3d_open("folder" if act == "vizfolder" else "play")
             elif act == "subs" and did:
                 self.ai_run("whisper", did)
                 self._show_main and self._show_main()

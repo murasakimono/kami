@@ -499,3 +499,49 @@ window.pxDrawerRender = async (...a) => {
     PX.lib = null; PX.libSeries = null; window.pxDrawerRender();
   };
 };
+
+// ---------- Blender: 3D muzik videosu (sese tepki veren plak + cubuk halkasi) ----------
+const VZ = { timer: null };
+const _peTools3 = window.pxExtraToolsHtml;
+window.pxExtraToolsHtml = () => _peTools3() + `<div class="px-shift"><span>${plL("3D müzik videosu (Blender)", "3D music video (Blender)")}</span><button class="pl-b" data-xa="viz">🎬 ${plL("Yap", "Make")}</button></div>
+  ${peSeg("vizQ", [["fast", plL("Hızlı 720p", "Fast 720p")], ["hd", "1080p"], ["max", plL("En iyi 1080p", "Best 1080p")]], peCfg().vizQ || "hd")}
+  <div id="peVizRes"></div>`;
+function vzDraw(j) {
+  const box = $("#peVizRes"); if (!box) return;
+  if (!j || j.state === "idle") { box.innerHTML = ""; return; }
+  if (j.state === "running") {
+    const p = j.total ? j.done / j.total : 0;
+    const st = { analiz: plL("Ses inceleniyor…", "Analyzing audio…"), sahne: plL("Sahne kuruluyor…", "Building scene…"), render: plL("İşleniyor", "Rendering") }[j.stage] || j.stage;
+    box.innerHTML = `<p class="px-hint">${st}${j.total ? ` · ${j.done}/${j.total} ${plL("kare", "frames")} (%${Math.round(p * 100)})` : ""}</p>
+      <div class="pe-vzbar"><i style="width:${(p * 100).toFixed(1)}%"></i></div><button class="pl-b" data-xa="vizstop">${plL("İptal", "Cancel")}</button>`;
+  } else if (j.state === "done") {
+    box.innerHTML = `<p class="px-hint">✓ ${escapeHtml(String(j.out || "").split(/[\\/]/).pop())}</p><button class="pl-b" data-xa="vizplay">${plL("Oynat", "Play")}</button><button class="pl-b" data-xa="vizfolder">${plL("Klasörü aç", "Open folder")}</button>`;
+  } else {
+    box.innerHTML = `<p class="px-hint">${j.error === "cancelled" ? plL("İptal edildi", "Cancelled") : plL("Olmadı: ", "Failed: ") + escapeHtml(j.error || "?")}</p>`;
+  }
+}
+async function vzPoll() {
+  clearTimeout(VZ.timer);
+  let j; try { j = await api.viz3d_status(); } catch { return; }
+  if (!j) return;
+  vzDraw(j);
+  if (j.state === "running") VZ.timer = setTimeout(vzPoll, 1500);
+}
+document.addEventListener("click", async (e) => {
+  const seg = e.target.closest?.('#plPanel .px-xseg[data-x="vizQ"]'); const b = e.target.closest?.("button");
+  if (seg && b) { PX.cfg.vizQ = b.dataset.v; pxSave(); return; }
+  if (!b || !b.closest("#plPanel") || !String(b.dataset.xa || "").startsWith("viz")) return;
+  e.stopPropagation();
+  const a = b.dataset.xa;
+  if (a === "viz") {
+    const path = PL.info?.path; if (!path) { toast(plL("Önce bir şarkı aç", "Open a song first"), true); return; }
+    const r = await api.viz3d_start(path, peCfg().vizQ || "hd");
+    if (!r?.ok) { toast({ no_blender: plL("Blender bulunamadı (Steam ya da blender.org)", "Blender not found"), busy: plL("Zaten bir video işleniyor", "Already rendering") }[r?.error] || r?.error || "?", true); return; }
+    toast(plL("3D video başladı; bitince bildirim gelir, oynatıcıyı kapatabilirsin", "3D video started; you'll be notified"));
+    vzPoll();
+  }
+  if (a === "vizstop") { await api.viz3d_cancel(); setTimeout(vzPoll, 800); }
+  if (a === "vizplay") api.viz3d_open("play");
+  if (a === "vizfolder") api.viz3d_open("folder");
+}, true);
+document.addEventListener("click", (e) => { if (e.target.closest?.('#plPanel [data-tab="tools"], #plPanel .px-ptabs button')) setTimeout(vzPoll, 50); }, true);
