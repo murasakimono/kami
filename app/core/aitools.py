@@ -73,6 +73,8 @@ def _separate(name: str) -> bool:
 def python_exe(name: str = "") -> str:
     """pythonw ile calisiyorsak ayni klasordeki python.exe (stdout borusu icin; pencere acilmaz)."""
     if _separate(name) and name:
+        if not paths.FROZEN:   # gelistirme: junction sorunu yok, kpython kopyasi DLL bulamaz
+            return str(tool_env(name) / "Scripts" / "python.exe")
         return fix_venv_home(name) or str(tool_env(name) / "Scripts" / "python.exe")
     exe = sys.executable
     d, b = os.path.split(exe)
