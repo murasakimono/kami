@@ -613,10 +613,6 @@ def _main_logged() -> int:
         raise
 
 
-if __name__ == "__main__":
-    sys.exit(_main_logged())
-
-
 def _clear_web_cache_on_update() -> None:
     """Surum degisince WebView2 onbellegini sil; yoksa eski JS/CSS calisir (1.1.0'da Anime4K gorunmedi)."""
     import shutil
@@ -633,3 +629,7 @@ def _clear_web_cache_on_update() -> None:
         mark.write_text(APP_VERSION, encoding="utf-8")
     except Exception:
         log.exception("WebView onbellegi temizlenemedi")
+
+
+if __name__ == "__main__":
+    sys.exit(_main_logged())
