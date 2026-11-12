@@ -110,6 +110,12 @@ DEFAULTS: dict[str, Any] = {
     "song_hotkey": "ctrl+shift+s",
     "lens_hotkey_enabled": True,
     "lens_hotkey": "ctrl+shift+l",   # Kami Lens: ekrandan alan secip ara
+    "rec_replay_enabled": True,      # arka planda son 30 sn tamponu (ddagrab + NVENC, FPS'e etkisi dusuk)
+    "rec_replay_seconds": 30,
+    "rec_replay_hotkey": "alt+f10",
+    "rec_record_hotkey": "alt+f9",
+    "rec_fps": 60,
+    "rec_mic": True,                 # mikrofon ayri ses izi
 }
 
 

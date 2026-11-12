@@ -50,7 +50,7 @@ function drawLens(r) {
   const box = $("#pcLens");
   if (!r?.ok) { box.innerHTML = `<p class="ln-err">${L("Arama yapılamadı", "Search failed")}: ${esc(r?.error || Object.keys(r?.errors || {}).join(", "))}</p>`; return; }
   const errs = Object.keys(r.errors || {});
-  const big = r.biggest;
+  const big = r.biggest; window.PCSZ = (r.sizes || []).map((x) => x.url);
   box.innerHTML = `
     ${big ? `<h3>${L("En büyük boyut", "Largest size")}</h3><div class="ln-big"><span>${L("Bulunan en büyük", "Biggest found")}: <b>${big.w}×${big.h}</b></span><button class="ln-btn" data-dl="${esc(big.url)}">${L("İndir", "Download")}</button></div>` : ""}
     ${r.tags?.length ? `<h3>${L("Bu ne olabilir", "What it might be")}</h3><div class="ln-tags">${r.tags.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
@@ -66,7 +66,7 @@ function drawLens(r) {
 document.addEventListener("click", async (e) => {
   const u = e.target.closest("[data-url]"); if (u) { api.open_web(u.dataset.url); return; }
   const d = e.target.closest("[data-dl]");
-  if (d) { d.disabled = true; d.textContent = L("İndiriliyor…", "Downloading…"); const r = await api.lens_download(d.dataset.dl, PC.list[PC.i]); d.disabled = false; d.textContent = L("İndir", "Download"); toast(r?.ok ? L("İndirildi: ", "Saved: ") + r.path.split(/[\\/]/).pop() : L("İndirilemedi", "Failed")); if (r?.ok) { PC.list = await api.image_siblings(r.path); PC.i = PC.list.indexOf(r.path); load(); } return; }
+  if (d) { d.disabled = true; d.textContent = L("İndiriliyor…", "Downloading…"); const r = await api.lens_download([d.dataset.dl, ...(window.PCSZ || [])], PC.list[PC.i]); d.disabled = false; d.textContent = L("İndir", "Download"); toast(r?.ok ? L("İndirildi: ", "Saved: ") + r.path.split(/[\\/]/).pop() : L("İndirilemedi: ", "Failed: ") + (r?.error || "")); if (r?.ok) { PC.list = await api.image_siblings(r.path); PC.i = PC.list.indexOf(r.path); load(); } return; }
   const b = e.target.closest("button[data-a]"); if (!b) return;
   const a = b.dataset.a, p = PC.list[PC.i];
   if (a === "prev") step(-1); else if (a === "next") step(1);

@@ -472,6 +472,18 @@ def main() -> int:
     lens_hotkey = desktop.HotKey(lambda: threading.Thread(target=api.picture_open, args=("screen", True), daemon=True).start())
     if settings.get("lens_hotkey_enabled"):
         lens_hotkey.start(settings.get("lens_hotkey"))
+
+    # Ekran kaydi: Alt+F10 son 30 sn, Alt+F9 kayit ac/kapa
+    from app.core.recorder import Recorder
+    from app.engines.ytdlp_engine import find_ffmpeg as _ff
+    api.recorder = Recorder(_ff, settings, lambda *a: None)
+    rec_replay_key = desktop.HotKey(lambda: threading.Thread(target=api.rec_save_replay, daemon=True).start())
+    rec_record_key = desktop.HotKey(lambda: threading.Thread(target=api.rec_toggle, daemon=True).start())
+    rec_replay_key.start(settings.get("rec_replay_hotkey"))
+    rec_record_key.start(settings.get("rec_record_hotkey"))
+    if settings.get("rec_replay_enabled") and os.name == "nt":
+        threading.Thread(target=api.recorder.start_replay, name="kami-replay", daemon=True).start()
+    api.recorder.watch()
     if settings.get("song_hotkey_enabled"):
         song_hotkey.start(settings.get("song_hotkey"))
 
@@ -520,6 +532,16 @@ def main() -> int:
                 desktop.set_autostart(bool(value))
             elif key in ("lens_hotkey", "lens_hotkey_enabled"):
                 lens_hotkey.start(settings.get("lens_hotkey")) if settings.get("lens_hotkey_enabled") else lens_hotkey.stop()
+            elif key == "rec_replay_hotkey":
+                rec_replay_key.start(value)
+            elif key == "rec_record_hotkey":
+                rec_record_key.start(value)
+            elif key in ("rec_replay_enabled", "rec_fps", "rec_mic"):
+                def _re():
+                    api.recorder.stop_replay()
+                    if settings.get("rec_replay_enabled"):
+                        api.recorder.start_replay()
+                threading.Thread(target=_re, daemon=True).start()
             elif key in ("song_hotkey", "song_hotkey_enabled"):
                 song_hotkey.start(settings.get("song_hotkey")) if settings.get("song_hotkey_enabled") else song_hotkey.stop()
             elif key == "auto_mirror":
@@ -667,6 +689,11 @@ def main() -> int:
         log.info("Kami kapaniyor")
         song_hotkey.stop()
         lens_hotkey.stop()
+        rec_replay_key.stop(); rec_record_key.stop()
+        try:
+            api.recorder.shutdown()
+        except Exception:
+            log.exception("kayit kapatilamadi")
         hotkey.stop()
         tray.stop()
         scheduler.stop()

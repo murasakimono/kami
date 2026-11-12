@@ -123,15 +123,53 @@ def search(path: str) -> dict:
     return res
 
 
-def download(url: str, folder: str, stem: str = "lens") -> str:
-    r = requests.get(url, headers=UA, timeout=60)
-    r.raise_for_status()
-    ext = {"image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}.get(r.headers.get("content-type", "").split(";")[0], ".jpg")
-    out = os.path.join(folder, f"{stem} (büyük){ext}")
-    n = 2
-    while os.path.exists(out):
-        out = os.path.join(folder, f"{stem} (büyük {n}){ext}")
-        n += 1
-    with open(out, "wb") as f:
-        f.write(r.content)
-    return out
+def _fetch_image(url: str) -> tuple[bytes, str]:
+    """Gorseli indirir; sunucu hotlink engelliyorsa kendi sitesini Referer verip yeniden dener. Gercek gorsel degilse hata."""
+    from io import BytesIO
+    from urllib.parse import urlsplit
+    p = urlsplit(url)
+    last = "?"
+    for hdr in (dict(UA, Referer=f"{p.scheme}://{p.netloc}/"), UA, dict(UA, Referer="https://yandex.com/")):
+        try:
+            r = requests.get(url, headers=dict(hdr, Accept="image/avif,image/webp,image/*,*/*;q=0.8"), timeout=45)
+        except requests.RequestException as exc:
+            last = type(exc).__name__
+            continue
+        if r.status_code != 200:
+            last = f"HTTP {r.status_code}"
+            continue
+        try:
+            from PIL import Image
+            with Image.open(BytesIO(r.content)) as im:
+                fmt = (im.format or "JPEG").lower()
+        except Exception:
+            last = "görsel değil"
+            continue
+        return r.content, {"jpeg": ".jpg", "png": ".png", "webp": ".webp", "gif": ".gif"}.get(fmt, "." + fmt)
+    raise RuntimeError(last)
+
+
+def download(urls, folder: str, stem: str = "lens") -> str:
+    """En buyukten baslayarak adaylari dener; ilk inen gercek gorseli kaydeder."""
+    if isinstance(urls, str):
+        urls = [urls]
+    seen, err = set(), "aday yok"
+    for url in urls:
+        if url in seen:
+            continue
+        seen.add(url)
+        try:
+            data, ext = _fetch_image(url)
+        except Exception as exc:
+            err = str(exc)
+            log.info("lens indirme olmadi %s: %s", url[:120], err)
+            continue
+        out = os.path.join(folder, f"{stem} (büyük){ext}")
+        n = 2
+        while os.path.exists(out):
+            out = os.path.join(folder, f"{stem} (büyük {n}){ext}")
+            n += 1
+        with open(out, "wb") as f:
+            f.write(data)
+        return out
+    raise RuntimeError(err)

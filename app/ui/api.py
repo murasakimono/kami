@@ -84,7 +84,7 @@ class Api:
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
     JOB_METHODS = frozenset({
-        "add_url", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
+        "add_url", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
@@ -1422,6 +1422,58 @@ class Api:
             self._play_request(out)
         return True
 
+    # ---------- Ekran kaydi ----------
+    recorder = None   # main.py baglar
+
+    def rec_status(self) -> dict[str, Any]:
+        r = self.recorder
+        return r.status() if r else {"replay": False, "recording": False, "error": "yok"}
+
+    def rec_toggle(self) -> dict[str, Any]:
+        r = self.recorder
+        if not r:
+            return {"ok": False, "error": "yok"}
+        res = r.toggle_record()
+        self._rec_done(res, start_msg=True)
+        return res
+
+    def rec_save_replay(self) -> dict[str, Any]:
+        r = self.recorder
+        if not r:
+            return {"ok": False, "error": "yok"}
+        try:
+            res = {"ok": True, "path": r.save_replay(), "replay": True}
+        except Exception as exc:
+            res = {"ok": False, "error": str(exc)[:160], "replay": True}
+        self._rec_done(res)
+        return res
+
+    def rec_replay(self, on: bool) -> dict[str, Any]:
+        r = self.recorder
+        if not r:
+            return {"ok": False}
+        ok = r.start_replay() if on else (r.stop_replay() or True)
+        return {"ok": bool(ok), **r.status()}
+
+    def rec_open_folder(self) -> bool:
+        from app.core.recorder import clips_dir
+        os.startfile(str(clips_dir())) if os.name == "nt" else None
+        return True
+
+    def _rec_done(self, res: dict[str, Any], start_msg: bool = False) -> None:
+        from app.core import desktop
+        en = self._manager.settings.get("language") == "en"
+        if res.get("recording"):
+            desktop.toast("Kami", "Recording started (Alt+F9 to stop)" if en else "Kayıt başladı (durdurmak için Alt+F9)", [])
+            return
+        if res.get("ok") and res.get("path"):
+            self._rec_last = res["path"]
+            title = ("Clip saved" if en else "Klip kaydedildi") if res.get("replay") else ("Recording saved" if en else "Kayıt kaydedildi")
+            desktop.toast(title, os.path.basename(res["path"]), [("Play / trim" if en else "Oynat / kırp", "kami://recplay"),
+                                                                ("Open folder" if en else "Klasörü aç", "kami://recfolder")])
+        elif not res.get("ok"):
+            desktop.toast("Kami", ("Could not save: " if en else "Kaydedilemedi: ") + str(res.get("error", "")), [])
+
     # ---------- Fotograf goruntuleyici ----------
     IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".jfif", ".heic", ".tif", ".tiff")
 
@@ -1493,13 +1545,13 @@ class Api:
     def lens_download(self, url: str, near: str = "") -> dict[str, Any]:
         """Bulunan en buyuk / secilen gorseli indirir (aranan gorselin klasorune; yoksa indirme klasorune)."""
         from app.core import lens
-        url = str(url or "")
-        if not url.startswith(("http://", "https://")):
+        urls = [str(u) for u in (url if isinstance(url, list) else [url]) if str(u or "").startswith(("http://", "https://"))]
+        if not urls:
             return {"ok": False, "error": "bad_url"}
         folder = os.path.dirname(str(near)) if near and os.path.isfile(str(near)) and "kami_lens_" not in str(near) else self._manager.settings.get("download_dir")
         stem = os.path.splitext(os.path.basename(str(near)))[0] if near else "lens"
         try:
-            return {"ok": True, "path": lens.download(url, folder, stem)}
+            return {"ok": True, "path": lens.download(urls, folder, stem)}
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:160]}
 
@@ -1664,6 +1716,10 @@ class Api:
                 self.player_show({"id": did})
             elif act == "folder" and did:
                 self.open_folder(did)
+            elif act in ("recplay", "recfolder"):    # son ekran kaydi / klip
+                out = str(getattr(self, "_rec_last", "") or "")
+                if os.path.isfile(out):
+                    subprocess.Popen(["explorer", "/select,", os.path.normpath(out)]) if act == "recfolder" else self._play_request(out)
             elif act in ("lvplay", "lvfolder"):   # yol URI'de degil: son lyric video
                 self.lyricvideo_open("folder" if act == "lvfolder" else "play")
             elif act == "subs" and did:

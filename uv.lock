@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -268,6 +268,7 @@ version = "0.8.0"
 source = { virtual = "." }
 dependencies = [
     { name = "pillow" },
+    { name = "pyaudiowpatch", marker = "sys_platform == 'win32'" },
     { name = "pypdf" },
     { name = "pypdfium2" },
     { name = "pystray" },
@@ -284,6 +285,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pillow", specifier = ">=13.0.0" },
+    { name = "pyaudiowpatch", marker = "sys_platform == 'win32'", specifier = ">=0.2.12" },
     { name = "pypdf", specifier = ">=7.0.1" },
     { name = "pypdfium2", specifier = ">=5.15.2" },
     { name = "pystray", specifier = ">=0.19.5" },
@@ -384,6 +386,17 @@ name = "proxy-tools"
 version = "0.1.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f2/cf/77d3e19b7fabd03895caca7857ef51e4c409e0ca6b37ee6e9f7daa50b642/proxy_tools-0.1.0.tar.gz", hash = "sha256:ccb3751f529c047e2d8a58440d86b205303cf0fe8146f784d1cbcd94f0a28010", size = 2978, upload-time = "2014-05-05T21:02:24.606Z" }
+
+[[package]]
+name = "pyaudiowpatch"
+version = "0.2.12.9"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/a3/acb33103ec3bf1be0255bf423791d3ffcb4c194a1d2b66aaceb311bc8269/pyaudiowpatch-0.2.12.9-cp312-cp312-win32.whl", hash = "sha256:ac7d187b2c470bc5c76cbc9e30c8127564fc3a653fcae9c820d6b3ddf417b6e4", size = 97853, upload-time = "2026-10-06T16:13:16.214Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/4a/b3040ab051c3d2ee6b123e67db7a3e980fbf8e71f9d3b822366e8b380eb2/pyaudiowpatch-0.2.12.9-cp312-cp312-win_amd64.whl", hash = "sha256:963376e94f46c84e994eda4d25ffd62b712881ad5d611a4f4433bb5aa0bf7fa4", size = 100137, upload-time = "2026-10-06T16:13:17.67Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/02/542a39af9f7ee589d039ed41714539ff7db08541256deaf0c04f64c5a213/pyaudiowpatch-0.2.12.9-cp313-cp313-win32.whl", hash = "sha256:f747213885420a6b46f5d4d8dd0b441c14591893e3fcc740d2f0961bb16c2b4c", size = 97844, upload-time = "2026-10-06T16:13:18.96Z" },
+    { url = "https://files.pythonhosted.org/packages/89/d7/2cf4d426d823e0931dd8830ed0751570997fba92d2596b25c22bd842b1da/pyaudiowpatch-0.2.12.9-cp313-cp313-win_amd64.whl", hash = "sha256:aaa847f5f76e11b42242b51293d872f811ab8925146c34ca79f21c9b18bda551", size = 100127, upload-time = "2026-10-06T16:13:20.602Z" },
+]
 
 [[package]]
 name = "pycparser"

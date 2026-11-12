@@ -91,3 +91,9 @@ skRenderBar = function (d) {   // eslint-disable-line no-global-assign
 window.KPAL = window.KPAL || [];
 
 window.KPAL.push(() => [{ ic: "◎", t: "Kami Lens: " + vwL("ekrandan alan seçip ara", "search a screen region"), sub: "Ctrl+Shift+L", run: () => api.picture_open("screen", true) }]);
+
+window.KPAL.push(() => [
+  { ic: "⏺", t: vwL("Ekran kaydı başlat / durdur", "Start / stop screen recording"), sub: "Alt+F9", run: () => api.rec_toggle() },
+  { ic: "⟲", t: vwL("Son anları klip olarak kaydet", "Save last moments as a clip"), sub: "Alt+F10", run: () => api.rec_save_replay() },
+  { ic: "📁", t: vwL("Kami Klipler klasörü", "Kami Clips folder"), sub: vwL("kayıtlar", "recordings"), run: () => api.rec_open_folder() },
+]);

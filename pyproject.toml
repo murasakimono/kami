@@ -5,6 +5,7 @@ description = "Kami Download Manager (KDM) - kisisel, eklentilerle buyuyen indir
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "pillow>=13.0.0",
+    "pyaudiowpatch>=0.2.12 ; sys_platform == 'win32'",
     "pypdf>=7.0.1",
     "pypdfium2>=5.15.2",
     "pystray>=0.19.5",
