@@ -3279,3 +3279,16 @@ class Api(StudioMixin):
     def virtual_cam_status(self) -> dict[str, Any]:
         from app.core.game_highlight import virtual_camera_status
         return virtual_camera_status()
+
+    # ---------- Faz 15: Belge Donusturucu & Manga Ceviri Studyosu ----------
+    def doc_pdf_to_markdown(self, src_pdf: str, out_md: str = "") -> dict[str, Any]:
+        from app.core.doc_studio import pdf_to_markdown
+        return pdf_to_markdown(src_pdf, out_md)
+
+    def doc_convert(self, src_path: str, target_format: str = "html", out_path: str = "") -> dict[str, Any]:
+        from app.core.doc_studio import convert_document
+        return convert_document(src_path, target_format=target_format, out_path=out_path)
+
+    def manga_translate_page(self, image_path: str, out_path: str = "", target_lang: str = "tr") -> dict[str, Any]:
+        from app.core.manga_translate import translate_manga_page
+        return translate_manga_page(image_path, out_path, target_lang=target_lang)
