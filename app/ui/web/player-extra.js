@@ -14,11 +14,18 @@ const segName = (t) => plL(...(SEG_NAMES[t] || [t, t]));
 
 window.plExtraStart = async (r) => {
   a4kStop();
+  cinStop?.();
   PE.segs = []; PE.skipped = new Set(); PE.clipA = PE.clipB = null;
   peDrawMarks();
   $("#plSkip")?.remove();
   peAmbient(r.kind === "video" && peCfg().ambient !== false);
-  if (!r.path) { if (r.kind === "video" && a4kWanted(r)) a4kStart(true); return; }
+  if (!r.path) {
+    if (r.kind === "video") {
+      if (a4kWanted(r)) a4kStart(true);
+      else if (peCfg().cinema && peCfg().cinema !== "off") cinStart();
+    }
+    return;
+  }
   let res;
   try { res = await slow("player_skips", r.path, r.duration || 0, r.tags || {}); } catch { res = null; }
   if (!res?.ok || PL.info !== r) return;
@@ -29,6 +36,7 @@ window.plExtraStart = async (r) => {
 function peAfterInfo(r) {
   if (PL.info !== r || r.kind !== "video") return;
   if (a4kWanted(r)) a4kStart(true);
+  else if (peCfg().cinema && peCfg().cinema !== "off") cinStart();
   peAutoSub(r);
 }
 
@@ -377,10 +385,12 @@ function a4kPlace() {
 async function a4kStart(auto = false) {
   const v = $("#plVideo");
   if (A4.on || !PL.open || PL.info?.kind !== "video") return;
+  if (typeof CIN !== "undefined" && CIN.on) cinStop();
   if (!navigator.gpu) { if (!auto) toast(plL("Anime4K için WebGPU desteklenmiyor", "WebGPU not supported"), true); return; }
   if (!v.videoWidth) { v.addEventListener("loadeddata", () => a4kStart(auto), { once: true }); return; }
   try { await a4kLoad(); } catch { toast(plL("Anime4K yüklenemedi", "Anime4K failed to load"), true); return; }
   const lib = a4kLib(); if (!lib) return;
+  cinStop?.();
   a4kStop();
   const c = document.createElement("canvas"); c.id = "plA4k"; c.className = "pl-a4k";
   v.after(c); A4.canvas = c;
@@ -448,6 +458,7 @@ function cinStop() {
 function cinStart() {
   const v = $("#plVideo");
   if (!PL.open || PL.info?.kind !== "video") return;
+  if (peCfg().cinema === "vsr") { cinStop(); toast(plL("Sürücü (RTX VSR) modu etkin", "Driver (RTX VSR) mode active")); return; }
   if (!v.videoWidth) { v.addEventListener("loadeddata", cinStart, { once: true }); return; }
   if (A4.on) a4kStop();
   cinStop();
@@ -500,8 +511,10 @@ window.pxExtraVideoHtml = () => _peVid2() + `<div class="px-shift"><span>Anime4K
   ${peSeg("a4k", [["auto", plL("Otomatik (≤720p anime)", "Auto (≤720p anime)")], ["on", plL("Hep açık", "Always")], ["off", plL("Kapalı", "Off")]], peCfg().a4k || "auto")}
   ${peSeg("a4kQ", [["light", plL("Hafif", "Light")], ["balanced", plL("Dengeli", "Balanced")], ["strong", plL("Güçlü", "Strong")]], peCfg().a4kQ || "light")}
   <div class="px-shift"><span>${plL("Sinema HD (Live-Action CAS + Deband)", "Cinema HD (Live-Action CAS + Deband)")}</span></div>
-  ${peSeg("cinema", [["off", plL("Kapalı", "Off")], ["light", plL("Hafif", "Light")], ["balanced", plL("Dengeli", "Balanced")], ["strong", plL("Güçlü", "Strong")]], peCfg().cinema || "off")}
-  <p class="px-hint">${plL("Ekran kartında çalışır. Güçlü mod laptopu ısıtabilir.", "Runs on the GPU. Strong mode can heat up laptops.")}</p>`;
+  ${peSeg("cinema", [["off", plL("Kapalı", "Off")], ["light", plL("Hafif", "Light")], ["balanced", plL("Dengeli", "Balanced")], ["strong", plL("Güçlü", "Strong")], ["vsr", plL("RTX VSR (Sürücü)", "RTX VSR (Driver)")]], peCfg().cinema || "off")}
+  <div class="px-shift"><span>${plL("Bölünmüş Ekran Karşılaştırma (%)", "Split-Screen Compare (%)")}</span><input id="cinSplitRange" type="range" min="0" max="90" value="0" style="width:120px"></div>
+  <div class="px-shift"><span>${plL("Sessizlik Atlayıcı (Ders/Podcast 2x)", "Silence Skipper (2x)")}</span><button type="button" class="btn ghost" id="plSkipSilBtn">${window._plSkipSil ? plL("Açık ✓", "On ✓") : plL("Kapalı", "Off")}</button></div>
+  <p class="px-hint">${plL("Ekran kartında çalışır. RTX VSR seçilirse WebGL tuvali kapatılır.", "Runs on GPU. RTX VSR disables WebGL canvas.")}</p>`;
 document.addEventListener("click", (e) => {
   const seg = e.target.closest?.('#plPanel .px-xseg[data-x="a4k"], #plPanel .px-xseg[data-x="a4kQ"], #plPanel .px-xseg[data-x="cinema"]'); const b = e.target.closest?.("button");
   if (!seg || !b) return;
@@ -768,3 +781,54 @@ document.addEventListener("click", (e) => {
   if (seg && b) { PX.cfg[seg.dataset.x] = b.dataset.v; pxSave(); setTimeout(subFontApply, 0); }
 }, true);
 setTimeout(subFontApply, 300);
+
+// ---- Sinema HD bolunmus ekran + Sessizlik Atlayici (2x)
+document.addEventListener("input", (e) => {
+  if (e.target.id === "cinSplitRange" && CIN.canvas) {
+    const pct = Number(e.target.value || 0);
+    CIN.canvas.style.clipPath = pct > 0 ? `inset(0 0 0 ${pct}%)` : "";
+  }
+});
+let _silTimer = 0, _silBaseRate = 1.0, _silLowSince = 0, _silBoosted = false;
+function plToggleSilenceSkip() {
+  window._plSkipSil = !window._plSkipSil;
+  const v = $("#plVideo");
+  const btn = $("#plSkipSilBtn");
+  if (btn) btn.textContent = window._plSkipSil ? plL("Açık ✓", "On ✓") : plL("Kapalı", "Off");
+  if (!window._plSkipSil) {
+    if (_silTimer) { clearInterval(_silTimer); _silTimer = 0; }
+    if (v && _silBoosted) { v.playbackRate = _silBaseRate || 1.0; _silBoosted = false; }
+    _silLowSince = 0;
+    toast(plL("Sessizlik atlayıcı kapalı", "Silence skipper off"));
+    return;
+  }
+  if (!v) return;
+  _silBaseRate = v.playbackRate || 1.0;
+  _silBoosted = false;
+  const ana = window._plGetAna?.();
+  if (!ana) { toast(plL("Ses analizörü hazır değil", "Audio analyser not ready"), true); return; }
+  const buf = new Uint8Array(ana.frequencyBinCount);
+  _silTimer = setInterval(() => {
+    if (!window._plSkipSil || v.paused || v.ended) return;
+    ana.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) { const d = (buf[i] - 128) / 128; sum += d * d; }
+    const rms = Math.sqrt(sum / buf.length);
+    const now = performance.now();
+    if (rms < 0.015) {
+      if (!_silLowSince) _silLowSince = now;
+      else if (now - _silLowSince > 450 && !_silBoosted) {
+        _silBaseRate = v.playbackRate;
+        if (v.playbackRate < 2.0) v.playbackRate = 2.0;
+        _silBoosted = true;
+      }
+    } else {
+      _silLowSince = 0;
+      if (_silBoosted) { v.playbackRate = _silBaseRate || 1.0; _silBoosted = false; }
+    }
+  }, 120);
+  toast(plL("Sessizlik atlayıcı açık (2x)", "Silence skipper on (2x)"));
+}
+document.addEventListener("click", (e) => {
+  if (e.target.id === "plSkipSilBtn") plToggleSilenceSkip();
+});

@@ -799,6 +799,16 @@ def main() -> int:
     phone = PhoneServer(int(settings.get("phone_port")), phone_key.load,
                         lambda text, fmt="": api.add_text_detail(text, "phone", fmt),
                         status=api.phone_status_items, control=api.phone_control)
+    phone.on_upload = api.phone_on_upload
+    from app.core import room as _room
+    _room.SERVER.phone_srv = phone
+    from app.core.jobs import jobs as _jobs
+    def _job_notify(j: dict) -> None:
+        if j.get("status") == "done":
+            desktop.toast("Kami İşler", f"{j.get('title', 'İş')} tamamlandı ✓", [])
+        elif j.get("status") == "error":
+            desktop.toast("Kami İşler", f"{j.get('title', 'İş')} hata: {j.get('error', '')}", [])
+    _jobs.on_done = _job_notify
 
     def phone_apply() -> None:
         if settings.get("phone_enabled"):

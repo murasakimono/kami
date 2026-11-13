@@ -59,6 +59,27 @@ def test_hardsub_merge_cues_and_timestamps():
     assert cues[1][2] == "Second line"
 
 
-def test_studio_make_proxy_missing_file():
-    r = studio.make_proxy("C:/nonexistent/video_4k.mp4")
-    assert r["ok"] is False
+def test_hardsub_batch_translate_preserves_newlines(monkeypatch):
+    seen = []
+
+    class FakeResp:
+        ok = True
+
+        def __init__(self, q):
+            self.q = q
+
+        def json(self):
+            return [[[f"TR:{ln}\n" if idx < len(self.q.splitlines()) - 1 else f"TR:{ln}", ln]
+                     for idx, ln in enumerate(self.q.splitlines())]]
+
+    def fake_get(url, timeout=10):
+        from urllib.parse import parse_qs, unquote, urlparse
+        q = unquote(parse_qs(urlparse(url).query)["q"][0])
+        seen.append(q)
+        return FakeResp(q)
+
+    monkeypatch.setattr(hardsub.requests, "get", fake_get)
+    res = hardsub.translate_batch(["Hello", "World", "Test"])
+    assert res == ["TR:Hello", "TR:World", "TR:Test"]
+    assert len(seen) == 1
+

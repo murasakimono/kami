@@ -392,6 +392,8 @@ document.addEventListener("click", async (e) => {
   else if (a === "popnote") { const h = addHl("p"); if (h) editNote(h); }
   else if (a === "popdict") { const t = RD.sel?.text; $("#rdPop").hidden = true; if (t) rdLookupOrTranslate(t); }
   else if (a === "ocrpage") { rdOcrCurrentPage(); }
+  else if (a === "exportmd") { rdExportMarkdown(); }
+  else if (a === "ocrpdf") { rdMakeSearchablePdf(); }
   else if (a === "popsay") { const t = RD.sel?.text; $("#rdPop").hidden = true; if (t) startTts(t); }
   else if (a === "popcopy") { navigator.clipboard?.writeText(RD.sel?.text || ""); $("#rdPop").hidden = true; toast(L("Kopyalandı", "Copied")); }
 });
@@ -402,6 +404,29 @@ function rdShowBox(title, body) {
   b.hidden = false;
   b.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><strong style="color:#c4b5fd">${esc(title)}</strong><button id="rdDictClose" style="background:none;border:0;color:#bbaee0;cursor:pointer">✕</button></div><div style="white-space:pre-wrap">${esc(body)}</div>`;
   b.querySelector("#rdDictClose").onclick = () => { b.hidden = true; };
+}
+
+function rdExportMarkdown() {
+  if (!RD.doc || !RD.st) return;
+  const hls = RD.st.hl || [];
+  if (!hls.length) { toast(L("Dışa aktarılacak vurgu yok", "No highlights to export")); return; }
+  const lines = [`# ${RD.doc.title || "PDF Notları"}\n`];
+  for (const h of hls) {
+    lines.push(`- **S.${(h.page || 0) + 1}:** ${h.text || ""}${h.note ? `\n  - *Not:* ${h.note}` : ""}`);
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${(RD.doc.title || "notlar").replace(/[^a-zA-Z0-9_-]+/g, "_")}.md`;
+  a.click();
+  toast(L("Markdown indirildi ✓", "Markdown downloaded ✓"));
+}
+
+async function rdMakeSearchablePdf() {
+  if (!RD.doc?.path) return;
+  toast(L("PDF OCR işi başlatıldı...", "PDF OCR job started..."));
+  const r = await api.reader_ocr_pdf?.(RD.doc.path);
+  if (r?.ok) toast(L("Aranabilir PDF işi kuyrukta ✓", "Searchable PDF job queued ✓"));
 }
 
 async function rdLookupOrTranslate(text) {
@@ -467,6 +492,7 @@ document.addEventListener("keydown", (e) => {
   else if (k === "r" || k === "R") { RD.set.rtl = !RD.set.rtl; saveSet(); }
   else if (k === "f" || k === "F") { RD.set.fit = RD.set.fit === "width" ? "height" : "width"; saveSet(); }
   else if ((k === "t" || k === "T") && pdf()) TTS.on ? stopTts() : startTts();
+  else if (k === "o" || k === "O") rdOcrCurrentPage();
   else if (k === "+" || k === "=") zoomBy(1.15);
   else if (k === "-") zoomBy(1 / 1.15);
   else if (k === "0") { RD.zoom = 1; RD.cache.clear(); render(); }

@@ -123,6 +123,11 @@ DEFAULTS: dict[str, Any] = {
     "room_mute_hotkey": "ctrl+shift+m",   # Kami Oda acikken genel kisayollar
     "room_deaf_hotkey": "ctrl+shift+d",
     "room_ptt_key": "",              # bas-konus genel tusu (bos: yalnizca oda penceresi odaktayken)
+    "chain_grab_ghost": False,       # Grab-All bitince Ghost metadata temizle
+    "chain_rec_studio": False,       # Ekran kaydi bitince Studio'da ac
+    "grab_follow_profiles": [],      # Grab-All takip edilen profiller
+    "player_skip_silence": False,    # Player sessizlik atlayici (2x)
+    "player_rtx_vsr": False,         # Player donanim RTX VSR modu (WebGL kapatir)
 }
 
 

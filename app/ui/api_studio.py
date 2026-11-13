@@ -92,7 +92,7 @@ class StudioMixin:
         from app.core.media_server import probe
         info = probe(self._st().ffprobe(), p)
         mode = choose_mode(Path(p).suffix.lower(), info)
-        if mode == "direct" and (i["kind"] == "audio" or (info.get("height") or 0) <= 1440):
+        if mode == "direct" and (i["kind"] == "audio" or (info.get("height") or 0) <= 1080):
             return self._media.asset_url(p)
         return self._media.asset_url(self._studio_proxy(p, i))
 
@@ -112,9 +112,10 @@ class StudioMixin:
         if i["kind"] == "audio":
             args = ["-i", p, "-vn", "-c:a", "aac", "-b:a", "192k"]
         else:
+            max_w = 1280 if (i.get("height") or 0) > 1440 else 1920
             v = (["-c:v", "h264_nvenc", "-preset", "p3", "-cq", "24", "-g", "15", "-bf", "0"] if enc == "h264_nvenc"
                  else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-g", "15", "-bf", "0"])
-            args = ["-i", p, "-map", "0:v:0", "-map", "0:a:0?", "-vf", "scale='min(1920,iw)':-2,format=yuv420p", *v, "-c:a", "aac", "-b:a", "160k"]
+            args = ["-i", p, "-map", "0:v:0", "-map", "0:a:0?", "-vf", f"scale='min({max_w},iw)':-2,format=yuv420p", *v, "-c:a", "aac", "-b:a", "160k"]
         tmp = out.with_suffix(".part" + out.suffix)
         r = subprocess.run([ff, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", *args, "-movflags", "+faststart", str(tmp)],
                            capture_output=True, timeout=7200, creationflags=NO_WINDOW)

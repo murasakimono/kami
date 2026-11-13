@@ -1,0 +1,31 @@
+{
+  "name": "Erome",
+  "version": "1.0.0",
+  "description": "Erome albüm (/a/) video ve görsel indirme eklentisi.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Erome",
+      "host": "^(www\\.)?erome\\.com$",
+      "share": "^/a/[A-Za-z0-9_-]+",
+      "examples": {
+        "match": [
+          "https://www.erome.com/a/AbCd1234",
+          "https://erome.com/a/test_99"
+        ],
+        "no_match": [
+          "https://www.erome.com/"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

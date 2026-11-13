@@ -17,9 +17,35 @@ from app.core.procjob import attach
 
 NOWIN = 0x08000000 if os.name == "nt" else 0
 SUPPORTED_RE = re.compile(
-    r"(^|\.)(instagram\.com|x\.com|twitter\.com|tiktok\.com|pinterest\.[a-z.]+|reddit\.com)$",
+    r"(^|\.)(instagram\.com|x\.com|twitter\.com|tiktok\.com|pinterest\.[a-z.]+|reddit\.com|erome\.com|kemono\.(?:su|cr|party)|coomer\.(?:su|st|party))$",
     flags=re.I,
 )
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_VIDEO_EXTS = "('mp4', 'webm', 'mkv', 'mov', 'm4v', 'flv', 'avi', 'wmv', 'gifv')"
+_IMAGE_EXTS = "('jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif')"
+
+
+def build_filter(media_type: str = "all", date_after: str = "", date_before: str = "") -> tuple[bool, str]:
+    """gallery-dl --filter ifadesini guvenli sekilde olusturur."""
+    parts: list[str] = []
+    mt = str(media_type or "all").strip().lower()
+    if mt == "video":
+        parts.append(f"extension.lower() in {_VIDEO_EXTS}")
+    elif mt == "image":
+        parts.append(f"extension.lower() in {_IMAGE_EXTS}")
+    elif mt not in ("", "all"):
+        return False, "Geçersiz medya türü filtresi"
+    da = str(date_after or "").strip()
+    if da:
+        if not _DATE_RE.match(da):
+            return False, "Başlangıç tarihi YYYY-AA-GG biçiminde olmalı"
+        parts.append(f"bool(date and str(date)[:10] >= '{da}')")
+    db = str(date_before or "").strip()
+    if db:
+        if not _DATE_RE.match(db):
+            return False, "Bitiş tarihi YYYY-AA-GG biçiminde olmalı"
+        parts.append(f"bool(date and str(date)[:10] <= '{db}')")
+    return True, " and ".join(parts)
 
 
 def is_supported(url: str) -> bool:
@@ -114,14 +140,24 @@ def default_dest(base_dir: str) -> str:
     return str(d)
 
 
-def start(url: str, dest_dir: str, limit: int = 0) -> dict[str, Any]:
+def start(url: str, dest_dir: str, limit: int = 0, use_archive: bool = True,
+          media_type: str = "all", date_after: str = "", date_before: str = "") -> dict[str, Any]:
     if not is_supported(url):
-        return {"ok": False, "error": "Desteklenmeyen site (IG, X, TikTok, Pinterest, Reddit desteklenir)"}
+        return {"ok": False, "error": "Desteklenmeyen site (IG, X, TikTok, Pinterest, Reddit, Erome, Kemono, Coomer desteklenir)"}
+    ok_f, flt_or_err = build_filter(media_type, date_after, date_before)
+    if not ok_f:
+        return {"ok": False, "error": flt_or_err}
     ok, cmd_or_err = ensure_gallery_dl()
     if not ok:
         return {"ok": False, "error": str(cmd_or_err)}
     os.makedirs(dest_dir, exist_ok=True)
     cmd = list(cmd_or_err) + ["--dest", dest_dir, "--write-metadata"]
+    if flt_or_err:
+        cmd += ["--filter", flt_or_err]
+    if use_archive:
+        arch = paths.DATA_DIR / "grab_archive.txt"
+        arch.parent.mkdir(parents=True, exist_ok=True)
+        cmd += ["--download-archive", str(arch)]
     cookie_file = _write_cookies(url)
     if cookie_file:
         cmd += ["--cookies", cookie_file]

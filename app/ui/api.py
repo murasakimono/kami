@@ -1716,6 +1716,8 @@ class Api(StudioMixin):
             desktop.toast(title, os.path.basename(res["path"]), [("Play / trim" if en else "Oynat / kırp", "kami://recplay"),
                                                                 ("Edit in Studio" if en else "Studio'da Kurguya Aç", "kami://recstudio"),
                                                                 ("Open folder" if en else "Klasörü aç", "kami://recfolder")])
+            if self._manager.settings.get("chain_rec_studio"):
+                self.studio_show(res["path"])
         elif not res.get("ok"):
             desktop.toast("Kami", ("Could not save: " if en else "Kaydedilemedi: ") + str(res.get("error", "")), [])
 
@@ -2120,6 +2122,11 @@ class Api(StudioMixin):
                 self.open_folder(did)
             elif act == "room":
                 self.room_open(True)
+            elif act == "phoneinbox":
+                from app import paths
+                inbox = paths.DATA_DIR / "phone_inbox"
+                inbox.mkdir(parents=True, exist_ok=True)
+                subprocess.Popen(["explorer", os.path.normpath(str(inbox))])
             elif act in ("recplay", "recfolder", "recstudio"):    # son ekran kaydi / klip
                 out = str(getattr(self, "_rec_last", "") or "")
                 if os.path.isfile(out):
@@ -2548,7 +2555,27 @@ class Api(StudioMixin):
         if action == "resume":
             self._manager.resume(int(download_id))
             return True
+        if action.startswith("pad:"):
+            act = action.split(":", 1)[1]
+            if act == "rec_toggle":
+                self.rec_toggle()
+            elif act == "rec_replay":
+                self.rec_save_replay()
+            elif act == "studio":
+                self.studio_show()
+            elif act == "picture":
+                self.picture_open_editor()
+            else:
+                return False
+            return True
         return False
+
+    def phone_on_upload(self, path: str, kind: str) -> None:
+        from app.ui import desktop
+        desktop.toast("Kami Mobil Köprü", f"Telefondan alındı: {os.path.basename(path)}",
+                      [("Klasörü aç", "kami://phoneinbox")])
+        if kind == "snap" and os.path.isfile(path):
+            self.picture_open(path, edit=True)
 
     def phone_new_key(self) -> dict[str, Any]:
         from app.core.phone import new_key
@@ -2717,12 +2744,20 @@ class Api(StudioMixin):
             **st,
         }
 
-    def grab_all_start(self, url: str, limit: int = 0) -> dict[str, Any]:
+    def grab_all_start(self, url: str, limit: int = 0, media_type: str = "all",
+                       date_after: str = "", date_before: str = "") -> dict[str, Any]:
         import threading
         from app.core import grab_all
         u = str(url or "").strip()
         dest = grab_all.default_dest(self._manager.base_dir())
-        res = grab_all.start(u, dest, int(limit or 0))
+        res = grab_all.start(
+            u,
+            dest,
+            int(limit or 0),
+            media_type=str(media_type or "all"),
+            date_after=str(date_after or ""),
+            date_before=str(date_before or ""),
+        )
         if not res.get("ok"):
             return res
         proc = res.pop("proc")
@@ -2745,6 +2780,9 @@ class Api(StudioMixin):
                 rc = proc.wait()
                 state["running"] = False
                 state["rc"] = rc
+                if rc == 0 and self._manager.settings.get("chain_grab_ghost"):
+                    from app.core import ghost
+                    ghost.process_folder(dest)
                 self._manager.events.emit("ui.warn" if rc else "ui.toast", kind="grab_all",
                                           name=f"Grab-All {'hata' if rc else 'tamamlandı'} ({state['files_count']} dosya): {dest}")
             except Exception:
@@ -2759,11 +2797,7 @@ class Api(StudioMixin):
         threading.Thread(target=_wait, daemon=True).start()
         return res
 
-    # ---------- Faz 3: Studio Proxy, Kami Hardsub, Kami Ghost ----------
-    def studio_proxy(self, path: str) -> dict[str, Any]:
-        from app.core import studio
-        return studio.make_proxy(str(path or "").strip())
-
+    # ---------- Faz 3: Kami Hardsub, Kami Ghost ----------
     def hardsub_extract(self, path: str, lang: str = "", burn: bool = False) -> dict[str, Any]:
         from app.core import hardsub
         return hardsub.extract_and_translate(str(path or "").strip(), lang=str(lang or ""), burn=bool(burn))
@@ -2771,3 +2805,188 @@ class Api(StudioMixin):
     def ghost_process(self, path: str, shield: bool = False) -> dict[str, Any]:
         from app.core import ghost
         return ghost.process(str(path or "").strip(), shield=bool(shield))
+
+    # ---------- Faz 4: Kami Beat, Kami Hunter, Kami Mod, Mobil Kopru ----------
+    def beat_analyze(self, path: str) -> dict[str, Any]:
+        from app.core import kami_beat
+        bpm = kami_beat.analyze_bpm(str(path or "").strip())
+        return {"ok": bpm > 0, "bpm": bpm}
+
+    def beat_mashup(self, vocal: str, beat: str, vocal_bpm: float = 0.0, beat_bpm: float = 0.0,
+                    pitch_semi: float = 0.0, vocal_offset: float = 0.0) -> dict[str, Any]:
+        from app.core import kami_beat
+        return kami_beat.mashup(str(vocal or "").strip(), str(beat or "").strip(),
+                                vocal_bpm=float(vocal_bpm or 0), beat_bpm=float(beat_bpm or 0),
+                                pitch_semi=float(pitch_semi or 0), vocal_offset=float(vocal_offset or 0))
+
+    def hunter_search(self, query: str, site: str = "") -> dict[str, Any]:
+        from app.core import kami_hunter
+        return kami_hunter.search(str(query or "").strip(), site=str(site or "").strip())
+
+    def mod_list(self) -> list[dict[str, Any]]:
+        from app.core import kami_mod
+        return kami_mod.list_mods()
+
+    def mod_install(self, archive: str, game_dir: str) -> dict[str, Any]:
+        from app.core import kami_mod
+        return kami_mod.install_mod(str(archive or "").strip(), str(game_dir or "").strip())
+
+    def mod_rollback(self, mod_id: str) -> dict[str, Any]:
+        from app.core import kami_mod
+        return kami_mod.rollback_mod(str(mod_id or "").strip())
+
+    def phone_bridge_url(self) -> dict[str, Any]:
+        from app.core.phone import lan_ip
+        from app.core import room as _room
+        port = int(self._manager.settings.get("phone_port") or 47322)
+        key = self._phone_key.load() if self._phone_key else ""
+        local_url = f"http://{lan_ip()}:{port}/bridge" + (f"?k={key}" if key else "")
+        tunnel_url = ""
+        if _room.SERVER.tunnel_url and _room.SERVER.room:
+            base_t = _room.SERVER.tunnel_url.rstrip("/")
+            tunnel_url = f"{base_t}/{_room.SERVER.room.id}/bridge" + (f"?k={key}" if key else "")
+        return {"ok": True, "url": local_url, "tunnel_url": tunnel_url, "key": key}
+
+    # ---------- Faz 5: Is Merkezi, Zincirler, Ekstra Araclar ----------
+    def jobs_list(self) -> list[dict[str, Any]]:
+        from app.core.jobs import jobs
+        return jobs.list()
+
+    def job_poll(self, job_id: str) -> dict[str, Any]:
+        from app.core.jobs import jobs
+        return jobs.get(str(job_id or "")) or {"ok": False, "error": "İş bulunamadı"}
+
+    def job_cancel(self, job_id: str) -> dict[str, Any]:
+        from app.core.jobs import jobs
+        return {"ok": jobs.cancel(str(job_id or ""))}
+
+    def hardsub_start(self, path: str, lang: str = "", burn: bool = False,
+                      top_pct: float = 0.76, height_pct: float = 0.24,
+                      color_filter: str = "both", use_nllb: bool = False,
+                      mask_mode: str = "delogo") -> dict[str, Any]:
+        from app.core import hardsub
+        from app.core.jobs import jobs
+        jid = jobs.start(
+            "hardsub", f"Hardsub: {os.path.basename(path)}",
+            lambda ctx: hardsub.extract_and_translate(
+                str(path or "").strip(), lang=str(lang or ""), burn=bool(burn),
+                top_pct=float(top_pct), height_pct=float(height_pct),
+                color_filter=str(color_filter or "both"), use_nllb=bool(use_nllb),
+                mask_mode=str(mask_mode or "delogo"), ctx=ctx,
+            ),
+        )
+        return {"ok": True, "job_id": jid}
+
+    def ghost_inspect(self, path: str) -> dict[str, Any]:
+        from app.core import ghost
+        return ghost.inspect_metadata(str(path or "").strip())
+
+    def ghost_folder_start(self, folder: str, shield: bool = False) -> dict[str, Any]:
+        from app.core import ghost
+        from app.core.jobs import jobs
+        jid = jobs.start(
+            "ghost", f"Ghost Klasör: {os.path.basename(folder)}",
+            lambda ctx: ghost.process_folder(str(folder or "").strip(), shield=bool(shield), ctx=ctx),
+        )
+        return {"ok": True, "job_id": jid}
+
+    def beat_stems(self, path: str) -> dict[str, Any]:
+        from app.core import kami_beat
+        from app.core.jobs import jobs
+        jid = jobs.start("beat_stems", f"4-Kanal Ayır: {os.path.basename(path)}",
+                         lambda _ctx: kami_beat.separate_stems(str(path or "").strip()))
+        return {"ok": True, "job_id": jid}
+
+    def beat_key(self, path: str) -> dict[str, Any]:
+        from app.core import kami_beat
+        return {"ok": True, **kami_beat.detect_key(str(path or "").strip())}
+
+    def beat_mashup_start(self, vocal: str, beat: str, vocal_bpm: float = 0.0, beat_bpm: float = 0.0,
+                          pitch_semi: float = 0.0, vocal_offset: float = 0.0,
+                          auto_uvr: bool = False, matchering_ref: str = "") -> dict[str, Any]:
+        from app.core import kami_beat
+        from app.core.jobs import jobs
+        jid = jobs.start(
+            "beat_mashup", f"Kami Beat: {os.path.basename(vocal)}",
+            lambda ctx: kami_beat.mashup(
+                str(vocal or "").strip(), str(beat or "").strip(),
+                vocal_bpm=float(vocal_bpm or 0), beat_bpm=float(beat_bpm or 0),
+                pitch_semi=float(pitch_semi or 0), vocal_offset=float(vocal_offset or 0),
+                auto_uvr=bool(auto_uvr), matchering_ref=str(matchering_ref or "").strip(), ctx=ctx,
+            ),
+        )
+        return {"ok": True, "job_id": jid}
+
+    def mod_steam_games(self) -> list[dict[str, str]]:
+        from app.core import kami_mod
+        return kami_mod.find_steam_games()
+
+    def hunter_preview(self, url: str) -> dict[str, Any]:
+        from app.core import kami_hunter
+        return kami_hunter.preview_url(str(url or "").strip())
+
+    def links_check(self, urls: list[str]) -> dict[str, Any]:
+        from app.core import link_check
+        return link_check.check_links(list(urls or []), cloud_service=getattr(self.manager, "cloud", None))
+
+    def reader_ocr_pdf(self, path: str) -> dict[str, Any]:
+        from app.core import pdf_ocr
+        from app.core.jobs import jobs
+        jid = jobs.start("pdf_ocr", f"PDF OCR: {os.path.basename(path)}",
+                         lambda ctx: pdf_ocr.make_searchable_pdf(str(path or "").strip(), ctx=ctx))
+        return {"ok": True, "job_id": jid}
+
+    def rec_export_gif(self, path: str) -> dict[str, Any]:
+        if not self.recorder:
+            return {"ok": False}
+        from app.core.jobs import jobs
+        jid = jobs.start("rec_gif", f"GIF: {os.path.basename(path)}",
+                         lambda _c: self.recorder.export_gif(str(path or "").strip()))
+        return {"ok": True, "job_id": jid}
+
+    def rec_fit_discord(self, path: str) -> dict[str, Any]:
+        if not self.recorder:
+            return {"ok": False}
+        from app.core.jobs import jobs
+        jid = jobs.start("rec_discord", f"Discord Sığdır: {os.path.basename(path)}",
+                         lambda _c: self.recorder.fit_discord(str(path or "").strip()))
+        return {"ok": True, "job_id": jid}
+
+    def rec_start_region(self, x: int = 0, y: int = 0, w: int = 1280, h: int = 720, window_title: str = "") -> dict[str, Any]:
+        if not self.recorder:
+            return {"ok": False}
+        reg = None if window_title else {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
+        return self.recorder.start_record(region=reg, window_title=str(window_title or "").strip())
+
+    def _pw_store(self):
+        from app import paths
+        from app.core.vault import TokenStore
+        return TokenStore(paths.DATA_DIR / "archive_passwords.bin")
+
+    def chain_get(self) -> dict[str, Any]:
+        import json as _json
+        s = self._manager.settings
+        pw_raw = self._pw_store().load()
+        try:
+            pws = _json.loads(pw_raw) if pw_raw else []
+        except ValueError:
+            pws = []
+        return {
+            "chain_grab_ghost": bool(s.get("chain_grab_ghost")),
+            "chain_rec_studio": bool(s.get("chain_rec_studio")),
+            "rec_replay_seconds": int(s.get("rec_replay_seconds") or 30),
+            "archive_passwords": pws if isinstance(pws, list) else [],
+            "grab_follow_profiles": list(s.get("grab_follow_profiles") or []),
+        }
+
+    def chain_set(self, key: str, val: Any) -> dict[str, Any]:
+        import json as _json
+        if key == "archive_passwords":
+            clean = [str(x).strip() for x in (val or []) if str(x).strip()]
+            self._pw_store().save(_json.dumps(clean, ensure_ascii=False))
+            return {"ok": True}
+        allowed = {"chain_grab_ghost", "chain_rec_studio", "rec_replay_seconds", "grab_follow_profiles"}
+        if key not in allowed:
+            return {"ok": False, "error": "Geçersiz ayar"}
+        self._manager.settings.set(key, val)
+        return {"ok": True}

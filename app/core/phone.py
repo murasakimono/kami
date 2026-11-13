@@ -163,6 +163,7 @@ class PhoneServer:
         self.on_text = on_text            # metin -> eklenen link sayisi (int) ya da {added, links}
         self.status = status
         self.control = control
+        self.on_upload: Callable[[str, str], None] | None = None
         self._srv: ThreadingHTTPServer | None = None
         self._hits: list[float] = []
         self._lock = threading.Lock()
@@ -299,6 +300,8 @@ class PhoneServer:
                                       f"<body style='font:18px system-ui;background:#15111C;color:#E7E2EF;padding:20px'>"
                                       f"<h2 style='color:#9D6BFF'>{info['message']}</h2><p><a style='color:#C9B3FF' href='/'>"
                                       f"Gönderme sayfası + indirme durumu</a></p>")
+                if path == "/bridge":
+                    return self._html(_BRIDGE_HTML)
                 if path == "/status":
                     if not self._key_ok():
                         return self._send(401, {"ok": False, "error": "key", "message": "Anahtar yanlış ya da eksik."})
@@ -316,15 +319,39 @@ class PhoneServer:
                     log.warning("Telefon: yerel ag disi istek reddedildi ip=%s", client)
                     return self._send(403, {"ok": False, "error": "forbidden", "message": "✕ Sadece yerel ağ."})
                 path = self.path.split("?")[0]
-                if path not in ("/send", "/control"):
+                if path not in ("/send", "/control", "/upload"):
                     return self._send(404, {"ok": False, "message": "✕ Böyle bir adres yok."})
                 if not outer._rate_ok():
                     return self._send(429, {"ok": False, "error": "rate", "message": "✕ Çok sık istek, biraz bekle."})
                 n = int(self.headers.get("Content-Length") or 0)
-                if n <= 0 or n > MAX_BODY:
+                max_lim = 32 * 1024 * 1024 if path == "/upload" else MAX_BODY
+                if n <= 0 or n > max_lim:
                     log.warning("Telefon %s: gecersiz govde boyutu %s ip=%s", path, n, client)
                     return self._send(413, {"ok": False, "error": "size",
-                                            "message": "✕ Gövde boş ya da çok büyük. Kestirme'de İstek Gövdesi: JSON."})
+                                            "message": "✕ Gövde boş ya da çok büyük."})
+                if path == "/upload":
+                    if not self._key_ok():
+                        return self._send(401, {"ok": False, "error": "key"})
+                    import base64
+                    from app import paths
+                    raw_bytes = self.rfile.read(n)
+                    try:
+                        b = json.loads(raw_bytes.decode("utf-8", "replace"))
+                        fname = f"{int(time.time())}_{os.path.basename(str(b.get('name') or 'snap.bin'))}"
+                        data_b64 = str(b.get("data") or "")
+                        if "," in data_b64[:80]:
+                            data_b64 = data_b64.split(",", 1)[1]
+                        blob = base64.b64decode(data_b64)
+                        inbox = paths.DATA_DIR / "phone_inbox"
+                        inbox.mkdir(parents=True, exist_ok=True)
+                        dest = inbox / fname
+                        dest.write_bytes(blob)
+                        kind = str(b.get("kind") or "snap")
+                        if outer.on_upload:
+                            outer.on_upload(str(dest), kind)
+                        return self._send(200, {"ok": True, "path": str(dest), "kind": kind})
+                    except Exception as exc:
+                        return self._send(400, {"ok": False, "error": str(exc)[:120]})
                 raw = self.rfile.read(n).decode("utf-8", "replace")
                 if path == "/control":
                     if not self._key_ok():
@@ -356,3 +383,70 @@ class PhoneServer:
             self._srv.shutdown()
             self._srv.server_close()
             self._srv = None
+
+
+_BRIDGE_HTML = """<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kami Booth / Pad / Snap</title>
+<style>
+body{margin:0;background:#0e0b16;color:#f2ecff;font:15px system-ui;padding:16px}
+h2{color:#c4b5fd;margin:0 0 12px}
+.card{background:#171224;border:1px solid #352754;padding:14px;margin-bottom:14px;border-radius:8px}
+button,input,textarea{font:inherit;border-radius:6px;border:1px solid #3d2e60;background:#0b0812;color:#fff;padding:10px 12px}
+button{background:#7c4dff;border-color:#9d6bff;cursor:pointer;font-weight:600}
+.pad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.pad button{padding:14px 6px;font-size:13px;background:#221a36}
+</style></head><body>
+<h2>Kami Mobil Köprü (Booth · Pad · Snap)</h2>
+<div class="card"><strong>Anahtar</strong><br><input id="key" placeholder="X-Kami-Key" style="width:100%;box-sizing:border-box;margin-top:6px"></div>
+<div class="card"><strong>🎙 Kami Booth (Ses Kaydı + Prompter)</strong>
+<textarea id="prompter" rows="3" placeholder="Sözlerini buraya yapıştır..." style="width:100%;box-sizing:border-box;margin:8px 0"></textarea>
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<button id="recBtn" style="display:none">Canlı Kayıt (48kHz)</button>
+<input id="boothIn" type="file" accept="audio/*" capture> <span id="recSt"></span></div></div>
+<div class="card"><strong>📷 Kami Snap (Fotoğrafı PC'ye Gönder)</strong><br>
+<input id="snapIn" type="file" accept="image/*" capture="environment" style="margin-top:8px"></div>
+<div class="card"><strong>🎛 Kami Pad (Hızlı Kısayollar)</strong>
+<div class="pad">
+<button onclick="padAct('rec_toggle')">🎥 Kayıt</button>
+<button onclick="padAct('rec_replay')">⏱ 30sn Klip</button>
+<button onclick="padAct('studio')">🎬 Studio</button>
+<button onclick="padAct('picture')">🖼 Picture</button>
+</div><div id="padSt" style="margin-top:6px;font-size:13px;color:#2ee6a6"></div></div>
+<script>
+const qp=new URLSearchParams(location.search).get('k');
+const kEl=document.getElementById('key');
+kEl.value=qp||localStorage.getItem('kamiKey')||'';
+if(qp)localStorage.setItem('kamiKey',qp);
+kEl.oninput=()=>localStorage.setItem('kamiKey',kEl.value.trim());
+async function uploadBlob(name,kind,blob){
+  const r=new FileReader();
+  r.onload=async()=>{
+    const res=await fetch('upload',{method:'POST',headers:{'Content-Type':'application/json','X-Kami-Key':kEl.value.trim()},
+      body:JSON.stringify({name,kind,data:r.result})});
+    const j=await res.json();
+    document.getElementById('recSt').textContent=j.ok?'Gönderildi ✓':(j.error||'Hata');
+  };
+  r.readAsDataURL(blob);
+}
+document.getElementById('snapIn').onchange=(e)=>{const f=e.target.files[0];if(f)uploadBlob(f.name,'snap',f);};
+document.getElementById('boothIn').onchange=(e)=>{const f=e.target.files[0];if(f)uploadBlob(f.name,'booth',f);};
+if(window.isSecureContext&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){
+  const rb=document.getElementById('recBtn'); rb.style.display='inline-block';
+  let mr=null,chunks=[];
+  rb.onclick=async()=>{
+    if(mr&&mr.state==='recording'){mr.stop();rb.textContent='Canlı Kayıt (48kHz)';return;}
+    const st=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:48000,channelCount:1}});
+    mr=new MediaRecorder(st); chunks=[];
+    mr.ondataavailable=e=>chunks.push(e.data);
+    mr.onstop=()=>{st.getTracks().forEach(t=>t.stop());uploadBlob('booth_'+Date.now()+'.webm','booth',new Blob(chunks,{type:'audio/webm'}));};
+    mr.start(); rb.textContent='Durdur ve Gönder';
+  };
+}
+async function padAct(a){
+  const res=await fetch('control',{method:'POST',headers:{'Content-Type':'application/json','X-Kami-Key':kEl.value.trim()},
+    body:JSON.stringify({id:0,action:'pad:'+a})});
+  const j=await res.json().catch(()=>({}));
+  document.getElementById('padSt').textContent=j.ok?('Tetiklendi: '+a):('Hata: '+(j.error||res.status));
+}
+</script></body></html>"""

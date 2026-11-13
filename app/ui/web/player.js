@@ -382,6 +382,7 @@ function plAudioGraph() {
     PL.src.connect(PL.comp); PL.comp.connect(PL.gain); PL.gain.connect(PL.boost); PL.boost.connect(PL.delay);
     PL.delay.connect(PL.an); PL.an.connect(PL.ctx.destination);
     PL.boost.gain.value = Math.max(1, PL.vol || 1);
+    window._plGetAna = () => (plAudioGraph(), PL.an);
     window.plApplyAudio?.();
     PL.bins = new Uint8Array(PL.an.frequencyBinCount);
     const N = 7, edges = [];   // logaritmik bantlar ~40 Hz .. 16 kHz

@@ -664,7 +664,6 @@ document.addEventListener("keydown", (e) => {
   else if (e.ctrlKey && k === "a") { e.preventDefault(); edSelRect(0, 0, ED.W, ED.H); edRender(); }
   else if (e.ctrlKey && k === "d") { e.preventDefault(); ED.sel = null; edRender(); }
   else if (e.ctrlKey && k === "t") { e.preventDefault(); edTransformOpen(); }
-  else if (e.ctrlKey && k === "v") { edPasteFromClipboard(); }
   else if (k === " " && !e.repeat) { e.preventDefault(); ED.space = true; if (ED.hover) { const v = $("#edView").getBoundingClientRect(); edWheel(v.left + ED.hover[0] * ED.z + ED.ox, v.top + ED.hover[1] * ED.z + ED.oy); } }
   else if (k === "tab") { e.preventDefault(); $("#edLayers").classList.toggle("open"); }
   else if (k === "[") { ED.size = Math.max(1, Math.round(ED.size / 1.2)); edOpt(); edRender(); }
@@ -761,20 +760,6 @@ function edPasteImageBlob(blob) {
     toast(edL("Panodan katman eklendi", "Pasted as layer"));
   };
   im.src = url;
-}
-
-async function edPasteFromClipboard() {
-  if (!ED.on || !navigator.clipboard?.read) return;
-  try {
-    const items = await navigator.clipboard.read();
-    for (const it of items) {
-      const imgType = it.types.find((t) => t.startsWith("image/"));
-      if (imgType) {
-        edPasteImageBlob(await it.getType(imgType));
-        return;
-      }
-    }
-  } catch { /* paste event yedek olarak yakalar */ }
 }
 
 window.addEventListener("paste", (e) => {

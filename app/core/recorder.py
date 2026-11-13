@@ -213,6 +213,9 @@ class Recorder:
         raise RuntimeError("ekran yakalanamadi")
 
     def _audio_on(self) -> None:
+        sec = max(15, min(600, int(self.settings.get("rec_replay_seconds") or 30)))
+        self.sys.keep = float(sec + 25)
+        self.mic.keep = float(sec + 25)
         if not self.sys.alive:
             self.sys.start()
         if self.settings.get("rec_mic") and not self.mic.alive:
@@ -241,8 +244,10 @@ class Recorder:
             shutil.rmtree(self.work, ignore_errors=True)
             self.work.mkdir(parents=True, exist_ok=True)
             self._audio_on()
+            sec = max(15, min(600, int(self.settings.get("rec_replay_seconds") or 30)))
+            wrap = max(10, int(sec / SEG) + 3)
             args = [self._ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", *_video_args(self._fps(), mode),
-                    "-f", "segment", "-segment_time", str(SEG), "-segment_wrap", str(WRAP), "-reset_timestamps", "1",
+                    "-f", "segment", "-segment_time", str(SEG), "-segment_wrap", str(wrap), "-reset_timestamps", "1",
                     "-segment_format", "mpegts", str(self.work / "seg_%03d.ts")]
             self.buf = attach(subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                         creationflags=NOWIN))
@@ -309,7 +314,7 @@ class Recorder:
     def toggle_record(self) -> dict[str, Any]:
         return self.stop_record() if self.rec else self.start_record()
 
-    def start_record(self) -> dict[str, Any]:
+    def start_record(self, *, region: dict[str, int] | None = None, window_title: str = "") -> dict[str, Any]:
         with self.lock:
             if self.rec:
                 return {"ok": True, "recording": True}
@@ -319,8 +324,21 @@ class Recorder:
                 return {"ok": False, "error": str(exc)}
             self._audio_on()
             job = Path(tempfile.mkdtemp(prefix="kami_rec_"))
+            fps = self._fps()
+            if window_title:
+                v_args = ["-f", "gdigrab", "-framerate", str(fps), "-i", f"title={window_title}",
+                          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p"]
+            elif region and all(k in region for k in ("x", "y", "w", "h")):
+                w = max(64, int(region["w"]) & ~1)
+                h = max(64, int(region["h"]) & ~1)
+                v_args = ["-f", "gdigrab", "-framerate", str(fps),
+                          "-offset_x", str(int(region["x"])), "-offset_y", str(int(region["y"])),
+                          "-video_size", f"{w}x{h}", "-i", "desktop",
+                          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p"]
+            else:
+                v_args = _video_args(fps, mode)
             p = attach(subprocess.Popen([self._ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
-                                  *_video_args(self._fps(), mode), str(job / "v.mkv")],
+                                  *v_args, str(job / "v.mkv")],
                                  stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                  creationflags=NOWIN))
             t0 = time.time() + 0.15      # ddagrab acilis gecikmesi (yaklasik)
@@ -397,6 +415,39 @@ class Recorder:
         r = subprocess.run(args, capture_output=True, text=True, creationflags=NOWIN, timeout=600)
         if r.returncode != 0:
             raise RuntimeError(r.stderr.strip()[-200:] or "birlestirilemedi")
+
+    def export_gif(self, video_path: str, fps: int = 15, width: int = 640) -> dict[str, Any]:
+        src = Path(video_path)
+        if not src.is_file():
+            return {"ok": False, "error": "Video bulunamadı"}
+        out = src.with_suffix(".gif")
+        ff = self._ffmpeg()
+        vf = f"fps={max(5, min(30, int(fps)))},scale={max(160, int(width))}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
+        r = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-i", str(src), "-vf", vf, str(out)],
+                           capture_output=True, text=True, creationflags=NOWIN, timeout=300)
+        if r.returncode != 0:
+            return {"ok": False, "error": (r.stderr or "GIF oluşturulamadı")[:180]}
+        return {"ok": True, "out": str(out)}
+
+    def fit_discord(self, video_path: str, max_mb: float = 9.5) -> dict[str, Any]:
+        src = Path(video_path)
+        if not src.is_file():
+            return {"ok": False, "error": "Video bulunamadı"}
+        dur = max(1.0, self._duration(str(src)))
+        total_kbps = max(200, int((max_mb * 8192) / dur))
+        v_kbps = max(120, total_kbps - 96)
+        out = src.with_name(f"{src.stem}_discord.mp4")
+        ff = self._ffmpeg()
+        r = subprocess.run(
+            [ff, "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+             "-c:v", "libx264", "-preset", "veryfast", "-b:v", f"{v_kbps}k",
+             "-maxrate", f"{int(v_kbps * 1.2)}k", "-bufsize", f"{v_kbps * 2}k",
+             "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", str(out)],
+            capture_output=True, text=True, creationflags=NOWIN, timeout=600,
+        )
+        if r.returncode != 0:
+            return {"ok": False, "error": (r.stderr or "Sıkıştırılamadı")[:180]}
+        return {"ok": True, "out": str(out), "size_mb": round(out.stat().st_size / (1024 * 1024), 2)}
 
     def shutdown(self) -> None:
         if self.rec:

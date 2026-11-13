@@ -124,7 +124,7 @@ def is_multipart_tail(name: str) -> bool:
     return bool(m and int(m.group(1)) > 1) or bool(re.search(r"\.(r\d\d|z\d\d|\d{3})$", n) and not n.endswith(".001"))
 
 
-def extract(path: str) -> str:
+def extract(path: str, passwords: list[str] | None = None) -> str:
     """Arsivi yanindaki <ad> klasorune acar. Basariliysa klasor yolu, degilse ''."""
     base = os.path.basename(path)
     stem = re.sub(r"(\.part\d+)?\.(zip|7z|rar|tar|gz|tgz|xz|001)$", "", base, flags=re.I) or base
@@ -136,9 +136,14 @@ def extract(path: str) -> str:
     sz = find_7z()
     try:
         if sz:
-            r = subprocess.run([sz, "x", "-y", "-p", f"-o{dest}", path], capture_output=True,
-                               creationflags=NO_WINDOW, timeout=6 * 3600)   # -p (bos): sifreliyse sormadan hata
-            ok = r.returncode == 0
+            ok = False
+            for pwd in ("", *[str(x) for x in (passwords or []) if x]):
+                r = subprocess.run([sz, "x", "-y", f"-p{pwd}", f"-o{dest}", path], capture_output=True,
+                                   creationflags=NO_WINDOW, timeout=6 * 3600)
+                if r.returncode == 0:
+                    ok = True
+                    break
+                shutil.rmtree(dest, ignore_errors=True)
         elif path.lower().endswith(".zip"):
             with zipfile.ZipFile(path) as z:
                 for m in z.namelist():   # zip slip korumasi
@@ -193,7 +198,19 @@ class AfterActions:
         path = d.path
         if path and os.path.isfile(path) and s.get("auto_extract") and path.lower().endswith(ARCHIVE_EXT + (".001",)) \
                 and not is_multipart_tail(os.path.basename(path)):
-            out = extract(path)
+            pws = []
+            try:
+                import json as _json
+                from app.core import paths as _paths
+                from app.core.vault import TokenStore
+                raw = TokenStore(_paths.DATA_DIR / "archive_passwords.bin").load()
+                if raw:
+                    data = _json.loads(raw)
+                    if isinstance(data, list):
+                        pws = [str(x) for x in data if x]
+            except Exception:
+                pws = []
+            out = extract(path, passwords=pws)
             self._set(did, extracted=out or "", extract_failed=not out)
             if out and s.get("auto_extract_delete"):
                 for p in archive_parts(path):

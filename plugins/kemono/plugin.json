@@ -1,0 +1,31 @@
+{
+  "name": "Kemono / Coomer",
+  "version": "1.0.0",
+  "description": "Kemono ve Coomer üretici arşivi ve tek gönderi medya çözücü.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Kemono / Coomer",
+      "host": "^(www\\.)?(kemono\\.(su|cr|party)|coomer\\.(su|st|party))$",
+      "share": "^/[a-z0-9_-]+/user/[^/]+",
+      "examples": {
+        "match": [
+          "https://kemono.su/patreon/user/12345",
+          "https://coomer.st/onlyfans/user/demo/post/99"
+        ],
+        "no_match": [
+          "https://kemono.su/posts"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

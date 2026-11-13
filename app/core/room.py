@@ -349,6 +349,9 @@ def _handler(srv: RoomServer):
                         return self._err(400)
                     r.touch(pid, (q.get("name") or ["Misafir"])[0], (q.get("kind") or ["user"])[0][:10])
                     self._json(r.poll(pid, int((q.get("n") or ["0"])[0] or 0), (q.get("rv") or [""])[0], 20.0))
+                elif rest[0] == "bridge":
+                    from app.core.phone import _BRIDGE_HTML
+                    self._send(_BRIDGE_HTML.encode("utf-8"), MIME[".html"])
                 elif rest[0] == "s" and len(rest) == 2 and rest[1] in STATIC:
                     f = paths.WEB_DIR / STATIC[rest[1]]
                     self._send(f.read_bytes(), MIME.get(f.suffix, "application/octet-stream"), "max-age=300")
@@ -366,6 +369,43 @@ def _handler(srv: RoomServer):
             r, rest = self._room()
             if not r or len(rest) != 1:
                 return self._err(404)
+            k = rest[0]
+            if k in ("upload", "control"):
+                ph = getattr(srv, "phone_srv", None)
+                if not ph:
+                    return self._json({"ok": False, "error": "phone_off"}, 503)
+                if not ph._rate_ok():
+                    return self._json({"ok": False, "error": "rate"}, 429)
+                import hmac
+                given = str(self.headers.get("X-Kami-Key") or "")
+                expected = ph.key()
+                if not expected or not hmac.compare_digest(given.encode(), expected.encode()):
+                    return self._json({"ok": False, "error": "key"}, 401)
+                n = int(self.headers.get("Content-Length") or 0)
+                max_lim = 32 * 1024 * 1024 if k == "upload" else 200000
+                if n <= 0 or n > max_lim:
+                    return self._json({"ok": False, "error": "size"}, 413)
+                raw_bytes = self.rfile.read(n)
+                try:
+                    b = json.loads(raw_bytes.decode("utf-8", "replace"))
+                    if k == "control":
+                        ok = ph.control(int(b.get("id", 0)), str(b.get("action", "")))
+                        return self._json({"ok": bool(ok)})
+                    import base64
+                    fname = f"{int(time.time())}_{os.path.basename(str(b.get('name') or 'snap.bin'))}"
+                    data_b64 = str(b.get("data") or "")
+                    if "," in data_b64[:80]:
+                        data_b64 = data_b64.split(",", 1)[1]
+                    inbox = paths.DATA_DIR / "phone_inbox"
+                    inbox.mkdir(parents=True, exist_ok=True)
+                    dest = inbox / fname
+                    dest.write_bytes(base64.b64decode(data_b64))
+                    kind = str(b.get("kind") or "snap")
+                    if ph.on_upload:
+                        ph.on_upload(str(dest), kind)
+                    return self._json({"ok": True, "path": str(dest), "kind": kind})
+                except Exception as exc:
+                    return self._json({"ok": False, "error": str(exc)[:120]}, 400)
             n = int(self.headers.get("Content-Length") or 0)
             try:
                 body = json.loads(self.rfile.read(min(n, 200000)) or b"{}")
@@ -374,7 +414,6 @@ def _handler(srv: RoomServer):
             pid = str(body.get("id", ""))[:40]
             if not pid:
                 return self._err(400)
-            k = rest[0]
             if k == "sig":
                 return self._json({"ok": r.signal(pid, str(body.get("to", ""))[:40], body.get("data"))})
             if k == "chat":
