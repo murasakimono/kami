@@ -1026,3 +1026,55 @@ class StudioMixin:
     def studio_subtitle_edit(self, path: str, fmt: str = "ass") -> dict[str, Any]:
         from app.core.studio_audio import subtitle_edit_convert
         return subtitle_edit_convert(str(path or ""), str(fmt or "ass"))
+
+    # ---- Faz 9: AE Bezier/Shutter, Kinetik Tipografi, Cursor Auto-Zoom, Marka Kiti & Viral Paketler ----
+
+    def studio_brand_get(self, profile_id: str = "") -> dict[str, Any]:
+        from app.core.studio_brand import BrandKitStore
+        pid = str(profile_id or (self._manager.settings.get("active_profile") if self._manager else "kisisel") or "kisisel")
+        return BrandKitStore().load(pid)
+
+    def studio_brand_save(self, data: dict[str, Any], profile_id: str = "") -> dict[str, Any]:
+        from app.core.studio_brand import BrandKitStore
+        pid = str(profile_id or (self._manager.settings.get("active_profile") if self._manager else "kisisel") or "kisisel")
+        return BrandKitStore().save(pid, data or {})
+
+    def studio_recipes_list(self) -> list[dict[str, Any]]:
+        from app.core.studio_brand import list_recipes
+        return list_recipes()
+
+    def studio_run_recipe(self, project: dict[str, Any], recipe_id: str) -> dict[str, Any]:
+        from app.core.studio_brand import BrandKitStore, apply_viral_recipe
+        pid = str((self._manager.settings.get("active_profile") if self._manager else "kisisel") or "kisisel")
+        kit = BrandKitStore().load(pid)
+        try:
+            return apply_viral_recipe(project or {}, str(recipe_id), brand_kit=kit)
+        except KeyError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def studio_cursor_zoom(self, events: list[dict[str, Any]], width: int = 1920, height: int = 1080,
+                           zoom_scale: float = 1.55) -> dict[str, Any]:
+        from app.core.studio_motion import cursor_auto_zoom
+        kfs = cursor_auto_zoom(events or [], width=int(width), height=int(height), zoom_scale=float(zoom_scale))
+        return {"ok": True, "kf": kfs}
+
+    def studio_kinetic_text(self, text: str, start: float = 0.0, dur: float = 3.0, style: str = "pop") -> dict[str, Any]:
+        from app.core.studio_motion import kinetic_text_plan
+        return kinetic_text_plan(text, start=float(start), dur=float(dur), style=str(style))
+
+    def studio_bezier_eval(self, p1x: float, p1y: float, p2x: float, p2y: float, t: float) -> dict[str, Any]:
+        from app.core.studio_motion import cubic_bezier
+        return {"value": cubic_bezier(float(p1x), float(p1y), float(p2x), float(p2y), float(t))}
+
+    def studio_shutter_blur(self, shutter_angle: float = 180.0, fps: int = 30) -> dict[str, Any]:
+        from app.core.studio_motion import shutter_blur_params
+        return shutter_blur_params(float(shutter_angle), int(fps))
+
+    def studio_parallax_plan(self, depth_strength: float = 0.035, pan_x: float = 0.08,
+                             pan_y: float = 0.03, zoom: float = 1.08) -> dict[str, Any]:
+        from app.core.studio_motion import parallax_25d_plan
+        return parallax_25d_plan(float(depth_strength), float(pan_x), float(pan_y), float(zoom))
+
+    def studio_motion_tools_status(self) -> dict[str, Any]:
+        from app.core.studio_motion import gyroflow_status, musetalk_preflight
+        return {"gyroflow": gyroflow_status(), "musetalk_vram": musetalk_preflight()}

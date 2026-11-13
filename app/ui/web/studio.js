@@ -1239,6 +1239,34 @@ document.addEventListener("click", e => {
         if (r?.ok) { ST.p.clips = r.clips; ST.sel = new Set([r.compound.id]); changed(); toast("Bileşik klip oluşturuldu"); }
       }
     },
+    scopes: async () => {
+      if (!window.SScopes) return toast("Scopes yüklenemedi");
+      const p = modal(`<h3>Colorist Scopes</h3>
+        <div class="row" style="gap:6px;margin-bottom:8px">
+          <button class="tb pri" data-sc="waveform">Waveform</button>
+          <button class="tb" data-sc="parade">RGB Parade</button>
+          <button class="tb" data-sc="vectorscope">Vectorscope</button>
+          <button class="tb" data-sc="histogram">Histogram</button>
+        </div>
+        <canvas id="scopeCanvas" width="420" height="200" style="width:100%;border-radius:8px;border:1px solid #3A2E52"></canvas>
+        <div class="row" style="margin-top:8px"><button class="tb" data-v="ok">Kapat</button></div>`);
+      const mEl = $("#modal");
+      const scCv = mEl.querySelector("#scopeCanvas");
+      const drawMode = (m) => { if (scCv && typeof view !== "undefined") SScopes.renderScope(view, scCv, m); };
+      drawMode("waveform");
+      mEl.querySelectorAll("[data-sc]").forEach(btn => btn.addEventListener("click", () => drawMode(btn.dataset.sc)));
+      await p;
+    },
+    viral: async () => {
+      const list = (await api.studio_recipes_list?.()) || [];
+      const btns = list.map(r => `<button class="tb" data-v="${esc(r.id)}" style="text-align:left;width:100%"><b>${esc(r.name)}</b><br><small style="opacity:.75">${esc(r.desc)}</small></button>`).join("");
+      const pick = await modal(`<h3>Viral Kurgu Paketleri (Faz 9)</h3><div style="display:flex;flex-direction:column;gap:6px;max-width:420px">${btns}</div><div class="row" style="margin-top:8px"><button class="tb" data-v="">İptal</button></div>`);
+      if (!pick || !ST.p) return;
+      snap();
+      const res = await api.studio_run_recipe(ST.p, pick);
+      if (res?.ok) { ST.p = res.project; changed(); toast(`Paket uygulandı: ${pick}`); }
+      else toast(res?.error || "Paket uygulanamadı");
+    },
     addtrack: async () => { const k = await modal(`<h3>İz ekle</h3><div class="row" style="justify-content:stretch">${[["video", "Video / görsel"], ["audio", "Ses"], ["text", "Metin"], ["fx", "Efekt"]].map(([k, l]) => `<button class="tb" data-v="${k}">${l}</button>`).join("")}</div>`); if (k) { snap(); addTrack(k); changed(); } },
     zin: () => setZoom(ST.px * 1.4), zout: () => setZoom(ST.px / 1.4),
     zfit: () => setZoom((scroller.clientWidth - 40) / Math.max(5, projEnd())),

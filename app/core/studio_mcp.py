@@ -443,6 +443,23 @@ def t_key(clip: str, key: dict, path: str = "") -> Any:
     return c["key"]
 
 
+@tool("list_recipes", "Faz 9 viral kurgu paketlerini listeler (iman_gadzhi, magnates_media, ali_abdaal, fps_frag, minimal_shorts).", {})
+def t_list_recipes() -> Any:
+    from app.core.studio_brand import list_recipes
+    return list_recipes()
+
+
+@tool("run_recipe", "Acik projeye tek tikla viral kurgu recetesi (renk grade, shutter blur, marka rengi) uygular.",
+      {"recipe": STR, "path": PATH}, ["recipe"])
+def t_run_recipe(recipe: str, path: str = "") -> Any:
+    from app.core.studio_brand import BrandKitStore, apply_viral_recipe
+    p, pr = load(path)
+    kit = BrandKitStore().load("kisisel")
+    res = apply_viral_recipe(pr, recipe, brand_kit=kit)
+    save(p, res["project"])
+    return {"ok": True, "recipe": res["recipe"], "applied_clips": res["applied_clips"]}
+
+
 # ---------------------------------------------------------------------------------------------------------------
 def _io():
     """Pencereli (PyInstaller) Kami.exe'de sys.stdin/stdout None olur: devralinan boru tutamaclarini ac."""
