@@ -125,8 +125,17 @@ $("bShare").onclick = async () => {
   if (S.share) { stopShare(); return; }
   try {
     const st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include" });
+      // restrictOwnAudio: sistem sesinden Kami Oda'nin kendi caldigi sesi (karsi tarafin konusmasi) cikarir; yoksa
+      // tam ekran + "sistem sesini paylas" secilince konusan kendi sesini geri duyar (Discord bunu kendi yapiyor)
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
+      systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include" });
     S.share = st;
+    const sa = st.getAudioTracks()[0];
+    if (sa && !sa.getSettings().restrictOwnAudio) {
+      try { await sa.applyConstraints({ restrictOwnAudio: true }); } catch { }
+      if (!sa.getSettings().restrictOwnAudio)
+        toast("Sistem sesi paylaşılıyor, ama bu sürüm odadaki sesleri ayıklayamıyor: yankı olursa kulaklık tak veya “Sistem sesini paylaş”ı kapat.");
+    }
     st.getVideoTracks()[0].addEventListener("ended", stopShare);
     S.shareSid = S.core.addLocal("screen", st);
     S.core.setMe({ sharing: "screen" });
