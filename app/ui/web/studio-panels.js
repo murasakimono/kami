@@ -314,6 +314,7 @@ function addSub(kind, t) {
 // ---------------------------------------------------------------- akilli araclar
 const AI_TOOLS = [
   ["silence", "Sessizlikleri kırp", "Konuşma arasındaki boşlukları siler, sonrakileri kaydırır (jump cut)."],
+  ["fillers", "Dolgu seslerini kes", "“ııı, eee, hmm” gibi sesleri altyazının kelime zamanlarından bulup siler; altyazı da kayar. Önce otomatik altyazı oluştur."],
   ["freeze", "Boş/donuk sahneleri kırp", "Görüntünün değişmediği bölümleri çıkarır (bekleme ekranı, donmuş kare)."],
   ["scenes", "Sahne değişiminde böl", "Kamera/kurgu geçişlerini bulup klibi oradan böler."],
   ["beats", "Vuruşları bul", "Müzik klibindeki vuruşlara işaret koyar; mıknatıs bunlara yapışır."],
@@ -340,8 +341,35 @@ async function needTool(r) {
   }
   return true;
 }
+// dolgu sesleri: Whisper kelimelerinden ıı/eee/hmm/um bulup video klibinden keser, altyaziyi da kaydirir
+// yalniz anlamsiz sesler: "er", "ah", "him", "şey" gibi gercek kelimeler bilerek disarida
+const FILLER_RE = /^(ı+h*|i{2,}|e{2,}h*|eh+|a{2,}h*|öh+|ö{2,}|hı+m+|hm+|ım{2,}|mm+|um+|uh+m*|erm+)$/i;
+function cutFillers(c) {
+  const sp = c.speed || 1, src0 = c.in || 0, c1 = c.start + c.dur;
+  const caps = ST.p.clips.filter(x => x.words?.length && x.start < c1 && x.start + x.dur > c.start);
+  if (!caps.length) { toast("Önce bu klibe otomatik altyazı oluştur; dolgu sesleri kelime zamanlarından bulunur", true); return; }
+  const hits = [];   // [t0, t1, capClip, word] zaman cizelgesinde
+  for (const tc of caps) for (const w of tc.words) {
+    const clean = String(w.w || "").toLocaleLowerCase("tr").replace(/[^\p{L}]/gu, "");
+    if (!clean || !FILLER_RE.test(clean)) continue;
+    const t0 = Math.max(c.start, tc.start + w.s), t1 = Math.min(c1, tc.start + w.e);
+    if (t1 - t0 >= .15) hits.push([t0, t1, tc, w]);
+  }
+  if (!hits.length) { toast("Dolgu sesi bulunamadı"); return; }
+  snap(); let n = 0;
+  for (const [t0, t1, tc, w] of hits.sort((a, b) => b[0] - a[0])) {   // sondan basa: onceki zamanlar kaymaz
+    if (!removeRanges(c, [[src0 + (t0 - c.start) * sp, src0 + (t1 - c.start) * sp]], 0)) continue;
+    const d = t1 - t0; n++;
+    tc.words = tc.words.filter(x => x !== w);
+    for (const x of tc.words) if (tc.start + x.s >= t1 - 1e-6) { x.s = +(x.s - d).toFixed(3); x.e = +(x.e - d).toFixed(3); }
+    tc.dur = Math.max(.2, +(tc.dur - d).toFixed(3));
+    for (const o of ST.p.clips) if (o !== tc && o.words && o.track === tc.track && o.start >= t1 - 1e-6) o.start = +(o.start - d).toFixed(4);
+  }
+  changed(); toast(n ? `${n} dolgu sesi kesildi` : "Kesilecek kadar uzun dolgu sesi yok");
+}
 async function aiAction(kind, c) {
   if (kind === "unreframe") { snap(); delete c.reframe; changed(); return; }
+  if (kind === "fillers") { c = c && ["video", "audio"].includes(clipKind(c)) ? c : needSel(["video", "audio"]); if (c) cutFillers(c); return; }
   if (kind === "montage") return montage();
   if (kind === "splitscreen") return splitScreen();
   if (kind === "matte") return selClips().filter(x => clipKind(x) === "video").length > 1 ? window.matteSel() : matte(c);
