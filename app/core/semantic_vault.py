@@ -1,6 +1,8 @@
 """Faz 13 — Kami Kasa: SQLite FTS5 (WAL) + SigLIP semantik video/sahne arama & akilli oto-bolumlendirme."""
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import json
 import logging
 import math
@@ -8,7 +10,7 @@ import re
 import sqlite3
 import struct
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import requests
 
@@ -16,58 +18,82 @@ log = logging.getLogger(__name__)
 
 
 def _default_db() -> Path:
-    return Path(__file__).resolve().parents[2] / "data" / "kami_kasa.db"
+    from app.core import paths
+    return paths.DATA_DIR / "kami_kasa.db"
 
 
-def _connect(db_path: Path | None = None) -> sqlite3.Connection:
+@contextlib.contextmanager
+def _connect(db_path: Path | None = None) -> Iterator[sqlite3.Connection]:
     p = Path(db_path) if db_path else _default_db()
     p.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(p), timeout=15)
-    con.execute("PRAGMA journal_mode=WAL;")
-    con.execute("PRAGMA synchronous=NORMAL;")
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS kasa_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT NOT NULL,
-            title TEXT NOT NULL DEFAULT '',
-            start_sec REAL NOT NULL DEFAULT 0.0,
-            end_sec REAL NOT NULL DEFAULT 0.0,
-            tags TEXT NOT NULL DEFAULT '',
-            transcript TEXT NOT NULL DEFAULT '',
-            embedding BLOB,
-            updated_at REAL NOT NULL DEFAULT (strftime('%s','now')),
-            UNIQUE(path, start_sec)
+    try:
+        con.execute("PRAGMA journal_mode=WAL;")
+        con.execute("PRAGMA synchronous=NORMAL;")
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kasa_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                start_sec REAL NOT NULL DEFAULT 0.0,
+                end_sec REAL NOT NULL DEFAULT 0.0,
+                tags TEXT NOT NULL DEFAULT '',
+                transcript TEXT NOT NULL DEFAULT '',
+                embedding BLOB,
+                updated_at REAL NOT NULL DEFAULT (strftime('%s','now')),
+                UNIQUE(path, start_sec)
+            )
+            """
         )
-        """
-    )
-    con.execute(
-        """
-        CREATE VIRTUAL TABLE IF NOT EXISTS kasa_fts USING fts5(
-            title, tags, transcript, path,
-            content='kasa_items', content_rowid='id'
+        con.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS kasa_fts USING fts5(
+                title, tags, transcript, path,
+                content='kasa_items', content_rowid='id'
+            )
+            """
         )
-        """
-    )
-    con.executescript(
-        """
-        CREATE TRIGGER IF NOT EXISTS kasa_ai AFTER INSERT ON kasa_items BEGIN
-            INSERT INTO kasa_fts(rowid, title, tags, transcript, path)
-            VALUES (new.id, new.title, new.tags, new.transcript, new.path);
-        END;
-        CREATE TRIGGER IF NOT EXISTS kasa_ad AFTER DELETE ON kasa_items BEGIN
-            INSERT INTO kasa_fts(kasa_fts, rowid, title, tags, transcript, path)
-            VALUES ('delete', old.id, old.title, old.tags, old.transcript, old.path);
-        END;
-        CREATE TRIGGER IF NOT EXISTS kasa_au AFTER UPDATE ON kasa_items BEGIN
-            INSERT INTO kasa_fts(kasa_fts, rowid, title, tags, transcript, path)
-            VALUES ('delete', old.id, old.title, old.tags, old.transcript, old.path);
-            INSERT INTO kasa_fts(rowid, title, tags, transcript, path)
-            VALUES (new.id, new.title, new.tags, new.transcript, new.path);
-        END;
-        """
-    )
-    return con
+        con.executescript(
+            """
+            CREATE TRIGGER IF NOT EXISTS kasa_ai AFTER INSERT ON kasa_items BEGIN
+                INSERT INTO kasa_fts(rowid, title, tags, transcript, path)
+                VALUES (new.id, new.title, new.tags, new.transcript, new.path);
+            END;
+            CREATE TRIGGER IF NOT EXISTS kasa_ad AFTER DELETE ON kasa_items BEGIN
+                INSERT INTO kasa_fts(kasa_fts, rowid, title, tags, transcript, path)
+                VALUES ('delete', old.id, old.title, old.tags, old.transcript, old.path);
+            END;
+            CREATE TRIGGER IF NOT EXISTS kasa_au AFTER UPDATE ON kasa_items BEGIN
+                INSERT INTO kasa_fts(kasa_fts, rowid, title, tags, transcript, path)
+                VALUES ('delete', old.id, old.title, old.tags, old.transcript, old.path);
+                INSERT INTO kasa_fts(rowid, title, tags, transcript, path)
+                VALUES (new.id, new.title, new.tags, new.transcript, new.path);
+            END;
+            """
+        )
+        yield con
+    finally:
+        con.close()
+
+
+def text_embedding(text: str, dims: int = 64) -> list[float]:
+    """Hafif deterministik karakter-trigram projeksiyonu (SigLIP olmadiginda yerel vektor yedegi)."""
+    clean = re.sub(r"\s+", " ", (text or "").lower().strip())
+    if not clean:
+        return []
+    vec = [0.0] * dims
+    tokens = clean.split()
+    grams = list(tokens)
+    for tok in tokens:
+        if len(tok) >= 3:
+            for i in range(len(tok) - 2):
+                grams.append(tok[i:i + 3])
+    for g in grams:
+        h = int.from_bytes(hashlib.blake2b(g.encode("utf-8"), digest_size=4).digest(), "little")
+        vec[h % dims] += 1.0
+    norm = math.sqrt(sum(v * v for v in vec))
+    return [round(v / norm, 5) for v in vec] if norm > 0 else []
 
 
 def _pack_vec(vec: list[float]) -> bytes:
@@ -104,7 +130,8 @@ def index_segment(
     """Medya veya sahne segmentini FTS5 + opsiyonel vektor ile indeksler."""
     p = str(path)
     ttl = title or Path(p).stem
-    blob = _pack_vec(embedding) if embedding else None
+    vec = embedding if embedding is not None else text_embedding(f"{ttl} {tags} {transcript}")
+    blob = _pack_vec(vec) if vec else None
     with _connect(db_path) as con:
         con.execute(
             """
@@ -139,6 +166,10 @@ def index_video_scenes(
     sc = detect_scenes(p)
     scenes = sc.get("scenes") or [{"index": 0, "start": 0.0, "end": 0.0}]
     segs = transcript_segments or []
+    # Yeniden indekslemede eski sahne satirlarinin birikmesini onle
+    with _connect(db_path) as con:
+        con.execute("DELETE FROM kasa_items WHERE path = ?", (str(p),))
+        con.commit()
     count = 0
     for s in scenes:
         st = float(s.get("start") or 0.0)
@@ -172,6 +203,7 @@ def search(
     q = (query or "").strip()
     if not q and not query_embedding:
         return {"ok": True, "results": []}
+    q_vec = query_embedding if query_embedding is not None else text_embedding(q)
 
     results: dict[tuple[str, float], dict[str, Any]] = {}
     with _connect(db_path) as con:
@@ -204,12 +236,12 @@ def search(
                         "score": round(max(0.1, 1.0 / (1.0 + abs(float(r["rank"])))), 4),
                     }
 
-        if query_embedding:
+        if q_vec:
             vec_rows = con.execute(
                 "SELECT path, title, start_sec, end_sec, tags, transcript, embedding FROM kasa_items WHERE embedding IS NOT NULL"
             ).fetchall()
             for r in vec_rows:
-                sim = _cosine(query_embedding, _unpack_vec(r["embedding"]))
+                sim = _cosine(q_vec, _unpack_vec(r["embedding"]))
                 if sim > 0.15:
                     key = (r["path"], float(r["start_sec"]))
                     cur = results.get(key)
@@ -256,6 +288,14 @@ def auto_chapters(
 
     chapters: list[dict[str, Any]] = []
     engine = "extractive"
+    ollama_ready = False
+    if use_ollama:
+        try:
+            r_tags = requests.get("http://127.0.0.1:11434/api/tags", timeout=1.5)
+            ollama_ready = r_tags.status_code == 200
+        except Exception:
+            ollama_ready = False
+
     for idx, b in enumerate(buckets):
         st = round(float(b[0].get("start", 0.0)), 2)
         en = round(float(b[-1].get("end", st + 10.0)), 2)
@@ -263,7 +303,7 @@ def auto_chapters(
         title = f"Bölüm {idx + 1}"
         summary = text[:220] + ("..." if len(text) > 220 else "")
 
-        if use_ollama and text:
+        if ollama_ready and text:
             try:
                 resp = requests.post(
                     "http://127.0.0.1:11434/api/generate",
@@ -272,7 +312,7 @@ def auto_chapters(
                         "prompt": f"Su metne 5 kelimelik Turkce baslik ve 1 cumlelik ozet yaz (JSON: {{\"title\":\"...\",\"summary\":\"...\"}}):\n{text[:1200]}",
                         "stream": False,
                     },
-                    timeout=8,
+                    timeout=25,
                 )
                 if resp.status_code == 200:
                     raw = (resp.json().get("response") or "").strip()

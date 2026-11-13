@@ -9,6 +9,7 @@ import ipaddress
 import json
 import logging
 import re
+import socket
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
@@ -36,19 +37,37 @@ DEFAULT_RULES: list[dict[str, Any]] = [
 ]
 
 
-def is_safe_public_url(url: str) -> bool:
-    """SSRF korumasi: yerel/ozel ag adreslerini reddeder."""
+def _is_public_ip(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved)
+    except ValueError:
+        return False
+
+
+def is_safe_public_url(url: str, *, resolve_dns: bool = False) -> bool:
+    """SSRF korumasi: yerel/ozel ag adreslerini (ve istenirse DNS cozumlemesini) reddeder."""
     if not url or not url.lower().startswith(("http://", "https://")):
         return False
     host = (urlparse(url).hostname or "").strip().lower()
     if not host or host in ("localhost", "0.0.0.0"):
         return False
     try:
-        ip = ipaddress.ip_address(host)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
-            return False
+        ipaddress.ip_address(host)
+        return _is_public_ip(host)
     except ValueError:
         if host.endswith(".local") or host.endswith(".internal"):
+            return False
+    if resolve_dns:
+        try:
+            infos = socket.getaddrinfo(host, None)
+            if not infos:
+                return False
+            for info in infos:
+                addr = info[4][0]
+                if not _is_public_ip(addr):
+                    return False
+        except OSError:
             return False
     return True
 
@@ -56,7 +75,8 @@ def is_safe_public_url(url: str) -> bool:
 def _rules_path(data_dir: Path | None = None) -> Path:
     if data_dir:
         return Path(data_dir) / "crawler_rules.json"
-    return Path(__file__).resolve().parents[2] / "data" / "crawler_rules.json"
+    from app.core import paths
+    return paths.DATA_DIR / "crawler_rules.json"
 
 
 def load_rules(data_dir: Path | None = None) -> list[dict[str, Any]]:
@@ -79,9 +99,12 @@ def save_rule(rule: dict[str, Any], data_dir: Path | None = None) -> dict[str, A
     extract = rule.get("extract_regex")
     if not name or not pattern or not extract:
         return {"ok": False, "error": "Kuralda name, pattern ve extract_regex zorunludur"}
-    re.compile(pattern)
-    for rx in (extract if isinstance(extract, list) else [extract]):
-        re.compile(rx)
+    try:
+        re.compile(pattern)
+        for rx in (extract if isinstance(extract, list) else [extract]):
+            re.compile(rx)
+    except re.error as exc:
+        return {"ok": False, "error": f"Gecersiz regex: {exc}"}
     path = _rules_path(data_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     current: list[dict[str, Any]] = []
@@ -110,9 +133,17 @@ def delete_rule(name: str, data_dir: Path | None = None) -> dict[str, Any]:
 
 
 def _http_fetch(url: str, headers: dict[str, str], timeout: float = 12.0) -> str:
-    r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
-    r.raise_for_status()
-    return r.text[:2_000_000]
+    cur = url
+    for _ in range(5):
+        if not is_safe_public_url(cur, resolve_dns=True):
+            raise ValueError("Yonlendirme hedefi ozel ag adresine cikiyor")
+        r = requests.get(cur, headers=headers, timeout=timeout, allow_redirects=False)
+        if 300 <= r.status_code < 400 and r.headers.get("Location"):
+            cur = urljoin(cur, r.headers["Location"])
+            continue
+        r.raise_for_status()
+        return r.text[:2_000_000]
+    raise ValueError("Cok fazla yonlendirme")
 
 
 def crawl(

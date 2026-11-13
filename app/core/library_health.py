@@ -87,14 +87,17 @@ def find_duplicates(folder: str | Path, *, max_hamming: int = 6, include_video: 
         return {"ok": False, "error": "Klasor bulunamadi", "groups": []}
 
     files = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in (IMAGE_EXTS | VIDEO_EXTS | AUDIO_EXTS))
+    by_size: dict[int, list[Path]] = {}
     by_sha: dict[str, list[Path]] = {}
     img_hashes: list[tuple[Path, int]] = []
     vid_hashes: list[tuple[Path, list[int]]] = []
     ff = _ffmpeg() if include_video else ""
 
     for p in files:
-        digest = sha256_file(p)
-        by_sha.setdefault(digest, []).append(p)
+        try:
+            by_size.setdefault(p.stat().st_size, []).append(p)
+        except OSError:
+            continue
         ext = p.suffix.lower()
         if ext in IMAGE_EXTS:
             dh = image_dhash(p)
@@ -104,6 +107,12 @@ def find_duplicates(folder: str | Path, *, max_hamming: int = 6, include_video: 
             vh = _video_frame_hashes(p, ff)
             if vh:
                 vid_hashes.append((p, vh))
+
+    # Yalnizca ayni boyuttaki dosyalarin SHA-256 ozetini hesapla
+    for sz_group in by_size.values():
+        if len(sz_group) > 1:
+            for p in sz_group:
+                by_sha.setdefault(sha256_file(p), []).append(p)
 
     groups: list[dict[str, Any]] = []
     seen_paths: set[Path] = set()
@@ -143,7 +152,7 @@ def find_duplicates(folder: str | Path, *, max_hamming: int = 6, include_video: 
         cluster = [p1]
         for j in range(i + 1, len(vid_hashes)):
             p2, hs2 = vid_hashes[j]
-            if p2 in seen_paths:
+            if p2 not in seen_paths:
                 pairs = min(len(hs1), len(hs2))
                 if pairs and (sum(hamming_distance(hs1[k], hs2[k]) for k in range(pairs)) / pairs) <= max_hamming + 2:
                     cluster.append(p2)
@@ -214,7 +223,10 @@ def smart_compress(
     out_p = Path(dst) if dst else src_p.with_name(f"{src_p.stem}_{enc}.mp4")
     q_flag = "-cq" if "nvenc" in enc else "-crf"
     cmd = [ff, "-y", "-i", str(src_p), "-c:v", enc, q_flag, str(cq), "-c:a", "aac", "-b:a", "192k", str(out_p)]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, creationflags=NO_WINDOW)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, creationflags=NO_WINDOW)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "codec": enc, "error": "Sikistirma zaman asimina ugradi"}
     if r.returncode != 0 or not out_p.is_file():
         return {"ok": False, "codec": enc, "error": (r.stderr or "").splitlines()[-1:] or "Kodlama hatasi"}
 
@@ -223,9 +235,12 @@ def smart_compress(
         # Kalite hedefin altindaysa daha yuksek kaliteyle bir kez yeniden dene
         better_cq = max(14, cq - 4)
         cmd_retry = [ff, "-y", "-i", str(src_p), "-c:v", enc, q_flag, str(better_cq), "-c:a", "aac", "-b:a", "192k", str(out_p)]
-        r2 = subprocess.run(cmd_retry, capture_output=True, text=True, timeout=1800, creationflags=NO_WINDOW)
-        if r2.returncode == 0 and out_p.is_file():
-            vmaf = measure_vmaf(out_p, src_p, ff)
+        try:
+            r2 = subprocess.run(cmd_retry, capture_output=True, text=True, timeout=1800, creationflags=NO_WINDOW)
+            if r2.returncode == 0 and out_p.is_file():
+                vmaf = measure_vmaf(out_p, src_p, ff)
+        except subprocess.TimeoutExpired:
+            pass
 
     orig_sz = src_p.stat().st_size
     new_sz = out_p.stat().st_size
@@ -272,23 +287,28 @@ def scan_health(
         rel = str(p.relative_to(root)).replace("\\", "/")
         st = p.stat()
         digest = sha256_file(p)
-        current[rel] = {"sha256": digest, "size": st.st_size, "mtime_ns": st.st_mtime_ns}
-
         old = prev.get(rel)
         if old is None:
             new_files.append(rel)
+            current[rel] = {"sha256": digest, "size": st.st_size, "mtime_ns": st.st_mtime_ns}
         elif old.get("sha256") != digest and old.get("mtime_ns") == st.st_mtime_ns:
             corrupted.append({"file": rel, "expected": old["sha256"], "actual": digest})
+            # Bozuk ozeti yazma; bir sonraki taramada da hata vermesi icin orijinal saglam ozeti koru
+            current[rel] = old
         else:
             ok_count += 1
+            current[rel] = {"sha256": digest, "size": st.st_size, "mtime_ns": st.st_mtime_ns}
 
         if deep_decode and ff and p.suffix.lower() in (VIDEO_EXTS | AUDIO_EXTS):
-            dr = subprocess.run(
-                [ff, "-v", "error", "-i", str(p), "-f", "null", "-"],
-                capture_output=True, text=True, timeout=120, creationflags=NO_WINDOW,
-            )
-            if dr.returncode != 0 or (dr.stderr or "").strip():
-                decode_errors.append({"file": rel, "error": (dr.stderr or "decode error").strip()[:200]})
+            try:
+                dr = subprocess.run(
+                    [ff, "-v", "error", "-i", str(p), "-f", "null", "-"],
+                    capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW,
+                )
+                if dr.returncode != 0 or (dr.stderr or "").strip():
+                    decode_errors.append({"file": rel, "error": (dr.stderr or "decode error").strip()[:200]})
+            except subprocess.TimeoutExpired:
+                decode_errors.append({"file": rel, "error": "decode timeout"})
 
     missing = [k for k in prev if k not in current]
     man_p.parent.mkdir(parents=True, exist_ok=True)

@@ -266,8 +266,35 @@ def mashup(
     }
 
 
+def _first_onset_sec(audio_path: str, ffmpeg: str = "") -> float:
+    """Ilk belirgin enerji baslangicini (saniye) bulur; beatgrid buna hizalanir."""
+    ff = _find_ffmpeg(ffmpeg)
+    if not ff:
+        return 0.0
+    try:
+        r = subprocess.run(
+            [ff, "-v", "error", "-t", "5", "-i", str(audio_path), "-ac", "1", "-ar", "4000", "-f", "s16le", "pipe:1"],
+            capture_output=True, timeout=15, creationflags=NO_WINDOW,
+        )
+        raw = r.stdout or b""
+        n = len(raw) // 2
+        if n < 200:
+            return 0.0
+        samples = struct.unpack(f"<{n}h", raw[:n * 2])
+        win = 200  # 50 ms
+        energies = [sum(abs(s) for s in samples[i:i + win]) / win for i in range(0, n - win, win)]
+        peak = max(energies) if energies else 0.0
+        thresh = peak * 0.35
+        for idx, e in enumerate(energies):
+            if e >= thresh:
+                return round(idx * 0.05, 3)
+    except Exception:
+        pass
+    return 0.0
+
+
 def build_beatgrid(audio_path: str, duration: float = 0.0, ffmpeg: str = "") -> dict[str, Any]:
-    """BPM, tonalite, beat/downbeat zaman damgalari ve olculuk akor haritasi uretir."""
+    """BPM, tonalite, ilk vurusa hizali beat/downbeat zaman damgalari ve akor haritasi uretir."""
     p = Path(audio_path)
     if not p.is_file():
         return {"ok": False, "error": "Ses dosyasi bulunamadi"}
@@ -275,9 +302,10 @@ def build_beatgrid(audio_path: str, duration: float = 0.0, ffmpeg: str = "") -> 
     key_info = detect_key(str(p), ffmpeg=ffmpeg)
     dur = duration if duration > 0 else 180.0
     step = 60.0 / bpm
+    offset = _first_onset_sec(str(p), ffmpeg=ffmpeg)
     beats: list[float] = []
     downbeats: list[float] = []
-    t = 0.0
+    t = offset
     idx = 0
     while t < dur and len(beats) < 2000:
         rt = round(t, 3)
@@ -289,14 +317,14 @@ def build_beatgrid(audio_path: str, duration: float = 0.0, ffmpeg: str = "") -> 
 
     root = key_info.get("key") or "C"
     scale = key_info.get("scale") or "major"
-    rel = ["i", "VI", "III", "VII"] if scale == "minor" else ["I", "V", "vi", "IV"]
     chords = [
-        {"bar": i + 1, "start": db, "chord": f"{root} ({rel[i % len(rel)]})"}
+        {"bar": i + 1, "start": db, "chord": f"{root} {scale}".strip()}
         for i, db in enumerate(downbeats)
     ]
     return {
         "ok": True,
         "bpm": bpm,
+        "offset_sec": offset,
         "key": key_info,
         "beats": beats,
         "downbeats": downbeats,
@@ -305,22 +333,36 @@ def build_beatgrid(audio_path: str, duration: float = 0.0, ffmpeg: str = "") -> 
 
 
 def word_sync_lyrics(lrc_text: str, duration: float = 0.0) -> list[dict[str, Any]]:
-    """Satir bazli LRC'yi kelime-senkronlu karaoke zamanlamasina (enhanced LRC) boler."""
+    """Enhanced LRC (<mm:ss.xx>) varsa kelime zamanlarini korur; yoksa satiri esit boler."""
     import re
     rows: list[tuple[float, str]] = []
     for ln in (lrc_text or "").splitlines():
         m = re.match(r"^\s*\[(\d{1,2}):(\d{2}(?:\.\d{1,3})?)\]\s*(.+)$", ln)
         if m:
             sec = int(m.group(1)) * 60 + float(m.group(2))
-            txt = re.sub(r"<\d{1,2}:\d{2}(?:\.\d{1,3})?>", "", m.group(3)).strip()
+            txt = m.group(3).strip()
             if txt:
                 rows.append((sec, txt))
     rows.sort(key=lambda x: x[0])
     out: list[dict[str, Any]] = []
-    for i, (start, txt) in enumerate(rows):
+    wt_re = re.compile(r"<(\d{1,2}):(\d{2}(?:\.\d{1,3})?)>\s*([^<\s]+)")
+    for i, (start, raw_txt) in enumerate(rows):
         end = rows[i + 1][0] if i + 1 < len(rows) else (duration if duration > start else start + 4.0)
+        explicit = wt_re.findall(raw_txt)
+        clean_txt = re.sub(r"<\d{1,2}:\d{2}(?:\.\d{1,3})?>", "", raw_txt).strip()
+        if explicit:
+            w_items = []
+            for j, (mm, ss, w) in enumerate(explicit):
+                ws = round(int(mm) * 60 + float(ss), 3)
+                if j + 1 < len(explicit):
+                    we = round(int(explicit[j + 1][0]) * 60 + float(explicit[j + 1][1]), 3)
+                else:
+                    we = round(end, 3)
+                w_items.append({"word": w, "start": ws, "end": max(ws, we)})
+            out.append({"start": round(start, 3), "end": round(end, 3), "text": clean_txt, "words": w_items})
+            continue
         span = max(0.3, min(12.0, end - start))
-        words = txt.split()
+        words = clean_txt.split()
         if not words:
             continue
         w_dur = span / len(words)
@@ -328,5 +370,5 @@ def word_sync_lyrics(lrc_text: str, duration: float = 0.0) -> list[dict[str, Any
             {"word": w, "start": round(start + j * w_dur, 3), "end": round(start + (j + 1) * w_dur, 3)}
             for j, w in enumerate(words)
         ]
-        out.append({"start": round(start, 3), "end": round(end, 3), "text": txt, "words": w_items})
+        out.append({"start": round(start, 3), "end": round(end, 3), "text": clean_txt, "words": w_items})
     return out

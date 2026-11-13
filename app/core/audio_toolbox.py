@@ -141,7 +141,8 @@ def audio_to_notes(src: str | Path) -> dict[str, Any]:
 
 
 def synthesize_tts(text: str, out_wav: str | Path, *, lang: str = "tr") -> dict[str, Any]:
-    """Yerli cevrimdisi TTS (Piper CLI varsa onu, yoksa Windows SAPI uzerinden WAV uretir)."""
+    """Yerli cevrimdisi TTS (Piper CLI + model varsa onu, yoksa Windows SAPI uzerinden WAV uretir)."""
+    import os
     clean = (text or "").strip()
     if not clean:
         return {"ok": False, "error": "Metin bos"}
@@ -151,22 +152,30 @@ def synthesize_tts(text: str, out_wav: str | Path, *, lang: str = "tr") -> dict[
     piper = shutil.which("piper") or shutil.which("piper.exe")
     if piper:
         try:
-            r = subprocess.run([piper, "--output_file", str(dst)], input=clean, text=True, capture_output=True, timeout=60, creationflags=NO_WINDOW)
-            if r.returncode == 0 and dst.is_file():
-                return {"ok": True, "path": str(dst), "engine": "piper"}
+            from app.core import paths
+            piper_dir = paths.DATA_DIR / "tools" / "piper"
+            models = sorted(piper_dir.glob("*.onnx")) if piper_dir.is_dir() else []
+            if models:
+                r = subprocess.run(
+                    [piper, "-m", str(models[0]), "--output_file", str(dst)],
+                    input=clean, text=True, capture_output=True, timeout=60, creationflags=NO_WINDOW,
+                )
+                if r.returncode == 0 and dst.is_file():
+                    return {"ok": True, "path": str(dst), "engine": "piper"}
         except Exception:
             pass
 
     ps = (
         "Add-Type -AssemblyName System.Speech; "
         "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-        "$s.SetOutputToWaveFile($args[0]); "
-        "$s.Speak($args[1]); "
+        "$s.SetOutputToWaveFile($env:KAMI_TTS_OUT); "
+        "$s.Speak($env:KAMI_TTS_TEXT); "
         "$s.Dispose();"
     )
+    env = {**os.environ, "KAMI_TTS_OUT": str(dst), "KAMI_TTS_TEXT": clean}
     r = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", ps, str(dst), clean],
-        capture_output=True, text=True, timeout=45, creationflags=NO_WINDOW,
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+        env=env, capture_output=True, text=True, timeout=45, creationflags=NO_WINDOW,
     )
     if r.returncode == 0 and dst.is_file():
         return {"ok": True, "path": str(dst), "engine": "windows_sapi"}

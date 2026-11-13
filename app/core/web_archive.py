@@ -12,7 +12,9 @@ import logging
 import re
 import shutil
 import subprocess
+import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
@@ -25,6 +27,8 @@ log = logging.getLogger(__name__)
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Safari/537.36"
+_DVR_JOBS: dict[str, dict[str, Any]] = {}
+_DVR_LOCK = threading.Lock()
 
 
 def build_live_dvr_opts(out_dir: str | Path, *, from_start: bool = True, embed_chapters: bool = True) -> dict[str, Any]:
@@ -43,25 +47,70 @@ def build_live_dvr_opts(out_dir: str | Path, *, from_start: bool = True, embed_c
     return opts
 
 
-def start_live_dvr(url: str, out_dir: str | Path, *, from_start: bool = True, embed_chapters: bool = True) -> dict[str, Any]:
-    """Canli yayini baslangictan itibaren (DVR) indirir."""
+def start_live_dvr(
+    url: str,
+    out_dir: str | Path,
+    *,
+    from_start: bool = True,
+    embed_chapters: bool = True,
+    background: bool = True,
+) -> dict[str, Any]:
+    """Canli yayini baslangictan itibaren (DVR) indirir; varsayilan olarak arka planda calisir."""
     if not is_safe_public_url(url):
         return {"ok": False, "error": "Gecersiz veya ozel ag URL'si"}
     target = Path(out_dir)
     target.mkdir(parents=True, exist_ok=True)
     opts = build_live_dvr_opts(target, from_start=from_start, embed_chapters=embed_chapters)
-    try:
-        from app.engines.ytdlp_engine import _ytdlp, find_ffmpeg
-        ff = find_ffmpeg()
-        if ff:
-            opts["ffmpeg_location"] = ff
-        yt_dlp = _ytdlp()
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info) if info else ""
-        return {"ok": True, "path": filename, "title": (info or {}).get("title", "")}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)[:300]}
+    job_id = uuid.uuid4().hex[:10]
+    cancel_ev = threading.Event()
+
+    def _run_job() -> dict[str, Any]:
+        try:
+            from app.engines.ytdlp_engine import _ytdlp, find_ffmpeg
+            ff = find_ffmpeg()
+            if ff:
+                opts["ffmpeg_location"] = ff
+
+            def _hook(d: dict[str, Any]) -> None:
+                if cancel_ev.is_set():
+                    raise RuntimeError("DVR iptal edildi")
+
+            opts["progress_hooks"] = [_hook]
+            yt_dlp = _ytdlp()
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                filename = ydl.prepare_filename(info) if info else ""
+            res = {"ok": True, "path": filename, "title": (info or {}).get("title", ""), "status": "done"}
+        except Exception as exc:
+            res = {"ok": False, "error": str(exc)[:300], "status": "cancelled" if cancel_ev.is_set() else "error"}
+        with _DVR_LOCK:
+            if job_id in _DVR_JOBS:
+                _DVR_JOBS[job_id].update(res)
+        return res
+
+    with _DVR_LOCK:
+        _DVR_JOBS[job_id] = {"job_id": job_id, "url": url, "status": "running", "cancel": cancel_ev}
+
+    if not background:
+        return _run_job()
+
+    t = threading.Thread(target=_run_job, name=f"kami-dvr-{job_id}", daemon=True)
+    t.start()
+    return {"ok": True, "started": True, "job_id": job_id, "status": "running"}
+
+
+def cancel_live_dvr(job_id: str) -> dict[str, Any]:
+    with _DVR_LOCK:
+        job = _DVR_JOBS.get(job_id)
+        if not job:
+            return {"ok": False, "error": "DVR isi bulunamadi"}
+        job["cancel"].set()
+        return {"ok": True, "job_id": job_id, "cancelling": True}
+
+
+def list_live_dvr() -> list[dict[str, Any]]:
+    with _DVR_LOCK:
+        return [{k: v for k, v in j.items() if k != "cancel"} for j in _DVR_JOBS.values()]
 
 
 def _find_singlefile() -> str:
@@ -81,7 +130,15 @@ def _inline_css_and_images(raw_html: str, base_url: str, session: requests.Sessi
         try:
             r = session.get(href, timeout=6)
             if r.status_code == 200 and len(r.content) < 512_000:
+                if not r.encoding or r.encoding.lower() == "iso-8859-1":
+                    r.encoding = r.apparent_encoding or "utf-8"
                 css = r.text.replace("</style>", "<\\/style>")
+                # CSS icindeki goreli url(...) adreslerini mutlak yap
+                css = re.sub(
+                    r'url\((["\']?)(?!data:|https?:)([^)"\']+)\1\)',
+                    lambda um: f'url("{urljoin(href, um.group(2))}")',
+                    css,
+                )
                 return f"<style data-kami-src=\"{html.escape(href)}\">\n{css}\n</style>"
         except requests.RequestException:
             pass
@@ -135,6 +192,8 @@ def archive_webpage(url: str, out_path: str | Path, *, prefer_cli: bool = True) 
         sess.headers.update({"User-Agent": _UA})
         resp = sess.get(url, timeout=15)
         resp.raise_for_status()
+        if not resp.encoding or resp.encoding.lower() == "iso-8859-1":
+            resp.encoding = resp.apparent_encoding or "utf-8"
         packed = _inline_css_and_images(resp.text, resp.url or url, sess)
         dst.write_text(packed, encoding="utf-8")
         return {"ok": True, "path": str(dst), "method": "builtin", "bytes": dst.stat().st_size}

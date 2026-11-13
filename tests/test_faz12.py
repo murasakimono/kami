@@ -30,6 +30,11 @@ def test_word_sync_lyrics_and_beatgrid(tmp_path: Path):
     assert synced[0]["words"][0]["start"] == 1.0
     assert synced[0]["words"][-1]["end"] == 4.0
 
+    enh = "[00:01.00]<00:01.10>Bir <00:02.00>iki"
+    synced_enh = kami_beat.word_sync_lyrics(enh, duration=5.0)
+    assert synced_enh[0]["words"][0]["start"] == 1.1
+    assert synced_enh[0]["words"][1]["start"] == 2.0
+
     wav = tmp_path / "tone.wav"
     _make_sine_wav(wav, freq=220.0, sec=1.2)
     grid = kami_beat.build_beatgrid(str(wav), duration=10.0)

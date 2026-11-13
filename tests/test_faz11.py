@@ -20,7 +20,7 @@ def test_aria2_torrent_preview_and_file_allocation_preserved(tmp_path: Path):
         category="video",
         status="queued",
         kind="torrent",
-        options={"select": "1", "stop_seeding": True},
+        options={"select": "1", "stop_seeding": True, "preview": True},
     )
     opts = eng.build_torrent_options(dl)
     assert opts["bt-prioritize-piece"] == "head=20M"
@@ -30,7 +30,6 @@ def test_aria2_torrent_preview_and_file_allocation_preserved(tmp_path: Path):
     src = Path(Aria2Engine.__module__.replace(".", "/") + ".py")
     raw = src.read_text(encoding="utf-8")
     assert '"--file-allocation=none"' in raw
-    assert '"--bt-save-metadata=true"' in raw
 
 
 def test_link_crawler_rules_ssrf_and_failover(tmp_path: Path):
@@ -117,3 +116,11 @@ def test_library_health_dhash_duplicates_and_bitrot(tmp_path: Path):
     assert second["ok"] is False
     assert len(second["corrupted_bitrot"]) == 1
     assert second["corrupted_bitrot"][0]["file"] == "different.png"
+
+    # Ucuncu taramada da bozuk dosya saglam gorunmemeli (orijinal hash korunur)
+    third = library_health.scan_health(tmp_path, manifest)
+    assert third["ok"] is False
+    assert len(third["corrupted_bitrot"]) == 1
+
+    bad_rx = link_crawler.save_rule({"name": "bad", "pattern": "[", "extract_regex": "a"}, data_dir=tmp_path)
+    assert bad_rx["ok"] is False

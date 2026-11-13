@@ -13,9 +13,14 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 log = logging.getLogger(__name__)
+
+
+def _open_rgb(path: Path) -> Image.Image:
+    with Image.open(path) as im:
+        return ImageOps.exif_transpose(im).convert("RGB")
 
 
 # ---------------------------------------------------------------------------
@@ -32,7 +37,7 @@ def frequency_separation(
     p = Path(image_path)
     if not p.is_file():
         return {"ok": False, "error": "Gorsel bulunamadi"}
-    img = Image.open(p).convert("RGB")
+    img = _open_rgb(p)
     low = img.filter(ImageFilter.GaussianBlur(radius=max(0.5, float(radius))))
     arr_orig = np.asarray(img, dtype=np.int16)
     arr_low = np.asarray(low, dtype=np.int16)
@@ -56,7 +61,10 @@ def seam_carve_resize(
     p = Path(image_path)
     if not p.is_file():
         return {"ok": False, "error": "Gorsel bulunamadi"}
-    img = Image.open(p).convert("RGB")
+    img = _open_rgb(p)
+    # Buyuk fotograflarda donmayi onlemek icin once hizli on-olcekleme uygula
+    if max(img.size) > 1200:
+        img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
     arr = np.asarray(img, dtype=np.uint8)
     h, w, _ = arr.shape
     tw = max(16, int(target_w))
@@ -215,7 +223,7 @@ def clone_lut_from_reference(
 
 
 def cube_to_haldclut(cube_path: str, out_png: str) -> dict[str, Any]:
-    """`.cube` 3D LUT dosyasini HaldCLUT PNG (level 4 = 64x64) goruntusune cevirir."""
+    """`.cube` 3D LUT dosyasini trilineer orneklemeyle gecerli HaldCLUT PNG (level 4 = 64x64, 16^3) goruntusune cevirir."""
     cp = Path(cube_path)
     if not cp.is_file():
         return {"ok": False, "error": "LUT dosyasi bulunamadi"}
@@ -236,14 +244,41 @@ def cube_to_haldclut(cube_path: str, out_png: str) -> dict[str, Any]:
                 pass
     if not n or len(vals) != n ** 3:
         return {"ok": False, "error": "Gecersiz .cube dosyasi"}
-    arr = (np.clip(np.asarray(vals, dtype=np.float32), 0.0, 1.0) * 255.0).astype(np.uint8)
-    side = int(math.ceil(math.sqrt(len(arr))))
-    padded = np.zeros((side * side, 3), dtype=np.uint8)
-    padded[: len(arr)] = arr
-    img = Image.fromarray(padded.reshape((side, side, 3)), mode="RGB")
+
+    lut = np.asarray(vals, dtype=np.float32).reshape((n, n, n, 3))  # [b, g, r, 3]
+    target_n = 16  # Level 4 HaldCLUT: 16^3 = 4096 -> 64x64
+    coords = np.linspace(0, n - 1, target_n, dtype=np.float32)
+    b0 = np.floor(coords).astype(np.int32)
+    b1 = np.minimum(b0 + 1, n - 1)
+    bf = coords - b0
+
+    out_rows = np.zeros((target_n ** 3, 3), dtype=np.uint8)
+    idx = 0
+    for bi in range(target_n):
+        for gi in range(target_n):
+            for ri in range(target_n):
+                c000 = lut[b0[bi], b0[gi], b0[ri]]
+                c001 = lut[b0[bi], b0[gi], b1[ri]]
+                c010 = lut[b0[bi], b1[gi], b0[ri]]
+                c011 = lut[b0[bi], b1[gi], b1[ri]]
+                c100 = lut[b1[bi], b0[gi], b0[ri]]
+                c101 = lut[b1[bi], b0[gi], b1[ri]]
+                c110 = lut[b1[bi], b1[gi], b0[ri]]
+                c111 = lut[b1[bi], b1[gi], b1[ri]]
+                c00 = c000 * (1 - bf[ri]) + c001 * bf[ri]
+                c01 = c010 * (1 - bf[ri]) + c011 * bf[ri]
+                c10 = c100 * (1 - bf[ri]) + c101 * bf[ri]
+                c11 = c110 * (1 - bf[ri]) + c111 * bf[ri]
+                c0 = c00 * (1 - bf[gi]) + c01 * bf[gi]
+                c1 = c10 * (1 - bf[gi]) + c11 * bf[gi]
+                val = c0 * (1 - bf[bi]) + c1 * bf[bi]
+                out_rows[idx] = np.clip(val * 255.0, 0, 255).astype(np.uint8)
+                idx += 1
+
+    img = Image.fromarray(out_rows.reshape((64, 64, 3)), mode="RGB")
     out_p = Path(out_png)
     img.save(out_p)
-    return {"ok": True, "path": str(out_p), "lut_size": n}
+    return {"ok": True, "path": str(out_p), "lut_size": n, "hald_level": 4}
 
 
 def hdr_merge_mertens(image_paths: list[str], out_path: str) -> dict[str, Any]:
@@ -251,12 +286,12 @@ def hdr_merge_mertens(image_paths: list[str], out_path: str) -> dict[str, Any]:
     valid = [Path(x) for x in image_paths if Path(x).is_file()]
     if len(valid) < 2:
         return {"ok": False, "error": "En az 2 fotograf gerekli"}
-    base_img = Image.open(valid[0]).convert("RGB")
+    base_img = _open_rgb(valid[0])
     w, h = base_img.size
     acc = np.zeros((h, w, 3), dtype=np.float32)
     wsum = np.zeros((h, w, 1), dtype=np.float32) + 1e-6
     for vp in valid:
-        im = Image.open(vp).convert("RGB").resize((w, h), Image.Resampling.BILINEAR)
+        im = _open_rgb(vp).resize((w, h), Image.Resampling.BILINEAR)
         arr = np.asarray(im, dtype=np.float32) / 255.0
         well_exposed = np.exp(-0.5 * np.sum(((arr - 0.5) / 0.22) ** 2, axis=2, keepdims=True))
         sat = np.std(arr, axis=2, keepdims=True) + 0.05
@@ -270,19 +305,21 @@ def hdr_merge_mertens(image_paths: list[str], out_path: str) -> dict[str, Any]:
 
 
 def focus_stack_laplacian(image_paths: list[str], out_path: str) -> dict[str, Any]:
-    """Farkli odak noktali fotograflardan en keskin pikselleri secip birlestirir."""
+    """Farkli odak noktali fotograflardan yumusatilmis odak haritasiyla en keskin pikselleri secer."""
     valid = [Path(x) for x in image_paths if Path(x).is_file()]
     if len(valid) < 2:
         return {"ok": False, "error": "En az 2 fotograf gerekli"}
-    base_img = Image.open(valid[0]).convert("RGB")
+    base_img = _open_rgb(valid[0])
     w, h = base_img.size
-    imgs = [np.asarray(Image.open(vp).convert("RGB").resize((w, h)), dtype=np.uint8) for vp in valid]
+    imgs = [np.asarray(_open_rgb(vp).resize((w, h), Image.Resampling.LANCZOS), dtype=np.uint8) for vp in valid]
     scores = []
     for arr in imgs:
         gray = 0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2]
         dx = np.abs(np.diff(gray, axis=1, prepend=gray[:, :1]))
         dy = np.abs(np.diff(gray, axis=0, prepend=gray[:1, :]))
-        scores.append(dx + dy)
+        raw_score = np.clip(dx + dy, 0, 255).astype(np.uint8)
+        blurred = Image.fromarray(raw_score, mode="L").filter(ImageFilter.GaussianBlur(radius=2.0))
+        scores.append(np.asarray(blurred, dtype=np.float32))
     best_idx = np.argmax(np.stack(scores, axis=0), axis=0)
     stacked = np.stack(imgs, axis=0)
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
@@ -399,7 +436,7 @@ def oklch_palette(image_path: str, count: int = 6) -> dict[str, Any]:
     if not p.is_file():
         return {"ok": False, "error": "Gorsel bulunamadi"}
     k = max(2, min(12, int(count)))
-    im = Image.open(p).convert("RGB").resize((128, 128)).quantize(colors=k, method=Image.Quantize.MEDIANCUT)
+    im = _open_rgb(p).resize((128, 128), Image.Resampling.LANCZOS).quantize(colors=k, method=Image.Quantize.MEDIANCUT)
     pal = im.getpalette() or []
     colors = []
     for i in range(k):
@@ -421,7 +458,7 @@ def oklch_palette(image_path: str, count: int = 6) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def embed_blind_watermark(image_path: str, text: str, out_path: str = "") -> dict[str, Any]:
-    """Mavi kanalin dusuk-orta bit duzlemine tekrarli CRC/baslikli gorunmez telif imzasi gomer."""
+    """Mavi kanalin bit-plane 2 duzlemine tum gorsele dagitilmis (LSB-Spread) gorunmez imza gomer."""
     p = Path(image_path)
     if not p.is_file():
         return {"ok": False, "error": "Gorsel bulunamadi"}
@@ -434,18 +471,20 @@ def embed_blind_watermark(image_path: str, text: str, out_path: str = "") -> dic
         for b in range(7, -1, -1):
             bits.append((byte >> b) & 1)
 
-    img = Image.open(p).convert("RGB")
+    img = _open_rgb(p)
     arr = np.asarray(img, dtype=np.uint8).copy()
     flat_b = arr[:, :, 2].reshape(-1)
     if len(bits) * 3 > flat_b.size:
         return {"ok": False, "error": "Gorsel bu imza icin cok kucuk"}
 
-    # 3x cogunluk oylamali gomme (QIM bit-plane 2)
+    # Tum piksel alanina tohumlu rastgele dagilim (ustten kirpilmaya karsi)
+    perm = np.random.default_rng(0x4B4D31).permutation(flat_b.size)
     step = 0
     for bit in bits:
         for _ in range(3):
-            v = int(flat_b[step])
-            flat_b[step] = (v & 0xFB) | (bit << 2)
+            pos = int(perm[step])
+            v = int(flat_b[pos])
+            flat_b[pos] = (v & 0xFB) | (bit << 2)
             step += 1
 
     dst = Path(out_path) if out_path else p.with_name(f"{p.stem}_wm.png")
@@ -454,12 +493,13 @@ def embed_blind_watermark(image_path: str, text: str, out_path: str = "") -> dic
 
 
 def extract_blind_watermark(image_path: str) -> dict[str, Any]:
-    """Gorseldeki gorunmez telif imzasini okur."""
+    """Gorseldeki dagitilmis gorunmez telif imzasini okur."""
     p = Path(image_path)
     if not p.is_file():
         return {"ok": False, "error": "Gorsel bulunamadi"}
-    arr = np.asarray(Image.open(p).convert("RGB"), dtype=np.uint8)
+    arr = np.asarray(_open_rgb(p), dtype=np.uint8)
     flat_b = arr[:, :, 2].reshape(-1)
+    perm = np.random.default_rng(0x4B4D31).permutation(flat_b.size)
 
     def _read_byte(bit_offset: int) -> int:
         val = 0
@@ -467,7 +507,7 @@ def extract_blind_watermark(image_path: str) -> dict[str, Any]:
             idx = (bit_offset + b) * 3
             if idx + 2 >= flat_b.size:
                 return 0
-            votes = sum(((int(flat_b[idx + k]) >> 2) & 1) for k in range(3))
+            votes = sum(((int(flat_b[int(perm[idx + k])]) >> 2) & 1) for k in range(3))
             val = (val << 1) | (1 if votes >= 2 else 0)
         return val
 

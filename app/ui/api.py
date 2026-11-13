@@ -3167,7 +3167,15 @@ class Api(StudioMixin):
     def dvr_start(self, url: str, out_dir: str = "", from_start: bool = True) -> dict[str, Any]:
         from app.core.web_archive import start_live_dvr
         target = out_dir or str(self._manager.settings.get("download_dir", "Downloads"))
-        return start_live_dvr(url, target, from_start=from_start)
+        return start_live_dvr(url, target, from_start=from_start, background=True)
+
+    def dvr_cancel(self, job_id: str) -> dict[str, Any]:
+        from app.core.web_archive import cancel_live_dvr
+        return cancel_live_dvr(job_id)
+
+    def dvr_list(self) -> dict[str, Any]:
+        from app.core.web_archive import list_live_dvr
+        return {"ok": True, "jobs": list_live_dvr()}
 
     def web_archive_save(self, url: str, out_path: str = "") -> dict[str, Any]:
         from app.core.web_archive import archive_webpage
