@@ -103,3 +103,5 @@ def test_kami_cli_and_flow_js_contract(capsys):
 
     flow_js = (Path(__file__).resolve().parent.parent / "app" / "ui" / "web" / "kami-flow.js").read_text(encoding="utf-8")
     assert "KamiFlowGraph" in flow_js
+    assert "KamiFlowUI" in flow_js
+    assert "kfDockBtn" in flow_js

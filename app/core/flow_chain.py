@@ -99,6 +99,20 @@ def _default_node_runner(node: dict[str, Any], inputs: dict[int, Any]) -> dict[s
 
     if ntype == "input/file":
         return {"ok": True, "outputs": {0: props.get("path", "")}}
+    if ntype == "studio/cut_silences":
+        from app.core import studio_mcp
+        clip_id = str(first_in or props.get("clip", ""))
+        if not clip_id:
+            return {"ok": False, "error": "Klip ID eksik"}
+        res = studio_mcp.t_sil(clip=clip_id, db=float(props.get("db", -35)), min_len=float(props.get("min_len", 0.45)))
+        return {"ok": True, "outputs": {0: clip_id}, "detail": res}
+    if ntype == "studio/auto_captions":
+        from app.core import studio_mcp
+        clip_id = str(first_in or props.get("clip", ""))
+        if not clip_id:
+            return {"ok": False, "error": "Klip ID eksik"}
+        res = studio_mcp.t_caps(clip=clip_id, lang=str(props.get("lang", "auto")))
+        return {"ok": True, "outputs": {0: clip_id}, "detail": res}
     if ntype == "doc/pdf_to_markdown":
         from app.core.doc_studio import pdf_to_markdown
         res = pdf_to_markdown(first_in or props.get("path", ""))

@@ -207,5 +207,109 @@
     }
   }
 
+  const KamiFlowUI = {
+    overlay: null,
+    graph: null,
+    open() {
+      if (this.overlay) {
+        this.overlay.hidden = false;
+        this.refreshStatus();
+        return;
+      }
+      const ov = document.createElement("div");
+      ov.id = "kamiFlowModal";
+      ov.style.cssText =
+        "position:fixed;inset:24px;z-index:9995;background:#0D0A13;border:1px solid #6D28D9;display:flex;flex-direction:column;color:#EDE9F6;font-family:'Chakra Petch',sans-serif;box-shadow:0 24px 80px rgba(0,0,0,.75);";
+      ov.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#16101F;border-bottom:1px solid #3A2E52;">
+          <strong style="color:#C4B5FD;letter-spacing:.5px;">KAMI AKIŞ & YEREL COPILOT</strong>
+          <span id="kfCopilotBadge" style="font-size:12px;color:#A39BB5;">Ollama kontrol ediliyor…</span>
+          <div style="flex:1"></div>
+          <button id="kfAddIn" class="btn">+ Dosya</button>
+          <button id="kfAddReframe" class="btn">+ 9:16</button>
+          <button id="kfAddOut" class="btn">+ Çıktı</button>
+          <button id="kfSave" class="btn">Kaydet</button>
+          <button id="kfRun" class="btn primary">Çalıştır</button>
+          <button id="kfClose" class="btn">Kapat</button>
+        </div>
+        <div style="display:flex;gap:8px;padding:8px 14px;background:#110E17;border-bottom:1px solid #2A1F3B;">
+          <input id="kfPrompt" type="text" placeholder="Yerel Qwen2.5 Copilot'a Studio komutu yaz…" style="flex:1;background:#08070C;color:#EDE9F6;border:1px solid #4A3D63;padding:6px 10px;font:inherit;">
+          <button id="kfAsk" class="btn">Copilot</button>
+        </div>
+        <canvas id="kfCanvas" width="960" height="460" style="flex:1;width:100%;height:100%;display:block;"></canvas>
+        <div id="kfLog" style="height:82px;overflow:auto;padding:8px 14px;background:#08070C;border-top:1px solid #2A1F3B;font-size:12px;color:#2EE6A6;white-space:pre-wrap;"></div>
+      `;
+      document.body.appendChild(ov);
+      this.overlay = ov;
+
+      const cv = ov.querySelector("#kfCanvas");
+      this.graph = new KamiFlowGraph(cv);
+      const n1 = this.graph.addNode("input/file", "Kaynak Dosya", 40, 80, [], ["path"], { path: "" });
+      const n2 = this.graph.addNode("output/export", "Dışa Aktar", 360, 80, ["in"], ["result"], { quality: "high" });
+      this.graph.connect(n1.id, 0, n2.id, 0);
+
+      const log = (txt) => {
+        ov.querySelector("#kfLog").textContent = typeof txt === "string" ? txt : JSON.stringify(txt, null, 2);
+      };
+      ov.querySelector("#kfClose").onclick = () => { ov.hidden = true; };
+      ov.querySelector("#kfAddIn").onclick = () => this.graph.addNode("input/file", "Kaynak Dosya", 60, 140, [], ["path"], { path: "" });
+      ov.querySelector("#kfAddReframe").onclick = () => this.graph.addNode("clip/vertical_reframe", "9:16 Dikey Kırp", 260, 140, ["path"], ["path"], { platform: "tiktok" });
+      ov.querySelector("#kfAddOut").onclick = () => this.graph.addNode("output/export", "Dışa Aktar", 480, 140, ["in"], ["result"], { quality: "high" });
+      ov.querySelector("#kfRun").onclick = async () => {
+        if (!global.api?.flow_execute) return log("API hazır değil");
+        log("Akış çalıştırılıyor…");
+        log(await global.api.flow_execute(this.graph.serialize()));
+      };
+      ov.querySelector("#kfSave").onclick = async () => {
+        if (!global.api?.flow_save) return log("API hazır değil");
+        log(await global.api.flow_save("varsayilan_akis", this.graph.serialize()));
+      };
+      ov.querySelector("#kfAsk").onclick = async () => {
+        const p = ov.querySelector("#kfPrompt").value.trim();
+        if (!p || !global.api?.copilot_run) return;
+        log("Yerel Copilot düşünüyor…");
+        log(await global.api.copilot_run(p));
+      };
+      this.refreshStatus();
+    },
+    async refreshStatus() {
+      const badge = this.overlay?.querySelector("#kfCopilotBadge");
+      if (!badge || !global.api?.copilot_status) return;
+      try {
+        const st = await global.api.copilot_status();
+        badge.textContent = st.ollama_running
+          ? (st.qwen_ready ? "Ollama + Qwen2.5 hazır" : `Ollama açık (${st.models.length} model)`)
+          : "Ollama çevrimdışı";
+        badge.style.color = st.ollama_running ? "#2EE6A6" : "#F5B94A";
+      } catch {
+        badge.textContent = "Durum alınamadı";
+      }
+    },
+  };
+
+  function mountDockButton() {
+    const dock = document.getElementById("skDock");
+    if (!dock || document.getElementById("kfDockBtn")) return;
+    const btn = document.createElement("button");
+    btn.id = "kfDockBtn";
+    btn.title = "Akış Zinciri & Yerel Copilot (Ctrl+Shift+F)";
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="6" height="6"/><rect x="15" y="14" width="6" height="6"/><path d="M9 7h4v10h2"/></svg>';
+    btn.onclick = () => KamiFlowUI.open();
+    dock.appendChild(btn);
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      KamiFlowUI.open();
+    }
+  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(mountDockButton, 300));
+  } else {
+    setTimeout(mountDockButton, 300);
+  }
+
   global.KamiFlowGraph = KamiFlowGraph;
+  global.KamiFlowUI = KamiFlowUI;
 })(window);

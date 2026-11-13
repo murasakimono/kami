@@ -371,10 +371,14 @@
         this.curCharSprite = new PIXI.Sprite(
           this.charTextures.idle || PIXI.Texture.EMPTY
         );
+        const fitSprite = (sp, tex, flip) => {
+          const w = tex && tex !== PIXI.Texture.EMPTY && tex.width > 1 ? tex.width : 403;
+          const h = tex && tex !== PIXI.Texture.EMPTY && tex.height > 1 ? tex.height : 614;
+          sp.scale.set((flip ? -1 : 1) * (222 / w), 338 / h);
+        };
         for (const sp of [this.prevCharSprite, this.curCharSprite]) {
           sp.anchor.set(0.5, 0.5);
-          sp.width = 222;
-          sp.height = 338;
+          fitSprite(sp, sp.texture, false);
         }
         this.prevCharSprite.alpha = 0;
         charWrap.addChild(this.prevCharSprite, this.curCharSprite);
@@ -385,6 +389,7 @@
 
         let lastFrame = "";
         let lastFlip = false;
+        let lastRingKey = "";
         let elapsed = 0;
 
         app.ticker.add((ticker) => {
@@ -400,25 +405,29 @@
             (this.orbitAngle + dt * (8 + this.smoothSpeed * 260)) % 360;
           this.orbitGroup.rotation = (this.orbitAngle * Math.PI) / 180;
 
-          // Hiz halkasi cizimi
-          this.ringBase.clear();
-          this.ringBase
-            .circle(0, 0, 132)
-            .stroke({ width: 10, color: this.state.drop ? 0x0fa37a : 0x1c1228 });
+          // Hiz halkasi cizimi (yalnizca deger degistiginde GPU geometrisi yeniden kurulur)
+          const ringKey = `${this.smoothSpeed.toFixed(3)}|${!!this.state.drop}|${!!this.state.isError}`;
+          if (ringKey !== lastRingKey) {
+            lastRingKey = ringKey;
+            this.ringBase.clear();
+            this.ringBase
+              .circle(0, 0, 132)
+              .stroke({ width: 10, color: this.state.drop ? 0x0fa37a : 0x1c1228 });
 
-          this.ringFill.clear();
-          if (this.smoothSpeed > 0.002) {
-            const startA = -Math.PI / 2;
-            const endA = startA + Math.PI * 2 * Math.min(1, this.smoothSpeed);
-            const col =
-              this.smoothSpeed > 0.92
-                ? 0x2ee6a6
-                : this.state.isError
-                ? 0xff4d6a
-                : 0x8b5cf6;
-            this.ringFill
-              .arc(0, 0, 132, startA, endA)
-              .stroke({ width: 10, color: col, cap: "butt" });
+            this.ringFill.clear();
+            if (this.smoothSpeed > 0.002) {
+              const startA = -Math.PI / 2;
+              const endA = startA + Math.PI * 2 * Math.min(1, this.smoothSpeed);
+              const col =
+                this.smoothSpeed > 0.92
+                  ? 0x2ee6a6
+                  : this.state.isError
+                  ? 0xff4d6a
+                  : 0x8b5cf6;
+              this.ringFill
+                .arc(0, 0, 132, startA, endA)
+                .stroke({ width: 10, color: col, cap: "butt" });
+            }
           }
 
           // Aura rengi ve nabzi
@@ -438,19 +447,18 @@
             if (fName !== lastFrame || fFlip !== lastFlip) {
               if (this.curCharSprite.texture !== PIXI.Texture.EMPTY) {
                 this.prevCharSprite.texture = this.curCharSprite.texture;
-                this.prevCharSprite.scale.x = this.curCharSprite.scale.x;
+                fitSprite(this.prevCharSprite, this.prevCharSprite.texture, lastFlip);
               }
               if (this.charTextures[fName]) {
                 this.curCharSprite.texture = this.charTextures[fName];
               }
+              fitSprite(this.curCharSprite, this.curCharSprite.texture, fFlip);
               lastFrame = fName;
               lastFlip = fFlip;
             }
             const mix = eyeInstance.mix ?? 1;
             this.curCharSprite.alpha = mix;
             this.prevCharSprite.alpha = Math.max(0, 1 - mix);
-            const sxBase = Math.abs(this.curCharSprite.scale.x);
-            this.curCharSprite.scale.x = fFlip ? -sxBase : sxBase;
           }
 
           // Kukla eklemli hareket: nefes + imlec egimi + yutma tepkisi

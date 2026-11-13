@@ -107,6 +107,10 @@ def main() -> int:
     if "--studio-mcp" in sys.argv[1:]:   # Claude masaustu: Kami Studio MCP sunucusu (stdio, pencere yok)
         from app.core import studio_mcp
         return studio_mcp.main()
+    if "--cli" in sys.argv[1:]:   # kami-cli bassiz SDK
+        from app.core import kami_cli
+        _idx = sys.argv.index("--cli")
+        return kami_cli.main(sys.argv[_idx + 1:])
     if "--setup" in sys.argv[1:]:   # Inno Setup: native host + magnet kaydi / kaldirma (pencere acilmaz)
         from app.core import setup_tasks
         return setup_tasks.run(sys.argv[1:])

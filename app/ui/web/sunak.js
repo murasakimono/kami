@@ -530,8 +530,10 @@ function skSpark() {
 let skLast = 0;
 function skFrame(t) {
   const dt = Math.min(0.1, (t - skLast) / 1000 || 0); skLast = t;
-  SK.orbit = (SK.orbit + dt * (8 + SK.speedFrac * 260)) % 360;
-  const o = $("#skOrbit"); if (o) o.setAttribute("transform", `rotate(${SK.orbit} 150 150)`);
+  if (!window.KamiSunakGPU?.altarReady) {
+    SK.orbit = (SK.orbit + dt * (8 + SK.speedFrac * 260)) % 360;
+    const o = $("#skOrbit"); if (o) o.setAttribute("transform", `rotate(${SK.orbit} 150 150)`);
+  }
   requestAnimationFrame(skFrame);
 }
 
