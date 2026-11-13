@@ -3355,3 +3355,36 @@ class Api(StudioMixin):
     def voice_status(self) -> dict[str, Any]:
         from app.core.voice_cmd import voice_capabilities
         return voice_capabilities()
+
+    # ---------- Faz 18: Yerel Copilot, Akis Zinciri, .kamipack ----------
+    def copilot_status(self) -> dict[str, Any]:
+        from app.core.local_copilot import copilot_status
+        return copilot_status()
+
+    def copilot_run(self, prompt: str, model: str = "qwen2.5:7b") -> dict[str, Any]:
+        from app.core.local_copilot import run_copilot
+        return run_copilot(prompt, model=model)
+
+    def flow_catalog(self) -> dict[str, Any]:
+        from app.core.flow_chain import NODE_CATALOG, list_flows
+        return {"ok": True, "nodes": NODE_CATALOG, "flows": list_flows()}
+
+    def flow_save(self, name: str, graph: dict[str, Any]) -> dict[str, Any]:
+        from app.core.flow_chain import save_flow
+        return save_flow(name, graph)
+
+    def flow_execute(self, graph: dict[str, Any]) -> dict[str, Any]:
+        from app.core.flow_chain import execute_graph
+        return execute_graph(graph)
+
+    def kamipack_export(self, name: str, payload: dict[str, Any], out_path: str, kind: str = "workflow") -> dict[str, Any]:
+        from app.core.kamipack import export_kamipack
+        return export_kamipack(name, payload, out_path, kind=kind)
+
+    def kamipack_inspect(self, pack_path: str) -> dict[str, Any]:
+        from app.core.kamipack import inspect_kamipack
+        return inspect_kamipack(pack_path)
+
+    def kamipack_import(self, pack_path: str, dest_dir: str = "") -> dict[str, Any]:
+        from app.core.kamipack import import_kamipack
+        return import_kamipack(pack_path, dest_dir=dest_dir or None)
