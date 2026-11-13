@@ -1,0 +1,30 @@
+{
+  "name": "KrakenFiles",
+  "version": "1.0.0",
+  "description": "KrakenFiles dosya (/view/) bağlantıları.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "KrakenFiles",
+      "host": "(^|\\.)krakenfiles\\.com$",
+      "share": "^/view/[^/]+",
+      "examples": {
+        "match": [
+          "https://krakenfiles.com/view/AbCd1234/file.html"
+        ],
+        "no_match": [
+          "https://krakenfiles.com/"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

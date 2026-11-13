@@ -1714,6 +1714,7 @@ class Api(StudioMixin):
             self._rec_last = res["path"]
             title = ("Clip saved" if en else "Klip kaydedildi") if res.get("replay") else ("Recording saved" if en else "Kayıt kaydedildi")
             desktop.toast(title, os.path.basename(res["path"]), [("Play / trim" if en else "Oynat / kırp", "kami://recplay"),
+                                                                ("Edit in Studio" if en else "Studio'da Kurguya Aç", "kami://recstudio"),
                                                                 ("Open folder" if en else "Klasörü aç", "kami://recfolder")])
         elif not res.get("ok"):
             desktop.toast("Kami", ("Could not save: " if en else "Kaydedilemedi: ") + str(res.get("error", "")), [])
@@ -2119,10 +2120,15 @@ class Api(StudioMixin):
                 self.open_folder(did)
             elif act == "room":
                 self.room_open(True)
-            elif act in ("recplay", "recfolder"):    # son ekran kaydi / klip
+            elif act in ("recplay", "recfolder", "recstudio"):    # son ekran kaydi / klip
                 out = str(getattr(self, "_rec_last", "") or "")
                 if os.path.isfile(out):
-                    subprocess.Popen(["explorer", "/select,", os.path.normpath(out)]) if act == "recfolder" else self._play_request(out)
+                    if act == "recfolder":
+                        subprocess.Popen(["explorer", "/select,", os.path.normpath(out)])
+                    elif act == "recstudio":
+                        self.studio_show(out)
+                    else:
+                        self._play_request(out)
             elif act in ("lvplay", "lvfolder"):   # yol URI'de degil: son lyric video
                 self.lyricvideo_open("folder" if act == "lvfolder" else "play")
             elif act == "subs" and did:
@@ -2662,3 +2668,70 @@ class Api(StudioMixin):
         ok = ntfy_send(s.get("ntfy_server"), self._ntfy.load() if self._ntfy else "", "Kami", "Test bildirimi ✓",
                        "bell")
         return {"ok": ok}
+
+    # ---------- Faz 2: Bypass, Sezon Kaziyici, Grab-All ----------
+    def bypass_resolve(self, url: str) -> dict[str, Any]:
+        from app.core import bypass
+        return bypass.resolve(str(url or "").strip())
+
+    def season_scrape(self, url: str) -> dict[str, Any]:
+        from app.core import season_scraper
+        return season_scraper.scrape_season(str(url or "").strip())
+
+    def season_download(self, episodes: list, show_title: str = "") -> dict[str, Any]:
+        from app.core.models import DownloadRequest
+        from app.core.categories import sanitize_filename
+        added = 0
+        for ep in list(episodes or []):
+            if not isinstance(ep, dict):
+                continue
+            stream = str(ep.get("stream_url") or "").strip()
+            if not stream:
+                continue
+            ep_no = int(ep.get("episode") or 0)
+            base = sanitize_filename(str(ep.get("title") or f"{show_title} - S01E{ep_no:02d}".strip(" -")))
+            page_url = str(ep.get("page_url") or "")
+            headers = {"Referer": str(ep.get("embed_url") or page_url)} if (ep.get("embed_url") or page_url) else {}
+            try:
+                if ".m3u8" in stream.lower() or ".txt" in stream.lower():
+                    self._manager.add_media(stream, title=base, source="season_scraper", page_url=page_url, headers=headers)
+                else:
+                    ext = os.path.splitext(stream.split("?")[0])[1] or ".mp4"
+                    fname = base if base.lower().endswith(ext.lower()) else f"{base}{ext}"
+                    self._manager.add(DownloadRequest(url=stream, filename=fname, referer=headers.get("Referer", ""),
+                                                      headers=headers, source="season_scraper", page_url=page_url,
+                                                      extra={"page_title": base}))
+                added += 1
+            except Exception:
+                log.warning("Sezon bolumu kuyruga eklenemedi: %s", stream, exc_info=True)
+        return {"ok": added > 0, "added": added}
+
+    def grab_all_status(self) -> dict[str, Any]:
+        from app.core import grab_all
+        exe = grab_all.find_gallery_dl()
+        return {"installed": bool(exe), "exe": exe or "", "dest": grab_all.default_dest(self._manager.base_dir())}
+
+    def grab_all_start(self, url: str, limit: int = 0) -> dict[str, Any]:
+        import threading
+        from app.core import grab_all
+        u = str(url or "").strip()
+        dest = grab_all.default_dest(self._manager.base_dir())
+        res = grab_all.start(u, dest, int(limit or 0))
+        if not res.get("ok"):
+            return res
+        proc = res.pop("proc")
+
+        def _wait():
+            out_lines = []
+            try:
+                if proc.stdout:
+                    for line in proc.stdout:
+                        out_lines.append(line.strip())
+                rc = proc.wait()
+                self._manager.events.emit("ui.warn" if rc else "ui.toast", kind="grab_all",
+                                          name=f"Grab-All {'hata' if rc else 'tamamlandı'}: {dest}")
+            except Exception:
+                pass
+
+        threading.Thread(target=_wait, daemon=True).start()
+        return res

@@ -1,0 +1,31 @@
+{
+  "name": "Bunkr",
+  "version": "1.0.0",
+  "description": "Bunkr albüm (/a/) ve dosya (/f/, /v/, /i/) bağlantıları.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Bunkr",
+      "host": "(^|\\.)bunkr\\.(si|sk|cr|ac|ru|la|black|red|ph|fi)$",
+      "share": "^/(a|f|v|i)/[^/]+",
+      "examples": {
+        "match": [
+          "https://bunkr.si/a/AbCd1234",
+          "https://bunkr.cr/f/AbCd1234"
+        ],
+        "no_match": [
+          "https://bunkr.si/"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

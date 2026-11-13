@@ -1,0 +1,30 @@
+{
+  "name": "GoFile",
+  "version": "1.0.0",
+  "description": "GoFile paylaşım klasörleri ve dosyaları (/d/).",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "GoFile",
+      "host": "(^|\\.)gofile\\.io$",
+      "share": "^/d/[^/]+",
+      "examples": {
+        "match": [
+          "https://gofile.io/d/AbCd12"
+        ],
+        "no_match": [
+          "https://gofile.io/welcome"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "Kami Bypass",
+  "version": "1.0.0",
+  "description": "Kısaltılmış ve reklamlı ara bağlantıları (ouo.io, tr.link, ay.link, linkvertise, cuty.io, bc.vc) hedef adrese çözer.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "resolver"
+  ],
+  "url_patterns": [],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

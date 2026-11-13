@@ -1,0 +1,31 @@
+{
+  "name": "Send.cm",
+  "version": "1.0.0",
+  "description": "Send.cm dosya bağlantıları.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Send.cm",
+      "host": "(^|\\.)send\\.(cm|now)$",
+      "share": "^/(?:d/)?[a-zA-Z0-9]{8,}$",
+      "examples": {
+        "match": [
+          "https://send.cm/abcd1234efgh",
+          "https://send.cm/d/abcd1234"
+        ],
+        "no_match": [
+          "https://send.cm/login"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "Qiwi.gg",
+  "version": "1.0.0",
+  "description": "Qiwi.gg dosya (/file/) ve klasör (/folder/) bağlantıları.",
+  "author": "Kami",
+  "kami_min": "0.7.1",
+  "enabled": true,
+  "kinds": [
+    "cloud"
+  ],
+  "url_patterns": [
+    {
+      "name": "Qiwi.gg",
+      "host": "(^|\\.)qiwi\\.gg$",
+      "share": "^/(file|folder)/[^/]+",
+      "examples": {
+        "match": [
+          "https://qiwi.gg/file/AbCd1234",
+          "https://qiwi.gg/folder/AbCd1234"
+        ],
+        "no_match": [
+          "https://qiwi.gg/"
+        ]
+      }
+    }
+  ],
+  "settings": [],
+  "permissions": [
+    "network"
+  ]
+}
