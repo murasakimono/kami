@@ -240,6 +240,18 @@ class RoomServer:
                 log.warning("Sabit adres guncellenemedi: %s", exc)
                 time.sleep(3)
 
+    def _keep_published(self, proc, target: str) -> None:
+        """Sabit adres ilk denemede guncellenemezse (ag kesintisi vb.) arayuz gecici trycloudflare linkini gosterir;
+        tunel acik oldugu surece 45 sn'de bir yeniden dener, basardiktan sonra da 10 dk'da bir tazeler."""
+        last = time.time()
+        while proc.poll() is None and self.public == target:
+            time.sleep(45)
+            if proc.poll() is not None or self.public != target:
+                return
+            if not self.published or time.time() - last > 600:
+                self._publish(target)
+                last = time.time()
+
     # ---- cloudflared
     def _ensure_cf(self) -> str:
         if CF_EXE.exists() and CF_EXE.stat().st_size > 1_000_000:
@@ -278,6 +290,7 @@ class RoomServer:
             else:
                 raise RuntimeError("cloudflared kapandi")
             threading.Thread(target=lambda: [None for _ in p.stdout], daemon=True).start()   # ciktiyi bosalt
+            threading.Thread(target=self._keep_published, args=(p, self.public), daemon=True).start()
         except Exception as exc:
             self.tunnel_state, self.tunnel_error = "error", str(exc)[:160]
             log.warning("Kami Oda tuneli acilamadi: %s", exc)
