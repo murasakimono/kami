@@ -280,13 +280,34 @@ function deleteSel(ripple = ST.ripple) {
   ST.sel.clear(); changed();
 }
 function linkedPeers(c) {
-  if (!ST.linkTracks || !ST.p) return [c];
+  if (!ST.linkTracks || !ST.p || c.unlinked) return [c];
   const k = clipKind(c);
-  const peers = ST.p.clips.filter(x => x === c || (c.linkId && x.linkId === c.linkId) ||
+  const peers = ST.p.clips.filter(x => x === c || (!x.unlinked && ((c.linkId && x.linkId === c.linkId) ||
     (!c.linkId && !x.linkId && x.asset && x.asset === c.asset && Math.abs(x.start - c.start) < 0.05 &&
-      Math.abs(x.dur - c.dur) < 0.05 && ((k === "video" && clipKind(x) === "audio") || (k === "audio" && clipKind(x) === "video"))));
+      Math.abs(x.dur - c.dur) < 0.05 && ((k === "video" && clipKind(x) === "audio") || (k === "audio" && clipKind(x) === "video"))))));
   return peers.length ? peers : [c];
 }
+function unlinkClip(c) {
+  if (!c) return;
+  snap();
+  for (const p of linkedPeers(c)) { delete p.linkId; p.unlinked = true; }
+  delete c.linkId; c.unlinked = true;
+  changed(false); toast("Klip bağı kaldırıldı (J/L Cut hazır)");
+}
+function closeTrackGaps(tid) {
+  if (!ST.p || !tid) return 0;
+  const seq = ST.p.clips.filter(x => x.track === tid).sort((a, b) => a.start - b.start);
+  let cur = 0, moved = 0;
+  for (const x of seq) {
+    const st = +cur.toFixed(4);
+    if (Math.abs(x.start - st) > 1e-4) { if (!moved) snap(); x.start = st; moved++; }
+    cur = st + x.dur;
+  }
+  if (moved) { changed(); toast(`${moved} klibin boşluğu kapatıldı`); } else toast("İzde kapatılacak boşluk yok");
+  return moved;
+}
+window.unlinkClip = unlinkClip;
+window.closeTrackGaps = closeTrackGaps;
 function splitAtPlayhead() {
   let cs = selClips().filter(c => c.start < ST.t && c.start + c.dur > ST.t);
   if (!cs.length) cs = ST.p.clips.filter(c => c.start < ST.t && c.start + c.dur > ST.t && !trackOf(c).lock);
@@ -512,6 +533,8 @@ function srcTime(c, t) {
 function curSpeed(c, t) { return c.freeze ? 0 : c.ramp?.length ? rampAt(c, t - c.start)[1] : (c.speed || 1); }
 function clipVol(c, t) {
   const tr = trackOf(c); if (tr.mute) return 0;
+  const hasSolo = ST.p.tracks.some(x => (x.kind === "audio" || x.kind === "video") && x.solo);
+  if (hasSolo && !tr.solo) return 0;
   const l = t - c.start, ukf = c.kf?.length ? kfResolve(c.kf, c.dur) : null;
   let v = ukf ? kfAt(ukf, "vol", l, c.vol ?? 1) : (c.vol ?? 1);
   if (tr.duck && ST.p.clips.some(x => x !== c && !trackOf(x).duck && !trackOf(x).mute && (trackOf(x).kind === "audio" || (trackOf(x).kind === "video" && assetOf(x)?.audio)) && t >= x.start && t < x.start + x.dur))
@@ -952,7 +975,7 @@ function renderTimeline() {
   const width = end * ST.px;
   $("#tlInner").style.width = width + "px";
   heads.innerHTML = ST.p.tracks.map(t => `<div class="th" style="--h:${laneH(t)}px" data-tid="${t.id}"><i style="background:${KIND_COL[t.kind]}"></i><b title="${esc(t.name)}">${esc(t.name)}</b>` +
-    (t.kind === "video" || t.kind === "audio" ? `<button data-th="mute" class="${t.mute ? "on" : ""}" title="Sessiz">${t.mute ? "🔇" : "🔊"}</button>` : "") +
+    (t.kind === "video" || t.kind === "audio" ? `<button data-th="mute" class="${t.mute ? "on" : ""}" title="Sessiz">${t.mute ? "🔇" : "🔊"}</button><button data-th="solo" class="${t.solo ? "on" : ""}" title="Solo (Sadece bu iz)">S</button>` : "") +
     `<button data-th="hide" class="${t.hide ? "on" : ""}" title="Gizle">${t.hide ? "◌" : "◉"}</button><button data-th="lock" class="${t.lock ? "on" : ""}" title="Kilitle">${t.lock ? "🔒" : "🔓"}</button></div>`).join("");
   const frag = document.createDocumentFragment();
   for (const t of ST.p.tracks) {
@@ -1362,7 +1385,8 @@ function renderInsp() {
     h += `<div class="sec">Hız</div>` + fld("Hız", "speed", .1, 8, .05, c.speed || 1) +
       `<div class="row tight">${[.25, .5, 1, 1.5, 2, 4].map(v => `<button class="tb" data-speed="${v}">${v}×</button>`).join("")}</div>`;
     if (k === "video") {
-      h += chk("Optik Akış (Yumuşak yavaşlatma)", "optFlow", c.optFlow);
+      h += chk("Optik Akış (Yumuşak yavaşlatma)", "optFlow", c.optFlow) +
+        chk("Görüntü Sabitle (Deshake)", "stabilize", c.stabilize);
       h += `<div class="sec">Hız rampası</div><div class="grid3 ramps">${Object.entries(RAMPS).map(([id, r]) => `<button class="tb${(id === "none" && !c.ramp) ? " on" : ""}" data-ramp="${id}">${r.n}</button>`).join("")}</div>` +
         (c.ramp ? `<canvas id="rampCv" width="270" height="96" title="Noktayı sürükle · çift tık: nokta ekle · sağ tık: sil"></canvas><div class="hint">Yukarı = hızlı, aşağı = yavaş. Klip süresi kendiliğinden ayarlanır.</div>` : "");
     }

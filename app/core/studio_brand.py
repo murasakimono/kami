@@ -263,6 +263,8 @@ VIRAL_RECIPES: dict[str, dict[str, Any]] = {
         "lufs": -7.0,
     },
 }
+from app.core.studio_pro_pack import RECIPES_PRO  # noqa: E402
+VIRAL_RECIPES.update({k: v for k, v in RECIPES_PRO.items() if k not in VIRAL_RECIPES})
 
 
 class BrandKitStore:
@@ -325,7 +327,8 @@ def apply_viral_recipe(project: dict[str, Any], recipe_id: str, brand_kit: dict[
         pr["brandKit"] = copy.deepcopy(brand_kit)
     from app.core.studio import ZOOM_PRESETS
     from app.core.studio_packs import ZOOM3
-    zoom_map = {z["id"]: copy.deepcopy(z["kf"]) for z in (ZOOM_PRESETS + ZOOM3) if "id" in z and "kf" in z}
+    from app.core.studio_pro_pack import ZOOM_PRO
+    zoom_map = {z["id"]: copy.deepcopy(z["kf"]) for z in (ZOOM_PRESETS + ZOOM3 + ZOOM_PRO) if "id" in z and "kf" in z}
     zoom_kf = zoom_map.get(rec["zoom_preset"], [])
     target_set = set(str(cid) for cid in clip_ids) if clip_ids else None
     applied_clips = 0

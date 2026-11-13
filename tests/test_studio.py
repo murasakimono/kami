@@ -371,3 +371,68 @@ def test_wave3_optflow_shutter_parent_eq_pan_ffmpeg(tmp_path: Path):
     r = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-400:]
     assert out.is_file() and out.stat().st_size > 1000
+
+
+def test_wave4_pro_pack_stabilize_solo_close_gaps(tmp_path: Path):
+    import re
+    import shutil
+    import subprocess
+    import pytest
+
+    cat = S.catalog()
+    assert len(cat["fx"]) >= 187
+    assert len(cat["trans"]) >= 63
+    assert len(cat["zoom"]) >= 50
+    assert len(cat["captions"]) >= 33
+    assert len(cat["afx"]) >= 15
+    assert len(cat["templates"]) >= 24
+    assert len(S.SFX) >= 52
+
+    # Tum efektlerde canli onizleme (css ya da ov) ve tum gecislerde CSS/JS onizlemesi olmali
+    empty_fx = [k for k, v in S.FX.items() if not v.get("css") and not v.get("ov")]
+    assert not empty_fx, f"Onizlemesiz efektler: {empty_fx}"
+    css_txt = (Path(__file__).resolve().parents[1] / "app" / "ui" / "web" / "studio.css").read_text("utf-8")
+    css_tv = set(re.findall(r"\.tv-([a-z0-9-]+)::", css_txt))
+    missing_tv = [k for k in S.TRANS if k != "none" and k not in css_tv]
+    assert not missing_tv, f"CSS gecis karti eksik: {missing_tv}"
+
+    # ripple_close_gaps kontrolu
+    pr_gap = S.new_project("gaps", 320, 180, 24)
+    c1 = S.add_clip(pr_gap, text="bir", start=1.5, dur=1.0)
+    c2 = S.add_clip(pr_gap, text="iki", start=5.0, dur=2.0)
+    moved = S.ripple_close_gaps(pr_gap, c1["track"])
+    assert moved == 2
+    assert c1["start"] == 0.0 and c2["start"] == 1.0
+
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        pytest.skip("ffmpeg yok")
+
+    v1 = tmp_path / "v1.mp4"
+    a1 = tmp_path / "a1.wav"
+    a2 = tmp_path / "a2.wav"
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=24:d=2",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(v1)], check=True)
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", str(a1)], check=True)
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=880:duration=1", str(a2)], check=True)
+
+    p = S.new_project("wave4", 320, 180, 24)
+    p["assets"]["v1"] = {"path": str(v1), "kind": "video", "dur": 2.0, "w": 320, "h": 180, "audio": False, "name": "v"}
+    p["assets"]["s1"] = {"path": str(a1), "kind": "audio", "dur": 1.0, "audio": True, "name": "s1"}
+    p["assets"]["s2"] = {"path": str(a2), "kind": "audio", "dur": 1.0, "audio": True, "name": "s2"}
+    tk_a2 = "a2"
+    p["tracks"].append({"id": tk_a2, "kind": "audio", "name": "Müzik 2", "vol": 1.0, "solo": True})   # yalnizca tk_a2 duyulmali
+
+    S.add_clip(p, asset="v1", track="v1", start=0.0, dur=1.2, stabilize=True,
+               fx=["halation-pro", "crisp-4k"], trans={"in": "rgb-tear", "dur": 0.35})
+    S.add_clip(p, asset="s1", track="a1", start=0.0, dur=1.0)
+    S.add_clip(p, asset="s2", track=tk_a2, start=0.0, dur=1.0, afx=["compressor-punch"])
+
+    out = tmp_path / "wave4_out.mp4"
+    args, total = S.build_export(p, str(out), tmp_path, "libx264", {"quality": "medium"})
+    assert abs(total - 1.2) < 1e-6
+    g = args[args.index("-filter_complex") + 1]
+    assert "deshake=" in g and "acompressor=" in g and "geq=" in g and "amix=inputs=1" in g
+    r = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert out.is_file() and out.stat().st_size > 1000

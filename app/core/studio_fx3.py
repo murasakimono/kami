@@ -9,8 +9,8 @@ from __future__ import annotations
 FX3 = {
     # ---- duzelt: telefon cekimini kurtar (onizlemede yalniz yaklasik; asil sonuc disa aktarimda)
     "denoise": {"name": "Gürültü azalt", "pack": "Düzelt", "ff": "hqdn3d=4:3:6:4.5", "css": "blur(.25px)", "ov": []},
-    "deshake": {"name": "Sallantı azalt", "pack": "Düzelt", "ff": "deshake=rx=32:ry=32:edge=mirror", "css": "", "ov": []},
-    "deflicker": {"name": "Işık titremesini gider", "pack": "Düzelt", "ff": "deflicker=size=7:mode=am", "css": "", "ov": []},
+    "deshake": {"name": "Sallantı azalt", "pack": "Düzelt", "ff": "deshake=rx=32:ry=32:edge=mirror", "css": "contrast(1.02)", "ov": ["crisp"]},
+    "deflicker": {"name": "Işık titremesini gider", "pack": "Düzelt", "ff": "deflicker=size=7:mode=am", "css": "brightness(1.01) contrast(1.01)", "ov": []},
     "autolevel": {"name": "Otomatik ışık", "pack": "Düzelt", "ff": "normalize=blackpt=black:whitept=white:smoothing=24:independence=0.3",
                   "css": "contrast(1.08) brightness(1.03)", "ov": []},
     "dehaze": {"name": "Pus gider", "pack": "Düzelt", "ff": "colorlevels=rimin=0.06:gimin=0.06:bimin=0.06,eq=contrast=1.1:saturation=1.18",

@@ -376,7 +376,7 @@ function renderMixer() {
         <b title="${esc(t.name)}">${esc(t.name)}</b><small>${t.kind === "video" ? "video sesi" : "ses"}</small>
         <div class="fader-vu"><input type="range" class="fader" orient="vertical" min="0" max="2" step="0.01" value="${t.vol ?? 1}" data-tvol="${t.id}"><div class="vu"><i data-vu="${t.id}"></i></div></div>
         <span class="db">${dbOf(t.vol ?? 1)}</span>
-        <div class="cbtn"><button class="tb${t.mute ? " on" : ""}" data-tm="${t.id}" title="Sessiz">M</button><button class="tb${t.duck ? " on" : ""}" data-td="${t.id}" title="Konuşma olunca bu izi kıs (müzik için)">Kıs</button></div>
+        <div class="cbtn"><button class="tb${t.mute ? " on" : ""}" data-tm="${t.id}" title="Sessiz">M</button><button class="tb${t.solo ? " on" : ""}" data-ts="${t.id}" title="Solo (Sadece bu iz)">S</button><button class="tb${t.duck ? " on" : ""}" data-td="${t.id}" title="Konuşma olunca bu izi kıs (müzik için)">Kıs</button></div>
         <button class="tb" data-tfix="${t.id}" title="Bu izdeki tüm kliplere ses düzeltme">Düzelt…</button></div>`).join("")}</div>
       <div class="master"><h3>Ana çıkış</h3>
         <label class="fld w2"><span>Ses yüksekliği</span><select class="in" id="mxL">${[["", "Dokunma"], ["-14", "YouTube (-14 LUFS)"], ["-16", "Podcast (-16)"], ["-11", "TikTok/Reels (-11)"], ["-9", "Çok yüksek (-9)"]].map(([v, n]) => `<option value="${v}"${String(ms.lufs ?? "") === v ? " selected" : ""}>${n}</option>`).join("")}</select></label>
@@ -406,8 +406,9 @@ $("#mixer").addEventListener("input", e => {
 function scheduleSaveP() { changed(false); }
 $("#mixer").addEventListener("change", e => { if (e.target.id === "mxL") { snap(); (ST.p.master ||= {}).lufs = e.target.value ? +e.target.value : null; changed(false); } });
 $("#mixer").addEventListener("click", async e => {
-  const mu = e.target.closest("[data-tm]"), du = e.target.closest("[data-td]"), fx = e.target.closest("[data-tfix]"), ma = e.target.closest("[data-mafx]"), ep = e.target.closest("[data-meqp]");
+  const mu = e.target.closest("[data-tm]"), so = e.target.closest("[data-ts]"), du = e.target.closest("[data-td]"), fx = e.target.closest("[data-tfix]"), ma = e.target.closest("[data-mafx]"), ep = e.target.closest("[data-meqp]");
   if (mu) { snap(); const t = ST.p.tracks.find(x => x.id === mu.dataset.tm); t.mute = !t.mute; changed(); renderMixer(); }
+  if (so) { snap(); const t = ST.p.tracks.find(x => x.id === so.dataset.ts); t.solo = !t.solo; changed(); renderMixer(); }
   if (du) { snap(); const t = ST.p.tracks.find(x => x.id === du.dataset.td); t.duck = !t.duck; changed(false); renderMixer(); }
   if (ep) { const c = selClips()[0], pre = ST.cat.eqPresets?.[ep.dataset.meqp]?.[1]; if (c && pre) { snap(); c.eq = [...pre]; window.syncMedia?.(ST.t, false); changed(false); renderMixer(); } }
   if (ma) { const c = selClips()[0]; snap(); const s = new Set(c.afx || []); s.has(ma.dataset.mafx) ? s.delete(ma.dataset.mafx) : s.add(ma.dataset.mafx); c.afx = [...s]; changed(false); renderMixer(); }

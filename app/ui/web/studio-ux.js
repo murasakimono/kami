@@ -131,13 +131,15 @@ function clipMenu(c, e) {
     "-",
   ];
   if (k === "video" && a?.audio) items.push({ ic: "♪", l: c.detached ? "Ses zaten ayrı" : "Sesi ayrı ize ayır", f: () => detachAudio(), dis: !!c.detached || (c.vol === 0) });
+  if (k === "video" || k === "audio") items.push({ ic: "⛓", l: "Bağı kaldır (J/L Cut)", f: () => window.unlinkClip?.(c) });
   if (k === "video") items.push({ ic: "❄", l: "Kareyi dondur", k: "Shift+F", f: () => freezeFrame?.() }, { ic: "✂", l: n > 1 ? `Arka planı sil (${n} klip)` : "Arka planı sil (bu klip)", f: () => matteSel() });
   if (vis) items.push({ ic: "✦", l: "Animasyon ekle…", f: () => { animTab.clip = "in"; renderInsp(); $("#insp .atabs")?.scrollIntoView({ block: "center" }); } },
     { ic: "◐", l: "Renk sayfasında düzenle", f: () => setPage("color") });
   if (k === "text" && !c.subscribe && !c.graphic) items.push({ ic: "T", l: "Animasyon seç…", f: () => { animTab.text = "in"; renderInsp(); $("#insp .atabs")?.scrollIntoView({ block: "center" }); } });
   items.push({ ic: "⇤", l: "Klibin başına git", f: () => seek(c.start) }, { ic: "⇥", l: "Klibin sonuna git", f: () => seek(c.start + c.dur) }, "-",
     { ic: "🗑", l: n > 1 ? `${n} klibi sil` : "Sil", k: "Del", red: true, f: () => deleteSel(false) },
-    { ic: "⇠", l: "Sil ve boşluğu kapat", k: "Shift+Del", red: true, f: () => deleteSel(true) });
+    { ic: "⇠", l: "Sil ve boşluğu kapat", k: "Shift+Del", red: true, f: () => deleteSel(true) },
+    { ic: "⇥", l: "İzdeki boşlukları kapat", f: () => window.closeTrackGaps?.(c.track) });
   ctxOpen(e.clientX, e.clientY, items);
 }
 function laneMenu(tid, t, e) {
@@ -160,7 +162,11 @@ function trackItems(tk) {
     { ic: "✎", l: "İzi yeniden adlandır", f: async () => { const v = await askText("İz adı", tk.name); if (v) { snap(); tk.name = v; changed(false); } } },
     { ic: tk.lock ? "🔓" : "🔒", l: tk.lock ? "Kilidi aç" : "Kilitle", f: () => { snap(); tk.lock = !tk.lock; changed(false); } },
     { ic: "◌", l: tk.hide ? "Göster" : "Gizle", f: () => { snap(); tk.hide = !tk.hide; changed(false); } },
-    ...(tk.kind === "video" || tk.kind === "audio" ? [{ ic: "🔇", l: tk.mute ? "Sesi aç" : "Sessize al", f: () => { snap(); tk.mute = !tk.mute; changed(false); } }] : []),
+    ...(tk.kind === "video" || tk.kind === "audio" ? [
+      { ic: "🔇", l: tk.mute ? "Sesi aç" : "Sessize al", f: () => { snap(); tk.mute = !tk.mute; changed(false); } },
+      { ic: "S", l: tk.solo ? "Soloyu kapat" : "Solo (Sadece bu iz)", f: () => { snap(); tk.solo = !tk.solo; changed(false); } },
+    ] : []),
+    { ic: "⇠", l: "İzdeki tüm boşlukları kapat", f: () => window.closeTrackGaps?.(tk.id) },
     { ic: "＋", l: "Aynı türden iz ekle", f: () => { snap(); addTrack(tk.kind); changed(false); } },
     { ic: "↑", l: "Yukarı taşı", f: () => moveTrack(tk, -1) }, { ic: "↓", l: "Aşağı taşı", f: () => moveTrack(tk, 1) },
     "-",

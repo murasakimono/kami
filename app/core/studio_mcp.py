@@ -88,12 +88,15 @@ def t_get_clip(id: str, path: str = "") -> Any:
     return S.find_clip(pr, id)
 
 
-@tool("catalog", "Kullanılabilir efekt modları (fx), geçişler, zoom şablonları, altyazı stilleri, metin animasyonları, abone animasyonları, fontlar.", {})
+@tool("catalog", "Kullanılabilir efekt modları (fx), geçişler, zoom şablonları, altyazı stilleri, metin animasyonları, abone animasyonları, "
+      "karışım modları (blends), maskeler, bezier önayarları (bezierPresets), EQ/ses eğrileri ve fontlar.", {})
 def t_catalog() -> Any:
     c = S.catalog()
     return {"fx": {k: f"{v['name']} [{v['pack']}]" for k, v in c["fx"].items()}, "trans": c["trans"],
             "zoom": [{"id": z["id"], "name": z["name"]} for z in c["zoom"]], "captions": c["captions"], "anims": c["anims"],
             "subscribe": c["subscribe"], "graphics": c["graphics"], "templates": c["templates"], "afx": c["afx"], "deliver": c["deliver"],
+            "blends": c["blends"], "masks": c["masks"], "bezierPresets": c["bezierPresets"],
+            "eqPresets": c["eqPresets"], "audioCurves": c["audioCurves"],
             "tanim": c["tanim"], "canim": {k: ({i: (v["name"] if isinstance(v, dict) else v) for i, v in d.items()}) for k, d in c["canim"].items()}}
 
 
@@ -154,9 +157,10 @@ def t_add_clip(asset: str, start: float, dur: float = 0, track: str = "", path: 
     return c
 
 
-@tool("update_clip", "Klip alanlarını değiştirir (start, dur, in, speed, vol, fadeIn, fadeOut, x, y, scale, rot, opacity, fit, adj{bri,con,sat,hue,temp,blur}, "
-      "fx[], fxAt{<fx>:{at:in|out|all,d}}, anim{in,out,loop,inDur,outDur,inEase,outEase,loopAmt,loopSpeed} (video/görsel: catalog.canim), "
-      "trans{in,dur}, text, style{font,size,color,outline,outlineColor,glow,animIn,animOut,animLoop,inDur,outDur (catalog.tanim),pos,x,y,caption,highlight,...}, mode, zoom[]). "
+@tool("update_clip", "Klip alanlarını değiştirir (start, dur, in, speed, vol, fadeIn, fadeOut, fadeCurve, pan, eq, x, y, scale, rot, opacity, fit, adj{bri,con,sat,hue,temp,blur}, "
+      "mask{type,x,y,w,h,rot,feather,invert}, blend, shutterAngle, optFlow, stabilize, parent, kf{x,y,scale,rot,opacity}, fx[], fxAt{<fx>:{at:in|out|all,d}}, "
+      "anim{in,out,loop,inDur,outDur,inEase,outEase,loopAmt,loopSpeed} (video/görsel: catalog.canim), trans{in,dur}, "
+      "text, style{font,size,color,outline,outlineColor,glow,animIn,animOut,animLoop,inDur,outDur (catalog.tanim),pos,x,y,caption,highlight,...}, mode, zoom[]). "
       "null verilen alan silinir.", {"id": STR, "set": {"type": "object"}, "path": PATH}, ["id", "set"])
 def t_update(id: str, set: dict, path: str = "") -> Any:
     p, pr = load(path)
@@ -418,7 +422,7 @@ def t_ramp(clip: str, points: list, path: str = "") -> Any:
     return {"dur": c["dur"]}
 
 
-@tool("set_audio_fix", "Klip ses düzeltmeleri: fx listesi (nr1, nr2, voice, gate, bass, radio, phone, cave). Ayrıca duck_track ile bir izi müzik olarak işaretle (konuşmada kısılır).",
+@tool("set_audio_fix", "Klip ses düzeltmeleri: fx listesi (catalog.afx). Ayrıca duck_track ile bir izi müzik olarak işaretle (konuşmada kısılır).",
       {"clip": STR, "fx": {"type": "array", "items": STR}, "duck_track": STR, "lufs": N, "path": PATH})
 def t_afx(clip: str = "", fx: list | None = None, duck_track: str = "", lufs: float | None = None, path: str = "") -> Any:
     p, pr = load(path)
@@ -434,6 +438,32 @@ def t_afx(clip: str = "", fx: list | None = None, duck_track: str = "", lufs: fl
     return {"ok": True}
 
 
+@tool("set_track_state", "İz durumu ayarla: mute (sessiz), solo (sadece bu iz), duck (konuşmada kıs), lock (kilit), hide (gizli), vol (0-2).",
+      {"track": STR, "mute": {"type": "boolean"}, "solo": {"type": "boolean"}, "duck": {"type": "boolean"},
+       "lock": {"type": "boolean"}, "hide": {"type": "boolean"}, "vol": N, "path": PATH}, ["track"])
+def t_track_state(track: str, mute: bool | None = None, solo: bool | None = None, duck: bool | None = None,
+                  lock: bool | None = None, hide: bool | None = None, vol: float | None = None, path: str = "") -> Any:
+    p, pr = load(path)
+    tk = next((t for t in pr["tracks"] if t["id"] == track), None)
+    if not tk:
+        raise KeyError(track)
+    for k, v in (("mute", mute), ("solo", solo), ("duck", duck), ("lock", lock), ("hide", hide)):
+        if v is not None:
+            tk[k] = bool(v)
+    if vol is not None:
+        tk["vol"] = max(0.0, min(2.0, float(vol)))
+    save(p, pr)
+    return tk
+
+
+@tool("close_gaps", "Belirtilen izdeki klipler arasındaki tüm boşlukları baştan sona kapatır.", {"track": STR, "path": PATH}, ["track"])
+def t_close_gaps(track: str, path: str = "") -> Any:
+    p, pr = load(path)
+    moved = S.ripple_close_gaps(pr, track)
+    save(p, pr)
+    return {"moved": moved, "end": round(S.project_end(pr), 2)}
+
+
 @tool("set_key", "Yeşil/mavi perde silme: on, color (#00ff00), sim (0.01-0.6), smooth (0-0.4), spill.", {"clip": STR, "key": {"type": "object"}, "path": PATH}, ["clip", "key"])
 def t_key(clip: str, key: dict, path: str = "") -> Any:
     p, pr = load(path)
@@ -443,7 +473,7 @@ def t_key(clip: str, key: dict, path: str = "") -> Any:
     return c["key"]
 
 
-@tool("list_recipes", "Faz 9 viral kurgu paketlerini listeler (iman_gadzhi, magnates_media, ali_abdaal, fps_frag, minimal_shorts).", {})
+@tool("list_recipes", "Tüm viral kurgu paketlerini listeler (26 paket: iman_gadzhi, fps_frag, amv_flow, valorant_ace, brainrot_max, documentary_film vb.).", {})
 def t_list_recipes() -> Any:
     from app.core.studio_brand import list_recipes
     return list_recipes()

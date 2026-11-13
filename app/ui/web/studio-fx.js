@@ -73,6 +73,29 @@ const SFX = (() => {
         ctx.restore(); break; }
       case "double": { const src = copy(ctx, W, H); ctx.save(); ctx.globalAlpha = .5; ctx.drawImage(src, Math.sin(t * 1.7) * W * .012, Math.cos(t * 1.3) * H * .012); ctx.restore(); break; }
       case "zoom": { const src = copy(ctx, W, H); ctx.save(); ctx.globalAlpha = .5; ctx.filter = "blur(4px)"; ctx.drawImage(src, -W * .04, -H * .04, W * 1.08, H * 1.08); ctx.restore(); break; }
+      case "bulge": { const src = copy(ctx, W, H); ctx.save(); ctx.drawImage(src, -W * .04, -H * .04, W * 1.08, H * 1.08); vignette(ctx, W, H, .2, "255,255,255"); ctx.restore(); break; }
+      case "mirror-h": { const src = copy(ctx, W, H); ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(src, 0, 0, W / 2, H, 0, 0, W / 2, H); ctx.restore(); break; }
+      case "mirror-v": { const src = copy(ctx, W, H); ctx.save(); ctx.translate(0, H); ctx.scale(1, -1); ctx.drawImage(src, 0, 0, W, H / 2, 0, 0, W, H / 2); ctx.restore(); break; }
+      case "flip-h": { const src = copy(ctx, W, H); ctx.save(); ctx.clearRect(0, 0, W, H); ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(src, 0, 0); ctx.restore(); break; }
+      case "flip-v": { const src = copy(ctx, W, H); ctx.save(); ctx.clearRect(0, 0, W, H); ctx.translate(0, H); ctx.scale(1, -1); ctx.drawImage(src, 0, 0); ctx.restore(); break; }
+      case "quad": { const src = copy(ctx, W, H); ctx.save(); ctx.clearRect(0, 0, W, H); for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) ctx.drawImage(src, 0, 0, W, H, x * W / 2, y * H / 2, W / 2, H / 2); ctx.restore(); break; }
+      case "split3-v": { const src = copy(ctx, W, H); ctx.save(); ctx.clearRect(0, 0, W, H); for (let i = 0; i < 3; i++) ctx.drawImage(src, W / 3, 0, W / 3, H, i * W / 3, 0, W / 3, H); ctx.restore(); break; }
+      case "grid9": { const src = copy(ctx, W, H); ctx.save(); ctx.clearRect(0, 0, W, H); for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) ctx.drawImage(src, 0, 0, W, H, x * W / 3, y * H / 3, W / 3, H / 3); ctx.restore(); break; }
+      case "kaleido": { const src = copy(ctx, W, H); ctx.save(); ctx.clearRect(0, 0, W, H); ctx.drawImage(src, 0, 0, W / 2, H / 2, 0, 0, W / 2, H / 2);
+        ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(src, 0, 0, W / 2, H / 2, 0, 0, W / 2, H / 2); ctx.restore();
+        ctx.save(); ctx.translate(0, H); ctx.scale(1, -1); ctx.drawImage(src, 0, 0, W / 2, H / 2, 0, 0, W / 2, H / 2); ctx.restore();
+        ctx.save(); ctx.translate(W, H); ctx.scale(-1, -1); ctx.drawImage(src, 0, 0, W / 2, H / 2, 0, 0, W / 2, H / 2); ctx.restore(); ctx.restore(); break; }
+      case "zoom-crop": { const src = copy(ctx, W, H); ctx.save(); ctx.clearRect(0, 0, W, H); ctx.drawImage(src, W * .115, H * .115, W / 1.3, H / 1.3, 0, 0, W, H); ctx.restore(); break; }
+      case "mirror-floor": { const src = copy(ctx, W, H); ctx.save(); ctx.clearRect(0, 0, W, H); ctx.drawImage(src, 0, 0, W, H * .72, 0, 0, W, H * .72);
+        ctx.save(); ctx.translate(0, H); ctx.scale(1, -1); ctx.globalAlpha = .72; ctx.drawImage(src, 0, 0, W, H * .28, 0, 0, W, H * .28); ctx.restore(); ctx.restore(); break; }
+      case "pillarbox": { const src = copy(ctx, W, H); ctx.save(); ctx.filter = "blur(18px) brightness(.9)"; ctx.drawImage(src, 0, 0); ctx.filter = "none"; ctx.drawImage(src, W * .22, H * .22, W * .56, H * .56); ctx.restore(); break; }
+      case "pillarbox-9x16": { const src = copy(ctx, W, H); const cw = Math.min(W, H * 9 / 16); ctx.save(); ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H); ctx.drawImage(src, (W - cw) / 2, 0, cw, H, (W - cw) / 2, 0, cw, H); ctx.restore(); break; }
+      case "frame-white": { const src = copy(ctx, W, H); ctx.save(); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); ctx.drawImage(src, W * .05, H * .05, W * .9, H * .9); ctx.restore(); break; }
+      case "frame-polaroid": { const src = copy(ctx, W, H); ctx.save(); ctx.fillStyle = "#f4f1ea"; ctx.fillRect(0, 0, W, H); ctx.drawImage(src, W * .08, H * .06, W * .84, H * .78); ctx.restore(); break; }
+      case "frame-rec": { ctx.save(); ctx.strokeStyle = "rgba(255,255,255,.45)"; ctx.lineWidth = Math.max(2, W / 640); ctx.strokeRect(W * .018, H * .025, W * .964, H * .95);
+        if ((t * 2) % 1 < .65) { ctx.fillStyle = "#ff2a2a"; const s = Math.max(8, W * .013); ctx.fillRect(W * .035, H * .045, s, s); } ctx.restore(); break; }
+      case "pulse": tint(ctx, W, H, "#fff", "lighter", Math.abs(Math.sin(t * Math.PI * 2)) * .16); break;
+      case "crisp": vignette(ctx, W, H, .08); break;
     }
   }
   function shakeOffset(ids, t, W) {
@@ -113,10 +136,22 @@ const SFX = (() => {
     else if (kind === "whip-v") { r.dy = 1 - e; r.blur = 18 * (1 - u); }
     else if (kind === "spin180") r.rot = -180 * (1 - e);
     else if (kind === "vhs-roll") { r.roll = 1 - u; r.rgb = true; }
-    else if (/^(wipe-|barn-|iris|eye|clock|diag-|wave-wipe|corner|diamond|heart|cross|blinds-|checker|stripes|blocks|dissolve)/.test(kind)) r.mask = { kind, e };
+    else if (kind === "cube-l") { r.sx = Math.max(.05, e); r.dx = .45 * (1 - e); }
+    else if (kind === "cube-r") { r.sx = Math.max(.05, e); r.dx = -.45 * (1 - e); }
+    else if (kind === "rgb-tear") r.rgb = true;
+    else if (kind === "zoom-spin") { r.zoom = 1.6 - .6 * e; r.rot = -135 * (1 - e); }
+    else if (kind === "lens-flare") { r.flash = .65 * Math.exp(-Math.pow((u - .15) * 4, 2)); r.leak = .4 * (1 - u); }
+    else if (kind === "burn-wipe") { r.leak = .55 * (1 - u); r.mask = { kind: "wipe-r", e }; }
+    else if (kind === "glitch-snap") { r.rgb = true; r.dx = .014 * Math.sin(local * 120) * (1 - u); }
+    else if (kind === "iris-in") r.mask = { kind: "iris", e };
+    else if (kind === "flash-warm") { r.flash = .45 * (1 - u); r.leak = .65 * (1 - u); }
+    else if (kind === "whip-blur-fast") { r.dx = 1 - e; r.blur = 24 * (1 - u); }
+    else if (/^(wipe-|barn-|iris|eye|clock|diag-|wave-wipe|corner|diamond|heart|cross|blinds-|checker|stripes|blocks|dissolve|page-curl|split-curtain)/.test(kind)) r.mask = { kind, e };
     return r;
   }
   const TRANS2_MASK = {
+    "page-curl": (c, e, W, H) => { const p = 1.5 * e; c.moveTo(0, 0); c.lineTo(W * p, 0); c.lineTo(0, H * 2 * p); },
+    "split-curtain": (c, e, W, H) => { c.rect(0, 0, W * e * .5, H); c.rect(W * (1 - e * .5), 0, W * e * .5, H); },
     "diag-tl": (c, e, W, H) => { c.moveTo(0, 0); c.lineTo(2 * e * W, 0); c.lineTo(0, 2 * e * H); },
     "diag-br": (c, e, W, H) => { c.moveTo(W, H); c.lineTo(W - 2 * e * W, H); c.lineTo(W, H - 2 * e * H); },
     "diag-tr": (c, e, W, H) => { c.moveTo(W, 0); c.lineTo(W - 2 * e * W, 0); c.lineTo(W, 2 * e * H); },

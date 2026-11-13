@@ -103,5 +103,10 @@ def test_brand_kit_and_viral_recipes(tmp_path: Path) -> None:
 def test_mcp_recipe_tools_and_scopes_js() -> None:
     assert "list_recipes" in TOOLS
     assert "run_recipe" in TOOLS
+    assert "set_track_state" in TOOLS
+    assert "close_gaps" in TOOLS
+    assert len(list_recipes()) >= 26
+    res = apply_viral_recipe({"name": "P", "clips": [{"id": "c1", "kind": "video", "start": 0.0, "in": 0.0, "out": 2.0}]}, "amv_flow")
+    assert res["ok"] is True and "neon-aura" in res["project"]["clips"][0]["fx"]
     scopes_js = (paths.WEB_DIR / "studio-scopes.js").read_text(encoding="utf-8")
     assert "drawWaveform" in scopes_js and "drawParade" in scopes_js and "drawVectorscope" in scopes_js

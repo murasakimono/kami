@@ -482,8 +482,16 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .tv-diamond::after { animation-name: tvDiamond; } .tv-heart::after { animation-name: tvIris; } .tv-cross::after { animation-name: tvCross; }
 .tv-blinds-h::after { animation-name: tvBlindsH; } .tv-blinds-v::after { animation-name: tvBlindsV; } .tv-checker::after, .tv-blocks::after, .tv-dissolve::after { animation-name: tvFade; animation-timing-function: steps(6); }
 .tv-stripes::after { animation-name: tvDiagTL; } .tv-pop-in::after { animation-name: tvPop; } .tv-bounce-in::after { animation-name: tvPop; animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }
-.tv-flip-h::after { animation-name: tvFlipH; } .tv-flip-v::after { animation-name: tvFlipV; } .tv-dip-black::after { animation-name: tvDipBlack; } .tv-dip-pink::after { animation-name: tvDipPink; }
+.tv-flip-h::after { animation-name: tvFlipH; } .tv-flip-v::after { animation-name: tvFlipV; } .tv-dip-black::after { animation-name: tvDipBlack; } .tv-dip-pink::after { animation-name: tvDipPink; } .tv-dip-cyan::after { animation-name: tvDipCyan; }
 .tv-whip-v::after { animation-name: tvWhipV; } .tv-spin180::after { animation-name: tvSpin180; } .tv-vhs-roll::after { animation-name: tvRoll; animation-timing-function: steps(8); }
+.tv-page-curl::after { animation-name: tvDiagTL; }
+.tv-cube-l::after { animation-name: tvSlide; } .tv-cube-r::after { animation-name: tvSlideR; }
+.tv-rgb-tear::after { animation-name: tvGlitch; } .tv-glitch-snap::after { animation-name: tvGlitch; animation-timing-function: steps(5); }
+.tv-zoom-spin::after { animation-name: tvSpin; } .tv-lens-flare::after { animation-name: tvFlash; }
+.tv-burn-wipe::after { animation-name: tvWipeR; } .tv-split-curtain::after { animation-name: tvBarnV; }
+.tv-iris-in::after { animation-name: tvIris; } .tv-flash-warm::after { animation-name: tvFlash; }
+.tv-whip-blur-fast::after { animation-name: tvWhip; }
+@keyframes tvDipCyan { from { filter: sepia(1) hue-rotate(155deg) saturate(4) brightness(1.5); } }
 @keyframes tvDiagTL { from { clip-path: polygon(0 0, 0 0, 0 0); } to { clip-path: polygon(0 0, 200% 0, 0 200%); } }
 @keyframes tvDiagBR { from { clip-path: polygon(100% 100%, 100% 100%, 100% 100%); } to { clip-path: polygon(100% 100%, -100% 100%, 100% -100%); } }
 @keyframes tvDiagTR { from { clip-path: polygon(100% 0, 100% 0, 100% 0); } to { clip-path: polygon(100% 0, -100% 0, 100% 200%); } }

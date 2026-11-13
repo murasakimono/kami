@@ -81,7 +81,12 @@ CLIP_LOOP = {
 EASE_NAMES = {"out": "Yumuşak", "linear": "Doğrusal", "back": "Geri yaylan", "elastic": "Elastik", "bounce": "Zıpla"}
 
 from app.core.studio_anim_pack import CLIP_IN2, CLIP_LOOP2, CLIP_OUT2  # noqa: E402  (faz 5b paketi)
-for _src, _dst in ((CLIP_IN2, CLIP_IN), (CLIP_OUT2, CLIP_OUT), (CLIP_LOOP2, CLIP_LOOP)):
+from app.core.studio_pro_pack import (  # noqa: E402
+    CLIP_IN_PRO, CLIP_LOOP_PRO, CLIP_OUT_PRO,
+    TEXT_IN_PRO, TEXT_LOOP_PRO, TEXT_OUT_PRO,
+)
+for _src, _dst in ((CLIP_IN2, CLIP_IN), (CLIP_OUT2, CLIP_OUT), (CLIP_LOOP2, CLIP_LOOP),
+                   (CLIP_IN_PRO, CLIP_IN), (CLIP_OUT_PRO, CLIP_OUT), (CLIP_LOOP_PRO, CLIP_LOOP)):
     _dst.update({k: v for k, v in _src.items() if k not in _dst})
 
 
@@ -254,6 +259,10 @@ def text_catalog() -> dict:
     return {"in": TEXT_IN, "out": TEXT_OUT, "loop": TEXT_LOOP}
 
 
+for _tsrc, _tdst in ((TEXT_IN_PRO, TEXT_IN), (TEXT_OUT_PRO, TEXT_OUT), (TEXT_LOOP_PRO, TEXT_LOOP)):
+    _tdst.update({k: v for k, v in _tsrc.items() if k not in _tdst})
+
+
 _PER_CHAR_IN = {"type", "letters", "letters-up", "letters-blur", "letters-color", "letters-spin", "words", "words-pop", "scramble"}
 _PER_CHAR_OUT = {"type", "letters", "letters-down", "letters-blur", "words"}
 
@@ -323,6 +332,23 @@ def _in_tags(kind: str, D: int, x: float, y: float, W: int, H: int, tw: float, t
     if kind == "neon-on":
         seq = [(0, "FF"), (0.12, "30"), (0.2, "FF"), (0.35, "40"), (0.42, "D0"), (0.6, "10"), (0.68, "90"), (1.0, "00")]
         return "\\alpha&HFF&" + "".join(f"\\t({_ms(D * a)},{_ms(D * a) + 1},\\alpha&H{v}&)" for a, v in seq), None
+    if kind == "slide-pop":
+        a = _ms(D * 0.6)
+        return f"\\fscx85\\fscy85\\alpha&HFF&\\t(0,{a},\\fscx110\\fscy110\\alpha&H00&)\\t({a},{D},\\fscx100\\fscy100)", (x, y + H * 0.08, x, y, 0, D)
+    if kind == "blur-pop":
+        a = _ms(D * 0.65)
+        return f"\\blur24\\fscx50\\fscy50\\alpha&HFF&\\t(0,{a},\\blur0\\fscx110\\fscy110\\alpha&H00&)\\t({a},{D},\\fscx100\\fscy100)", None
+    if kind == "scale-drop":
+        a = _ms(D * 0.55)
+        return f"\\fscx220\\fscy220\\alpha&HFF&\\t(0,{a},\\fscx95\\fscy95\\alpha&H00&)\\t({a},{D},\\fscx100\\fscy100)", (x, y - H * 0.14, x, y, 0, a)
+    if kind == "wave-in":
+        a = _ms(D * 0.45)
+        return f"\\frz-10\\fscy40\\alpha&HFF&\\t(0,{a},\\frz6\\fscy110\\alpha&H00&)\\t({a},{D},\\frz0\\fscy100)", None
+    if kind == "cinema-track":
+        return f"\\fsp28\\alpha&HFF&\\t(0,{D},0.7,\\fsp4\\alpha&H00&)", None
+    if kind == "glitch-flash":
+        a = _ms(D * 0.35)
+        return f"\\1c&HFFFFFF&\\fax0.35\\alpha&H80&\\t(0,{a},\\fax-0.3\\alpha&H00&)\\t({a},{D},\\fax0)", "RESTORE_COL"
     return "", None
 
 
@@ -367,6 +393,16 @@ def _out_tags(kind: str, D: int, x: float, y: float, W: int, H: int, tw: float, 
         return f"\\clip({l:.0f},0,{r:.0f},{H})\\t(0,{D},\\clip({x:.0f},0,{x:.0f},{H}))", None
     if kind == "tilt":
         return f"\\t(0,{D},\\frz-14\\alpha&HFF&)", (x, y, x, y + H * 0.06, 0, D)
+    if kind == "blur-zoom":
+        return f"\\t(0,{D},1.4,\\fscx180\\fscy180\\blur28\\alpha&HFF&)", None
+    if kind == "drop-spin":
+        return f"\\t(0,{D},1.5,\\frz-140\\fscx60\\fscy60\\alpha&HFF&)", (x, y, x, y + H * 0.4, 0, D)
+    if kind == "shrink-fast":
+        return f"\\t(0,{D},1.8,\\fscx15\\fscy15\\alpha&HFF&)", None
+    if kind == "glitch-fade":
+        n = max(3, D // 50)
+        return "".join(f"\\t({i * 50},{i * 50 + 25},\\fax{0.45 if i % 2 else -0.45}\\fscx{124 if i % 3 == 0 else 92}\\alpha&H{min(255, i * 255 // n):02X}&)"
+                       for i in range(n)) + f"\\t({max(0, D - 30)},{D},\\blur8\\alpha&HFF&)", None
     return "", None
 
 
@@ -422,6 +458,16 @@ def _loop_tags(kind: str, D: int, x: float, y: float, W: int, H: int) -> str:
         return rep(2200, [(0, ""), (0.25, "\\fry18"), (0.75, "\\fry-18"), (1, "\\fry0")])
     if kind == "spin":
         return f"\\t(0,{D},\\frz{-360 * max(1, D // 2000)})"
+    if kind == "bounce-soft":
+        a = px(H * 0.018)
+        b = px(H * 0.004)
+        return org_far_x + rep(800, [(0, ""), (0.4, f"\\frz{a:.4f}"), (0.8, f"\\frz{-b:.4f}"), (1, "\\frz0")])
+    if kind == "slam-pulse":
+        return rep(520, [(0, ""), (0.14, "\\fscx116\\fscy116"), (0.5, "\\fscx100\\fscy100"), (1, "\\fscx100\\fscy100")])
+    if kind == "float-tilt":
+        return rep(1800, [(0, ""), (0.25, "\\frz4\\fscx103\\fscy103"), (0.75, "\\frz-4\\fscx98\\fscy98"), (1, "\\frz0\\fscx100\\fscy100")])
+    if kind == "chroma-jitter":
+        return rep(160, [(0, ""), (0.33, "\\fax0.08\\fscx103"), (0.66, "\\fax-0.08\\fscy103"), (1, "\\fax0\\fscx100\\fscy100")])
     return ""
 
 

@@ -71,9 +71,10 @@ P.sound = async () => {
   const sl = Object.entries(slots);
   if (sl.length) h += sec("Hızlı (1-9 tuşu)") + `<div class="chips">${sl.sort().map(([k, s]) => `<span class="chip">${k} · ${esc(s.name.slice(0, 18))}<button data-unslot="${k}">✕</button></span>`).join("")}</div>`;
   if (sndTab === "kami") {
-    pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği ${34} telifsiz ses & meme efekti. Sürükle ya da ＋.</div>` +
-      `<div class="catpills" id="sndCats"></div><input class="in" id="kamiSndQ" placeholder="Vine boom, flashbang, whoosh, bruh ara…" value="${esc(P.sound.q || "")}" style="width:100%;margin-bottom:6px"><div id="sndList" class="hint">Hazırlanıyor…</div>`;
+    pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği <span id="sfxCnt">${sndCache.kami?.length || 52}</span> telifsiz ses & meme efekti. Sürükle ya da ＋.</div>` +
+      `<div class="catpills" id="sndCats"></div><input class="in" id="kamiSndQ" placeholder="Vine boom, metal pipe, whoosh, rizz ara…" value="${esc(P.sound.q || "")}" style="width:100%;margin-bottom:6px"><div id="sndList" class="hint">Hazırlanıyor…</div>`;
     const items = sndCache.kami || (sndCache.kami = await job("studio_sfx", []));
+    const sc = $("#sfxCnt"); if (sc) sc.textContent = items.length;
     const renderKami = () => {
       const cat = P.sound.cat || "Tümü", q = (P.sound.q || "").toLowerCase();
       const cats = ["Tümü", ...new Set(items.map(i => i.cat || "Diğer"))];
@@ -391,9 +392,9 @@ function addFxClip(id, t, snapped) {
 
 // ---------------------------------------------------------------- gecisler
 function transCat(k) {
-  if (/^(none|fade|flash|dip-|lightleak)/.test(k)) return "Temel & Flaş";
-  if (/^(slide|whip|spin|flip)/.test(k)) return "Hareket & Dönüş";
-  if (/^(wipe|diag|barn|blinds|wave|stripes)/.test(k)) return "Silme & Perde";
+  if (/^(none|fade|flash|dip-|lightleak|lens-flare)/.test(k)) return "Temel & Flaş";
+  if (/^(slide|whip|spin|flip|cube-|zoom-spin)/.test(k)) return "Hareket & Dönüş";
+  if (/^(wipe|diag|barn|blinds|wave|stripes|page-curl|burn-wipe|split-curtain)/.test(k)) return "Silme & Perde";
   if (/^(iris|eye|clock|corner|diamond|heart|cross|checker|blocks|dissolve)/.test(k)) return "Şekilli & Maske";
   return "Glitch & Pop";
 }
@@ -420,7 +421,7 @@ pb.addEventListener("click", e => {
 
 // ---------------------------------------------------------------- zoom
 function zoomCat(z) {
-  if (/^(punch|double|crash|wobble|beat4|drop|micro-punch|velocity-snap|reaction)/.test(z.id)) return "Vuruş & Velocity";
+  if (/^(punch|double|crash|wobble|beat4|drop|micro-punch|velocity-snap|reaction|whip-snap-zoom|heartbeat-triple|bounce-settle|micro-pump-duo)/.test(z.id)) return "Vuruş & Velocity";
   if (/^(pan|tilt|dive|eyes|hud-focus|jumpcut-alt|glide)/.test(z.id)) return "Odak & Pan";
   return "Sinematik & Yaklaş";
 }

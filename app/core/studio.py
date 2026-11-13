@@ -121,6 +121,12 @@ from app.core.studio_fx4 import FX4 as _FX4  # noqa: E402
 FX.update({k: v for k, v in _FX4.items() if k not in FX})
 from app.core.studio_trans2 import TRANS2, trans_in2  # noqa: E402
 from app.core.studio_packs import CAPTIONS2, ZOOM3  # noqa: E402
+from app.core.studio_pro_pack import (  # noqa: E402
+    AUDIO_FIX_NAMES_PRO, AUDIO_FIX_PRO, CAPTIONS_PRO, FX_PRO,
+    SFX_CAT_PRO, SFX_PRO, TEMPLATES_PRO, TRANS_PRO, ZOOM_PRO, trans_in_pro,
+)
+FX.update({k: v for k, v in FX_PRO.items() if k not in FX})
+CAPTIONS2.update({k: v for k, v in CAPTIONS_PRO.items() if k not in CAPTIONS2})
 
 # Gecis (klip girisi): ffmpeg + onizleme ayni adla
 TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom vuruşu", "slide": "Kaydırma (sağdan)", "blur": "Bulanık", "glitch": "Glitch",
@@ -130,6 +136,7 @@ TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom
          "barn-v": "Perde (dikey)", "barn-h": "Perde (yatay)", "eye": "Göz açılışı", "clock": "Saat yönü",
          "spin": "Dönerek", "pixel": "Pikselden netleş", "shake-in": "Sarsıntılı giriş", "lightleak": "Işık sızması", "zoomblur": "Bulanık zoom"}
 TRANS.update(TRANS2)   # faz 5b: capraz/sekil/olcek gecisleri (studio_trans2.py)
+TRANS.update(TRANS_PRO)
 TRANS_FF = set(TRANS) - {"none", "fade"}
 
 # Hazir zoom sablonlari (klibe gore sn); kullanicininkiler CACHE/templates.json'a eklenir
@@ -154,7 +161,7 @@ ZOOM_PRESETS = [
     {"id": "dive-tl", "name": "Sol üste dal", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.5, "z": 1.6, "cx": 0.3, "cy": 0.3, "e": "inout"}]},
     {"id": "dive-br", "name": "Sağ alta dal", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.5, "z": 1.6, "cx": 0.7, "cy": 0.7, "e": "inout"}]},
     {"id": "drift", "name": "Hafif süzülme (vlog)", "kf": [{"t": 0, "z": 1.08, "cx": 0.46, "cy": 0.5}, {"t": -0.001, "z": 1.1, "cx": 0.54, "cy": 0.48}]},
-] + ZOOM3
+] + ZOOM3 + ZOOM_PRO
 
 CAPTION_STYLES = {
     "hormozi": "Kelime vurgulu (sarı)", "word": "Tek kelime büyük", "karaoke": "Karaoke dolgu", "plain": "Sade alt yazı",
@@ -743,6 +750,8 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         n_in += 1
         return n_in - 1
 
+    has_solo = any(tk.get("solo") for tk in tracks.values() if tk.get("kind") in ("audio", "video"))
+
     def _make_pattern_png() -> Path | None:
         pat = str(project.get("bgPattern") or "")
         if project.get("bgMode") != "pattern" or not pat:
@@ -854,6 +863,8 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             if key.get("spill", True):
                 g = str(key.get("color", "#00ff00")).lstrip("#")
                 ch.append("despill=type=" + ("blue" if len(g) == 6 and int(g[4:6], 16) > int(g[2:4], 16) else "green"))
+        if c.get("stabilize") and a["kind"] == "video" and not a.get("gif"):
+            ch.append("deshake=rx=32:ry=32:edge=mirror")
         if c.get("optFlow") and a["kind"] == "video" and not a.get("gif") and (speed < 0.99 or ramp):
             ch.append(f"minterpolate=fps={FPS}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1")
         ch.append(f"fps={FPS}")
@@ -988,6 +999,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         ))
         cur = f"b{k}"
         if (a.get("audio") and not c.get("freeze") and not tracks[c["track"]].get("mute")
+                and (not has_solo or tracks[c["track"]].get("solo"))
                 and float(c.get("vol", 1) if c.get("vol") is not None else 1) > 0 and frame_t is None):
             cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(tracks[c["track"]].get("vol", 1) or 0)}
             audio_parts.append((_audio_chain(ii, cv, cut0, seg, off, speed, ramp), bool(tracks[c["track"]].get("duck"))))
@@ -1081,7 +1093,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
     # ses
     for c in clips:
         t = tracks.get(c.get("track"), {})
-        if t.get("kind") != "audio" or t.get("mute") or t.get("hide") or c.get("asset") not in assets or frame_t is not None:
+        if t.get("kind") != "audio" or t.get("mute") or t.get("hide") or (has_solo and not t.get("solo")) or c.get("asset") not in assets or frame_t is not None:
             continue
         a = assets[c["asset"]]
         s, d = float(c["start"]), float(c["dur"])
@@ -1387,6 +1399,8 @@ def _trans_in(kind: str, d: float, W: int, H: int, tag: str = "t", c0: float = 0
     }
     if kind in masks:
         return f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if({masks[kind]},alpha(X,Y),0)':{en}"
+    if kind in TRANS_PRO:
+        return trans_in_pro(kind, d, W, H, tag, c0, fps)
     return trans_in2(kind, d, W, H, tag, c0, fps)
 
 
@@ -1403,6 +1417,7 @@ AUDIO_FIX = {
     "hot-montage": "acompressor=threshold=-14dB:ratio=4:attack=3:release=80:makeup=5,alimiter=limit=0.95",
     "meme-earrape": "bass=g=11:f=85,acompressor=threshold=-12dB:ratio=8:makeup=8,asoftclip=type=tanh,alimiter=limit=0.98",
     "muffle": "lowpass=f=650,volume=0.55",
+    **AUDIO_FIX_PRO,
 }
 
 
@@ -1938,6 +1953,20 @@ def ripple_close(project: dict, track: str, t0: float, gap: float) -> None:
             ct["seamStart"] = round(ct["seamStart"] - gap, 4)
 
 
+def ripple_close_gaps(project: dict, track: str) -> int:
+    """Belirtilen izdeki klipler arasindaki tum bosluklari bastan sona kapatir; kaydirilan klip sayisini doner."""
+    seq = sorted([c for c in project.get("clips") or [] if c.get("track") == track], key=lambda c: float(c.get("start", 0)))
+    cur = 0.0
+    moved = 0
+    for c in seq:
+        st = round(cur, 4)
+        if abs(float(c.get("start", 0)) - st) > 1e-4:
+            c["start"] = st
+            moved += 1
+        cur = st + float(c.get("dur", 0))
+    return moved
+
+
 def ripple_open(project: dict, track: str, t0: float, gap: float) -> None:
     for c in project["clips"]:
         if c["track"] == track and c["start"] >= t0 - 1e-6:
@@ -2067,6 +2096,7 @@ SFX = {
     "whip-crack": ("anoisesrc=d=0.28:c=white:a=0.9,bandpass=f=2200:w=2600,volume='exp(-t*16)*4':eval=frame", "Kamçı / Hızlı Geçiş"),
     "cash-register": ("aevalsrc='0.5*(random(0)-0.5)*exp(-t*45)*lt(t,0.09)+0.65*sin(2*PI*2637*(t-0.1))*exp(-(t-0.1)*4)*gte(t,0.1)+0.45*sin(2*PI*3951*(t-0.1))*exp(-(t-0.1)*5)*gte(t,0.1)':d=0.9", "Kasa Sesi (Cha-Ching)"),
     "record-scratch": ("aevalsrc='0.65*sin(2*PI*(420+260*sin(2*PI*11*t))*t)*exp(-t*5)+0.35*(random(0)-0.5)*exp(-t*6)':d=0.45,bandpass=f=1500:w=2200", "Plak Durma (Scratch)"),
+    **SFX_PRO,
 }
 
 SFX_CAT = {
@@ -2080,6 +2110,7 @@ SFX_CAT = {
     "oof-retro": "Meme & Shitpost", "airhorn-mlg": "Meme & Shitpost", "sad-trombone": "Meme & Shitpost",
     "record-scratch": "Meme & Shitpost", "plak": "Meme & Shitpost",
     "riser": "Dramatik & Gerilim", "kalp": "Dramatik & Gerilim", "dramatic-dun": "Dramatik & Gerilim", "daktilo": "Dramatik & Gerilim",
+    **SFX_CAT_PRO,
 }
 
 
@@ -2107,7 +2138,8 @@ def ensure_sfx(ffmpeg: str, name: str = "") -> dict[str, str]:
 
 AUDIO_FIX_NAMES = {"nr1": "Gürültü azalt (hafif)", "nr2": "Gürültü azalt (güçlü)", "voice": "Ses netleştir (EQ + kompresör + de-esser)",
                    "gate": "Kapı (nefes/arka sesi kes)", "bass": "Bas güçlendir", "radio": "Telsiz", "phone": "Telefon", "cave": "Mağara yankısı",
-                   "hot-montage": "Sıcak montaj (-10 LUFS + Limiter)", "meme-earrape": "Meme Bas / Kulak Patlatan (-7 LUFS)", "muffle": "Meme duraksama (Lo-Pass Boğuk)"}
+                   "hot-montage": "Sıcak montaj (-10 LUFS + Limiter)", "meme-earrape": "Meme Bas / Kulak Patlatan (-7 LUFS)", "muffle": "Meme duraksama (Lo-Pass Boğuk)",
+                   **AUDIO_FIX_NAMES_PRO}
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -2166,7 +2198,7 @@ TEMPLATES = [
         {"t": 0, "graphic": "quote", "dur": 5, "style": {"title": "Kaybetmekten korkma.", "sub": "Biri"}}, {"t": 0, "sfx": "ding"}]},
     {"id": "counter", "group": "Vlog & belgesel", "name": "Sayaç (istatistik)", "items": [
         {"t": 0, "graphic": "counter", "dur": 3, "style": {"from": 0, "to": 1000000, "suffix": " izlenme"}}, {"t": 0, "sfx": "riser"}]},
-]
+] + TEMPLATES_PRO
 TEMPLATE_NAMES = [{"id": t["id"], "group": t["group"], "name": t["name"], "needs": t.get("needs", "")} for t in TEMPLATES]
 
 
