@@ -18,7 +18,8 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # ---------------------------------------------------------------------------
 
 def loudnorm_filter(target_lufs: float = -14.0, true_peak: float = -1.0, lra: float = 11.0) -> str:
-    return f"loudnorm=I={target_lufs:.1f}:TP={true_peak:.1f}:LRA={lra:.1f}"
+    # loudnorm tek geciste ornekleme hizini 192 kHz'e cikarir; yayin standardi 48 kHz'e geri al
+    return f"loudnorm=I={target_lufs:.1f}:TP={true_peak:.1f}:LRA={lra:.1f},aresample=48000"
 
 
 def voice_enhance_filter(strength: str = "medium") -> str:
@@ -72,7 +73,7 @@ def enhance_audio_file(
         "-af", flt,
         str(dst),
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=3600, creationflags=NO_WINDOW)
     if res.returncode != 0 or not dst.exists():
         return {"ok": False, "error": (res.stderr or "Ses iyilestirme basarisiz")[:300]}
     return {"ok": True, "path": str(dst), "filter": flt}
@@ -95,7 +96,7 @@ def duck_music_with_voice(
         "-map", "[aout]",
         out_path,
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=3600, creationflags=NO_WINDOW)
     if res.returncode != 0 or not Path(out_path).exists():
         return {"ok": False, "error": (res.stderr or "Oto-ducking basarisiz")[:300]}
     return {"ok": True, "path": out_path}
@@ -114,20 +115,18 @@ _SPEAKER_COLORS = [
 
 
 def _ass_time(sec: float) -> str:
-    sec = max(0.0, float(sec))
-    h = int(sec // 3600)
-    m = int((sec % 3600) // 60)
-    s = int(sec % 60)
-    cs = int(round((sec - int(sec)) * 100)) % 100
+    tot = int(round(max(0.0, float(sec)) * 100))   # santisaniye; yuvarlama saniyeyi tasir
+    h, rem = divmod(tot, 360000)
+    m, rem = divmod(rem, 6000)
+    s, cs = divmod(rem, 100)
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
 def _srt_time(sec: float) -> str:
-    sec = max(0.0, float(sec))
-    h = int(sec // 3600)
-    m = int((sec % 3600) // 60)
-    s = int(sec % 60)
-    ms = int(round((sec - int(sec)) * 1000)) % 1000
+    tot = int(round(max(0.0, float(sec)) * 1000))  # milisaniye; yuvarlama saniyeyi tasir
+    h, rem = divmod(tot, 3600000)
+    m, rem = divmod(rem, 60000)
+    s, ms = divmod(rem, 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 

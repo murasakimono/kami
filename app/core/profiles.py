@@ -145,6 +145,9 @@ class ProfileStore:
                 idx += 1
             accent = accent_theme if accent_theme in _VALID_ACCENTS else "mor"
             sub = clean_name if download_subfolder is None else str(download_subfolder).strip()
+            # klasor adi: Windows'ta yasak karakterler ve ust dizine cikis (.., /, \) temizlenir
+            sub = re.sub(r"\.{2,}", ".", re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", sub)).strip(" .-")
+            sub = "" if sub in ("", ".", "..") else sub
             prof = {
                 "id": pid,
                 "name": clean_name,

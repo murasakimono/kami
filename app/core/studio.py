@@ -250,8 +250,26 @@ def save_project(path: str, project: dict[str, Any]) -> str:
     return str(p)
 
 
+def flatten_clips(clips: list[dict]) -> list[dict]:
+    """Bilesik klipleri (kind='compound', children basa gore sn) zaman cizelgesindeki gercek kliplerine acar.
+    Disa aktarim, ASS ve sure hesabi bunu kullanir; proje dosyasinda bilesik klip oldugu gibi kalir."""
+    out: list[dict] = []
+    for c in clips or []:
+        if c.get("kind") == "compound":
+            base = float(c.get("start", 0) or 0)
+            kids = []
+            for ch in c.get("children") or []:
+                nc = dict(ch)
+                nc["start"] = round(base + float(ch.get("start", 0) or 0), 4)
+                kids.append(nc)
+            out.extend(flatten_clips(kids))
+        else:
+            out.append(c)
+    return out
+
+
 def project_end(project: dict[str, Any]) -> float:
-    return max([c["start"] + c["dur"] for c in project.get("clips", [])] or [0.0])
+    return max([float(c["start"]) + float(c.get("dur", 0) or 0) for c in flatten_clips(project.get("clips", []))] or [0.0])
 
 
 def asset_kind(path: str) -> str:
@@ -700,7 +718,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
     tracks = {t["id"]: t for t in project.get("tracks", [])}
     order = _track_order(project)
     assets = project.get("assets", {})
-    clips = [c for c in project.get("clips", []) if not tracks.get(c.get("track"), {}).get("hide")]
+    clips = [c for c in flatten_clips(project.get("clips", [])) if not tracks.get(c.get("track"), {}).get("hide")]
     frame_t = opts.get("frame")
     rng = opts.get("range") or [0, project_end(project)]
     T0, T1 = float(rng[0]), float(rng[1])
@@ -899,7 +917,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         k += 1
     graph.append(f"[{cur}]format=yuv420p[vout]")
     # ses
-    for c in project.get("clips", []):
+    for c in clips:
         t = tracks.get(c.get("track"), {})
         if t.get("kind") != "audio" or t.get("mute") or t.get("hide") or c.get("asset") not in assets or frame_t is not None:
             continue
@@ -1364,7 +1382,7 @@ def build_ass(project: dict, t0: float = 0.0) -> str:
             f"Style: Default,Chakra Petch,{int(H * 0.06)},&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{max(2, H // 270)},0,2,40,40,{int(H * 0.08)},1\n\n"
             "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     ev: list[str] = []
-    clips = sorted(project.get("clips", []), key=lambda c: c["start"])
+    clips = sorted(flatten_clips(project.get("clips", [])), key=lambda c: c["start"])
     for c in clips:
         tr = tracks.get(c.get("track"), {})
         if tr.get("hide"):

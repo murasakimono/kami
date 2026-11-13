@@ -300,7 +300,16 @@ function transTail(c) {
   if (a.kind === "image" || a.gif) return want;
   const sp = c.speed || 1; return Math.max(0, Math.min(want, ((a.dur || 0) - (c.in || 0) - c.dur * sp) / sp));
 }
-function activeAt(t, kind) { return ST.p.clips.filter(c => t >= c.start - 1e-4 && t < c.start + c.dur && !trackOf(c).hide && (!kind || trackOf(c).kind === kind)); }
+// bilesik klipler (kind=compound) cizimde gercek kliplerine acilir (studio.py flatten_clips)
+function flatClips(list = ST.p.clips) {
+  const out = [];
+  for (const c of list) {
+    if (c.kind === "compound") out.push(...flatClips((c.children || []).map(ch => ({ ...ch, start: +(c.start + (ch.start || 0)).toFixed(4) }))));
+    else out.push(c);
+  }
+  return out;
+}
+function activeAt(t, kind) { return flatClips().filter(c => t >= c.start - 1e-4 && t < c.start + c.dur && !trackOf(c).hide && (!kind || trackOf(c).kind === kind)); }
 function trackOrder(id) { const i = ST.p.tracks.findIndex(t => t.id === id); return ST.p.tracks.length - i; }
 // hiz rampasi: [tl0, tl1, src0, src1, hiz] dilimleri (studio.py ramp_table ile ayni)
 const RAMP_N = 24;
@@ -520,7 +529,7 @@ function drawNow() {
   const t = ST.t, W = PW, H = PH;
   vctx.setTransform(1, 0, 0, 1, 0, 0); vctx.filter = "none"; vctx.globalAlpha = 1; vctx.globalCompositeOperation = "source-over";
   vctx.fillStyle = ST.p.bg || "#000"; vctx.fillRect(0, 0, W, H);
-  const vis = ST.p.clips.filter(c => trackOf(c).kind === "video" && !trackOf(c).hide && t >= c.start - 1e-4 && t < c.start + c.dur + transTail(c))
+  const vis = flatClips().filter(c => trackOf(c).kind === "video" && !trackOf(c).hide && t >= c.start - 1e-4 && t < c.start + c.dur + transTail(c))
     .sort((a, b) => trackOrder(a.track) - trackOrder(b.track) || a.start - b.start);
   for (const c of vis) { try { drawClip(c, t); } catch (e) { /* cerceve hazir degil */ } }
   for (const c of activeAt(t, "fx").sort((a, b) => trackOrder(a.track) - trackOrder(b.track))) {
@@ -1213,7 +1222,7 @@ document.addEventListener("click", e => {
       const asset = c && ST.p?.assets?.[c.asset];
       if (!c || !asset?.path) return toast("Önce bir video/ses klibi seç");
       busy("Kayıpsız Smart Cut…");
-      const r = await api.studio_smart_cut(asset.path, c.in || 0, c.out || 0, "");
+      const r = await api.studio_smart_cut(asset.path, c.in || 0, (c.in || 0) + c.dur * (c.speed || 1), "");
       busy(null);
       toast(r?.ok ? "Smart Cut kaydedildi: " + r.path.split(/[\\/]/).pop() : (r?.error || "Smart Cut başarısız"));
     },

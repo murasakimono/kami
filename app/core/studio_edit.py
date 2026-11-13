@@ -186,6 +186,9 @@ def multicam_sync(ffmpeg: str, paths: list[str], sample_rate: int = 8000) -> dic
 # ---------------------------------------------------------------------------
 
 def _clip_dur(c: dict[str, Any]) -> float:
+    """Zaman cizelgesi suresi: Studio klipleri `dur` tasir; `out` yalniz eski/harici modelde."""
+    if c.get("dur") is not None:
+        return max(0.05, float(c["dur"]))
     return max(0.05, float(c.get("out", 0.0)) - float(c.get("in", 0.0)))
 
 
@@ -284,6 +287,7 @@ def create_compound_clip(clips: list[dict[str, Any]], clip_ids: list[str], name:
         "track": selected[0].get("track", "v1"),
         "start": round(min_start, 3),
         "in": 0.0,
+        "dur": round(max(0.1, max_end - min_start), 3),
         "out": round(max(0.1, max_end - min_start), 3),
         "children": selected,
     }
@@ -334,7 +338,7 @@ def smart_cut(ffmpeg: str, src: str, start: float, end: float, out_path: str = "
         return {"ok": False, "error": "Kaynak dosya bulunamadi"}
     dst = Path(out_path) if out_path else p.with_name(f"{p.stem}_smartcut{p.suffix}")
     cmd = build_smart_cut_cmd(ffmpeg, str(p), start, end, str(dst))
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=180, creationflags=NO_WINDOW)
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, creationflags=NO_WINDOW)
     if res.returncode != 0 or not dst.exists():
         return {"ok": False, "error": (res.stderr or "Smart Cut basarisiz")[:300]}
     return {"ok": True, "path": str(dst), "size": dst.stat().st_size}

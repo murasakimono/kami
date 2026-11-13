@@ -44,8 +44,15 @@ window.__KAMI_SAB_INFO__ = info;
 
 
 class _ThreadingIsolationHTTP(ThreadingHTTPServer):
-    allow_reuse_address = True
+    # Windows'ta SO_REUSEADDR iki Kami'nin (gelistirme + kurulu) ayni portu paylasmasina izin verir (kopru/telefonda
+    # yasanan hata); ozel kullanim istenir, port doluysa _bind_server bos porta duser.
+    allow_reuse_address = False
     daemon_threads = True
+
+    def server_bind(self) -> None:
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def _bind_server(preferred_port: int, handler_cls) -> ThreadingHTTPServer:
