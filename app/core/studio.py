@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app import paths
+from app.core import studio_gfx
 
 log = logging.getLogger(__name__)
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -156,7 +157,8 @@ def catalog() -> dict[str, Any]:
     return {"fx": {k: {"name": v["name"], "pack": v["pack"], "css": v.get("css", ""), "ov": v.get("ov", []), "ass": v.get("ass", "")}
                    for k, v in FX.items()},
             "trans": TRANS, "zoom": ZOOM_PRESETS + load_templates(), "captions": CAPTION_STYLES, "anims": TEXT_ANIMS,
-            "subscribe": SUBSCRIBE, "fonts": FONTS}
+            "subscribe": {**studio_gfx.SUBSCRIBE_PRO, **SUBSCRIBE}, "graphics": studio_gfx.GRAPHICS, "fonts": FONTS,
+            "deliver": {k: v["name"] for k, v in DELIVER.items()}, "afx": AUDIO_FIX_NAMES, "templates": TEMPLATE_NAMES}
 
 
 def load_templates() -> list[dict]:
@@ -618,18 +620,43 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         seg = min(d - cut0, T1 - max(s, T0))
         if seg <= 0:
             continue
-        if a["kind"] == "image" and not a.get("gif"):
+        ramp = ramp_table(c) if c.get("ramp") and a["kind"] == "video" and not a.get("gif") else None
+        vin = ["-c:v", "libvpx-vp9"] if a.get("alpha") else []          # seffaf WebM (arka plani silinmis / Lottie)
+        if c.get("freeze"):
+            ii = add_input(["-ss", f"{float(c.get('in', 0)):.3f}", "-t", "0.3", *vin, "-i", a["path"]])
+            ch = ["trim=end_frame=1", "setpts=PTS-STARTPTS", f"tpad=stop_mode=clone:stop_duration={seg + 0.2:.3f}"]
+        elif a["kind"] == "image" and not a.get("gif"):
             ii = add_input(["-loop", "1", "-framerate", str(FPS), "-t", f"{seg:.3f}", "-i", a["path"]])
+            ch = ["setpts=PTS-STARTPTS"]
         elif a.get("gif"):
             ii = add_input(["-ignore_loop", "0", "-t", f"{seg:.3f}", "-i", a["path"]])
+            ch = ["setpts=PTS-STARTPTS"]
+        elif ramp:
+            segs = _ramp_window(ramp, cut0, seg)
+            src0 = float(c.get("in", 0)) + segs[0][2]
+            span = segs[-1][3] - segs[0][2]
+            src_in = src0
+            ii = add_input(["-ss", f"{src0:.3f}", "-t", f"{span + 0.05:.3f}", *vin, "-i", a["path"]])
+            base = segs[0][2]
+            expr = f"{segs[-1][1] - cut0:.4f}"
+            for t0_, t1_, a0, a1, sp in reversed(segs):
+                expr = f"if(lt(T,{a1 - base:.4f}),{t0_ - cut0:.4f}+(T-{a0 - base:.4f})/{sp:.4f},{expr})"
+            ch = [f"setpts='({expr})/TB'"]
         else:
-            ii = add_input(["-ss", f"{src_in:.3f}", "-t", f"{seg * speed + 0.05:.3f}", "-i", a["path"]])
-        ch = [f"setpts=(PTS-STARTPTS)/{speed:.4f}" if a["kind"] == "video" and not a.get("gif") else "setpts=PTS-STARTPTS"]
+            ii = add_input(["-ss", f"{src_in:.3f}", "-t", f"{seg * speed + 0.05:.3f}", *vin, "-i", a["path"]])
+            ch = [f"setpts=(PTS-STARTPTS)/{speed:.4f}" if a["kind"] == "video" and not a.get("gif") else "setpts=PTS-STARTPTS"]
         rf = c.get("reframe") or []
         if rf:   # dikey otomatik cerceve: kaynak zamaninda yatay merkez
             cx = kf_expr(sorted([{"t": float(r["t"]), "cx": float(r["cx"])} for r in rf], key=lambda r: r["t"]), "cx",
                          f"(t*{speed:.4f}+{src_in:.4f})", 0.5)
             ch.append(f"crop=w='min(iw,ih*{W}/{H})':h='min(ih,iw*{H}/{W})':x={_q(f'max(0,min(iw-ow,({cx})*iw-ow/2))')}:y=(ih-oh)/2")
+        key = c.get("key") or {}
+        if key.get("on"):   # yesil/mavi perde
+            kc = str(key.get("color", "#00ff00")).replace("#", "0x")
+            ch.append(f"format=yuva420p,chromakey=color={kc}:similarity={float(key.get('sim', 0.15)):.3f}:blend={float(key.get('smooth', 0.08)):.3f}")
+            if key.get("spill", True):
+                g = str(key.get("color", "#00ff00")).lstrip("#")
+                ch.append("despill=type=" + ("blue" if len(g) == 6 and int(g[4:6], 16) > int(g[2:4], 16) else "green"))
         ch.append(f"fps={FPS}")
         fit = c.get("fit", "cover" if tracks[c["track"]].get("id") == "v1" or len([t for t in tracks.values() if t['kind'] == 'video']) == 1 else "contain")
         if fit == "contain":
@@ -648,6 +675,10 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             ch.append(f"colorbalance=rs={tv:.3f}:bs={-tv:.3f}:rm={tv / 2:.3f}:bm={-tv / 2:.3f}")
         if adj.get("blur"):
             ch.append(f"gblur=sigma={adj['blur']}")
+        gr = c.get("grade") or {}
+        if grade_active(gr):
+            bake_grade(gr, work / f"g{k}.cube")
+            ch.append(f"lut3d=file=g{k}.cube:interp=tetrahedral")
         zk = kf_resolve(c.get("zoom") or [], d)
         if zk:
             tv = f"(on/{FPS}+{cut0:.4f})"
@@ -687,8 +718,9 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         oy = f"(H-h)/2+{float(c.get('y', 0)) * H:.1f}"
         graph.append(f"[{cur}][c{k}]overlay=x={ox}:y={oy}:eof_action=pass:enable='between(t,{off:.4f},{off + seg:.4f})'[b{k}]")
         cur = f"b{k}"
-        if a.get("audio") and not tracks[c["track"]].get("mute") and float(c.get("vol", 1) if c.get("vol") is not None else 1) > 0 and frame_t is None:
-            audio_parts.append(_audio_chain(ii, c, cut0, seg, off, speed))
+        if (a.get("audio") and not c.get("freeze") and not tracks[c["track"]].get("mute")
+                and float(c.get("vol", 1) if c.get("vol") is not None else 1) > 0 and frame_t is None):
+            audio_parts.append((_audio_chain(ii, c, cut0, seg, off, speed, ramp), bool(tracks[c["track"]].get("duck"))))
         k += 1
     # efekt izi: zaman araliginda tum goruntuye uygula
     for c in sorted([c for c in clips if tracks.get(c["track"], {}).get("kind") == "fx"], key=lambda c: (order.get(c["track"], 0), c["start"])):
@@ -702,17 +734,22 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         cur = f"b{k}"
         k += 1
     # metin / altyazi / abone animasyonu / mod yazilari: ASS
-    ass = build_ass(project, T0)
+    ass = build_ass(project, 0.0)   # mutlak zaman: animasyonlar aralik basinda yeniden baslamasin
     if "Dialogue:" in ass:
         (work / "k.ass").write_text(ass, "utf-8-sig")
         fd = work / "fonts"
         fd.mkdir(exist_ok=True)
-        for f in font_files():
+        used = set(re.findall(r"\\fn([^\\}]+)", ass)) | {"Chakra Petch"}
+        idx = fonts_index()
+        files = {Path(idx[f]) for f in used if f in idx} | set(font_files()[:12])
+        for f in files:
             try:
                 shutil.copy2(f, fd / f.name)
             except OSError:
                 pass
-        graph.append(f"[{cur}]subtitles=k.ass:fontsdir=fonts[b{k}]")
+        sh = f"setpts=PTS+{T0:.4f}/TB," if T0 > 0 else ""
+        un = f",setpts=PTS-{T0:.4f}/TB" if T0 > 0 else ""
+        graph.append(f"[{cur}]{sh}subtitles=k.ass:fontsdir=fonts{un}[b{k}]")
         cur = f"b{k}"
         k += 1
     graph.append(f"[{cur}]format=yuv420p[vout]")
@@ -730,25 +767,236 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         seg = min(d - cut0, T1 - max(s, T0))
         src_in = float(c.get("in", 0)) + cut0 * speed
         ii = add_input(["-ss", f"{src_in:.3f}", "-t", f"{seg * speed + 0.05:.3f}", "-i", a["path"]])
-        audio_parts.append(_audio_chain(ii, c, cut0, seg, max(s, T0) - T0, speed))
+        audio_parts.append((_audio_chain(ii, c, cut0, seg, max(s, T0) - T0, speed), bool(t.get("duck"))))
     if frame_t is not None:
         return [*inputs, "-filter_complex", ";".join(graph), "-map", "[vout]", "-frames:v", "1", out], total
+    master = project.get("master") or {}
+    lufs = opts.get("lufs", master.get("lufs"))
+    tail = (f"loudnorm=I={float(lufs):.1f}:TP=-1.5:LRA=11," if lufs else "") + f"alimiter=limit=0.97,apad,atrim=0:{total:.3f}"
     if audio_parts:
-        for i, part in enumerate(audio_parts):
+        for i, (part, _m) in enumerate(audio_parts):
             graph.append(part + f"[a{i}]")
-        mix = "".join(f"[a{i}]" for i in range(len(audio_parts)))
-        graph.append(f"{mix}amix=inputs={len(audio_parts)}:normalize=0:dropout_transition=0,alimiter=limit=0.97,"
-                     f"apad,atrim=0:{total:.3f}[aout]")
+        music = [i for i, (_p, m) in enumerate(audio_parts) if m]
+        voice = [i for i, (_p, m) in enumerate(audio_parts) if not m]
+        if music and voice:   # muzik konusmanin altina girsin (sidechain)
+            graph.append("".join(f"[a{i}]" for i in voice) + f"amix=inputs={len(voice)}:normalize=0:dropout_transition=0,asplit=2[vb][vk]")
+            graph.append("".join(f"[a{i}]" for i in music) + f"amix=inputs={len(music)}:normalize=0:dropout_transition=0[mb]")
+            amt = float(master.get("duck", 0.6))
+            graph.append(f"[mb][vk]sidechaincompress=threshold={0.02 + 0.08 * (1 - amt):.3f}:ratio={2 + 10 * amt:.1f}:attack=20:release=450:makeup=1[md]")
+            graph.append(f"[vb][md]amix=inputs=2:normalize=0:dropout_transition=0,{tail}[aout]")
+        else:
+            mix = "".join(f"[a{i}]" for i in range(len(audio_parts)))
+            graph.append(f"{mix}amix=inputs={len(audio_parts)}:normalize=0:dropout_transition=0,{tail}[aout]")
     else:
         graph.append(f"anullsrc=r=48000:cl=stereo,atrim=0:{total:.3f}[aout]")
+    return [*inputs, *_deliver_args(graph, opts, enc, W, H, FPS, total, out)], total
+
+
+DELIVER = {
+    "youtube": {"name": "YouTube 1080p/4K (H.264)", "format": "mp4", "lufs": -14},
+    "shorts": {"name": "Shorts / Reels / TikTok", "format": "mp4", "lufs": -14, "size": [1080, 1920]},
+    "hevc": {"name": "Yüksek verim (H.265)", "format": "hevc", "lufs": -14},
+    "prores": {"name": "ProRes 422 HQ (kurgu arşivi)", "format": "prores"},
+    "gif": {"name": "GIF (480p, 15 fps)", "format": "gif"},
+    "webm": {"name": "WebM (VP9)", "format": "webm"},
+    "mp3": {"name": "Sadece ses MP3 320k", "format": "mp3", "lufs": -14},
+    "wav": {"name": "Sadece ses WAV", "format": "wav"},
+}
+
+
+def _deliver_args(graph: list[str], opts: dict, enc: str, W: int, H: int, FPS: int, total: float, out: str) -> list[str]:
+    fmt = opts.get("format", "mp4")
     q = opts.get("quality", "high")
-    if enc == "h264_nvenc":
-        venc = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "17" if q == "high" else "23", "-b:v", "0",
-                "-profile:v", "high"]
+    size = opts.get("size")
+    if size and fmt != "gif" and [int(size[0]), int(size[1])] != [W, H]:
+        w2, h2 = int(size[0]) // 2 * 2, int(size[1]) // 2 * 2
+        graph.append(f"[vout]scale={w2}:{h2}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w2}:{h2}:(ow-iw)/2:(oh-ih)/2,setsar=1[vsz]")
+        vmap = "[vsz]"
     else:
-        venc = ["-c:v", "libx264", "-preset", "medium" if q == "high" else "veryfast", "-crf", "17" if q == "high" else "22"]
-    return [*inputs, "-filter_complex", ";".join(graph), "-map", "[vout]", "-map", "[aout]", *venc, "-pix_fmt", "yuv420p",
-            "-r", str(FPS), "-c:a", "aac", "-b:a", "320k", "-ar", "48000", "-movflags", "+faststart", "-t", f"{total:.3f}", out], total
+        vmap = "[vout]"
+    t = ["-t", f"{total:.3f}"]
+    if fmt in ("mp3", "wav"):
+        a = ["-c:a", "libmp3lame", "-b:a", "320k"] if fmt == "mp3" else ["-c:a", "pcm_s16le"]
+        graph.append(f"{vmap}nullsink")
+        return ["-filter_complex", ";".join(graph), "-map", "[aout]", *a, "-ar", "48000", *t, out]
+    if fmt == "gif":
+        graph.append(f"{vmap}fps=15,scale=480:-2:flags=lanczos,split[g0][g1];[g0]palettegen=stats_mode=diff[gp];[g1][gp]paletteuse=dither=bayer:bayer_scale=4[gif]")
+        graph.append("[aout]anullsink")
+        return ["-filter_complex", ";".join(graph), "-map", "[gif]", "-loop", "0", *t, out]
+    if fmt == "prores":
+        v = ["-c:v", "prores_ks", "-profile:v", "3", "-pix_fmt", "yuv422p10le"]
+        a = ["-c:a", "pcm_s16le"]
+    elif fmt == "webm":
+        v = ["-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-row-mt", "1", "-pix_fmt", "yuv420p"]
+        a = ["-c:a", "libopus", "-b:a", "192k"]
+    elif fmt == "hevc":
+        v = (["-c:v", "hevc_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "20" if q == "high" else "26", "-b:v", "0", "-tag:v", "hvc1"]
+             if enc == "h264_nvenc" else ["-c:v", "libx265", "-preset", "medium", "-crf", "20" if q == "high" else "25", "-tag:v", "hvc1"])
+        v += ["-pix_fmt", "yuv420p"]
+        a = ["-c:a", "aac", "-b:a", "320k"]
+    else:
+        if enc == "h264_nvenc":
+            v = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "17" if q == "high" else "23", "-b:v", "0", "-profile:v", "high"]
+        else:
+            v = ["-c:v", "libx264", "-preset", "medium" if q == "high" else "veryfast", "-crf", "17" if q == "high" else "22"]
+        v += ["-pix_fmt", "yuv420p"]
+        a = ["-c:a", "aac", "-b:a", "320k"]
+    mov = ["-movflags", "+faststart"] if fmt in ("mp4", "hevc") else []
+    return ["-filter_complex", ";".join(graph), "-map", vmap, "-map", "[aout]", *v, "-r", str(FPS), *a, "-ar", "48000", *mov, *t, out]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Hiz rampasi: c.ramp = [{p: 0-1 (kaynak araligi), s: hiz}], c.srcLen = kapsanan kaynak sn
+RAMP_N = 24
+
+
+def ramp_speed(points: list[dict], p: float) -> float:
+    pts = sorted(points, key=lambda q: q["p"])
+    if p <= pts[0]["p"]:
+        return float(pts[0]["s"])
+    for a, b in zip(pts, pts[1:]):
+        if p <= b["p"]:
+            u = (p - a["p"]) / max(1e-6, b["p"] - a["p"])
+            return float(a["s"]) + (float(b["s"]) - float(a["s"])) * u
+    return float(pts[-1]["s"])
+
+
+def ramp_table(c: dict) -> list[tuple[float, float, float, float, float]]:
+    """[(tl0, tl1, src0, src1, hiz)] klibe gore (src: in'den itibaren)."""
+    L = float(c.get("srcLen") or c["dur"] * float(c.get("speed", 1) or 1))
+    out, t = [], 0.0
+    for i in range(RAMP_N):
+        a0, a1 = L * i / RAMP_N, L * (i + 1) / RAMP_N
+        sp = max(0.05, ramp_speed(c["ramp"], (i + 0.5) / RAMP_N))
+        d = (a1 - a0) / sp
+        out.append((t, t + d, a0, a1, sp))
+        t += d
+    return out
+
+
+def ramp_duration(c: dict) -> float:
+    return ramp_table(c)[-1][1]
+
+
+def _ramp_window(tab: list, cut0: float, seg: float) -> list[tuple[float, float, float, float, float]]:
+    """Disa aktarim araligina dusen dilimler (kirpilmis)."""
+    out = []
+    w0, w1 = cut0, cut0 + seg
+    for t0, t1, a0, a1, sp in tab:
+        if t1 <= w0 or t0 >= w1:
+            continue
+        nt0, nt1 = max(t0, w0), min(t1, w1)
+        out.append((nt0, nt1, a0 + (nt0 - t0) * sp, a0 + (nt1 - t0) * sp, sp))
+    return out or [(cut0, cut0 + seg, 0.0, seg, 1.0)]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Renk: tekerlekler + LUT -> tek 3D LUT (onizleme shader'i ayni matematigi kullanir)
+LUT_N = 33
+
+
+def grade_active(g: dict) -> bool:
+    if not g:
+        return False
+    if g.get("lut") and float(g.get("lutMix", 1)) > 0:
+        return True
+    for k in ("exp", "con", "temp", "tint"):
+        if abs(float(g.get(k, 0) or 0)) > 1e-4:
+            return True
+    if abs(float(g.get("sat", 1) if g.get("sat") is not None else 1) - 1) > 1e-4:
+        return True
+    return any(abs(float(v)) > 1e-4 for w in ("lift", "gamma", "gain") for v in (g.get(w) or [0, 0, 0]))
+
+
+def lut_dir() -> Path:
+    d = home_dir() / "LUT"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def parse_cube(path: Path) -> tuple[int, list[tuple[float, float, float]]]:
+    n, data = 0, []
+    for line in Path(path).read_text("utf-8", "replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.upper().startswith("LUT_3D_SIZE"):
+            n = int(line.split()[1])
+            continue
+        if line[0].isalpha():
+            continue
+        parts = line.split()
+        if len(parts) >= 3:
+            try:
+                data.append((float(parts[0]), float(parts[1]), float(parts[2])))
+            except ValueError:
+                pass
+    if not n or len(data) < n ** 3:
+        raise ValueError("gecersiz .cube (yalniz 3D LUT)")
+    return n, data[: n ** 3]
+
+
+def _lut_sample(n: int, data: list, r: float, g: float, b: float) -> tuple[float, float, float]:
+    """Trilinear; .cube sirasi: r en hizli degisen."""
+    def idx(i: int, j: int, k: int) -> tuple[float, float, float]:
+        return data[i + j * n + k * n * n]
+    x, y, z = r * (n - 1), g * (n - 1), b * (n - 1)
+    i0, j0, k0 = min(int(x), n - 2), min(int(y), n - 2), min(int(z), n - 2)
+    fx, fy, fz = x - i0, y - j0, z - k0
+    out = []
+    for ch in range(3):
+        c000, c100 = idx(i0, j0, k0)[ch], idx(i0 + 1, j0, k0)[ch]
+        c010, c110 = idx(i0, j0 + 1, k0)[ch], idx(i0 + 1, j0 + 1, k0)[ch]
+        c001, c101 = idx(i0, j0, k0 + 1)[ch], idx(i0 + 1, j0, k0 + 1)[ch]
+        c011, c111 = idx(i0, j0 + 1, k0 + 1)[ch], idx(i0 + 1, j0 + 1, k0 + 1)[ch]
+        c00, c10 = c000 + (c100 - c000) * fx, c010 + (c110 - c010) * fx
+        c01, c11 = c001 + (c101 - c001) * fx, c011 + (c111 - c011) * fx
+        c0, c1 = c00 + (c10 - c00) * fy, c01 + (c11 - c01) * fy
+        out.append(c0 + (c1 - c0) * fz)
+    return out[0], out[1], out[2]
+
+
+def grade_pixel(g: dict, r: float, gg: float, b: float, lut: tuple | None = None) -> tuple[float, float, float]:
+    """studio.js glsl 'grade()' ile birebir ayni."""
+    e = 2.0 ** float(g.get("exp", 0) or 0)
+    c = [r * e, gg * e, b * e]
+    tmp, tint = float(g.get("temp", 0) or 0), float(g.get("tint", 0) or 0)
+    c[0] *= 1 + 0.12 * tmp
+    c[2] *= 1 - 0.12 * tmp
+    c[1] *= 1 - 0.10 * tint
+    lift, gam, gain = (g.get("lift") or [0, 0, 0]), (g.get("gamma") or [0, 0, 0]), (g.get("gain") or [0, 0, 0])
+    for i in range(3):
+        v = c[i] * (1 + float(gain[i])) + float(lift[i]) * (1 - c[i])
+        v = min(1.0, max(0.0, v))
+        c[i] = v ** (1.0 / max(0.05, 1 + float(gam[i])))
+    con = float(g.get("con", 0) or 0)
+    c = [(v - 0.5) * (1 + con) + 0.5 for v in c]
+    sat = float(g.get("sat", 1) if g.get("sat") is not None else 1)
+    y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    c = [min(1.0, max(0.0, y + (v - y) * sat)) for v in c]
+    if lut:
+        n, data, mix = lut
+        lr = _lut_sample(n, data, *c)
+        c = [c[i] + (min(1.0, max(0.0, lr[i])) - c[i]) * mix for i in range(3)]
+    return c[0], c[1], c[2]
+
+
+def bake_grade(g: dict, out: Path) -> Path:
+    lut = None
+    if g.get("lut"):
+        f = lut_dir() / Path(str(g["lut"])).name
+        if f.is_file():
+            n, data = parse_cube(f)
+            lut = (n, data, float(g.get("lutMix", 1)))
+    n = LUT_N
+    lines = [f"LUT_3D_SIZE {n}"]
+    for bi in range(n):
+        for gi in range(n):
+            for ri in range(n):
+                r, gg, b = grade_pixel(g, ri / (n - 1), gi / (n - 1), bi / (n - 1), lut)
+                lines.append(f"{r:.5f} {gg:.5f} {b:.5f}")
+    Path(out).write_text("\n".join(lines) + "\n", "ascii")
+    return Path(out)
 
 
 def _fx_chain(ff: str, W: int, H: int, start: float, tag: str) -> str:
@@ -774,12 +1022,40 @@ def _trans_in(kind: str, d: float, W: int, H: int) -> str:
     return "null"
 
 
-def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: float) -> str:
+AUDIO_FIX = {
+    "nr1": "afftdn=nr=12:nf=-42:tn=1",
+    "nr2": "afftdn=nr=24:nf=-36:tn=1,afftdn=nr=10:nf=-40",
+    "voice": "highpass=f=80,lowpass=f=15000,equalizer=f=250:t=q:w=1:g=-2.5,equalizer=f=3200:t=q:w=1.2:g=3,"
+             "deesser=i=0.35,acompressor=threshold=-21dB:ratio=3:attack=8:release=160:makeup=4",
+    "gate": "agate=threshold=0.015:ratio=3:attack=5:release=180",
+    "bass": "bass=g=4:f=110",
+    "radio": "highpass=f=400,lowpass=f=3200,acompressor=threshold=-18dB:ratio=6",
+    "phone": "highpass=f=500,lowpass=f=2800,aformat=sample_rates=8000,aresample=48000",
+    "cave": "aecho=0.8:0.85:60|120:0.35|0.25",
+}
+
+
+def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: float, ramp: list | None = None) -> str:
     vol = float(c.get("vol", 1) if c.get("vol") is not None else 1)
-    ch = ["asetpts=PTS-STARTPTS"]
-    if abs(speed - 1) > 1e-3:
-        ch.append(_atempo(speed))
+    if ramp:   # hiz rampasi: dilim dilim atempo + birlestir
+        segs = _ramp_window(ramp, cut0, seg)
+        base = segs[0][2]
+        n = len(segs)
+        parts = [f"[{ii}:a]asetpts=PTS-STARTPTS,asplit={n}" + "".join(f"[r{ii}_{j}]" for j in range(n))]
+        for j, (_t0, _t1, a0, a1, sp) in enumerate(segs):
+            parts.append(f"[r{ii}_{j}]atrim={a0 - base:.4f}:{a1 - base:.4f},asetpts=PTS-STARTPTS,{_atempo(sp)}[q{ii}_{j}]")
+        parts.append("".join(f"[q{ii}_{j}]" for j in range(n)) + f"concat=n={n}:v=0:a=1[rr{ii}]")
+        head = ";".join(parts) + f";[rr{ii}]"
+        ch = ["anull"]
+    else:
+        head = f"[{ii}:a]"
+        ch = ["asetpts=PTS-STARTPTS"]
+        if abs(speed - 1) > 1e-3:
+            ch.append(_atempo(speed))
     ch.append(f"atrim=0:{seg:.3f}")
+    for fx in (c.get("afx") or []):
+        if fx in AUDIO_FIX:
+            ch.append(AUDIO_FIX[fx])
     if abs(vol - 1) > 1e-3:
         ch.append(f"volume={vol:.3f}")
     fi, fo = float(c.get("fadeIn", 0) or 0), float(c.get("fadeOut", 0) or 0)
@@ -792,7 +1068,7 @@ def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: f
     ms = int(round(off * 1000))
     if ms > 0:
         ch.append(f"adelay={ms}|{ms}")
-    return f"[{ii}:a]" + ",".join(ch)
+    return head + ",".join(ch)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -839,8 +1115,12 @@ def build_ass(project: dict, t0: float = 0.0) -> str:
         if e <= 0:
             continue
         if tr.get("kind") == "text":
-            if c.get("subscribe"):
+            if c.get("subscribe") in studio_gfx.SUBSCRIBE_PRO:
+                ev += studio_gfx.subscribe(c["subscribe"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
+            elif c.get("subscribe"):
                 ev += _subscribe(c["subscribe"], s, e, W, H, c.get("style") or {})
+            elif c.get("graphic"):
+                ev += studio_gfx.graphic(c["graphic"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
             elif c.get("words"):
                 ev += _captions(c, s, e, W, H)
             elif c.get("text"):
@@ -1137,7 +1417,7 @@ def add_clip(project: dict, **kw: Any) -> dict:
     c = {"id": _nid(project), "start": 0.0, "dur": 3.0, "in": 0.0, "speed": 1.0, **kw}
     if "track" not in c:
         a = project["assets"].get(c.get("asset", ""), {})
-        c["track"] = track_for(project, "text" if "text" in c or "subscribe" in c or "words" in c else "fx" if "mode" in c else a.get("kind", "video"))
+        c["track"] = track_for(project, "text" if "text" in c or "subscribe" in c or "words" in c or "graphic" in c else "fx" if "mode" in c else a.get("kind", "video"))
     project["clips"].append(c)
     return c
 
@@ -1209,3 +1489,252 @@ def summary(project: dict) -> dict:
             "clips": [{k: (round(v, 3) if isinstance(v, float) else v) for k, v in c.items() if k in keep and v not in (None, [], {}, 0, 1.0) or k in ("start", "id", "track")}
                       for c in sorted(project["clips"], key=lambda c: (c["track"], c["start"]))],
             "markers": len(project.get("markers") or [])}
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Yerlesik ses efektleri (ffmpeg ile sentezlenir: telifsiz, ilk kullanimda Sesler\Kami Paketi'ne yazilir)
+SFX = {
+    "tik": ("aevalsrc='0.9*sin(2*PI*2400*t)*exp(-t*160)+0.4*(random(0)-0.5)*exp(-t*300)':d=0.06", "Tık"),
+    "fare-tik": ("aevalsrc='0.8*sin(2*PI*2900*t)*exp(-t*220)*lt(t,0.03)+0.6*sin(2*PI*2200*(t-0.09))*exp(-(t-0.09)*220)*gte(t,0.09)':d=0.16", "Fare tıkı"),
+    "deklansor": ("aevalsrc='(random(0)-0.5)*1.4*(exp(-t*45)*lt(t,0.06)+exp(-(t-0.11)*40)*gte(t,0.11))':d=0.25", "Deklanşör"),
+    "whoosh": ("anoisesrc=d=0.7:c=pink:a=0.9,bandpass=f=900:w=1400,volume='sin(PI*t/0.7)^2':eval=frame", "Whoosh"),
+    "hizli-whoosh": ("anoisesrc=d=0.35:c=pink:a=1,highpass=f=500,volume='sin(PI*t/0.35)^2':eval=frame", "Hızlı whoosh"),
+    "bass-boom": ("aevalsrc='0.95*sin(2*PI*(58-25*t)*t)*exp(-t*3.2)':d=1.6,asoftclip=type=tanh", "Bas boom"),
+    "vine-boom": ("aevalsrc='0.9*sin(2*PI*(70-30*t)*t)*exp(-t*4)+0.3*sin(2*PI*140*t)*exp(-t*9)':d=1.4,aecho=0.8:0.6:40|90:0.4|0.25,asoftclip", "Boom (meme)"),
+    "riser": ("aevalsrc='0.5*sin(2*PI*(180*t+260*t*t))*(t/2.2)+0.35*(random(0)-0.5)*(t/2.2)^2':d=2.2,highpass=f=120", "Yükselen (riser)"),
+    "ding": ("aevalsrc='0.6*sin(2*PI*1320*t)*exp(-t*4)+0.35*sin(2*PI*1980*t)*exp(-t*6)':d=1.2", "Ding"),
+    "pop": ("aevalsrc='0.9*sin(2*PI*(900-700*t*8)*t)*exp(-t*35)':d=0.12", "Pop"),
+    "zil": ("aevalsrc='0.5*sin(2*PI*1568*t)*exp(-t*3)+0.3*sin(2*PI*2093*t)*exp(-t*4)+0.2*sin(2*PI*3136*t)*exp(-t*6)':d=1.4", "Bildirim zili"),
+    "glitch": ("aevalsrc='0.5*sgn(sin(2*PI*(220+880*floor(random(0)*4))*t))*lt(mod(t,0.07),0.05)':d=0.45,lowpass=f=6000", "Glitch"),
+    "daktilo": ("aevalsrc='0.7*(random(0)-0.5)*exp(-mod(t,0.11)*90)':d=0.9,highpass=f=1200", "Daktilo"),
+    "kalp": ("aevalsrc='0.9*sin(2*PI*48*t)*(exp(-mod(t,0.85)*18)+0.7*exp(-mod(t-0.18,0.85)*18)*gte(mod(t,0.85),0.18))':d=1.7", "Kalp atışı"),
+    "plak": ("aevalsrc='0.6*(random(0)-0.5)*sin(PI*t/0.5)+0.4*sin(2*PI*(600-900*t)*t)*exp(-t*3)':d=0.5,bandpass=f=1800:w=2500", "Plak cızırtısı"),
+    "swoosh-sol": ("anoisesrc=d=0.5:c=white:a=0.6,lowpass=f=3000,volume='sin(PI*t/0.5)^3':eval=frame", "Swoosh"),
+}
+
+
+def sfx_dir() -> Path:
+    d = home_dir() / "Sesler" / "Kami Paketi"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def ensure_sfx(ffmpeg: str, name: str = "") -> dict[str, str]:
+    """Eksik efektleri uretir; {ad: yol}."""
+    out = {}
+    for key, (expr, label) in SFX.items():
+        if name and key != name:
+            continue
+        f = sfx_dir() / f"{label}.wav"
+        if not f.is_file() and ffmpeg:
+            subprocess.run([ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-f", "lavfi", "-i", expr,
+                            "-af", "aformat=channel_layouts=stereo,aresample=48000,afade=t=out:st=0:d=0.02:curve=nofade,alimiter=limit=0.95",
+                            "-ar", "48000", str(f)], capture_output=True, timeout=60, creationflags=NO_WINDOW)
+        if f.is_file():
+            out[key] = str(f)
+    return out
+
+
+AUDIO_FIX_NAMES = {"nr1": "Gürültü azalt (hafif)", "nr2": "Gürültü azalt (güçlü)", "voice": "Ses netleştir (EQ + kompresör + de-esser)",
+                   "gate": "Kapı (nefes/arka sesi kes)", "bass": "Bas güçlendir", "radio": "Telsiz", "phone": "Telefon", "cave": "Mağara yankısı"}
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Hazir sablonlar: oynatma kafasina eklenen klip gruplari ('sfx' = yerlesik ses efekti adi)
+TEMPLATES = [
+    # Shorts / Reels / TikTok
+    {"id": "shorts-hook", "group": "Shorts", "name": "Hook başlığı", "items": [
+        {"t": 0, "text": "BUNU KİMSE SÖYLEMİYOR", "dur": 2.4, "style": {"font": "Anton", "size": 8.5, "anim": "pop", "pos": "custom", "x": .5, "y": .2, "outline": 8, "color": "#FFFFFF"}},
+        {"t": 0, "sfx": "whoosh"}]},
+    {"id": "shorts-end", "group": "Shorts", "name": "Bitiş: takip et + tekrar izle", "items": [
+        {"t": 0, "subscribe": "yt-dark", "dur": 3.5, "style": {"y": .72, "size": 120}},
+        {"t": 0, "text": "↻ TEKRAR İZLE", "dur": 3.5, "style": {"font": "Anton", "size": 6, "anim": "bounce", "pos": "custom", "x": .5, "y": .3}},
+        {"t": 0.85, "sfx": "fare-tik"}, {"t": 1.55, "sfx": "fare-tik"}, {"t": 2.25, "sfx": "zil"}]},
+    {"id": "shorts-punch", "group": "Shorts", "name": "Vurgulu kelime (ekran ortası)", "items": [
+        {"t": 0, "graphic": "highlight", "dur": 1.6, "style": {"title": "ÖNEMLİ", "y": .45}}, {"t": 0, "sfx": "pop"}]},
+    # YouTube
+    {"id": "yt-intro", "group": "YouTube", "name": "Glitch intro", "items": [
+        {"t": 0, "mode": "glitch", "dur": 0.45}, {"t": 0.4, "mode": "flash", "dur": 0.3},
+        {"t": 0.35, "text": "KANAL ADI", "dur": 2.4, "style": {"font": "Rubik Glitch", "size": 12, "anim": "glitch", "pos": "center", "outline": 4, "outlineColor": "#FF2E88"}},
+        {"t": 0, "sfx": "glitch"}, {"t": 0.35, "sfx": "bass-boom"}]},
+    {"id": "yt-end", "group": "YouTube", "name": "Bitiş ekranı (20 sn)", "items": [
+        {"t": 0, "graphic": "endscreen", "dur": 20, "style": {}}, {"t": 0.3, "sfx": "ding"}]},
+    {"id": "yt-chapter", "group": "YouTube", "name": "Bölüm başlığı", "items": [
+        {"t": 0, "graphic": "chapter", "dur": 2.6, "style": {"num": "01", "title": "BÖLÜM BAŞLIĞI"}}, {"t": 0, "sfx": "whoosh"}]},
+    {"id": "yt-lower", "group": "YouTube", "name": "İsim alt bandı", "items": [
+        {"t": 0, "graphic": "lower", "dur": 4, "style": {"title": "İsim Soyisim", "sub": "Unvan"}}, {"t": 0, "sfx": "swoosh-sol"}]},
+    {"id": "yt-sub", "group": "YouTube", "name": "Video ortası abone hatırlatma", "items": [
+        {"t": 0, "subscribe": "yt-light", "dur": 3.4, "style": {"y": .82, "size": 80}},
+        {"t": 0.85, "sfx": "fare-tik"}, {"t": 1.55, "sfx": "fare-tik"}, {"t": 2.25, "sfx": "zil"}]},
+    # Oyun / highlight / meme
+    {"id": "freeze", "group": "Oyun & meme", "name": "Kare dondur + zoom + tık", "needs": "clip", "items": [{"t": 0, "sfx": "deklansor"}]},
+    {"id": "rage", "group": "Oyun & meme", "name": "Rage anı", "items": [
+        {"t": 0, "mode": "rage", "dur": 1.6}, {"t": 0, "text": "AAAAAA!", "dur": 1.6, "style": {"font": "Impact", "size": 14, "anim": "shake", "pos": "center", "color": "#FF2A2A", "outline": 8, "bold": False}},
+        {"t": 0, "sfx": "bass-boom"}]},
+    {"id": "kill", "group": "Oyun & meme", "name": "Kill vuruşu", "items": [
+        {"t": 0, "mode": "flash", "dur": 0.25}, {"t": 0, "mode": "rgbsplit", "dur": 0.35},
+        {"t": 0, "text": "+1", "dur": 1.0, "style": {"font": "Anton", "size": 12, "anim": "zoom", "pos": "custom", "x": .5, "y": .4, "color": "#FFE600"}},
+        {"t": 0, "sfx": "vine-boom"}]},
+    {"id": "meme-stop", "group": "Oyun & meme", "name": "“O anlar…” (S/B + plak)", "items": [
+        {"t": 0, "mode": "sad", "dur": 3}, {"t": 0.2, "text": "o anlar...", "dur": 2.8, "style": {"font": "Georgia", "size": 6, "anim": "type", "pos": "bottom", "italic": True, "bold": False}},
+        {"t": 0, "sfx": "plak"}]},
+    {"id": "bruh", "group": "Oyun & meme", "name": "BRUH (deep fried)", "items": [
+        {"t": 0, "mode": "deepfried", "dur": 1.2}, {"t": 0, "text": "BRUH", "dur": 1.2, "style": {"font": "Impact", "size": 16, "anim": "none", "pos": "center", "outline": 10, "bold": False}},
+        {"t": 0, "sfx": "vine-boom"}]},
+    # Vlog / podcast / belgesel
+    {"id": "location", "group": "Vlog & belgesel", "name": "Konum etiketi", "items": [
+        {"t": 0, "graphic": "location", "dur": 3.5, "style": {"title": "İstanbul, Türkiye", "sub": "Kadıköy"}}, {"t": 0, "sfx": "pop"}]},
+    {"id": "doc-open", "group": "Vlog & belgesel", "name": "Belgesel açılışı", "items": [
+        {"t": 0, "mode": "letterbox", "dur": 6}, {"t": 0, "mode": "film", "dur": 6},
+        {"t": 1.2, "text": "BİR HİKÂYE", "dur": 4, "style": {"font": "Georgia", "size": 5, "anim": "fade", "pos": "center", "spacing": 14, "outline": 0, "shadow": 3, "bold": False}},
+        {"t": 0, "sfx": "riser"}]},
+    {"id": "podcast", "group": "Vlog & belgesel", "name": "Podcast: iki konuşmacı bandı", "items": [
+        {"t": 0, "graphic": "lower-min", "dur": 4, "style": {"title": "Konuk", "sub": "Unvan", "x": .06, "y": .82}},
+        {"t": 0, "graphic": "lower-min", "dur": 4, "style": {"title": "Sunucu", "sub": "Kanal", "x": .56, "y": .82}}]},
+    {"id": "quote", "group": "Vlog & belgesel", "name": "Alıntı kartı", "items": [
+        {"t": 0, "graphic": "quote", "dur": 5, "style": {"title": "Kaybetmekten korkma.", "sub": "Biri"}}, {"t": 0, "sfx": "ding"}]},
+    {"id": "counter", "group": "Vlog & belgesel", "name": "Sayaç (istatistik)", "items": [
+        {"t": 0, "graphic": "counter", "dur": 3, "style": {"from": 0, "to": 1000000, "suffix": " izlenme"}}, {"t": 0, "sfx": "riser"}]},
+]
+TEMPLATE_NAMES = [{"id": t["id"], "group": t["group"], "name": t["name"], "needs": t.get("needs", "")} for t in TEMPLATES]
+
+
+def apply_template(project: dict, tid: str, t: float, ffmpeg: str = "", clip_id: str = "", info: Callable | None = None) -> list[str]:
+    """Sablonu t anina ekler; eklenen klip kimliklerini doner."""
+    tpl = next((x for x in TEMPLATES if x["id"] == tid), None)
+    if not tpl:
+        raise KeyError(tid)
+    added: list[str] = []
+
+    def place(kind: str, c: dict) -> dict:
+        tr = [x for x in project["tracks"] if x["kind"] == kind]
+        for x in tr:
+            if not any(o["track"] == x["id"] and o["start"] < c["start"] + c["dur"] - 1e-3 and o["start"] + o["dur"] > c["start"] + 1e-3 for o in project["clips"]):
+                c["track"] = x["id"]
+                break
+        else:
+            tid2 = kind[0] + str(len(project["tracks"]) + 1)
+            project["tracks"].append({"id": tid2, "kind": kind, "name": kind})
+            c["track"] = tid2
+        c["id"] = _nid(project)
+        project["clips"].append(c)
+        added.append(c["id"])
+        return c
+
+    if tid == "freeze":
+        c = find_clip(project, clip_id) if clip_id else None
+        if not c or project["assets"].get(c.get("asset", ""), {}).get("kind") != "video":
+            raise ValueError("Kare dondurmak için bir video klibi seç")
+        if not (c["start"] < t < c["start"] + c["dur"]):
+            t = c["start"] + c["dur"] / 2
+        right = split_clip(project, c["id"], t)
+        fd = 1.4
+        for o in project["clips"]:   # sonrakileri kaydir
+            if o["track"] == c["track"] and o["start"] >= t - 1e-6 and o is not c:
+                o["start"] = round(o["start"] + fd, 4)
+        src = float(c.get("in", 0)) + (t - c["start"]) * float(c.get("speed", 1) or 1)
+        fz = {"id": _nid(project), "track": c["track"], "asset": c["asset"], "start": t, "dur": fd, "in": round(src, 3), "speed": 1, "freeze": True,
+              "zoom": [{"t": 0, "z": 1}, {"t": 0.12, "z": 1.35, "e": "out"}, {"t": fd, "z": 1.45}], "trans": {"in": "flash", "dur": 0.2}, "fx": ["mono-pop"]}
+        project["clips"].append(fz)
+        added.append(fz["id"])
+        if right:
+            added.append(right["id"])
+    sfx = ensure_sfx(ffmpeg) if any("sfx" in i for i in tpl["items"]) else {}
+    for it in tpl["items"]:
+        it = json.loads(json.dumps(it))
+        start = round(t + float(it.pop("t", 0)), 3)
+        if "sfx" in it:
+            p = sfx.get(it["sfx"])
+            if not p:
+                continue
+            meta = info(p) if info else {"path": p, "kind": "audio", "dur": 1.0, "audio": True, "name": Path(p).stem}
+            aid = add_asset(project, meta)
+            place("audio", {"asset": aid, "start": start, "dur": float(meta.get("dur", 1.0)), "in": 0.0, "speed": 1.0, "vol": 0.9})
+            continue
+        kind = "fx" if "mode" in it else "text"
+        place(kind, {"start": start, "dur": float(it.pop("dur", 3)), "in": 0.0, "speed": 1.0, **it})
+    return added
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Fontlar: sistem + kullanici + Kami + Kami Studio\Fontlar; ucretsiz Google Fonts paketi
+GOOGLE_FONTS = {
+    "Anton": "ofl/anton/Anton-Regular.ttf", "Bebas Neue": "ofl/bebasneue/BebasNeue-Regular.ttf",
+    "Bangers": "ofl/bangers/Bangers-Regular.ttf", "Luckiest Guy": "apache/luckiestguy/LuckiestGuy-Regular.ttf",
+    "Permanent Marker": "apache/permanentmarker/PermanentMarker-Regular.ttf", "Poppins Black": "ofl/poppins/Poppins-Black.ttf",
+    "Poppins Bold": "ofl/poppins/Poppins-Bold.ttf", "Archivo Black": "ofl/archivoblack/ArchivoBlack-Regular.ttf",
+    "Lilita One": "ofl/lilitaone/LilitaOne-Regular.ttf", "Titan One": "ofl/titanone/TitanOne-Regular.ttf",
+    "Russo One": "ofl/russoone/RussoOne-Regular.ttf", "Black Ops One": "ofl/blackopsone/BlackOpsOne-Regular.ttf",
+    "Creepster": "ofl/creepster/Creepster-Regular.ttf", "Press Start 2P": "ofl/pressstart2p/PressStart2P-Regular.ttf",
+    "Pacifico": "ofl/pacifico/Pacifico-Regular.ttf", "Montserrat": "ofl/montserrat/Montserrat%5Bwght%5D.ttf",
+    "Oswald": "ofl/oswald/Oswald%5Bwght%5D.ttf", "Caveat": "ofl/caveat/Caveat%5Bwght%5D.ttf",
+    "Rubik Mono One": "ofl/rubikmonoone/RubikMonoOne-Regular.ttf", "Bowlby One": "ofl/bowlbyone/BowlbyOne-Regular.ttf",
+}
+
+
+def font_dir() -> Path:
+    d = home_dir() / "Fontlar"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def fonts_index(refresh: bool = False) -> dict[str, str]:
+    """{aile adi: dosya}. Pillow ile ad okunur; sonuc onbellekte (klasor degisim zamanlarina gore)."""
+    dirs = [paths.WEB_DIR / "fonts", font_dir()]
+    if os.name == "nt":
+        dirs += [Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts",
+                 Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Windows" / "Fonts"]
+    stamp = "|".join(f"{d}:{int(d.stat().st_mtime) if d.is_dir() else 0}" for d in dirs)
+    cf = CACHE / "fonts.json"
+    if not refresh:
+        try:
+            c = json.loads(cf.read_text("utf-8"))
+            if c.get("stamp") == stamp:
+                return c["fonts"]
+        except (OSError, ValueError):
+            pass
+    out: dict[str, str] = {}
+    try:
+        from PIL import ImageFont
+    except Exception:
+        ImageFont = None   # noqa: N806
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if f.suffix.lower() not in (".ttf", ".otf", ".ttc"):
+                continue
+            fam = None
+            if ImageFont:
+                try:
+                    fam, style = ImageFont.truetype(str(f), 12).getname()
+                    if style and style.lower() not in ("regular", "normal", "book", "roman") and fam in out:
+                        continue
+                except Exception:
+                    fam = None
+            fam = fam or f.stem
+            out.setdefault(fam, str(f))
+    CACHE.mkdir(parents=True, exist_ok=True)
+    cf.write_text(json.dumps({"stamp": stamp, "fonts": out}, ensure_ascii=False), "utf-8")
+    return out
+
+
+def download_google_fonts(names: list[str] | None = None) -> list[str]:
+    import urllib.request
+    got = []
+    for name, rel in GOOGLE_FONTS.items():
+        if names and name not in names:
+            continue
+        dst = font_dir() / (name.replace(" ", "") + ".ttf")
+        if dst.is_file():
+            got.append(name)
+            continue
+        try:
+            data = urllib.request.urlopen(f"https://raw.githubusercontent.com/google/fonts/main/{rel}", timeout=30).read()
+            if len(data) > 1000:
+                dst.write_bytes(data)
+                got.append(name)
+        except Exception as exc:
+            log.warning("Font indirilemedi %s: %s", name, exc)
+    fonts_index(True)
+    return got
