@@ -102,7 +102,7 @@ window.pxDrawerRender = async (...a) => {
       body.insertAdjacentHTML("beforeend", `<div class="pe-clean"><span>${plL("Bu dizinin tüm bölümlerini izledin.", "You've watched every episode.")}</span><button class="pl-b" id="peTrash">🗑 ${plL("Geri Dönüşüm Kutusu'na taşı", "Move to Recycle Bin")}</button></div>`);
       $("#peTrash").onclick = async (ev) => {
         ev.stopPropagation();
-        if (!confirm(plL(`"${s.name}" dizisinin ${s.paths.length} bölümü Geri Dönüşüm Kutusu'na taşınsın mı?`, `Move ${s.paths.length} episodes to the Recycle Bin?`))) return;
+        if (!await kAsk(plL(`"${s.name}" dizisinin ${s.paths.length} bölümü Geri Dönüşüm Kutusu'na taşınsın mı?`, `Move ${s.paths.length} episodes to the Recycle Bin?`))) return;
         const r = await api.library_trash(s.paths);
         toast(r?.ok ? plL("Taşındı (geri alınabilir)", "Moved (can be restored)") : plL("Taşınamadı", "Couldn't move"), !r?.ok);
         if (r?.ok) { PX.lib = null; PX.libSeries = null; window.pxDrawerRender(); }
@@ -262,7 +262,7 @@ document.addEventListener("click", async (e) => {
     toast(plL("Ses çıkarılıyor…", "Extracting audio…"));
     r = await slow("media_extract_audio", path, PL.info.audio?.[PL.audio || 0]?.codec || "");
   } else if (act === "repair") {
-    if (!confirm(plL("Dosya hatalar yok sayılarak yeniden paketlenecek; orijinale dokunulmaz, yanına \"(onarildi)\" adıyla yazılır. Devam?", "Repack ignoring errors into a new file next to it?"))) return;
+    if (!await kAsk(plL("Dosya hatalar yok sayılarak yeniden paketlenecek; orijinale dokunulmaz, yanına \"(onarildi)\" adıyla yazılır. Devam?", "Repack ignoring errors into a new file next to it?"))) return;
     toast(plL("Onarılıyor…", "Repairing…"));
     r = await slow("media_repair", path);
   }
@@ -512,7 +512,7 @@ window.pxDrawerRender = async (...a) => {
     const pv = await slow("library_organize", s.paths, false);
     if (!pv?.count) { toast(plL("Zaten düzenli görünüyor", "Already organized")); return; }
     const sample = pv.moves.slice(0, 3).map((m) => "• " + m[1].split(/[\\/]/).slice(-3).join("\\")).join("\n");
-    if (!confirm(plL(`${pv.count} dosya "Dizi / Sezon XX" düzenine taşınacak (yan altyazılar dahil):\n${sample}${pv.count > 3 ? "\n…" : ""}\n\nDevam?`, `Move ${pv.count} files into season folders?`))) return;
+    if (!await kAsk(plL(`${pv.count} dosya "Dizi / Sezon XX" düzenine taşınacak (yan altyazılar dahil):\n${sample}${pv.count > 3 ? "\n…" : ""}\n\nDevam?`, `Move ${pv.count} files into season folders?`))) return;
     const r = await slow("library_organize", s.paths, true);
     toast(plL(`${r?.count || 0} dosya taşındı`, `${r?.count || 0} files moved`));
     PX.lib = null; PX.libSeries = null; window.pxDrawerRender();

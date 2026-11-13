@@ -380,9 +380,55 @@ function adjCss(a) {
   if (a.blur) f.push(`blur(${a.blur * PS}px)`);
   return f.join(" ");
 }
+// efekt yerlesimi (Giris / Cikis / Tum sure) ve klip animasyonlari: disa aktarimla ayni hesap (studio_anim.py)
+function activeFx(c, local) {
+  return (c.fx || []).filter(id => {
+    const p = c.fxAt?.[id]; if (!p || !p.at || p.at === "all") return true;
+    const d = Math.max(.05, +p.d || 1);
+    return p.at === "in" ? local <= d : local >= c.dur - d;
+  });
+}
+const AEASE = {
+  linear: p => p, out: p => 1 - (1 - p) ** 3,
+  back: p => 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2,
+  elastic: p => 1 - Math.exp(-6 * p) * Math.cos(12 * p),
+  bounce: p => 1 - Math.abs(Math.cos(p * Math.PI * 1.5)) * Math.exp(-4 * p),
+};
+function clipAnim(c, L) {
+  const r = { s: 1, sx: 1, sy: 1, x: 0, y: 0, r: 0, a: 1, b: 0 }, an = c.anim, cat = ST.cat.canim;
+  if (!an || !cat) return r;
+  const d = c.dur, ai = cat.in[an.in], ao = cat.out[an.out], al = cat.loop[an.loop];
+  const di = ai ? Math.min(d, Math.max(.05, +an.inDur || .5)) : 0, dd = ao ? Math.min(d - di, Math.max(.05, +an.outDur || .5)) : 0;
+  const clip01 = v => Math.min(1, Math.max(0, v));
+  if (ai) {
+    const p = clip01(L / di), e = (AEASE[an.inEase || ai.ease || "out"] || AEASE.out)(p), inv = 1 - e;
+    for (const k of ["s", "sx", "sy"]) if (k in ai) r[k] *= 1 + (ai[k] - 1) * inv;
+    for (const k of ["x", "y", "r"]) if (k in ai) r[k] += ai[k] * inv * (ai.shake ? Math.sin(L * 70) : 1);
+    if (ai.a) r.a *= p; if (ai.b) r.b = Math.max(r.b, ai.b * (1 - p));
+  }
+  if (ao) {
+    const q = clip01((L - (d - dd)) / dd), ez = an.outEase || ao.ease || "out", e = ez === "out" || ez === "linear" ? q ** 3 : AEASE[ez](q);
+    for (const k of ["s", "sx", "sy"]) if (k in ao) r[k] *= 1 + (ao[k] - 1) * e;
+    for (const k of ["x", "y", "r"]) if (k in ao) r[k] += ao[k] * e * (ao.shake ? Math.sin(L * 70) : 1);
+    if (ao.a) r.a *= 1 - q; if (ao.b) r.b = Math.max(r.b, ao.b * q);
+  }
+  if (al) {
+    const k = +an.loopAmt || 1, sp = +an.loopSpeed || 1, w = 2 * Math.PI * (al.f || 1) * sp * L;
+    if (al.s) r.s *= 1 + al.s * k * Math.sin(w);
+    if (al.beat) r.s *= 1 + al.beat * k * Math.max(0, Math.sin(w)) ** 8;
+    if (al.sx) r.sx *= 1 - al.sx * k * (1 + Math.sin(w)) / 2;
+    if (al.x) r.x += al.x * k * Math.sin(w);
+    if (al.y) r.y += al.y * k * Math.cos(w * 1.13);
+    if (al.r) r.r += al.r * k * Math.sin(w * .9);
+    if (al.spin) r.r += al.spin * k * sp * L;
+    if (al.grow) r.s *= 1 + al.grow * k * clip01(L / d);
+    if (al.pan) r.x += al.pan * k * clip01(L / d);
+  }
+  return r;
+}
 function drawClip(c, t) {
   const s = sourceOf(c); if (!s) return;
-  const W = PW, H = PH, local = t - c.start;
+  const W = PW, H = PH, local = t - c.start, fxOn = activeFx(c, local), A = clipAnim(c, local);
   // 1) kirp (dikey cerceve) + sigdir -> fitBuf
   let sx = 0, sy = 0, sw = s.w, sh = s.h;
   if (c.reframe?.length) {
@@ -392,7 +438,7 @@ function drawClip(c, t) {
   }
   const fit = defaultFit(c);
   fbx.setTransform(1, 0, 0, 1, 0, 0); fbx.clearRect(0, 0, W, H);
-  fbx.filter = [adjCss(c.adj), fxCss(c.fx)].filter(Boolean).join(" ") || "none";
+  fbx.filter = [adjCss(c.adj), fxCss(fxOn)].filter(Boolean).join(" ") || "none";
   let dw = W, dh = H;
   if (c.crop === "half-w" || c.crop === "half-h") {   // yan yana: kutuya kapla, kutu disi saydam
     const bw = c.crop === "half-w" ? W / 2 : W, bh = c.crop === "half-h" ? H / 2 : H, k = Math.max(bw / sw, bh / sh);
@@ -421,7 +467,7 @@ function drawClip(c, t) {
     cbx.drawImage(fitBuf, vx, vy, vw, vh, 0, 0, W, H);
   } else cbx.drawImage(fitBuf, 0, 0);
   src = clipBuf;
-  for (const id of c.fx || []) for (const ov of ST.cat.fx[id]?.ov || []) SFX.overlay(cbx, ov, W, H, t, local);
+  for (const id of fxOn) for (const ov of ST.cat.fx[id]?.ov || []) SFX.overlay(cbx, ov, W, H, t, local);
   if (tr?.flash) SFX.tint(cbx, W, H, "#fff", "lighter", tr.flash);
   if (tr?.rgb) SFX.overlay(cbx, "rgb-strong", W, H, t, local);
   // 3) donusum + saydamlik -> ana tuval
@@ -429,15 +475,18 @@ function drawClip(c, t) {
   const fi = Math.max(c.fadeIn || 0, c.trans?.in === "fade" ? (c.trans.dur || .35) : 0);
   if (fi > 0 && local < fi) alpha *= local / fi;
   if (c.fadeOut > 0 && c.dur - local < c.fadeOut) alpha *= Math.max(0, (c.dur - local) / c.fadeOut);
-  const [shx, shy] = SFX.shakeOffset((c.fx || []).flatMap(id => ST.cat.fx[id]?.ov || []), t, W);
+  const [shx, shy] = SFX.shakeOffset(fxOn.flatMap(id => ST.cat.fx[id]?.ov || []), t, W);
+  alpha *= A.a;
   vctx.save();
   vctx.globalAlpha = clamp(alpha, 0, 1);
-  if (tr?.blur) vctx.filter = `blur(${tr.blur * PS}px)`;
-  const sc = c.scale ?? 1, rot = (c.rot || 0) * Math.PI / 180;
+  const bl = Math.max(tr?.blur || 0, A.b * .45);
+  if (bl > .05) vctx.filter = `blur(${bl * PS}px)`;
+  const sc = c.scale ?? 1, rot = ((c.rot || 0) + A.r) * Math.PI / 180;
   // contain'de bos kenarlar saydam: transform merkezi = cizilen goruntunun merkezi
-  vctx.translate(W / 2 + (c.x || 0) * W + shx + (tr?.dx || 0) * W, H / 2 + (c.y || 0) * H + shy);
+  vctx.translate(W / 2 + ((c.x || 0) + A.x) * W + shx + (tr?.dx || 0) * W, H / 2 + ((c.y || 0) + A.y) * H + shy);
   if (rot) vctx.rotate(rot);
-  if (sc !== 1) vctx.scale(sc, sc);
+  const ksx = sc * A.s * A.sx, ksy = sc * A.s * A.sy;
+  if (ksx !== 1 || ksy !== 1) vctx.scale(Math.max(1e-4, ksx), Math.max(1e-4, ksy));
   vctx.drawImage(src, -W / 2, -H / 2);
   vctx.restore();
 }
@@ -808,6 +857,23 @@ lanes.addEventListener("drop", e => {
   if (item) { window.dropItem?.(JSON.parse(item), t, ln?.dataset.tid); return; }
   dropAsset(aid, t, ln?.dataset.tid);
 });
+// isletim sisteminden dosya birakma: WebView2 dosyayi tarayicida (Edge) acmasin; yollar pywebview drop olayindan gelir
+const isFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+document.addEventListener("dragover", e => {
+  if (!isFiles(e)) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = "copy";
+  document.body.classList.add("osdrag");
+  $$(".lane.drop").forEach(l => l.classList.remove("drop"));
+  if (e.target.closest?.("#tl")) laneAt(e.clientY)?.classList.add("drop");
+});
+document.addEventListener("dragleave", e => { if (!e.relatedTarget) { document.body.classList.remove("osdrag"); $$(".lane.drop").forEach(l => l.classList.remove("drop")); } });
+document.addEventListener("drop", e => {
+  document.body.classList.remove("osdrag");
+  if (!isFiles(e)) return;
+  e.preventDefault();
+  $$(".lane.drop").forEach(l => l.classList.remove("drop"));
+  ST.osDrop = e.target.closest?.("#tl .lanes, #tl") ? { at: Date.now(), t: Math.max(0, tAt(e.clientX)), tid: laneAt(e.clientY)?.dataset.tid } : null;
+});
 function dropAsset(aid, t, tid) {
   const a = ST.p.assets[aid]; if (!a) return;
   const want = a.kind === "audio" ? "audio" : "video";
@@ -854,7 +920,8 @@ function renderInsp() {
     const ad = c.adj || {};
     h += `<div class="sec">Renk</div>` + fld("Parlaklık", "adj.bri", -50, 50, 1, ad.bri || 0) + fld("Kontrast", "adj.con", -50, 80, 1, ad.con || 0) +
       fld("Doygunluk", "adj.sat", -100, 150, 1, ad.sat || 0) + fld("Ton", "adj.hue", -180, 180, 1, ad.hue || 0) + fld("Sıcaklık", "adj.temp", -100, 100, 1, ad.temp || 0) + fld("Bulanık", "adj.blur", 0, 20, .5, ad.blur || 0);
-    h += `<div class="sec">Efektler</div><div class="chips">${(c.fx || []).map(id => `<span class="chip">${esc(ST.cat.fx[id]?.name || id)}<button data-unfx="${id}">✕</button></span>`).join("") || '<span class="hint">Soldaki Efekt panelinden tıkla.</span>'}</div>`;
+    h += window.animBox ? animBox(c, "clip") : "";
+    h += `<div class="sec">Efektler</div>` + (window.fxRows ? fxRows(c) : "");
     h += `<div class="sec">Giriş geçişi</div>` + sel("Geçiş", "trans.in", ST.cat.trans, c.trans?.in || "none") + fld("Süre", "trans.dur", .1, 2, .05, c.trans?.dur || .35);
     h += zoomInsp(c);
     h += `<div class="sec">Dikey çerçeve</div><div class="row"><button class="tb" data-a2="reframe">▯ Yüzü takip et</button>${c.reframe?.length ? '<button class="tb" data-a2="unreframe">Kaldır</button>' : ""}</div>`;
@@ -922,9 +989,9 @@ function textInsp(c) {
     h += `<div class="sec">Kelimeler</div><textarea class="in" id="wordsEd" spellcheck="false" title="Yazım düzelt: kelime sayısı aynı kalırsa zamanlar korunur">${esc(c.words.map(w => w.w).join(" "))}</textarea><div class="row"><button class="tb" data-a2="words">Uygula</button></div>`;
   } else {
     h += `<div class="sec">Metin</div><textarea class="in" data-k="text" spellcheck="false">${esc(c.text || "")}</textarea>` +
-      sel("Animasyon", "style.anim", ST.cat.anims, st.anim || "pop") +
       `<div class="fld w2"><span>Konum</span><div class="seg" data-seg="style.pos">${[["top", "Üst"], ["center", "Orta"], ["bottom", "Alt"], ["custom", "Serbest"]].map(([v, l]) => `<button data-v="${v}" class="${(st.pos || "bottom") === v ? "on" : ""}">${l}</button>`).join("")}</div></div>` +
-      ((st.pos || "bottom") === "custom" ? fld("X", "style.x", 0, 1, .005, st.x ?? .5) + fld("Y", "style.y", 0, 1, .005, st.y ?? .5) : "");
+      ((st.pos || "bottom") === "custom" ? fld("X", "style.x", 0, 1, .005, st.x ?? .5) + fld("Y", "style.y", 0, 1, .005, st.y ?? .5) : "") +
+      (window.animBox ? animBox(c, "text") : "");
   }
   h += `<div class="sec">Yazı tipi</div>` + fontIn("style.font", st.font || "Chakra Petch") + fld("Boyut", "style.size", 2, 30, .1, st.size ?? (c.words ? 7.5 : 7)) +
     color("Renk", "style.color", st.color || "#ffffff") + color("Kenar rengi", "style.outlineColor", st.outlineColor || "#000000") + fld("Kenar", "style.outline", 0, 20, .5, st.outline ?? 6) +
@@ -1061,7 +1128,7 @@ $("#insp").addEventListener("click", async e => {
   else if (a2 === "del") deleteSel();
   else if (a2 === "pipette") { pipette = true; document.body.style.cursor = "crosshair"; toast("Önizlemede perde rengine tıkla"); }
   else if (a2 === "tocolor") window.setPage?.("color");
-  else window.aiAction?.(a2, c);
+  else if (a2) window.aiAction?.(a2, c);
 });
 window.focusInsp = () => { renderInsp(); $("#insp").scrollTop = 0; };
 
@@ -1179,7 +1246,13 @@ async function inbox() {
     const q = await api.studio_poll();
     const proj = q.filter(p => p.toLowerCase().endsWith(".kstudio")), med = q.filter(p => !p.toLowerCase().endsWith(".kstudio"));
     if (proj.length) await openProject(proj[0]);
-    if (med.length) await importPaths(med);
+    if (med.length) {
+      const d = ST.osDrop; ST.osDrop = null;
+      const added = await importPaths(med);
+      if (d && Date.now() - d.at < 8000 && added.length) {   // zaman cizelgesine birakildi: oraya yerlestir
+        let t = d.t; for (const aid of added) { dropAsset(aid, t, d.tid); t += ST.p.assets[aid]?.dur || 5; }
+      }
+    }
     const mcp = await api.studio_current();
     if (mcp && mcp !== ST.path) { if (ST.dirty) await save(); await openProject(mcp); toast("Claude yeni bir proje açtı"); }
     else if (ST.path && await api.studio_changed(ST.path)) {   // Claude (MCP) ya da baska yerden duzenlendi

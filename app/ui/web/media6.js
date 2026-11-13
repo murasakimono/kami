@@ -87,7 +87,7 @@ async function runAi(kind) {
   if (r.ok) { tick(); return; }
   if (r.error === "tool_missing") {
     // agir indirme: once sor (defter: modeller ilk kullanimda iner, once sorulur)
-    if (confirm(T("ai_ask", r.tool === "whisper" ? "Whisper" : "UVR5", r.size_gb))) {
+    if (await kAsk(T("ai_ask", r.tool === "whisper" ? "Whisper" : "UVR5", r.size_gb))) {
       await api.ai_install(r.tool);
       toast(T("ai_install_started"));
     }

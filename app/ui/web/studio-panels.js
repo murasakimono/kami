@@ -198,10 +198,12 @@ function addGfx(kind, t) { snap(); const c = placeAt({ graphic: kind, dur: kind 
 
 // ---------------------------------------------------------------- sablonlar
 P.templates = () => {
-  const groups = {};
+  let groups = {};
   for (const t of ST.cat.templates || []) (groups[t.group] ||= []).push(t);
+  const ft = (ST.cat.templates || []).filter(t => isFav("tpl", t.id));
+  if (ft.length) groups = { "★ Favoriler": ft, ...groups };
   pb.innerHTML = `<div class="hint">Tek tıkla hazır kurgu parçaları (yazı + efekt + ses). Oynatma kafasına eklenir, hepsi düzenlenebilir. ❄ olanlar seçili video klibe uygulanır.</div>` +
-    Object.entries(groups).map(([g, items]) => sec(g) + `<div class="grid2">${items.map(t => `<div class="card" data-tpl="${t.id}"><b>${t.needs ? "❄ " : ""}${esc(t.name)}</b></div>`).join("")}</div>`).join("");
+    Object.entries(groups).map(([g, items]) => sec(g) + `<div class="grid2">${items.map(t => `<div class="card" data-tpl="${t.id}"><b>${t.needs ? "❄ " : ""}${esc(t.name)}</b>${favStar("tpl", t.id)}</div>`).join("")}</div>`).join("");
 };
 async function applyTemplate(id, t = ST.t) {
   const c = selClips()[0];
@@ -239,8 +241,15 @@ P.fx = () => {
   const packs = {};
   for (const [id, f] of Object.entries(ST.cat.fx)) (packs[f.pack] ||= []).push([id, f]);
   const c = firstSel(), on = new Set(c?.fx || []);
-  pb.innerHTML = `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe uygula / kaldır." : "Klip seçili değil: tıklayınca efekt izine (tüm görüntüye) 3 sn eklenir."} Sürükle: efekt izine istediğin yere.</div>` +
-    Object.entries(packs).map(([pk, items]) => sec(pk) + `<div class="grid2">${items.map(([id, f]) => `<div class="card${on.has(id) ? " on" : ""}" data-fx="${id}" draggable="true" data-item='${esc(JSON.stringify({ type: "fx", id }))}'><div class="sw" style="${fxThumb ? `background-image:url(${fxThumb});` : ""}filter:${f.css || "none"}"></div><b>${esc(f.name)}</b></div>`).join("")}</div>`).join("");
+  const q = (P.fx.q || "").toLowerCase();
+  const card = ([id, f]) => `<div class="card${on.has(id) ? " on" : ""}" data-fx="${id}" draggable="true" data-item='${esc(JSON.stringify({ type: "fx", id }))}'><div class="sw" style="${fxThumb ? `background-image:url(${fxThumb});` : ""}filter:${f.css || "none"}"></div><b>${esc(f.name)}</b>${favStar("fx", id)}</div>`;
+  const all = Object.entries(ST.cat.fx).filter(([id, f]) => !q || f.name.toLowerCase().includes(q) || f.pack.toLowerCase().includes(q));
+  const favs = all.filter(([id]) => isFav("fx", id));
+  pb.innerHTML = `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe uygula / kaldır. Sağ panelden Tümü / Giriş / Çıkış seç." : "Klip seçili değil: tıklayınca efekt izine (tüm görüntüye) 3 sn eklenir."} Sürükle: efekt izine istediğin yere. ★: favori.</div>` +
+    `<input class="in" id="fxQ" placeholder="${Object.keys(ST.cat.fx).length} efekt içinde ara…" value="${esc(P.fx.q || "")}" style="width:100%;margin-bottom:6px">` +
+    (favs.length ? sec("★ Favoriler") + `<div class="grid2">${favs.map(card).join("")}</div>` : "") +
+    Object.entries(packs).map(([pk, items]) => { const it = items.filter(x => all.includes(x) || all.some(y => y[0] === x[0])); return it.length ? sec(pk) + `<div class="grid2">${it.map(card).join("")}</div>` : ""; }).join("");
+  const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 180); };
 };
 pb.addEventListener("click", e => {
   const f = e.target.closest("[data-fx]"); if (!f || panel !== "fx") return;
@@ -292,7 +301,7 @@ pb.addEventListener("click", async e => {
 // ---------------------------------------------------------------- abone ol
 P.subscribe = () => {
   pb.innerHTML = `<div class="hint">Tıkla: oynatma kafasına 4 sn ekler. Yazıyı, rengi ve konumu sağdan değiştir (ör. “ABONE OL” yerine “SUBSCRIBE”). Önizlemede ekrandaki yeşil kutuyla taşıyabilirsin.</div>` +
-    `<div class="grid2">${Object.entries(ST.cat.subscribe).map(([k, v]) => `<div class="card" data-sub="${k}" draggable="true" data-item='${esc(JSON.stringify({ type: "sub", kind: k }))}'><b>${esc(v)}</b></div>`).join("")}</div>` +
+    `<div class="grid2">${Object.entries(ST.cat.subscribe).sort((a, b) => isFav("sub", b[0]) - isFav("sub", a[0])).map(([k, v]) => `<div class="card" data-sub="${k}" draggable="true" data-item='${esc(JSON.stringify({ type: "sub", kind: k }))}'><b>${isFav("sub", k) ? "★ " : ""}${esc(v)}</b>${favStar("sub", k)}</div>`).join("")}</div>` +
     `<div class="hint" style="margin-top:10px">Tık ve zil sesleri için “YouTube” şablonlarına bak (Şablonlar sekmesi). Hazır yeşil perde animasyonları: Medya sayfası → Stok → “subscribe green screen”, sonra Perdeyi sil.</div>`;
 };
 pb.addEventListener("click", e => { const s = e.target.closest("[data-sub]"); if (s && panel === "subscribe") addSub(s.dataset.sub, ST.t); });
@@ -335,7 +344,7 @@ async function aiAction(kind, c) {
   if (kind === "unreframe") { snap(); delete c.reframe; changed(); return; }
   if (kind === "montage") return montage();
   if (kind === "splitscreen") return splitScreen();
-  if (kind === "matte") return matte(c);
+  if (kind === "matte") return selClips().filter(x => clipKind(x) === "video").length > 1 ? window.matteSel() : matte(c);
   if (kind === "beatzoom") return beatZoom(c);
   if (["silence", "freeze", "scenes", "beats", "captions", "reframe", "cutbeats"].includes(kind)) {
     const want = kind === "beats" || kind === "silence" || kind === "captions" ? ["video", "audio"] : ["video"];
@@ -408,12 +417,12 @@ async function aiAction(kind, c) {
   } catch (e) { busy(null); toast("Olmadı: " + e.message, 5000); }
 }
 window.aiAction = aiAction;
-async function matte(c) {
+async function matte(c, model) {
   c = c && clipKind(c) === "video" ? c : needSel(["video"]); if (!c) return;
   const a = assetOf(c), sp = c.speed || 1, len = c.dur * sp;
-  const m = await modal(`<h3>Arka planı sil</h3><div class="hint">${fmt(len)} video kare kare işlenecek (1080p'de saniyede ~2-4 kare; ${Math.round(len * 30 / 3 / 60)} dk civarı). Sonuç şeffaf bir klip olarak aynı yere konur, ses korunur.</div>
-    <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb" data-v="birefnet-general-lite">Hızlı</button><button class="tb pri" data-v="birefnet-general">En iyi kalite</button></div>`);
-  if (!m) return;
+  const m = model || await modal(`<h3>Arka planı sil</h3><div class="hint">Yalnız <b>seçili klibin</b> zaman çizelgesinde görünen kısmı işlenir: ${fmt(len)} (kaynakta ${fmt(c.in || 0)} – ${fmt((c.in || 0) + len)}). Videonun geri kalanına dokunulmaz; önce klibi istediğin yerden böl (S), sonra sil.<br>Kare kare ekran kartında işlenir (~${Math.max(1, Math.round(len * 30 * .5 / 60))} dk). Sonuç şeffaf bir kopya olarak klibin yerine geçer, ses korunur, orijinal dosya değişmez.</div>
+    <div class="row"><button class="tb" data-v="">Vazgeç</button><button class="tb" data-v="birefnet-general-lite">Hızlı</button><button class="tb pri" data-v="birefnet-general">En iyi kalite</button></div>`);
+  if (!m || m === "no") return;
   const r = await api.studio_matte(a.path, c.in || 0, len, m);
   if (await needTool(r)) return;
   if (!r.ok) { toast(r.error || "olmadı"); return; }

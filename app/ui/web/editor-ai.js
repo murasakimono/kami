@@ -17,7 +17,7 @@ async function aiReady() {
   const st = await api.pic_ai_status();
   if (st?.installed) return true;
   if (st?.installing) { toast(edL("Yapay zekâ araçları kuruluyor: ", "Installing AI tools: ") + (st.installing || "")); return false; }
-  if (!confirm(edL(`Yapay zekâ araçları (nesne silme, tıkla-seç, arka plan, 4x büyütme, yüz düzeltme) bir kez kurulacak: yaklaşık ${st?.size_gb || 4.5} GB, ekran kartında çalışır. Kurulsun mu?`,
+  if (!await kAsk(edL(`Yapay zekâ araçları (nesne silme, tıkla-seç, arka plan, 4x büyütme, yüz düzeltme) bir kez kurulacak: yaklaşık ${st?.size_gb || 4.5} GB, ekran kartında çalışır. Kurulsun mu?`,
     `AI tools will be installed once (~${st?.size_gb || 4.5} GB, runs on your GPU). Install?`))) return false;
   await api.ai_install("iopaint");
   edBusy(edL("Yapay zekâ araçları kuruluyor… (birkaç dakika sürer, Kami açık kalsın)", "Installing AI tools…"));

@@ -180,7 +180,7 @@ function showUpdate(u) {
 }
 
 async function installUpdate() {
-  if (!confirm(T("update_confirm"))) return;
+  if (!await kAsk(T("update_confirm"))) return;
   toast(T("update_downloading"), false, true);
   let r;
   try { r = await slow("install_update"); } finally { toastDone(); }

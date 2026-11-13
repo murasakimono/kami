@@ -152,10 +152,25 @@ class StudioMixin:
 
     def studio_save(self, project: dict, path: str = "") -> dict[str, Any]:
         from app.core import studio
+        safe = re.sub(r'[<>:"/\\|?*]+', "_", str(project.get("name") or "Proje")).strip() or "Proje"
+        pdir = studio.home_dir() / "Projeler"
+        want = str(pdir / f"{safe}{studio.PROJECT_EXT}")
+        old = ""
         if not path:
-            safe = re.sub(r'[<>:"/\\|?*]+', "_", str(project.get("name") or "Proje")).strip() or "Proje"
-            path = str(studio.home_dir() / "Projeler" / f"{safe}{studio.PROJECT_EXT}")
+            path = want
+        elif (os.path.normcase(os.path.dirname(os.path.abspath(path))) == os.path.normcase(str(pdir))
+              and os.path.normcase(os.path.abspath(path)) != os.path.normcase(want)):
+            # Projeler klasorundeki proje yeniden adlandirildi: dosya da yeni adi alsin
+            if not os.path.exists(want):
+                old, path = path, want
         p = studio.save_project(path, project)
+        if old and os.path.isfile(old):
+            try:
+                os.remove(old)
+                self._studio_saved.pop(old, None)
+                self._studio_recent_drop(old)
+            except OSError:
+                pass
         self._studio_saved[p] = os.path.getmtime(p)
         self._studio_current(p)
         self._studio_recent_add(p, project.get("name", ""))
@@ -219,6 +234,26 @@ class StudioMixin:
         items.insert(0, {"path": path, "name": name, "t": time.time()})
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(json.dumps(items[:20], ensure_ascii=False), "utf-8")
+
+    def studio_reveal(self, path: str) -> bool:
+        """Dosyayi Gezgin'de secili goster."""
+        if not os.path.exists(str(path)):
+            return False
+        if os.name == "nt":
+            import subprocess
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(str(path))])
+        return True
+
+    def _studio_recent_drop(self, path: str) -> None:
+        from app.core.studio import CACHE
+        f = CACHE / "recent.json"
+        try:
+            items = json.loads(f.read_text("utf-8"))
+        except (OSError, ValueError):
+            return
+        key = os.path.normcase(os.path.abspath(path))
+        f.write_text(json.dumps([i for i in items if os.path.normcase(os.path.abspath(i.get("path", ""))) != key],
+                                ensure_ascii=False), "utf-8")
 
     def studio_recent(self) -> list[dict[str, Any]]:
         from app.core.studio import CACHE
@@ -639,7 +674,8 @@ class StudioMixin:
         try:
             if source == "openverse":
                 ep = "audio" if kind == "audio" else "images"
-                d = self._get_json(f"https://api.openverse.org/v1/{ep}/?" + urllib.parse.urlencode({"q": q, "page": page, "page_size": 30}))
+                d = self._get_json(f"https://api.openverse.org/v1/{ep}/?" + urllib.parse.urlencode({"q": q, "page": page, "page_size": 20}),
+                                   {"User-Agent": "Kami/1.10 (+https://github.com/murasakimono/kami)"})
                 return {"items": [{"id": r["id"], "thumb": r.get("thumbnail") or r.get("url"), "url": r.get("url"), "w": r.get("width"),
                                    "h": r.get("height"), "by": r.get("creator") or "", "page": r.get("foreign_landing_url"),
                                    "license": f"CC {str(r.get('license', '')).upper()} {r.get('license_version', '')}".strip(),

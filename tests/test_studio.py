@@ -114,3 +114,25 @@ def test_pro_features(tmp_path, monkeypatch):
         assert G.subscribe(kind, S._ts, S._col, S._esc, S._rrect, 0, 4, 1920, 1080, {})
     for kind in G.GRAPHICS:
         assert G.graphic(kind, S._ts, S._col, S._esc, S._rrect, 0, 4, 1920, 1080, {"title": "x"})
+
+
+def test_anim_and_text_helpers(tmp_path):
+    from app.core import studio, studio_anim
+    assert studio.tr_upper("istanbul ılık") == "İSTANBUL ILIK"
+    st = {"animIn": "letters-up", "animOut": "wipe", "animLoop": "pulse"}
+    ev = studio_anim.text_events("Merhaba", st, 0, 3, 960, 540, 1920, 1080, "\\an5", studio._esc, studio._ts)
+    assert len(ev) == 3 and all(e.startswith("Dialogue:") for e in ev)
+    ch, ex = studio_anim.clip_filters({"anim": {"in": "pop", "loop": "wobble", "out": "spin"}}, 3, 0, 30, 1920, 1080, "a")
+    assert any("perspective" in c for c in ch) and ex["r"]
+    assert studio_anim.clip_filters({}, 3, 0, 30, 1920, 1080, "a") == ([], {})
+    s = studio.Studio(lambda: "ffmpeg")
+    s._fcflag = "-/filter_complex"
+    out = s._fc_file(["-i", "x", "-filter_complex", "[0:v]null[vout]", "-map", "[vout]"], tmp_path)
+    assert out[2] == "-/filter_complex" and (tmp_path / "graph.txt").read_text() == "[0:v]null[vout]"
+    assert len(studio.FX) >= 80
+
+
+def test_lottie_resolve_direct():
+    from app.core.lottie_conv import resolve
+    assert resolve("https://lottie.host/a/b.json") == "https://lottie.host/a/b.json"
+    assert resolve("https://assets-v2.lottiefiles.com/a/x/y.lottie?v=1").endswith("?v=1")

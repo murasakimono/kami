@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app import paths
-from app.core import studio_gfx
+from app.core import studio_anim, studio_gfx
 
 log = logging.getLogger(__name__)
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -113,6 +113,9 @@ FX: dict[str, dict[str, Any]] = {
     "deepfried": {"name": "Deep fried meme", "pack": "Ekstra", "ff": "eq=saturation=3:contrast=1.8,unsharp=7:7:2.5,noise=alls=20", "css": "saturate(3) contrast(1.8)", "ov": ["grain"]},
 }
 
+from app.core.studio_fx2 import FX2 as _FX2  # noqa: E402
+FX.update({k: v for k, v in _FX2.items() if k not in FX})
+
 # Gecis (klip girisi): ffmpeg + onizleme ayni adla
 TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom vuruşu", "slide": "Kaydırma", "blur": "Bulanık", "glitch": "Glitch"}
 
@@ -158,7 +161,8 @@ def catalog() -> dict[str, Any]:
                    for k, v in FX.items()},
             "trans": TRANS, "zoom": ZOOM_PRESETS + load_templates(), "captions": CAPTION_STYLES, "anims": TEXT_ANIMS,
             "subscribe": {**studio_gfx.SUBSCRIBE_PRO, **SUBSCRIBE}, "graphics": studio_gfx.GRAPHICS, "fonts": FONTS,
-            "deliver": {k: v["name"] for k, v in DELIVER.items()}, "afx": AUDIO_FIX_NAMES, "templates": TEMPLATE_NAMES}
+            "deliver": {k: v["name"] for k, v in DELIVER.items()}, "afx": AUDIO_FIX_NAMES, "templates": TEMPLATE_NAMES,
+            "tanim": studio_anim.text_catalog(), "canim": studio_anim.clip_catalog()}
 
 
 def load_templates() -> list[dict]:
@@ -228,6 +232,7 @@ class Studio:
         self.jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._enc: str | None = None
+        self._fcflag: str | None = None
         CACHE.mkdir(parents=True, exist_ok=True)
 
     # ---- yardimci
@@ -238,6 +243,22 @@ class Studio:
     def _run(self, args: list[str], timeout: float = 600) -> subprocess.CompletedProcess:
         return subprocess.run([self.ffmpeg(), "-hide_banner", "-nostdin", *args], capture_output=True, timeout=timeout,
                               creationflags=NO_WINDOW)
+
+    def _fc_file(self, args: list[str], work: Path) -> list[str]:
+        """Filtre grafigini dosyaya yazar: uzun projelerde komut satiri 32767 karakteri asiyordu (WinError 206)."""
+        if "-filter_complex" not in args:
+            return args
+        i = args.index("-filter_complex")
+        f = work / "graph.txt"
+        f.write_text(args[i + 1], "utf-8")
+        if self._fcflag is None:
+            try:
+                r = self._run(["-version"], timeout=20)
+                m = re.search(rb"version (?:n)?(\d+)\.(\d+)", r.stdout or b"")
+                self._fcflag = "-/filter_complex" if not m or (int(m.group(1)), int(m.group(2))) >= (7, 1) else "-filter_complex_script"
+            except Exception:
+                self._fcflag = "-/filter_complex"
+        return [*args[:i], self._fcflag, str(f), *args[i + 2:]]
 
     def _cache(self, path: str, tag: str) -> Path:
         st = os.stat(path)
@@ -412,18 +433,56 @@ class Studio:
 
     # ---- kucuk resimler (zaman cizelgesi seridi)
     def thumbs(self, path: str, count: int = 12, height: int = 72) -> dict[str, Any]:
-        def calc() -> dict[str, Any]:
-            from app.core.media_server import probe
-            dur = float(probe(self.ffprobe(), path).get("duration") or 0)
-            if dur <= 0:
-                return {"step": 0, "sprite": ""}
-            step = dur / count
-            r = self._run(["-loglevel", "error", "-i", path, "-an", "-vf",
-                           f"fps=1/{step:.4f},scale=-2:{height},tile={count}x1", "-frames:v", "1", "-q:v", "6", "-f", "image2", "pipe:1"],
-                          timeout=300)
-            import base64
-            return {"step": step, "count": count, "sprite": "data:image/jpeg;base64," + base64.b64encode(r.stdout).decode() if r.stdout else ""}
-        return self._cached(path, f"thumbs{count}x{height}", calc)
+        """Klip seridi: her kare icin hizli arama (-ss girisin onunde), Pillow ile yan yana. Eski yol (fps+tile)
+        uzun videoda tum dosyayi cozuyordu, kisa videoda son karo eksik kalinca hic gorsel cikmiyordu."""
+        tag = f"thumbs2_{count}x{height}"
+        f = self._cache(path, tag)
+        try:
+            d = json.loads(f.read_text("utf-8"))
+            if d.get("sprite"):
+                return d
+        except (OSError, ValueError):
+            pass
+        from app.core.media_server import probe
+        dur = float(probe(self.ffprobe(), path).get("duration") or 0)
+        if dur <= 0:
+            return {"step": 0, "sprite": ""}
+        step = dur / count
+
+        def one(i: int) -> bytes:
+            t = min(max(0.0, dur - 0.08), step * i + step * 0.5)
+            for ss in (t, 0.0):   # bozuk/sonda kare yoksa basa dus
+                r = self._run(["-loglevel", "error", "-ss", f"{ss:.3f}", "-i", path, "-an", "-frames:v", "1",
+                               "-vf", f"scale=-2:{height}", "-q:v", "6", "-f", "image2pipe", "-c:v", "mjpeg", "pipe:1"], timeout=60)
+                if r.stdout:
+                    return r.stdout
+            return b""
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(4) as ex:
+            frames = list(ex.map(one, range(count)))
+        import base64
+        import io
+        try:
+            from PIL import Image
+            ims = [Image.open(io.BytesIO(b)).convert("RGB") if b else None for b in frames]
+            ok = [im for im in ims if im]
+            if not ok:
+                return {"step": step, "count": count, "sprite": ""}
+            w = ok[0].width
+            sheet = Image.new("RGB", (w * count, height))
+            last = ok[0]
+            for i, im in enumerate(ims):
+                last = im or last
+                sheet.paste(last.resize((w, height)) if last.size != (w, height) else last, (i * w, 0))
+            buf = io.BytesIO()
+            sheet.save(buf, "JPEG", quality=72)
+            data = {"step": step, "count": count, "sprite": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}
+        except Exception:
+            log.exception("Studio serit")
+            return {"step": step, "count": count, "sprite": ""}
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps(data), "utf-8")
+        return data
 
     # ---- metin katmani (ASS)
     def ass(self, project: dict[str, Any]) -> str:
@@ -465,6 +524,7 @@ class Studio:
                 args, total = build_export(project, out, work, attempt, opts)
                 if not total:
                     raise RuntimeError("Zaman çizelgesi boş")
+                args = self._fc_file(args, work)
                 log.info("Studio disa aktarim (%s): %s", attempt, out)
                 (work / "cmd.json").write_text(json.dumps(args, ensure_ascii=False, indent=0), "utf-8")
                 from app.core.procjob import attach
@@ -506,6 +566,7 @@ class Studio:
         work = Path(tempfile.mkdtemp(prefix="kstudio_f_"))
         try:
             args, _ = build_export(project, out, work, "png", {"frame": t})
+            args = self._fc_file(args, work)
             r = subprocess.run([self.ffmpeg(), "-hide_banner", "-nostdin", "-y", "-loglevel", "error", *args], cwd=str(work),
                                capture_output=True, timeout=120, creationflags=NO_WINDOW)
             if r.returncode:
@@ -690,15 +751,33 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             cye = kf_expr(zk, "cy", tv, 0.5) if any("cy" in q for q in zk) else "0.5"
             ch.append(f"zoompan=z={_q(f'max(1,{z})')}:x={_q(f'max(0,min(iw-iw/zoom,({cxe})*iw-iw/zoom/2))')}:"
                       f"y={_q(f'max(0,min(ih-ih/zoom,({cye})*ih-ih/zoom/2))')}:d=1:s={W}x{H}:fps={FPS},format=rgba")
+        fxat = c.get("fxAt") or {}
         for fid in c.get("fx") or []:
             fx = FX.get(fid)
-            if fx:
+            if not fx:
+                continue
+            pl = fxat.get(fid) or {}
+            at, fd = pl.get("at", "all"), max(0.05, float(pl.get("d", 1.0) or 1.0))
+            if at in ("in", "out"):   # efekt yalniz klibin basinda / sonunda
+                a0 = 0.0 if at == "in" else max(0.0, d - fd)
+                a1 = min(d, fd) if at == "in" else d
+                if a1 - cut0 <= 0:
+                    continue
+                tg = f"c{k}{re.sub(r'[^a-z0-9]', '', fid)}"
+                ch.append(f"split[{tg}A][{tg}B];[{tg}B]{_fx_chain(fx['ff'], W, H, a0 - cut0, tg + 'f')},format=rgba[{tg}C];"
+                          f"[{tg}A][{tg}C]overlay=enable='between(t,{a0 - cut0:.4f},{a1 - cut0:.4f})'")
+            else:
                 ch.append(_fx_chain(fx["ff"], W, H, 0.0, f"c{k}{fid}"))
+        anf, _ = studio_anim.clip_filters(c, d, cut0, FPS, W, H, f"an{k}")
+        ch += anf
         sc, rot = float(c.get("scale", 1) or 1), float(c.get("rot", 0) or 0)
         if abs(sc - 1) > 1e-3:
             ch.append(f"scale=iw*{sc:.4f}:ih*{sc:.4f}")
-        if abs(rot) > 0.01:
-            ch.append(f"rotate={math.radians(rot):.5f}:c=none:ow=rotw({math.radians(rot):.5f}):oh=roth({math.radians(rot):.5f})")
+        arot = studio_anim.clip_exprs(c, d, f"(t+{cut0:.4f})")["r"] if anf else ""
+        if arot:   # donen animasyon: sabit cikti boyutu (bindirme boyut degisimini sevmez)
+            ch.append(f"rotate=a='{math.radians(rot):.5f}+({arot})*PI/180':c=black@0:ow='hypot(iw,ih)':oh='hypot(iw,ih)'")
+        elif abs(rot) > 0.01:
+            ch.append(f"rotate={math.radians(rot):.5f}:c=black@0:ow=rotw({math.radians(rot):.5f}):oh=roth({math.radians(rot):.5f})")
         op = float(c.get("opacity", 1) if c.get("opacity") is not None else 1)
         if op < 0.999:
             ch.append(f"colorchannelmixer=aa={op:.3f}")
@@ -713,13 +792,19 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             ch.append(f"fade=t=out:st={d - cut0 - fo:.3f}:d={fo:.3f}:alpha=1")
         tin = tr.get("in")
         if tin in ("flash", "blur", "zoom", "glitch", "slide") and cut0 < tdur:
-            ch.append(_trans_in(tin, tdur, W, H))
+            ch.append(_trans_in(tin, tdur, W, H, f"tr{k}"))
         off = max(s, T0) - T0
         ch.append(f"setpts=PTS+{off:.4f}/TB")
         graph.append(f"[{ii}:v]" + ",".join(ch) + f"[c{k}]")
         ox = f"(W-w)/2+{float(c.get('x', 0)) * W:.1f}"
         oy = f"(H-h)/2+{float(c.get('y', 0)) * H:.1f}"
-        graph.append(f"[{cur}][c{k}]overlay=x={ox}:y={oy}:eof_action=pass:enable='between(t,{off:.4f},{off + seg:.4f})'[b{k}]")
+        if anf:
+            aex = studio_anim.clip_exprs(c, d, f"(t-{off:.4f}+{cut0:.4f})")
+            if aex["x"]:
+                ox += f"+({aex['x']})*{W}"
+            if aex["y"]:
+                oy += f"+({aex['y']})*{H}"
+        graph.append(f"[{cur}][c{k}]overlay=x='{ox}':y='{oy}':eof_action=pass:enable='between(t,{off:.4f},{off + seg:.4f})'[b{k}]")
         cur = f"b{k}"
         if (a.get("audio") and not c.get("freeze") and not tracks[c["track"]].get("mute")
                 and float(c.get("vol", 1) if c.get("vol") is not None else 1) > 0 and frame_t is None):
@@ -1013,11 +1098,14 @@ def _fx_chain(ff: str, W: int, H: int, start: float, tag: str) -> str:
     return s
 
 
-def _trans_in(kind: str, d: float, W: int, H: int) -> str:
+def _trans_in(kind: str, d: float, W: int, H: int, tag: str = "t") -> str:
     if kind == "flash":
         return f"eq=brightness='max(0,0.9*(1-t/{d:.3f}))':eval=frame"
     if kind == "blur":
-        return f"gblur=sigma='max(0.01,20*(1-t/{d:.3f}))':steps=1"
+        # gblur sigma ifade almaz: bulanik kopya ile zamanla karisim
+        a = f"min(1,T/{d:.3f})"
+        return (f"split[{tag}a][{tag}b];[{tag}b]gblur=sigma=24[{tag}c];"
+                f"[{tag}a][{tag}c]blend=all_expr='A*{a}+B*(1-{a})'")
     if kind == "zoom":
         return (f"zoompan=z='max(1,1.35-0.35*min(1,on/{d:.3f}/25))':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={W}x{H},format=rgba")
     if kind == "glitch":
@@ -1097,6 +1185,76 @@ def _col(hexc: str, alpha: float = 0.0) -> str:
     return f"&H{a:02X}{h[4:6]}{h[2:4]}{h[0:2]}&".upper().replace("&H", "&H", 1)
 
 
+def tr_upper(s: str) -> str:
+    """Turkce buyuk harf: i -> İ, ı -> I (str.upper i'yi I yapar)."""
+    return s.replace("i", "İ").replace("ı", "I").upper()
+
+
+_GLYPH: dict[tuple[str, str], bool] = {}
+_FB_FONTS = ("Chakra Petch", "Arial", "Segoe UI")
+
+
+def _has_glyph(family: str, ch: str) -> bool | None:
+    """Fontta karakter var mi (Pillow: eksik karakter .notdef kutusunu cizer). Font bulunamazsa None."""
+    key = (family.lower(), ch)
+    if key in _GLYPH:
+        return _GLYPH[key]
+    try:
+        idx = {k.lower(): v for k, v in fonts_index().items()}
+        path = idx.get(family.lower())
+        if not path:
+            _GLYPH[key] = None   # type: ignore[assignment]
+            return None
+        from PIL import ImageFont
+        f = ImageFont.truetype(path, 48, layout_engine=ImageFont.Layout.BASIC)   # raqm harfi parcalayip (I + nokta) var sanmasin
+        def sig(c: str):
+            m = f.getmask(c)
+            return m.size, bytes(m)
+        nd = _GLYPH.get((family.lower(), "\0nd"))
+        if nd is None:
+            nd = sig("\U0010FFFD")
+            _GLYPH[(family.lower(), "\0nd")] = nd   # type: ignore[assignment]
+        ok = sig(ch) != nd
+    except Exception:
+        ok = None
+    _GLYPH[key] = ok   # type: ignore[assignment]
+    return ok
+
+
+def _glyph_fallback(line: str) -> str:
+    """Secili fontta olmayan harfleri (orn. İ, ş) yedek fonta gecirir: hem onizleme (JASSUB) hem disa aktarim ayni ASS'i kullanir."""
+    if not line.startswith("Dialogue:"):
+        return line
+    parts = line.split(",", 9)
+    if len(parts) < 10 or not any(ord(ch) > 127 for ch in parts[9]):
+        return line
+    cur, out = "Chakra Petch", []
+    for tok in re.split(r"(\{[^}]*\})", parts[9]):
+        if tok.startswith("{"):
+            m = re.findall(r"\\fn([^\\}]+)", tok)
+            if m:
+                cur = m[-1]
+            out.append(tok)
+            continue
+        i = 0
+        while i < len(tok):
+            ch = tok[i]
+            if ch == "\\" and i + 1 < len(tok):
+                out.append(tok[i:i + 2])
+                i += 2
+                continue
+            if ord(ch) > 127 and _has_glyph(cur, ch) is False:
+                fb = next((f for f in _FB_FONTS if f.lower() != cur.lower() and _has_glyph(f, ch)), None)
+                if fb:
+                    out.append(f"{{\\fn{fb}}}{ch}{{\\fn{cur}}}")
+                    i += 1
+                    continue
+            out.append(ch)
+            i += 1
+    parts[9] = "".join(out)
+    return ",".join(parts)
+
+
 def _esc(s: str) -> str:
     return s.replace("\\", "\\\\").replace("{", "(").replace("}", ")").replace("\n", "\\N")
 
@@ -1141,6 +1299,7 @@ def build_ass(project: dict, t0: float = 0.0) -> str:
                 kind = FX.get(fid, {}).get("ass")
                 if kind:
                     ev += _fx_text(kind, float(c["start"]) - t0, float(c["start"]) + float(c["dur"]) - t0, W, H, c)
+    ev = [_glyph_fallback(x) for x in ev]
     return head + "\n".join(ev) + ("\n" if ev else "")
 
 
@@ -1206,6 +1365,14 @@ def _text(c: dict, s: float, e: float, W: int, H: int) -> list[str]:
     base = f"\\an{an}\\pos({x:.0f},{y:.0f})" + _style_tags(st, H)
     out = []
     text = str(c.get("text", ""))
+    if any(k in st for k in ("animIn", "animOut", "animLoop")):   # yeni: giris / cikis / dongu
+        from app.core.studio_anim import text_events
+        if st.get("glow"):
+            gc = _col(st.get("glowColor", st.get("color", "#FFFFFF")))
+            out += text_events(text, st, s, e, x, y, W, H, base.replace(f"\\pos({x:.0f},{y:.0f})", ""), _esc, _ts, 4,
+                               f"\\3c{gc}\\1c{gc}\\blur{int(H / 60)}\\bord{int(H / 90)}")
+        out += text_events(text, st, s, e, x, y, W, H, base.replace(f"\\pos({x:.0f},{y:.0f})", ""), _esc, _ts, 5)
+        return out
     if anim == "type":
         n = max(1, len(text))
         per = min(80, max(25, int(min(dur_ms * 0.6, 1600) / n)))
@@ -1244,7 +1411,7 @@ def _captions(c: dict, s: float, e: float, W: int, H: int) -> list[str]:
         g0, g1 = max(s, g0), min(e, g1)
         if g1 <= g0:
             continue
-        txt = [(str(w["w"]).strip().upper() if up else str(w["w"]).strip()) for w in grp]
+        txt = [(tr_upper(str(w["w"]).strip()) if up else str(w["w"]).strip()) for w in grp]
         if mode == "karaoke":
             body = "".join(f"{{\\kf{max(1, int((float(w['e']) - float(w['s'])) * 100))}}}{_esc(t)} " for w, t in zip(grp, txt))
             out.append(f"Dialogue: 5,{_ts(g0)},{_ts(g1)},Default,,0,0,0,,{{{base}\\2c{_col(st.get('color', '#FFFFFF'))}\\1c{hi}\\fad(80,80)}}{body.strip()}")

@@ -245,7 +245,7 @@ function bindUse() {
   $("#sdCancel").addEventListener("click", async () => { await api.shutdown_cancel(); state.settings.shutdown_when_done = false; syncShutdown(null); });
 
   $("#historyQ").addEventListener("input", () => { clearTimeout(hsTimer); hsTimer = setTimeout(historyRefresh, 250); });
-  $("#historyClear").addEventListener("click", async () => { if (confirm(T("hs_clear") + "?")) { await api.history_clear(); historyRefresh(); } });
+  $("#historyClear").addEventListener("click", async () => { if (await kAsk(T("hs_clear") + "?")) { await api.history_clear(); historyRefresh(); } });
   $("#historyList").addEventListener("click", async (e) => {
     const b = e.target.closest("button[data-hs]");
     if (!b) return;

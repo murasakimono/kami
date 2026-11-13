@@ -688,8 +688,8 @@ async function edOpen(path) {
   edCurveHook();
 }
 function edCurveHook() { new MutationObserver(() => { const cv = document.querySelector("#edCard .ed-curve"); if (cv && !cv._h) { cv._h = 1; edCurveEvents(cv); } }).observe($("#edCard"), { childList: true }); }
-function edClose() {
-  if (ED.dirty && !confirm(edL("Kaydedilmemiş değişiklikler var. Kapatılsın mı?", "Unsaved changes. Close anyway?"))) return;
+async function edClose() {
+  if (ED.dirty && !await kAsk(edL("Kaydedilmemiş değişiklikler var. Kapatılsın mı?", "Unsaved changes. Close anyway?"), edL("Kapat", "Close"), edL("Vazgeç", "Cancel"), true)) return;
   ED.on = false; $("#ed").classList.remove("on");
 }
 window.kamiEditor = { open: edOpen, openImage: edOpenImage };
