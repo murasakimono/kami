@@ -385,6 +385,25 @@ const PRESETS = [   // filtre onayarlari (egriler + renk)
   { n: "Mor gece", a: { hue: -12, sat: 10, contrast: 15 }, c: { r: [[0, 20], [255, 255]], b: [[0, 40], [255, 255]], g: [[0, 0], [255, 215]] } },
   { n: "Retro", a: { sat: -20, grain: 25, vign: 30 }, c: { r: [[0, 30], [255, 250]], g: [[0, 15], [255, 240]], b: [[0, 50], [255, 200]] } },
   { n: "Dram", a: { contrast: 40, sat: -25, vign: 50, expo: -6 } },
+  // faz 5: film stoklari, sinema tonlari ve is amacli gorunumler
+  { n: "Portra", a: { temp: 10, sat: -8, contrast: -4 }, c: { rgb: [[0, 14], [128, 132], [255, 245]], b: [[0, 10], [255, 235]] } },
+  { n: "Fuji", a: { temp: -4, sat: 5 }, c: { g: [[0, 8], [128, 134], [255, 250]], b: [[0, 18], [255, 240]] } },
+  { n: "Kodachrome", a: { contrast: 22, sat: 25, temp: 6 }, c: { rgb: [[0, 0], [64, 52], [192, 206], [255, 255]] } },
+  { n: "CineStill", a: { temp: -10, contrast: 14, sat: 10 }, c: { r: [[0, 8], [255, 255]], b: [[0, 30], [255, 240]] } },
+  { n: "Teal & turuncu", a: { contrast: 15, sat: 10 }, c: { r: [[0, 0], [96, 88], [200, 214], [255, 255]], b: [[0, 36], [128, 128], [255, 214]] } },
+  { n: "Mat siyah", a: { contrast: -6 }, c: { rgb: [[0, 36], [60, 62], [200, 200], [255, 240]] } },
+  { n: "Altın saat", a: { temp: 28, vib: 20, expo: 4 }, c: { r: [[0, 0], [128, 140], [255, 255]], b: [[0, 0], [255, 225]] } },
+  { n: "Karamsar orman", a: { sat: -20, contrast: 18, expo: -5, temp: -6 }, c: { g: [[0, 10], [255, 240]], rgb: [[0, 18], [128, 124], [255, 235]] } },
+  { n: "Pastel", a: { sat: -25, bright: 8, contrast: -12 }, c: { rgb: [[0, 40], [255, 250]] } },
+  { n: "Aydınlık (high-key)", a: { expo: 15, contrast: -10, sat: -10 }, c: { rgb: [[0, 30], [128, 160], [255, 255]] } },
+  { n: "Noir", a: { sat: -100, contrast: 45, vign: 45 }, c: { rgb: [[0, 0], [80, 50], [180, 210], [255, 255]] } },
+  { n: "Sepya", a: { sat: -60, temp: 30, contrast: 8 }, c: { r: [[0, 20], [255, 255]], b: [[0, 0], [255, 200]] } },
+  { n: "Parlak pop", a: { contrast: 20, vib: 30 }, c: { b: [[0, 16], [255, 255]] } },
+  { n: "Cyberpunk", a: { hue: -10, sat: 30, contrast: 18 }, c: { r: [[0, 20], [255, 255]], g: [[0, 0], [255, 210]], b: [[0, 50], [255, 255]] } },
+  { n: "Analog soluk", a: { grain: 22, sat: -15 }, c: { rgb: [[0, 30], [128, 128], [255, 228]], r: [[0, 10], [255, 250]] } },
+  { n: "Gece çekimi", a: { expo: 12, temp: -12, contrast: 6, sharp: 8 }, c: { rgb: [[0, 6], [64, 84], [255, 255]] } },
+  { n: "Ürün (beyaz fon)", a: { expo: 10, contrast: 8, sat: 5, sharp: 20 }, c: { rgb: [[0, 0], [200, 226], [255, 255]] } },
+  { n: "Yumuşak portre", a: { contrast: -8, temp: 6, vib: 8 }, c: { r: [[0, 4], [128, 134], [255, 255]], rgb: [[0, 10], [255, 250]] } },
 ];
 function edPresetApply(p) {
   edAdjReset(false); Object.assign(ADJ, p.a || {});
