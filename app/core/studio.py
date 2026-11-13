@@ -133,11 +133,27 @@ ZOOM_PRESETS = [
     {"id": "double", "name": "Çift vuruş", "kf": [{"t": 0, "z": 1}, {"t": 0.08, "z": 1.25, "e": "out"}, {"t": 0.3, "z": 1.1}, {"t": 0.38, "z": 1.45, "e": "out"}, {"t": 0.9, "z": 1.3}]},
     {"id": "face", "name": "Yüze dal", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.5, "z": 1.8, "cx": 0.5, "cy": 0.38, "e": "inout"}]},
     {"id": "bounce", "name": "Zıpla", "kf": [{"t": 0, "z": 1.3}, {"t": 0.15, "z": 0.95, "e": "out"}, {"t": 0.3, "z": 1.05}, {"t": 0.45, "z": 1}]},
+    # faz 5 paketi
+    {"id": "snap", "name": "Ani yaklaş, dur", "kf": [{"t": 0, "z": 1}, {"t": 0.18, "z": 1.25, "e": "out"}]},
+    {"id": "reverse-punch", "name": "Yakından aç (ters vuruş)", "kf": [{"t": 0, "z": 1.5}, {"t": 0.25, "z": 1, "e": "out"}]},
+    {"id": "heartbeat", "name": "Kalp atışı", "kf": [{"t": 0, "z": 1}, {"t": 0.1, "z": 1.12, "e": "out"}, {"t": 0.25, "z": 1},
+                                                     {"t": 0.4, "z": 1.12, "e": "out"}, {"t": 0.6, "z": 1}]},
+    {"id": "triple", "name": "Üçlü vuruş", "kf": [{"t": 0, "z": 1}, {"t": 0.06, "z": 1.15, "e": "out"}, {"t": 0.2, "z": 1.05}, {"t": 0.26, "z": 1.3, "e": "out"},
+                                                  {"t": 0.4, "z": 1.15}, {"t": 0.46, "z": 1.45, "e": "out"}, {"t": 0.8, "z": 1.35}]},
+    {"id": "dramatic", "name": "Dramatik yavaş yaklaş", "kf": [{"t": 0, "z": 1}, {"t": -0.001, "z": 1.4, "e": "inout"}]},
+    {"id": "kb-lr", "name": "Ken Burns soldan sağa", "kf": [{"t": 0, "z": 1.15, "cx": 0.38, "cy": 0.5}, {"t": -0.001, "z": 1.15, "cx": 0.62, "cy": 0.5}]},
+    {"id": "kb-rl", "name": "Ken Burns sağdan sola", "kf": [{"t": 0, "z": 1.15, "cx": 0.62, "cy": 0.5}, {"t": -0.001, "z": 1.15, "cx": 0.38, "cy": 0.5}]},
+    {"id": "tilt-up", "name": "Yukarı süzül", "kf": [{"t": 0, "z": 1.3, "cx": 0.5, "cy": 0.68}, {"t": -0.001, "z": 1.3, "cx": 0.5, "cy": 0.32, "e": "inout"}]},
+    {"id": "dive-tl", "name": "Sol üste dal", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.5, "z": 1.6, "cx": 0.3, "cy": 0.3, "e": "inout"}]},
+    {"id": "dive-br", "name": "Sağ alta dal", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.5, "z": 1.6, "cx": 0.7, "cy": 0.7, "e": "inout"}]},
+    {"id": "drift", "name": "Hafif süzülme (vlog)", "kf": [{"t": 0, "z": 1.08, "cx": 0.46, "cy": 0.5}, {"t": -0.001, "z": 1.1, "cx": 0.54, "cy": 0.48}]},
 ]
 
 CAPTION_STYLES = {
     "hormozi": "Kelime vurgulu (sarı)", "word": "Tek kelime büyük", "karaoke": "Karaoke dolgu", "plain": "Sade alt yazı",
     "neon": "Neon parlama", "boxed": "Kutulu (TikTok)",
+    "mrbeast": "Renkli kelime (YouTube)", "highlight": "Kelime arkası renkli", "reveal": "Kelime kelime belir",
+    "hollow": "Boş harf, konuşan dolu", "cinema": "Sinematik ince",
 }
 TEXT_ANIMS = {"none": "Yok", "pop": "Pop", "fade": "Belir", "slide": "Aşağıdan kay", "type": "Daktilo", "bounce": "Zıpla",
               "shake": "Titreş", "zoom": "Büyüyerek", "glitch": "Glitch"}
@@ -1440,10 +1456,16 @@ def _captions(c: dict, s: float, e: float, W: int, H: int) -> list[str]:
     mode = st.get("caption", "hormozi")
     words = [w for w in c.get("words") or [] if str(w.get("w", "")).strip()]
     an, x, y = _pos({**st, "pos": st.get("pos", "custom"), "y": st.get("y", 0.72)}, W, H)
-    per_line = int(st.get("perLine", 1 if mode == "word" else 3))
-    hi = _col(st.get("highlight", "#FFE600"))
-    base = f"\\an{an}\\pos({x:.0f},{y:.0f})" + _style_tags({"size": 7.5 if mode != "word" else 10, "outline": 7, "font": "Chakra Petch", **st}, H)
-    up = st.get("upper", mode in ("hormozi", "word"))
+    per_line = int(st.get("perLine", {"word": 1, "mrbeast": 2, "reveal": 4, "cinema": 6}.get(mode, 3)))
+    hi = _col(st.get("highlight", {"highlight": "#7C3AED", "hollow": "#FFE600"}.get(mode, "#FFE600")))
+    size = {"word": 10, "mrbeast": 9, "cinema": 5.2}.get(mode, 7.5)
+    base = f"\\an{an}\\pos({x:.0f},{y:.0f})" + _style_tags({"size": size, "outline": 7, "font": "Chakra Petch", **st}, H)
+    # faz 5 stilleri: temel etiketlere ek (kullanici stili _style_tags ile yine gecerli)
+    thin = f"\\bord{H / 300:.1f}"
+    base += {"mrbeast": f"\\bord{H / 80:.0f}\\shad{H / 150:.0f}", "highlight": thin + "\\shad0", "hollow": f"\\1a&HFF&\\3c&HFFFFFF&\\bord{H / 380:.1f}\\shad0",
+             "cinema": f"\\bord0\\shad{H / 500:.1f}\\fsp{H / 400:.1f}" + ("" if st.get("font") else "\\fnGeorgia")}.get(mode, "")
+    up = st.get("upper", mode in ("hormozi", "word", "mrbeast"))
+    palette = [_col(c) for c in ("#FFE600", "#2EE66B", "#FF3B5C")]
     out = []
     i = 0
     while i < len(words):
@@ -1460,6 +1482,9 @@ def _captions(c: dict, s: float, e: float, W: int, H: int) -> list[str]:
         if mode == "karaoke":
             body = "".join(f"{{\\kf{max(1, int((float(w['e']) - float(w['s'])) * 100))}}}{_esc(t)} " for w, t in zip(grp, txt))
             out.append(f"Dialogue: 5,{_ts(g0)},{_ts(g1)},Default,,0,0,0,,{{{base}\\2c{_col(st.get('color', '#FFFFFF'))}\\1c{hi}\\fad(80,80)}}{body.strip()}")
+            continue
+        if mode == "cinema":
+            out.append(f"Dialogue: 5,{_ts(g0)},{_ts(g1)},Default,,0,0,0,,{{{base}\\fad(140,140)}}{_esc(' '.join(txt))}")
             continue
         if mode in ("plain", "boxed", "neon"):
             extra = ""
@@ -1479,12 +1504,23 @@ def _captions(c: dict, s: float, e: float, W: int, H: int) -> list[str]:
             if w1 <= w0:
                 continue
             parts = []
+            fg = _col(st.get("color", "#FFFFFF"))
             for q, t in enumerate(txt):
-                if q == j:
-                    parts.append(f"{{\\1c{hi}\\fscx112\\fscy112}}{_esc(t)}{{\\1c{_col(st.get('color', '#FFFFFF'))}\\fscx100\\fscy100}}")
-                else:
+                if mode == "reveal":       # konusulan kelimeye kadar gorunur, sonrasi saydam (satir yerlesimi sabit kalir)
+                    parts.append(_esc(t) if q <= j else (("{\\alpha&HFF&}" if q == j + 1 else "") + _esc(t)))
+                elif q != j:
                     parts.append(_esc(t))
-            pop = "\\fscx70\\fscy70\\t(0,90,\\fscx105\\fscy105)\\t(90,150,\\fscx100\\fscy100)" if j == 0 or mode == "word" else ""
+                elif mode == "mrbeast":
+                    col = palette[(i - per_line + j) % len(palette)]
+                    parts.append(f"{{\\1c{col}\\fscx125\\fscy125}}{_esc(t)}{{\\1c{fg}\\fscx100\\fscy100}}")
+                elif mode == "highlight":  # konusulan kelimenin arkasinda renkli kalin kontur (hap gibi)
+                    parts.append(f"{{\\3c{hi}\\bord{H / 42:.0f}}}{_esc(t)}{{\\3c&H000000&{thin}}}")
+                elif mode == "hollow":     # hepsi bos harf, konusulan dolu
+                    parts.append(f"{{\\1a&H00&\\1c{hi}}}{_esc(t)}{{\\1a&HFF&}}")
+                else:
+                    parts.append(f"{{\\1c{hi}\\fscx112\\fscy112}}{_esc(t)}{{\\1c{fg}\\fscx100\\fscy100}}")
+            pop = ("\\fscx70\\fscy70\\t(0,90,\\fscx105\\fscy105)\\t(90,150,\\fscx100\\fscy100)"
+                   if (j == 0 and mode != "reveal") or mode in ("word", "mrbeast") else "")
             out.append(f"Dialogue: 5,{_ts(w0)},{_ts(w1)},Default,,0,0,0,,{{{base}{pop}}}{' '.join(parts)}")
     return out
 

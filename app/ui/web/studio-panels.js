@@ -222,7 +222,7 @@ P.captions = () => {
   const c = firstSel();
   pb.innerHTML = `<div class="hint">Konuşmayı Whisper ile kelime kelime yazıya döker; her kelime söylendiği anda belirir. Önce konuşmanın olduğu klibi seç.</div>` +
     `<label class="fld w2"><span>Dil</span><select class="in" id="capLang"><option value="auto">Otomatik</option><option value="tr">Türkçe</option><option value="en">İngilizce</option></select></label>` +
-    sec("Stil") + `<div class="grid2">${Object.entries(ST.cat.captions).map(([k, v]) => `<div class="card${k === (localStorage.kstCap || "hormozi") ? " on" : ""}" data-cap="${k}"><b>${esc(v)}</b></div>`).join("")}</div>` +
+    sec("Stil") + `<div class="grid2">${Object.entries(ST.cat.captions).map(([k, v]) => `<div class="card${k === (localStorage.kstCap || "hormozi") ? " on" : ""}" data-cap="${k}"><i class="capv cv-${esc(k)}"><span>bu</span><u>örnek</u><span>yazı</span></i><b>${esc(v)}</b></div>`).join("")}</div>` +
     `<div class="row" style="margin-top:12px"><button class="tb pri" id="capGo">≡ ${c ? "Seçili klibe altyazı" : "Altyazı oluştur"}</button></div>` +
     `<div class="hint">Yazım hatalarını sağ paneldeki “Kelimeler” kutusundan düzeltebilirsin.</div>`;
   $("#capGo").onclick = () => aiAction("captions", firstSel());

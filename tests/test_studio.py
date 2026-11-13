@@ -158,3 +158,23 @@ def test_transitions_run_in_ffmpeg():
         r = subprocess.run([ff, "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=0.5", "-filter_complex", g,
                             "-map", "[o]", "-f", "null", "-"], capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, (kind, r.stderr[-300:])
+
+
+def test_new_caption_styles_emit_dialogues():
+    words = [{"w": w, "s": i * 0.4, "e": i * 0.4 + 0.38} for i, w in enumerate("bir iki üç dört beş altı".split())]
+    for mode in ("mrbeast", "highlight", "reveal", "hollow", "cinema"):
+        assert mode in S.CAPTION_STYLES
+        p = S.new_project("t", 1080, 1920, 30)
+        S.add_clip(p, words=words, start=0, dur=3, style={"caption": mode})
+        ass = S.build_ass(p)
+        assert ass.count("Dialogue:") >= 1, mode
+    p = S.new_project("t", 1080, 1920, 30)
+    S.add_clip(p, words=words, start=0, dur=3, style={"caption": "reveal"})
+    assert "\\alpha&HFF&" in S.build_ass(p)     # henuz soylenmeyen kelimeler saydam
+
+
+def test_zoom_presets_unique_and_valid():
+    ids = [z["id"] for z in S.ZOOM_PRESETS]
+    assert len(ids) == len(set(ids)) and len(ids) >= 16
+    for z in S.ZOOM_PRESETS:
+        assert S.kf_resolve(z["kf"], 2.0), z["id"]

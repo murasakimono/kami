@@ -414,3 +414,20 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 @keyframes tvEye { from { clip-path: ellipse(62% 0% at 50% 50%); } to { clip-path: ellipse(62% 120% at 50% 50%); } }
 @keyframes tvClock { from { --tva: 0deg; } to { --tva: 360deg; } }
 @media (prefers-reduced-motion: reduce) { .card:hover .trv::after { animation-play-state: paused; } }
+
+/* ---- altyazi stil kartlari: stilin kucuk ornegi (studio.py _captions ile ayni fikir) ---- */
+.card .capv { display: flex; align-items: center; justify-content: center; gap: .3em; height: 38px; margin: -8px -8px 4px; border-radius: 10px 10px 0 0;
+  background: linear-gradient(160deg, #2b3d52, #1a2230); font: 700 13px "Chakra Petch", sans-serif; font-style: normal; color: #fff;
+  text-shadow: 0 0 2px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
+.card .capv u { text-decoration: none; }
+.cv-hormozi, .cv-word, .cv-mrbeast { text-transform: uppercase; }
+.cv-hormozi u { color: #FFE600; } .cv-word { font-size: 16px; } .cv-word span { display: none; }
+.cv-karaoke u { background: linear-gradient(90deg, #FFE600 60%, #fff 60%); -webkit-background-clip: text; color: transparent; text-shadow: none; }
+.cv-neon { color: #2EE6A6; text-shadow: 0 0 6px #2EE6A6, 0 0 12px #2EE6A6; }
+.cv-boxed { text-shadow: none; gap: 0; } .cv-boxed span, .cv-boxed u { background: #000; padding: 2px 4px; }
+.cv-karaoke u ~ span { opacity: .9; }
+.cv-mrbeast { font-size: 15px; text-shadow: 2px 2px 0 #000, 0 0 3px #000, 2px 0 0 #000, 0 2px 0 #000; } .cv-mrbeast u { color: #2EE66B; transform: scale(1.15); display: inline-block; }
+.cv-highlight { text-transform: none; } .cv-highlight u { background: #7C3AED; border-radius: 6px; padding: 0 4px; text-shadow: none; }
+.cv-reveal u ~ span { opacity: 0; }
+.cv-hollow { color: transparent; -webkit-text-stroke: 1px #fff; text-shadow: none; } .cv-hollow u { color: #FFE600; -webkit-text-stroke: 0; }
+.cv-cinema { font: 400 13px Georgia, serif; letter-spacing: .08em; text-shadow: 0 1px 2px #000a; }
