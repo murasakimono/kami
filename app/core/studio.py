@@ -201,7 +201,10 @@ def catalog() -> dict[str, Any]:
             "tanim": studio_anim.text_catalog(), "canim": studio_anim.clip_catalog(),
             "blends": {k: v[0] for k, v in studio_fx_adv.BLEND_MODES.items()},
             "masks": studio_fx_adv.MASK_TYPES,
-            "bezierPresets": studio_motion.BEZIER_PRESETS}
+            "bezierPresets": studio_motion.BEZIER_PRESETS,
+            "eqBands": studio_fx_adv.EQ_BANDS,
+            "eqPresets": studio_fx_adv.EQ_PRESETS,
+            "audioCurves": studio_fx_adv.AUDIO_CURVES}
 
 
 def load_templates() -> list[dict]:
@@ -798,6 +801,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
     cur = "base0"
     vis = [c for c in clips if tracks.get(c["track"], {}).get("kind") == "video" and c.get("asset") in assets]
     vis.sort(key=lambda c: (order.get(c["track"], 0), c["start"]))
+    by_id = {str(x["id"]): x for x in vis if "id" in x}
     bg_blur_pct = float(project.get("bgBlur", 45) or 0) if project.get("bgMode") == "blur" else 0.0
     audio_parts: list[str] = []
     k = 0
@@ -850,6 +854,8 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             if key.get("spill", True):
                 g = str(key.get("color", "#00ff00")).lstrip("#")
                 ch.append("despill=type=" + ("blue" if len(g) == 6 and int(g[4:6], 16) > int(g[2:4], 16) else "green"))
+        if c.get("optFlow") and a["kind"] == "video" and not a.get("gif") and (speed < 0.99 or ramp):
+            ch.append(f"minterpolate=fps={FPS}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1")
         ch.append(f"fps={FPS}")
         fit = c.get("fit", "cover" if tracks[c["track"]].get("id") == "v1" or len([t for t in tracks.values() if t['kind'] == 'video']) == 1 else "contain")
         if c.get("crop") in ("half-w", "half-h"):   # yan yana / ust-alt
@@ -866,8 +872,11 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         if grade_active(gr):
             bake_grade(gr, work / f"g{k}.cube")
             ch.append(f"lut3d=file=g{k}.cube:interp=tetrahedral")
-        if float(c.get("shutterAngle") or 0) >= 90 and a["kind"] == "video" and not a.get("gif"):
-            ch.append("tmix=frames=2:weights='1 1'")
+        shutter_ang = float(c.get("shutterAngle") or 0)
+        if shutter_ang >= 45 and a["kind"] == "video" and not a.get("gif"):
+            n_tm = 2 if shutter_ang < 135 else 3 if shutter_ang < 270 else 4
+            wts = " ".join(["1 2 1", "1 2 2 1"][n_tm - 3].split()[:n_tm]) if n_tm >= 3 else "1 1"
+            ch.append(f"tmix=frames={n_tm}:weights='{wts}'")
         zk = kf_resolve(c.get("zoom") or [], d)
         if zk:
             tv = f"(on/{FPS}+{cut0:.4f})"
@@ -905,19 +914,31 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         ukf = kf_resolve(c.get("kf") or [], d)
         t_clip = f"(t+{cut0:.4f})"
         sc, rot = float(c.get("scale", 1) or 1), float(c.get("rot", 0) or 0)
-        if any("scale" in q for q in ukf):
-            sc_ex = studio_fx_adv.kf_expr_adv(ukf, "scale", t_clip, sc)
-            ch.append(f"scale=w='max(2,2*floor(iw*({sc_ex})/2))':h='max(2,2*floor(ih*({sc_ex})/2))':eval=frame")
-        elif abs(sc - 1) > 1e-3:
-            ch.append(f"scale=iw*{sc:.4f}:ih*{sc:.4f}")
-        arot = studio_anim.clip_exprs(c, d, t_clip)["r"] if anf else ""
-        has_krot = any("rot" in q for q in ukf)
-        if has_krot or arot:
-            rot_ex = studio_fx_adv.kf_expr_adv(ukf, "rot", t_clip, rot) if has_krot else f"{rot:.4f}"
-            a_expr = f"({rot_ex})*PI/180" + (f"+({arot})*PI/180" if arot else "")
-            ch.append(f"rotate=a='{a_expr}':c=black@0:ow='hypot(iw,ih)':oh='hypot(iw,ih)'")
-        elif abs(rot) > 0.01:
-            ch.append(f"rotate={math.radians(rot):.5f}:c=black@0:ow=rotw({math.radians(rot):.5f}):oh=roth({math.radians(rot):.5f})")
+        px_parent = py_parent = None
+        if c.get("parent") and str(c["parent"]) in by_id:
+            sc_ex, has_ksc, rot_ex, has_krot, px_parent, py_parent = studio_fx_adv.resolve_parent_xform(
+                c, by_id, kf_resolve, T0, off, cut0, W, H
+            )
+            if has_ksc or sc_ex != "1.0000":
+                ch.append(f"scale=w='max(2,2*floor(iw*({sc_ex})/2))':h='max(2,2*floor(ih*({sc_ex})/2))':eval=frame")
+            arot = studio_anim.clip_exprs(c, d, t_clip)["r"] if anf else ""
+            if has_krot or rot_ex != "0.0000" or arot:
+                a_expr = f"({rot_ex})*PI/180" + (f"+({arot})*PI/180" if arot else "")
+                ch.append(f"rotate=a='{a_expr}':c=black@0:ow='hypot(iw,ih)':oh='hypot(iw,ih)'")
+        else:
+            if any("scale" in q for q in ukf):
+                sc_ex = studio_fx_adv.kf_expr_adv(ukf, "scale", t_clip, sc)
+                ch.append(f"scale=w='max(2,2*floor(iw*({sc_ex})/2))':h='max(2,2*floor(ih*({sc_ex})/2))':eval=frame")
+            elif abs(sc - 1) > 1e-3:
+                ch.append(f"scale=iw*{sc:.4f}:ih*{sc:.4f}")
+            arot = studio_anim.clip_exprs(c, d, t_clip)["r"] if anf else ""
+            has_krot = any("rot" in q for q in ukf)
+            if has_krot or arot:
+                rot_ex = studio_fx_adv.kf_expr_adv(ukf, "rot", t_clip, rot) if has_krot else f"{rot:.4f}"
+                a_expr = f"({rot_ex})*PI/180" + (f"+({arot})*PI/180" if arot else "")
+                ch.append(f"rotate=a='{a_expr}':c=black@0:ow='hypot(iw,ih)':oh='hypot(iw,ih)'")
+            elif abs(rot) > 0.01:
+                ch.append(f"rotate={math.radians(rot):.5f}:c=black@0:ow=rotw({math.radians(rot):.5f}):oh=roth({math.radians(rot):.5f})")
         op = float(c.get("opacity", 1) if c.get("opacity") is not None else 1)
         if any("opacity" in q for q in ukf):
             op_ex = studio_fx_adv.kf_expr_adv(ukf, "opacity", f"(T+{cut0:.4f})", op)
@@ -947,10 +968,14 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         else:
             graph.append(f"[{ii}:v]" + ",".join(ch) + f"[c{k}]")
         t_pos = f"(t-{off:.4f}+{cut0:.4f})"
-        x_ex = studio_fx_adv.kf_expr_adv(ukf, "x", t_pos, float(c.get("x", 0) or 0)) if any("x" in q for q in ukf) else f"{float(c.get('x', 0) or 0):.4f}"
-        y_ex = studio_fx_adv.kf_expr_adv(ukf, "y", t_pos, float(c.get("y", 0) or 0)) if any("y" in q for q in ukf) else f"{float(c.get('y', 0) or 0):.4f}"
-        ox = f"(W-w)/2+({x_ex})*{W}"
-        oy = f"(H-h)/2+({y_ex})*{H}"
+        if px_parent is not None:
+            ox = f"(W-w)/2+{px_parent}"
+            oy = f"(H-h)/2+{py_parent}"
+        else:
+            x_ex = studio_fx_adv.kf_expr_adv(ukf, "x", t_pos, float(c.get("x", 0) or 0)) if any("x" in q for q in ukf) else f"{float(c.get('x', 0) or 0):.4f}"
+            y_ex = studio_fx_adv.kf_expr_adv(ukf, "y", t_pos, float(c.get("y", 0) or 0)) if any("y" in q for q in ukf) else f"{float(c.get('y', 0) or 0):.4f}"
+            ox = f"(W-w)/2+({x_ex})*{W}"
+            oy = f"(H-h)/2+({y_ex})*{H}"
         if anf:
             aex = studio_anim.clip_exprs(c, d, t_pos)
             if aex["x"]:
@@ -1402,6 +1427,7 @@ def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: f
     for fx in (c.get("afx") or []):
         if fx in AUDIO_FIX:
             ch.append(AUDIO_FIX[fx])
+    ch.extend(studio_fx_adv.eq_filters(c.get("eq")))
     ukf_a = kf_resolve(c.get("kf") or [], float(c.get("dur", 0) or 0))
     if any("vol" in q for q in ukf_a):
         v_ex = studio_fx_adv.kf_expr_adv(ukf_a, "vol", f"(t+{cut0:.4f})", vol)
@@ -1409,12 +1435,17 @@ def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: f
     elif abs(vol - 1) > 1e-3:
         ch.append(f"volume={vol:.3f}")
     fi, fo = float(c.get("fadeIn", 0) or 0), float(c.get("fadeOut", 0) or 0)
+    fcurve = c.get("fadeCurve", "tri")
+    c_opt = f":curve={fcurve}" if fcurve in studio_fx_adv.AUDIO_CURVES and fcurve != "tri" else ""
     d = float(c["dur"])
     if fi > cut0:
-        ch.append(f"afade=t=in:st=0:d={fi - cut0:.3f}")
+        ch.append(f"afade=t=in:st=0:d={fi - cut0:.3f}{c_opt}")
     if fo > 0:
-        ch.append(f"afade=t=out:st={max(0, d - cut0 - fo):.3f}:d={fo:.3f}")
+        ch.append(f"afade=t=out:st={max(0, d - cut0 - fo):.3f}:d={fo:.3f}{c_opt}")
     ch.append("aresample=48000,aformat=channel_layouts=stereo")
+    pf = studio_fx_adv.pan_filter(c.get("pan"))
+    if pf:
+        ch.append(pf)
     ms = int(round(off * 1000))
     if ms > 0:
         ch.append(f"adelay={ms}|{ms}")

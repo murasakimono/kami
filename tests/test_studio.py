@@ -328,3 +328,46 @@ def test_wave2_catalog_and_mask_blend_adj_kf_ffmpeg(tmp_path: Path):
     r = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-400:]
     assert out.is_file() and out.stat().st_size > 1000
+
+
+def test_wave3_optflow_shutter_parent_eq_pan_ffmpeg(tmp_path: Path):
+    import shutil
+    import subprocess
+    import pytest
+
+    cat = S.catalog()
+    assert len(cat["eqBands"]) == 10 and "podcast" in cat["eqPresets"]
+    assert "qsin" in cat["audioCurves"]
+
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        pytest.skip("ffmpeg yok")
+
+    v1 = tmp_path / "p.mp4"
+    v2 = tmp_path / "ch.mp4"
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=24:d=2",
+                    "-f", "lavfi", "-i", "sine=frequency=330:duration=2", "-shortest",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(v1)], check=True)
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "smptebars=s=160x90:r=12:d=2",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(v2)], check=True)
+
+    p = S.new_project("wave3", 640, 360, 24)
+    p["assets"]["a1"] = {"path": str(v1), "kind": "video", "dur": 2.0, "w": 320, "h": 180, "audio": True, "name": "parent"}
+    p["assets"]["a2"] = {"path": str(v2), "kind": "video", "dur": 2.0, "w": 160, "h": 90, "audio": False, "name": "child"}
+
+    parent = S.add_clip(p, asset="a1", track="v1", start=0.0, dur=1.5, shutterAngle=180,
+                        pan=-0.35, fadeIn=0.15, fadeCurve="qsin",
+                        eq=[4, 2, 0, -2, 0, 2, 4, 3, 2, 0],
+                        kf=[{"t": 0.0, "x": -0.1, "scale": 1.0, "rot": 0},
+                            {"t": 1.5, "x": 0.1, "scale": 1.15, "rot": 15, "bez": "easeOutExpo"}])
+    S.add_clip(p, asset="a2", track="v2", start=0.0, dur=1.5, parent=parent["id"],
+               x=0.15, y=0.05, scale=0.45, rot=10, speed=0.5, optFlow=True)
+
+    out = tmp_path / "wave3_out.mp4"
+    args, total = S.build_export(p, str(out), tmp_path, "libx264", {"quality": "medium"})
+    assert abs(total - 1.5) < 1e-6
+    g = args[args.index("-filter_complex") + 1]
+    assert "minterpolate=" in g and "tmix=" in g and "equalizer=" in g and "stereotools=balance_out=-0.350" in g and ":curve=qsin" in g
+    r = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert out.is_file() and out.stat().st_size > 1000

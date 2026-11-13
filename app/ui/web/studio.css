@@ -512,3 +512,14 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .clip .kfm.ukf { background: var(--em); }
 .bez-hd { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
 #bezCv { width: 100%; border: 1px solid var(--line); border-radius: 8px; cursor: crosshair; display: block; margin-top: 4px; }
+
+/* ---- Dalga 3: Canli VU metre ve 10-bant EQ ---- */
+.fader-vu { flex: 1; display: flex; align-items: stretch; gap: 6px; min-height: 120px; }
+.vu { position: relative; width: 8px; background: #07050C; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: flex; align-items: flex-end; }
+.vu i { display: block; width: 100%; height: 0%; background: linear-gradient(to top, #2EE6A6 0%, #2EE6A6 68%, #FFB547 84%, #FF4F8B 100%); transition: height 50ms linear; }
+.vu.master-vu { width: 14px; height: 22px; }
+.eq10 { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; background: #07050C; border: 1px solid var(--line); border-radius: 8px; padding: 6px 4px; margin: 6px 0; }
+.eqb { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.eqb input { writing-mode: vertical-lr; direction: rtl; height: 76px; width: 18px; accent-color: var(--em); }
+.eqb small { font-size: 9px; color: var(--mute); }
+.eqb .eqv { font-size: 9px; color: #C4B5FD; font-variant-numeric: tabular-nums; }

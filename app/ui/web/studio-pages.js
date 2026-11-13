@@ -341,35 +341,75 @@ function drawScopes() {
 function label(g, t) { g.fillStyle = "rgba(196,181,253,.8)"; g.font = "10px Chakra Petch"; g.fillText(t, 6, 13); }
 
 // ================================================================= SES SAYFASI
+function _vuLevel(analyser, fallback) {
+  if (!analyser || !ST.playing) return fallback;
+  const buf = _vuLevel.b ||= new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buf);
+  let peak = 0;
+  for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i] - 128) / 128; if (v > peak) peak = v; }
+  return Math.min(1, peak * 1.45);
+}
+let vuTimer = 0;
+function startVuLoop() {
+  clearInterval(vuTimer);
+  vuTimer = setInterval(() => {
+    if (page !== "audio") { clearInterval(vuTimer); return; }
+    for (const el of $$("[data-vu]", $("#mixer"))) {
+      const tid = el.dataset.vu;
+      let lvl = 0;
+      if (tid === "_master") {
+        const fb = ST.playing ? Math.min(1, ST.p.clips.filter(c => ST.t >= c.start && ST.t < c.start + c.dur).reduce((m, c) => Math.max(m, clipVol?.(c, ST.t) || 0), 0) * .7) : 0;
+        lvl = _vuLevel(ST.acMaster, fb);
+      } else {
+        const fb = ST.playing ? ST.p.clips.filter(c => c.track === tid && ST.t >= c.start && ST.t < c.start + c.dur).reduce((m, c) => Math.max(m, clipVol?.(c, ST.t) || 0), 0) * .7 : 0;
+        lvl = _vuLevel(ST.acTr?.[tid]?.analyser, fb);
+      }
+      el.style.height = Math.round(Math.min(1, Math.max(0, lvl)) * 100) + "%";
+    }
+  }, 60);
+}
 function renderMixer() {
   const m = $("#mixer"), ms = ST.p.master || {};
   const tracks = ST.p.tracks.filter(t => t.kind === "audio" || t.kind === "video");
-  m.innerHTML = `<div class="ph"><b>Ses mikseri</b><span class="sp"></span></div>
+  m.innerHTML = `<div class="ph"><b>Ses mikseri & 10-Bant EQ</b><span class="sp"></span><div class="vu master-vu" title="Ana Çıkış VU"><i data-vu="_master"></i></div></div>
     <div class="mixwrap"><div class="strips">${tracks.map(t => `<div class="chan${t.mute ? " muted" : ""}" data-tr="${t.id}">
         <b title="${esc(t.name)}">${esc(t.name)}</b><small>${t.kind === "video" ? "video sesi" : "ses"}</small>
-        <input type="range" class="fader" orient="vertical" min="0" max="2" step="0.01" value="${t.vol ?? 1}" data-tvol="${t.id}">
+        <div class="fader-vu"><input type="range" class="fader" orient="vertical" min="0" max="2" step="0.01" value="${t.vol ?? 1}" data-tvol="${t.id}"><div class="vu"><i data-vu="${t.id}"></i></div></div>
         <span class="db">${dbOf(t.vol ?? 1)}</span>
         <div class="cbtn"><button class="tb${t.mute ? " on" : ""}" data-tm="${t.id}" title="Sessiz">M</button><button class="tb${t.duck ? " on" : ""}" data-td="${t.id}" title="Konuşma olunca bu izi kıs (müzik için)">Kıs</button></div>
         <button class="tb" data-tfix="${t.id}" title="Bu izdeki tüm kliplere ses düzeltme">Düzelt…</button></div>`).join("")}</div>
       <div class="master"><h3>Ana çıkış</h3>
         <label class="fld w2"><span>Ses yüksekliği</span><select class="in" id="mxL">${[["", "Dokunma"], ["-14", "YouTube (-14 LUFS)"], ["-16", "Podcast (-16)"], ["-11", "TikTok/Reels (-11)"], ["-9", "Çok yüksek (-9)"]].map(([v, n]) => `<option value="${v}"${String(ms.lufs ?? "") === v ? " selected" : ""}>${n}</option>`).join("")}</select></label>
         <div class="fld"><span>Kısma miktarı</span><input type="range" id="mxD" min="0" max="1" step="0.05" value="${ms.duck ?? .6}"><input class="num" readonly value="${Math.round((ms.duck ?? .6) * 100)}%"></div>
-        <div class="hint">“Kıs” açık izler (müzik), diğer izlerde konuşma varken otomatik kısılır (dışa aktarımda sidechain kompresör; önizlemede yaklaşık).</div>
-        <div class="sec">Seçili klip</div><div id="mxClip" class="hint">Zaman çizelgesinde bir ses/video klibi seç.</div></div></div>`;
+        <div class="hint">“Kıs” açık izler (müzik), diğer izlerde konuşma varken otomatik kısılır (dışa aktarımda sidechain kompresör).</div>
+        <div class="sec">Seçili klip · 10-Bant EQ & Pan</div><div id="mxClip" class="hint">Zaman çizelgesinde bir ses/video klibi seç.</div></div></div>`;
   const c = selClips()[0];
-  if (c && (clipKind(c) === "audio" || assetOf(c)?.audio)) $("#mxClip").innerHTML = `<b>${esc(assetOf(c)?.name || "")}</b><div class="chips" style="margin-top:6px">${Object.entries(ST.cat.afx || {}).map(([id, n]) => `<button class="tb${(c.afx || []).includes(id) ? " on" : ""}" data-mafx="${id}" style="font-size:11px;padding:4px 8px">${esc(n)}</button>`).join("")}</div>`;
+  if (c && (clipKind(c) === "audio" || assetOf(c)?.audio)) {
+    const bands = window.EQ_BANDS_HZ || [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+    const eq = c.eq || bands.map(() => 0);
+    const eqPre = ST.cat.eqPresets || { flat: ["Düz", bands.map(() => 0)], podcast: ["Podcast", [-6,-4,-2,-1,1,2,4,5,3,1]], bass: ["Bas", [6,5,4,2,0,-1,0,1,1,0]], bright: ["Tiz", [-1,-1,0,0,1,2,3,5,6,5]], radio: ["Radyo", [-12,-10,-6,2,5,6,4,-4,-9,-12]], cinema: ["Sinema", [3,2,1,0,-1,1,2,2,3,2]] };
+    $("#mxClip").innerHTML = `<b>${esc(assetOf(c)?.name || "")}</b>` +
+      `<div class="fld"><span>Stereo Pan</span><input type="range" id="mxPan" min="-1" max="1" step="0.05" value="${c.pan || 0}"><input class="num" readonly value="${((c.pan || 0) * 100).toFixed(0)}%"></div>` +
+      `<div class="catpills">${Object.entries(eqPre).map(([id, [nm]]) => `<button type="button" data-meqp="${id}">${esc(nm)}</button>`).join("")}</div>` +
+      `<div class="eq10">${bands.map((f, i) => `<div class="eqb"><span class="eqv">${(+(eq[i] || 0)).toFixed(0)}</span><input type="range" orient="vertical" min="-12" max="12" step="0.5" value="${eq[i] || 0}" data-eqi="${i}"><small>${f >= 1000 ? (f / 1000) + "k" : f}</small></div>`).join("")}</div>` +
+      `<div class="chips" style="margin-top:6px">${Object.entries(ST.cat.afx || {}).map(([id, n]) => `<button class="tb${(c.afx || []).includes(id) ? " on" : ""}" data-mafx="${id}" style="font-size:11px;padding:4px 8px">${esc(n)}</button>`).join("")}</div>`;
+  }
+  startVuLoop();
 }
 function dbOf(v) { return v <= 0 ? "-∞" : (20 * Math.log10(v)).toFixed(1) + " dB"; }
 $("#mixer").addEventListener("input", e => {
-  const f = e.target.closest("[data-tvol]"); if (f) { const t = ST.p.tracks.find(x => x.id === f.dataset.tvol); t.vol = +f.value; f.nextElementSibling.textContent = dbOf(t.vol); ST.dirty = true; scheduleSaveP(); return; }
-  if (e.target.id === "mxD") { (ST.p.master ||= {}).duck = +e.target.value; e.target.nextElementSibling.value = Math.round(e.target.value * 100) + "%"; scheduleSaveP(); }
+  const f = e.target.closest("[data-tvol]"); if (f) { const t = ST.p.tracks.find(x => x.id === f.dataset.tvol); t.vol = +f.value; f.closest(".chan").querySelector(".db").textContent = dbOf(t.vol); ST.dirty = true; window.syncMedia?.(ST.t, false); scheduleSaveP(); return; }
+  if (e.target.id === "mxD") { (ST.p.master ||= {}).duck = +e.target.value; e.target.nextElementSibling.value = Math.round(e.target.value * 100) + "%"; scheduleSaveP(); return; }
+  if (e.target.id === "mxPan") { const c = selClips()[0]; if (!c) return; c.pan = +e.target.value; e.target.nextElementSibling.value = Math.round(c.pan * 100) + "%"; window.syncMedia?.(ST.t, false); ST.dirty = true; scheduleSaveP(); return; }
+  if (e.target.dataset.eqi != null) { const c = selClips()[0]; if (!c) return; c.eq ||= new Array(10).fill(0); c.eq[+e.target.dataset.eqi] = +e.target.value; e.target.previousElementSibling.textContent = (+e.target.value).toFixed(0); window.syncMedia?.(ST.t, false); ST.dirty = true; scheduleSaveP(); }
 });
 function scheduleSaveP() { changed(false); }
 $("#mixer").addEventListener("change", e => { if (e.target.id === "mxL") { snap(); (ST.p.master ||= {}).lufs = e.target.value ? +e.target.value : null; changed(false); } });
 $("#mixer").addEventListener("click", async e => {
-  const mu = e.target.closest("[data-tm]"), du = e.target.closest("[data-td]"), fx = e.target.closest("[data-tfix]"), ma = e.target.closest("[data-mafx]");
+  const mu = e.target.closest("[data-tm]"), du = e.target.closest("[data-td]"), fx = e.target.closest("[data-tfix]"), ma = e.target.closest("[data-mafx]"), ep = e.target.closest("[data-meqp]");
   if (mu) { snap(); const t = ST.p.tracks.find(x => x.id === mu.dataset.tm); t.mute = !t.mute; changed(); renderMixer(); }
   if (du) { snap(); const t = ST.p.tracks.find(x => x.id === du.dataset.td); t.duck = !t.duck; changed(false); renderMixer(); }
+  if (ep) { const c = selClips()[0], pre = ST.cat.eqPresets?.[ep.dataset.meqp]?.[1]; if (c && pre) { snap(); c.eq = [...pre]; window.syncMedia?.(ST.t, false); changed(false); renderMixer(); } }
   if (ma) { const c = selClips()[0]; snap(); const s = new Set(c.afx || []); s.has(ma.dataset.mafx) ? s.delete(ma.dataset.mafx) : s.add(ma.dataset.mafx); c.afx = [...s]; changed(false); renderMixer(); }
   if (fx) {
     const v = await modal(`<h3>İzdeki tüm kliplere</h3><div class="grid2">${[["voice", "Konuşma: netleştir + gürültü"], ["music", "Müzik: dokunma"], ["clean", "Sadece gürültü azalt"], ["off", "Hepsini kaldır"]].map(([k, n]) => `<button class="tb" data-v="${k}">${n}</button>`).join("")}</div>`);

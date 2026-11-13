@@ -195,3 +195,130 @@ def kf_expr_adv(kf: list[dict[str, Any]], key: str, tv: str, default: float) -> 
             ee = u
         expr = f"if(lt({tv},{t1:.4f}),{v0:.4f}+({v1 - v0:.4f})*{ee},{expr})"
     return f"if(lt({tv},{pts[0][0]:.4f}),{pts[0][1]:.4f},{expr})"
+
+
+EQ_BANDS: list[int] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+
+EQ_PRESETS: dict[str, tuple[str, list[float]]] = {
+    "flat": ("Düz", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+    "podcast": ("Podcast / Net Vokal", [-6, -4, -2, -1, 1, 2, 4, 5, 3, 1]),
+    "bass": ("Bas Güçlendir", [6, 5, 4, 2, 0, -1, 0, 1, 1, 0]),
+    "bright": ("Tiz & Parlak", [-1, -1, 0, 0, 1, 2, 3, 5, 6, 5]),
+    "radio": ("Radyo / Eski", [-12, -10, -6, 2, 5, 6, 4, -4, -9, -12]),
+    "cinema": ("Sıcak Sinema", [3, 2, 1, 0, -1, 1, 2, 2, 3, 2]),
+}
+
+AUDIO_CURVES: dict[str, str] = {
+    "tri": "Doğrusal",
+    "qsin": "Yumuşak (S-Eğri)",
+    "log": "Logaritmik",
+    "exp": "Keskin (Üstel)",
+}
+
+
+def eq_filters(eq: list[Any] | None) -> list[str]:
+    """10-bant EQ (-12..+12 dB) FFmpeg equalizer zincirine cevirir."""
+    if not eq or not isinstance(eq, (list, tuple)):
+        return []
+    out: list[str] = []
+    for freq, raw_g in zip(EQ_BANDS, eq):
+        try:
+            g = max(-18.0, min(18.0, float(raw_g or 0)))
+        except (TypeError, ValueError):
+            continue
+        if abs(g) >= 0.1:
+            out.append(f"equalizer=f={freq}:t=o:w=1:g={g:.2f}")
+    return out
+
+
+def pan_filter(pan: Any) -> str:
+    """Stereo pan (-1 sol .. +1 sag) -> stereotools balance_out."""
+    try:
+        p = max(-1.0, min(1.0, float(pan or 0)))
+    except (TypeError, ValueError):
+        return ""
+    return f"stereotools=balance_out={p:.3f}" if abs(p) >= 0.01 else ""
+
+
+def resolve_parent_xform(
+    c: dict[str, Any],
+    by_id: dict[str, dict[str, Any]],
+    resolve_kf: Any,
+    T0: float,
+    off: float,
+    cut0: float,
+    W: int,
+    H: int,
+) -> tuple[str, bool, str, bool, str, str]:
+    """AE katman ebeveynligini (c.parent) dongusuz cozer -> (scale_ex, dyn_sc, rot_ex, dyn_rot, px_ex, py_ex)."""
+    chain: list[dict[str, Any]] = []
+    cur: dict[str, Any] | None = c
+    seen: set[str] = set()
+    while cur and cur.get("id") not in seen:
+        seen.add(str(cur.get("id") or ""))
+        chain.append(cur)
+        pid = cur.get("parent")
+        cur = by_id.get(str(pid)) if pid else None
+
+    def prop_stream(node: dict[str, Any], key: str, default: float) -> tuple[str, bool]:
+        shift = float(c.get("start", 0)) - float(node.get("start", 0))
+        tv = f"(t+{cut0 + shift:.4f})"
+        d_n = float(node.get("dur", 0) or 0)
+        ukf = resolve_kf(node.get("kf") or [], d_n)
+        base = float(node.get(key) if node.get(key) is not None else default)
+        if any(key in q for q in ukf):
+            return kf_expr_adv(ukf, key, tv, base), True
+        return f"{base:.4f}", abs(base - default) > 1e-4
+
+    def prop_ov(node: dict[str, Any], key: str, default: float) -> tuple[str, bool]:
+        tv = f"(t+{T0 - float(node.get('start', 0)):.4f})"
+        d_n = float(node.get("dur", 0) or 0)
+        ukf = resolve_kf(node.get("kf") or [], d_n)
+        base = float(node.get(key) if node.get(key) is not None else default)
+        if any(key in q for q in ukf):
+            return kf_expr_adv(ukf, key, tv, base), True
+        return f"{base:.4f}", abs(base - default) > 1e-4
+
+    sc_parts: list[str] = []
+    dyn_sc = False
+    rot_parts: list[str] = []
+    dyn_rot = False
+    for node in chain:
+        se, ds = prop_stream(node, "scale", 1.0)
+        if ds or se != "1.0000":
+            sc_parts.append(f"({se})")
+        dyn_sc = dyn_sc or ds
+        re_, dr = prop_stream(node, "rot", 0.0)
+        if dr or abs(float(node.get("rot", 0) or 0)) > 0.01:
+            rot_parts.append(f"({re_})")
+        dyn_rot = dyn_rot or dr
+
+    px_expr = "0"
+    py_expr = "0"
+    cum_s_parts: list[str] = []
+    cum_r_parts: list[str] = []
+    for idx in range(len(chain) - 1, -1, -1):
+        node = chain[idx]
+        nx, hx = prop_ov(node, "x", 0.0)
+        ny, hy = prop_ov(node, "y", 0.0)
+        if hx or hy or abs(float(node.get("x", 0) or 0)) > 1e-4 or abs(float(node.get("y", 0) or 0)) > 1e-4:
+            cx, cy = f"({nx})*{W}", f"({ny})*{H}"
+            if not cum_s_parts and not cum_r_parts:
+                px_expr, py_expr = cx, cy
+            else:
+                cs = "*".join(cum_s_parts) if cum_s_parts else "1"
+                if not cum_r_parts:
+                    px_expr = f"({px_expr})+({cs})*({cx})"
+                    py_expr = f"({py_expr})+({cs})*({cy})"
+                else:
+                    cr = f"(({'+'.join(cum_r_parts)})*PI/180)"
+                    px_expr = f"({px_expr})+({cs})*(({cx})*cos({cr})-({cy})*sin({cr}))"
+                    py_expr = f"({py_expr})+({cs})*(({cx})*sin({cr})+({cy})*cos({cr}))"
+        ns, ds = prop_ov(node, "scale", 1.0)
+        if ds or ns != "1.0000":
+            cum_s_parts.append(f"({ns})")
+        nr, dr = prop_ov(node, "rot", 0.0)
+        if dr or abs(float(node.get("rot", 0) or 0)) > 0.01:
+            cum_r_parts.append(f"({nr})")
+
+    return "*".join(sc_parts) or "1.0000", dyn_sc, "+".join(rot_parts) or "0.0000", dyn_rot, px_expr, py_expr

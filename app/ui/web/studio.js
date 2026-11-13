@@ -394,8 +394,74 @@ function mediaEl(c) {
   r = ST.rt[c.id] = { el, src: a.url, isV };
   return r;
 }
-function dropEl(id) { const r = ST.rt[id]; if (!r) return; try { r.el.pause(); r.el.removeAttribute("src"); r.el.load(); } catch { } delete ST.rt[id]; }
+function dropEl(id) {
+  const r = ST.rt[id]; if (!r) return;
+  try { r.el.pause(); r.el.removeAttribute("src"); r.el.load(); } catch { }
+  try { r.au?.gain?.disconnect(); r.au?.src?.disconnect(); } catch { }
+  delete ST.rt[id];
+}
 function stopAll() { for (const id of Object.keys(ST.rt)) dropEl(id); }
+const EQ_BANDS_HZ = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+function studioTrackBus(tid) {
+  const ac = ST.ac; if (!ac) return null;
+  ST.acTr ||= {};
+  if (!ST.acMaster) {
+    ST.acMaster = ac.createAnalyser();
+    ST.acMaster.fftSize = 256;
+    ST.acMaster.connect(ac.destination);
+  }
+  if (!ST.acTr[tid]) {
+    const g = ac.createGain(), an = ac.createAnalyser();
+    an.fftSize = 256;
+    g.connect(an);
+    an.connect(ST.acMaster);
+    ST.acTr[tid] = { gain: g, analyser: an };
+  }
+  return ST.acTr[tid];
+}
+function ensureAudioNode(r, c) {
+  if (!r || r.auTried) return r?.au || null;
+  if (!ST.ac) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) { r.auTried = true; return null; }
+    try { ST.ac = new Ctx(); } catch { r.auTried = true; return null; }
+  }
+  if (ST.ac.state === "suspended") ST.ac.resume().catch(() => {});
+  r.auTried = true;
+  try {
+    const ac = ST.ac, src = ac.createMediaElementSource(r.el);
+    const eq = EQ_BANDS_HZ.map((f, i) => {
+      const b = ac.createBiquadFilter();
+      b.type = i === 0 ? "lowshelf" : i === EQ_BANDS_HZ.length - 1 ? "highshelf" : "peaking";
+      b.frequency.value = f; b.Q.value = 1.4; b.gain.value = 0;
+      return b;
+    });
+    const pan = ac.createStereoPanner ? ac.createStereoPanner() : null;
+    const gain = ac.createGain();
+    let prev = src;
+    for (const b of eq) { prev.connect(b); prev = b; }
+    if (pan) { prev.connect(pan); prev = pan; }
+    prev.connect(gain);
+    const bus = studioTrackBus(c.track);
+    if (bus) { gain.connect(bus.gain); r.track = c.track; }
+    else gain.connect(ac.destination);
+    r.au = { src, eq, pan, gain };
+    return r.au;
+  } catch { return null; }
+}
+function updateAudioNode(r, c, vol, audible) {
+  const au = ensureAudioNode(r, c);
+  if (!au) { r.el.volume = Math.min(1, vol); return; }
+  if (r.track !== c.track) {
+    const nb = studioTrackBus(c.track);
+    if (nb) { try { au.gain.disconnect(); au.gain.connect(nb.gain); r.track = c.track; } catch { } }
+  }
+  r.el.volume = 1;
+  au.gain.gain.value = audible ? clamp(vol, 0, 2) : 0;
+  if (au.pan) au.pan.pan.value = clamp(c.pan || 0, -1, 1);
+  const gArr = c.eq || [];
+  au.eq.forEach((b, i) => { b.gain.value = clamp(+(gArr[i] || 0), -18, 18); });
+}
 // gercek klip-klip gecis: sonraki bitisik klibin giris gecisi suresince bu klip altta devam eder (studio.py trans_tail)
 function transTail(c) {
   if (c.freeze || c.ramp) return 0;
@@ -469,8 +535,10 @@ function syncMedia(t, hard = false) {
     const r = mediaEl(c), el = r.el;
     if (act) {
       const want = srcTime(c, t), vol = clipVol(c, t);
-      const gain = Math.min(1, vol);
-      el.volume = gain; el.muted = !(a.audio || a.kind === "audio") || vol <= 0 || c.freeze;
+      const audible = Boolean(a.audio || a.kind === "audio") && vol > 0 && !c.freeze;
+      el.muted = !audible;
+      if (ST.playing || ST.ac) updateAudioNode(r, c, vol, audible);
+      else el.volume = Math.min(1, vol);
       el.playbackRate = clamp(curSpeed(c, t) || 1, .0625, 16);
       if (ST.playing && !c.freeze) {
         if (el.paused) { el.currentTime = want; el.play().catch(() => {}); }
@@ -603,26 +671,52 @@ function drawClip(c, t) {
   }
   if (tr?.rgb) SFX.overlay(cbx, "rgb-strong", W, H, t, local);
   if (c.mask?.type && c.mask.type !== "none" && SFX.applyMask) src = SFX.applyMask(src, c.mask, W, H, PS) || src;
-  // 3) donusum + evrensel anahtar kare + blend -> ana tuval
-  const ukf = c.kf?.length ? kfResolve(c.kf, c.dur) : null;
-  let alpha = ukf ? kfAt(ukf, "opacity", local, c.opacity ?? 1) : (c.opacity ?? 1);
+  // 3) donusum + ebeveyn katman + hareket bulanikligi + evrensel anahtar kare + blend -> ana tuval
+  const clipXformAt = (cl, gt) => {
+    const loc = clamp(gt - cl.start, 0, cl.dur), kf = cl.kf?.length ? kfResolve(cl.kf, cl.dur) : null;
+    return {
+      x: kf ? kfAt(kf, "x", loc, cl.x || 0) : (cl.x || 0),
+      y: kf ? kfAt(kf, "y", loc, cl.y || 0) : (cl.y || 0),
+      sc: kf ? kfAt(kf, "scale", loc, cl.scale ?? 1) : (cl.scale ?? 1),
+      rot: kf ? kfAt(kf, "rot", loc, cl.rot || 0) : (cl.rot || 0),
+      op: kf ? kfAt(kf, "opacity", loc, cl.opacity ?? 1) : (cl.opacity ?? 1),
+    };
+  };
+  const xf = clipXformAt(c, t);
+  let alpha = xf.op;
   const fi = Math.max(c.fadeIn || 0, c.trans?.in === "fade" ? (c.trans.dur || .35) : 0);
   if (fi > 0 && local < fi) alpha *= local / fi;
   if (c.fadeOut > 0 && c.dur - local < c.fadeOut) alpha *= Math.max(0, (c.dur - local) / c.fadeOut);
   const [shx, shy] = SFX.shakeOffset(fxOn.flatMap(id => ST.cat.fx[id]?.ov || []), t, W);
   alpha *= A.a;
+  let mblur = 0;
+  if ((c.shutterAngle || 0) >= 45) {
+    const dt = 1 / Math.max(12, ST.p.fps || 30), pxf = clipXformAt(c, t - dt);
+    const vel = Math.hypot((xf.x - pxf.x) * W, (xf.y - pxf.y) * H) + Math.abs(xf.sc - pxf.sc) * 80 + Math.abs(xf.rot - pxf.rot) * .45;
+    mblur = Math.min(18, vel * (c.shutterAngle / 180) * .55);
+  }
   vctx.save();
   vctx.globalAlpha = clamp(alpha, 0, 1);
   if (c.blend && c.blend !== "normal" && SFX.BLEND_JS?.[c.blend]) vctx.globalCompositeOperation = SFX.BLEND_JS[c.blend];
-  const bl = Math.max(tr?.blur || 0, A.b * .45);
+  const bl = Math.max(tr?.blur || 0, A.b * .45, mblur);
   if (bl > .05) vctx.filter = `blur(${bl * PS}px)`;
   if (tr?.mask) SFX.transMask(vctx, tr.mask, W, H);
-  const sc = ukf ? kfAt(ukf, "scale", local, c.scale ?? 1) : (c.scale ?? 1);
-  const kx = ukf ? kfAt(ukf, "x", local, c.x || 0) : (c.x || 0);
-  const ky = ukf ? kfAt(ukf, "y", local, c.y || 0) : (c.y || 0);
-  const kr = ukf ? kfAt(ukf, "rot", local, c.rot || 0) : (c.rot || 0);
+  // AE ebeveynlik zinciri (uzerinden konum/olcek/dondurme mirasi)
+  const pChain = [];
+  if (c.parent) {
+    const seen = new Set([c.id]); let cur = ST.p.clips.find(x => x.id === c.parent);
+    while (cur && !seen.has(cur.id)) { seen.add(cur.id); pChain.unshift(cur); cur = cur.parent ? ST.p.clips.find(x => x.id === cur.parent) : null; }
+  }
+  vctx.translate(W / 2, H / 2);
+  for (const pc of pChain) {
+    const px = clipXformAt(pc, t);
+    vctx.translate(px.x * W, px.y * H);
+    if (px.rot) vctx.rotate(px.rot * Math.PI / 180);
+    if (px.sc !== 1) vctx.scale(Math.max(1e-4, px.sc), Math.max(1e-4, px.sc));
+  }
+  const sc = xf.sc, kx = xf.x, ky = xf.y, kr = xf.rot;
   const rot = (kr + A.r + (tr?.rot || 0)) * Math.PI / 180;
-  vctx.translate(W / 2 + (kx + A.x) * W + shx + (tr?.dx || 0) * W, H / 2 + (ky + A.y) * H + shy + (tr?.dy || 0) * H);
+  vctx.translate((kx + A.x) * W + shx + (tr?.dx || 0) * W, (ky + A.y) * H + shy + (tr?.dy || 0) * H);
   if (rot) vctx.rotate(rot);
   const ksx = sc * A.s * A.sx * (tr?.sx || 1), ksy = sc * A.s * A.sy * (tr?.sy || 1);
   if (ksx !== 1 || ksy !== 1 || c.flipH || c.flipV) {
@@ -898,6 +992,9 @@ function clipEl(c, t) {
   if (c.kf?.length) tags.push("◆" + c.kf.length);
   if (c.mask?.type && c.mask.type !== "none") tags.push("◒");
   if (c.blend && c.blend !== "normal") tags.push("◧");
+  if (c.parent) tags.push("↳");
+  if (c.optFlow) tags.push("≈");
+  if (c.eq?.some(x => Math.abs(x) >= .1)) tags.push("▥");
   if (c.zoom?.length) tags.push("⊕");
   if (c.reframe?.length) tags.push("▯");
   if (c.trans?.in && c.trans.in !== "none") tags.push("⇋");
@@ -1248,7 +1345,11 @@ function renderInsp() {
       fldkf(c, "Döndür", "rot", -180, 180, 1, c.rot || 0) +
       `<div class="row tight" style="margin-bottom:6px"><button class="tb" data-a2="rot90" title="90° saat yönünde döndür">↻ 90°</button><button class="tb${c.flipH ? " on" : ""}" data-a2="flipH" title="Yatay ayna">⇄ Ayna</button><button class="tb${c.flipV ? " on" : ""}" data-a2="flipV" title="Dikey ters çevir">⇅ Ters çevir</button><button class="tb" data-a2="resetXform" title="Dönüşümü sıfırla">↺</button></div>` +
       fldkf(c, "Opaklık", "opacity", 0, 1, .01, c.opacity ?? 1) +
-      sel("Karışım", "blend", blends, c.blend || "normal");
+      sel("Karışım", "blend", blends, c.blend || "normal") +
+      fld("Hareket bulanıklığı", "shutterAngle", 0, 360, 15, c.shutterAngle || 0);
+    const leadsToSelf = x => { const s = new Set([c.id]); let cur = x; while (cur) { if (s.has(cur.id)) return true; s.add(cur.id); cur = cur.parent ? ST.p.clips.find(z => z.id === cur.parent) : null; } return false; };
+    const pOpts = { "": "Yok", ...Object.fromEntries(ST.p.clips.filter(x => x !== c && ["video", "image"].includes(clipKind(x)) && !leadsToSelf(x)).map(x => [x.id, `${assetOf(x)?.name || x.id} (${fmt(x.start, false)})`])) };
+    h += sel("Ebeveyn katman", "parent", pOpts, c.parent || "");
     h += `<div class="sec">Maske</div>` + sel("Şekil", "mask.type", masks, mk.type || "none");
     if (mk.type && mk.type !== "none") {
       h += fld("Merkez X", "mask.x", 0, 1, .01, mk.x ?? .5) + fld("Merkez Y", "mask.y", 0, 1, .01, mk.y ?? .5) +
@@ -1260,11 +1361,21 @@ function renderInsp() {
   if (k === "video" || k === "audio") {
     h += `<div class="sec">Hız</div>` + fld("Hız", "speed", .1, 8, .05, c.speed || 1) +
       `<div class="row tight">${[.25, .5, 1, 1.5, 2, 4].map(v => `<button class="tb" data-speed="${v}">${v}×</button>`).join("")}</div>`;
-    if (k === "video") h += `<div class="sec">Hız rampası</div><div class="grid3 ramps">${Object.entries(RAMPS).map(([id, r]) => `<button class="tb${(id === "none" && !c.ramp) ? " on" : ""}" data-ramp="${id}">${r.n}</button>`).join("")}</div>` +
-      (c.ramp ? `<canvas id="rampCv" width="270" height="96" title="Noktayı sürükle · çift tık: nokta ekle · sağ tık: sil"></canvas><div class="hint">Yukarı = hızlı, aşağı = yavaş. Klip süresi kendiliğinden ayarlanır.</div>` : "");
+    if (k === "video") {
+      h += chk("Optik Akış (Yumuşak yavaşlatma)", "optFlow", c.optFlow);
+      h += `<div class="sec">Hız rampası</div><div class="grid3 ramps">${Object.entries(RAMPS).map(([id, r]) => `<button class="tb${(id === "none" && !c.ramp) ? " on" : ""}" data-ramp="${id}">${r.n}</button>`).join("")}</div>` +
+        (c.ramp ? `<canvas id="rampCv" width="270" height="96" title="Noktayı sürükle · çift tık: nokta ekle · sağ tık: sil"></canvas><div class="hint">Yukarı = hızlı, aşağı = yavaş. Klip süresi kendiliğinden ayarlanır.</div>` : "");
+    }
   }
   if (k === "audio" || (k === "video" && a?.audio)) {
-    h += `<div class="sec">Ses</div>` + fldkf(c, "Ses düzeyi", "vol", 0, 2, .01, c.vol ?? 1) + fld("Açılış", "fadeIn", 0, 5, .05, c.fadeIn || 0) + fld("Kapanış", "fadeOut", 0, 5, .05, c.fadeOut || 0);
+    const curves = ST.cat.audioCurves || { tri: "Doğrusal", qsin: "Yumuşak (S-Eğri)", log: "Logaritmik", exp: "Keskin (Üstel)" };
+    const eqPre = ST.cat.eqPresets || { flat: ["Düz", [0,0,0,0,0,0,0,0,0,0]], podcast: ["Podcast", [-6,-4,-2,-1,1,2,4,5,3,1]], bass: ["Bas", [6,5,4,2,0,-1,0,1,1,0]], bright: ["Tiz", [-1,-1,0,0,1,2,3,5,6,5]], radio: ["Radyo", [-12,-10,-6,2,5,6,4,-4,-9,-12]], cinema: ["Sinema", [3,2,1,0,-1,1,2,2,3,2]] };
+    h += `<div class="sec">Ses</div>` + fldkf(c, "Ses düzeyi", "vol", 0, 2, .01, c.vol ?? 1) +
+      fld("Stereo Pan", "pan", -1, 1, .05, c.pan || 0) +
+      fld("Açılış", "fadeIn", 0, 5, .05, c.fadeIn || 0) + fld("Kapanış", "fadeOut", 0, 5, .05, c.fadeOut || 0) +
+      sel("Ses eğrisi", "fadeCurve", curves, c.fadeCurve || "tri") +
+      `<div class="catpills">${Object.entries(eqPre).map(([id, [nm]]) => `<button type="button" data-eqp="${id}" title="10-bant EQ ön ayarı">${esc(nm)}</button>`).join("")}</div>` +
+      `<div class="row"><button class="tb" data-a2="toaudio">▥ Mikserde 10-Bant EQ aç</button></div>`;
   } else if (k === "video" || k === "image") h += `<div class="sec">Belir / kaybol</div>` + fld("Açılış", "fadeIn", 0, 5, .05, c.fadeIn || 0) + fld("Kapanış", "fadeOut", 0, 5, .05, c.fadeOut || 0);
   if (k === "video" || k === "image" || k === "audio") h += ukfInsp(c);
   if (k === "video" || k === "image") {
@@ -1487,7 +1598,7 @@ function inspSet(k, v, live) {
   }
   const textual = k === "text" || k.startsWith("style.") || k === "subscribe" || k === "graphic" || k === "mode" || k === "date" || k === "cam";
   if (textual) assDirty();
-  if (live) { draw(); if (k === "speed" || k === "start" || k === "dur" || k === "vol" || k.startsWith("fade")) renderTimeline(); renderHandles(); ST.dirty = true; scheduleSave(); }
+  if (live) { draw(); if (k === "pan" || k === "vol") syncMedia(ST.t, false); if (k === "speed" || k === "start" || k === "dur" || k === "vol" || k.startsWith("fade")) renderTimeline(); renderHandles(); ST.dirty = true; scheduleSave(); }
   else changed();
 }
 $("#insp").addEventListener("input", e => {
@@ -1559,7 +1670,13 @@ $("#insp").addEventListener("click", async e => {
     if (ai >= 1) { snap(); list[ai].k.bez = b.dataset.bez; changed(); }
     return;
   }
+  if (b.dataset.eqp && c) {
+    const pre = ST.cat.eqPresets?.[b.dataset.eqp]?.[1];
+    if (pre) { snap(); for (const x of selClips()) x.eq = [...pre]; changed(); syncMedia(ST.t, false); toast("EQ uygulandı: " + (ST.cat.eqPresets[b.dataset.eqp]?.[0] || b.dataset.eqp)); }
+    return;
+  }
   const a2 = b.dataset.a2;
+  if (a2 === "toaudio") { window.setPage?.("audio"); return; }
   if (a2 === "ukfclear" && c) { snap(); delete c.kf; delete ST.bezIdx; changed(); return; }
   if (a2 === "restoreCuts") { const n = restoreCuts([...ST.cutSel]); toast(`${n} kesilen bölge eski haline getirildi`); return; }
   if (a2 === "dropCuts") { dropCuts([...ST.cutSel]); toast("Kesim izi temizlendi"); return; }
@@ -1819,8 +1936,16 @@ document.addEventListener("keydown", e => {
   else if (k.toLowerCase() === "s" && !ctrl) splitAtPlayhead();
   else if (k.toLowerCase() === "m") $('[data-a="marker"]').click();
   else if (k.toLowerCase() === "f") $('[data-a="full"]').click();
-  else if (k === "ArrowLeft") { e.preventDefault(); seek(ST.t - (e.shiftKey ? 1 : 1 / ST.p.fps)); }
-  else if (k === "ArrowRight") { e.preventDefault(); seek(ST.t + (e.shiftKey ? 1 : 1 / ST.p.fps)); }
+  else if (k === "ArrowLeft") {
+    e.preventDefault();
+    if (e.altKey && ST.sel.size) { snap(); const dt = (e.shiftKey ? 5 : 1) / ST.p.fps; for (const x of selClips()) x.start = Math.max(0, +(x.start - dt).toFixed(4)); changed(); }
+    else seek(ST.t - (e.shiftKey ? 1 : 1 / ST.p.fps));
+  }
+  else if (k === "ArrowRight") {
+    e.preventDefault();
+    if (e.altKey && ST.sel.size) { snap(); const dt = (e.shiftKey ? 5 : 1) / ST.p.fps; for (const x of selClips()) x.start = +(x.start + dt).toFixed(4); changed(); }
+    else seek(ST.t + (e.shiftKey ? 1 : 1 / ST.p.fps));
+  }
   else if (k === "Home") seek(0);
   else if (k === "End") seek(projEnd());
   else if (k === "+" || k === "=") setZoom(ST.px * 1.4);
@@ -1880,4 +2005,4 @@ async function boot() {
 window.addEventListener("pywebviewready", boot);
 window.addEventListener("beforeunload", () => { if (ST.dirty) save(); });
 Object.assign(window, { ST, toast, modal, ask, promptText, busy, job, waitStudioJob, snap, changed, importPaths, addClip, placeAt, addTrack, trackFor,
-  selClips, splitClip, removeRanges, kfResolve, fmt, esc, clone, clipKind, assetOf, trackOf, seek, draw, projEnd, openProject, dropAsset, resolveOverlap, renderTimeline, renderInsp, assDirty, layoutView });
+  selClips, splitClip, removeRanges, kfResolve, fmt, esc, clone, clipKind, assetOf, trackOf, seek, draw, projEnd, openProject, dropAsset, resolveOverlap, renderTimeline, renderInsp, assDirty, layoutView, EQ_BANDS_HZ, syncMedia, clipVol });
