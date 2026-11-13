@@ -3292,3 +3292,60 @@ class Api(StudioMixin):
     def manga_translate_page(self, image_path: str, out_path: str = "", target_lang: str = "tr") -> dict[str, Any]:
         from app.core.manga_translate import translate_manga_page
         return translate_manga_page(image_path, out_path, target_lang=target_lang)
+
+    # ---------- Faz 16: Kami Kopru, LAN P2P, Kami Pano & Sesli Komut ----------
+    def bridge_mirror_status(self) -> dict[str, Any]:
+        from app.core.screen_bridge import mirror_status
+        return mirror_status()
+
+    def bridge_mirror_start(self, kind: str = "scrcpy", record_path: str = "") -> dict[str, Any]:
+        from app.core.screen_bridge import start_mirror
+        return start_mirror(kind, record_path=record_path)
+
+    def bridge_mirror_stop(self, kind: str = "") -> dict[str, Any]:
+        from app.core.screen_bridge import stop_mirror
+        return stop_mirror(kind)
+
+    def _lan_srv(self):
+        if getattr(self, "_lan_p2p", None) is None:
+            from app.core.lan_p2p import LanShareServer
+            self._lan_p2p = LanShareServer()
+        return self._lan_p2p
+
+    def lan_share_file(self, path: str) -> dict[str, Any]:
+        return self._lan_srv().share_file(path)
+
+    def lan_share_stop(self) -> dict[str, Any]:
+        return self._lan_srv().stop()
+
+    def pano_shelf_list(self) -> dict[str, Any]:
+        from app.core.pano_tools import list_shelf
+        return {"ok": True, "items": list_shelf()}
+
+    def pano_shelf_add(self, kind: str, value: str, label: str = "") -> dict[str, Any]:
+        from app.core.pano_tools import add_shelf_item
+        return add_shelf_item(kind, value, label)
+
+    def pano_shelf_remove(self, item_id: str) -> dict[str, Any]:
+        from app.core.pano_tools import remove_shelf_item
+        return remove_shelf_item(item_id)
+
+    def pano_pick_oklch(self, x: int, y: int) -> dict[str, Any]:
+        from app.core.pano_tools import pick_screen_oklch
+        return pick_screen_oklch(x, y)
+
+    def pano_measure_rect(self, x1: int, y1: int, x2: int, y2: int) -> dict[str, Any]:
+        from app.core.pano_tools import measure_pixel_rect
+        return measure_pixel_rect(x1, y1, x2, y2)
+
+    def pano_ocr(self, x: int, y: int, w: int, h: int, lang: str = "") -> dict[str, Any]:
+        from app.core.pano_tools import pano_ocr_region
+        return pano_ocr_region(x, y, w, h, lang=lang)
+
+    def voice_parse_command(self, text: str) -> dict[str, Any]:
+        from app.core.voice_cmd import parse_voice_command
+        return parse_voice_command(text)
+
+    def voice_status(self) -> dict[str, Any]:
+        from app.core.voice_cmd import voice_capabilities
+        return voice_capabilities()
