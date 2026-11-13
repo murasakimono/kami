@@ -462,7 +462,8 @@ async function kamiInvite() {
     const st = await kamiStatus(); if (!st) return;
     $("rmUrl").value = st.url || (st.tunnel === "installing" ? "Cloudflare aracı indiriliyor…" : st.tunnel === "error" ? "Tünel açılamadı: " + st.error : "Davet bağlantısı hazırlanıyor…");
     $("sTurn").textContent = st.turn ? "Cloudflare TURN açık: her ağda bağlanır." : "TURN anahtarı yok: bazı mobil hatlarda bağlantı kurulamayabilir (Kami Ayarlar > Kami Oda).";
-    if (!st.url) setTimeout(tick, 1500);
+    // sabit adres birkac saniye sonra (bazen yeniden denemeyle) gelir: gecici trycloudflare linkinde takili kalma
+    if (!st.url || !st.stable) setTimeout(tick, st.url ? 4000 : 1500);
   };
   tick();
   $("rmCopy").onclick = () => { const u = $("rmUrl").value; if (!u.startsWith("http")) return; navigator.clipboard?.writeText(u).catch(() => window.pywebview.api.copy_text(u)); $("rmCopy").textContent = "Kopyalandı"; setTimeout(() => ($("rmCopy").textContent = "Kopyala"), 1500); };
