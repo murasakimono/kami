@@ -457,6 +457,16 @@ def oklch_palette(image_path: str, count: int = 6) -> dict[str, Any]:
 # 10.4 Gorunmez Telif Imzasi (QIM/LSB-Spread) & 6 GB VRAM AI Kopru Durumu
 # ---------------------------------------------------------------------------
 
+_WM_SEED = 0x4B4D31
+_WM_SLOTS = (3 + 255) * 8 * 3   # en uzun imza (baslik + 255 bayt) x 3 oy
+
+
+def _wm_positions(n: int) -> np.ndarray:
+    """Imza bitlerinin dagitildigi sabit konumlar. Tum gorseli permute etmek 24 MP'de ~200 MB bellek yer;
+    yalnizca gereken sayida konum secilir (gomme ve okuma ayni boyutla cagirdigi icin ayni dizi cikar)."""
+    return np.random.default_rng(_WM_SEED).choice(n, size=min(n, _WM_SLOTS), replace=False)
+
+
 def embed_blind_watermark(image_path: str, text: str, out_path: str = "") -> dict[str, Any]:
     """Mavi kanalin bit-plane 2 duzlemine tum gorsele dagitilmis (LSB-Spread) gorunmez imza gomer."""
     p = Path(image_path)
@@ -474,11 +484,9 @@ def embed_blind_watermark(image_path: str, text: str, out_path: str = "") -> dic
     img = _open_rgb(p)
     arr = np.asarray(img, dtype=np.uint8).copy()
     flat_b = arr[:, :, 2].reshape(-1)
-    if len(bits) * 3 > flat_b.size:
+    perm = _wm_positions(flat_b.size)   # tum piksel alanina tohumlu dagilim (ustten kirpilmaya karsi)
+    if len(bits) * 3 > perm.size:
         return {"ok": False, "error": "Gorsel bu imza icin cok kucuk"}
-
-    # Tum piksel alanina tohumlu rastgele dagilim (ustten kirpilmaya karsi)
-    perm = np.random.default_rng(0x4B4D31).permutation(flat_b.size)
     step = 0
     for bit in bits:
         for _ in range(3):
@@ -488,6 +496,8 @@ def embed_blind_watermark(image_path: str, text: str, out_path: str = "") -> dic
             step += 1
 
     dst = Path(out_path) if out_path else p.with_name(f"{p.stem}_wm.png")
+    if dst.suffix.lower() not in (".png", ".bmp", ".tif", ".tiff"):
+        dst = dst.with_suffix(".png")   # JPEG/WebP kayipli sikistirma bit duzlemini siler: imza kaybolur
     Image.fromarray(arr, mode="RGB").save(dst)
     return {"ok": True, "path": str(dst), "bytes": len(payload)}
 
@@ -499,13 +509,13 @@ def extract_blind_watermark(image_path: str) -> dict[str, Any]:
         return {"ok": False, "error": "Gorsel bulunamadi"}
     arr = np.asarray(_open_rgb(p), dtype=np.uint8)
     flat_b = arr[:, :, 2].reshape(-1)
-    perm = np.random.default_rng(0x4B4D31).permutation(flat_b.size)
+    perm = _wm_positions(flat_b.size)
 
     def _read_byte(bit_offset: int) -> int:
         val = 0
         for b in range(8):
             idx = (bit_offset + b) * 3
-            if idx + 2 >= flat_b.size:
+            if idx + 2 >= perm.size:
                 return 0
             votes = sum(((int(flat_b[int(perm[idx + k])]) >> 2) & 1) for k in range(3))
             val = (val << 1) | (1 if votes >= 2 else 0)

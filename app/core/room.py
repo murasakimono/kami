@@ -66,7 +66,7 @@ class Room:
             new = p is None
             if new:
                 p = self.peers[pid] = {"name": name[:40] or "Misafir", "kind": kind, "seen": time.time(), "muted": False,
-                                       "deaf": False, "sharing": "", "q": [], "joined": time.time()}
+                                       "deaf": False, "sharing": "", "bg": False, "q": [], "joined": time.time()}
             else:
                 p["seen"] = time.time()
                 p["name"] = name[:40] or p["name"]
@@ -90,7 +90,7 @@ class Room:
         with self.cv:
             p = self.peers.get(pid)
             if p:
-                for k in ("muted", "deaf", "sharing"):
+                for k in ("muted", "deaf", "sharing", "bg"):
                     if k in kw:
                         p[k] = kw[k]
                 self.cv.notify_all()
@@ -107,7 +107,7 @@ class Room:
 
     def _roster(self) -> list[dict[str, Any]]:
         return [{"id": k, "name": p["name"], "kind": p["kind"], "muted": p["muted"], "deaf": p["deaf"],
-                 "sharing": p["sharing"]} for k, p in sorted(self.peers.items(), key=lambda kv: kv[1]["joined"])]
+                 "sharing": p["sharing"], "bg": p.get("bg", False)} for k, p in sorted(self.peers.items(), key=lambda kv: kv[1]["joined"])]
 
     def poll(self, pid: str, since_n: int, roster_v: str, wait: float) -> dict[str, Any]:
         end = time.time() + wait
@@ -116,7 +116,7 @@ class Room:
                 me = self.peers.get(pid)
                 sig = me["q"] if me else []
                 ros = self._roster()
-                rv = str(abs(hash(json.dumps([[r["id"], r["name"], r["muted"], r["deaf"], r["sharing"]] for r in ros]))))
+                rv = str(abs(hash(json.dumps([[r["id"], r["name"], r["muted"], r["deaf"], r["sharing"], r["bg"]] for r in ros]))))
                 if sig or self.seq > since_n or rv != roster_v or time.time() >= end:
                     break
                 self.cv.wait(max(0.05, end - time.time()))
@@ -433,7 +433,7 @@ def _handler(srv: RoomServer):
                 p = r.peers.get(pid)
                 r.say(p["name"] if p else "Misafir", str(body.get("text", "")))
             elif k == "me":
-                r.set_me(pid, **{x: body[x] for x in ("muted", "deaf", "sharing") if x in body})
+                r.set_me(pid, **{x: body[x] for x in ("muted", "deaf", "sharing", "bg") if x in body})
             elif k == "leave":
                 r.leave(pid)
             else:

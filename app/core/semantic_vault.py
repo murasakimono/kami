@@ -242,7 +242,7 @@ def search(
             ).fetchall()
             for r in vec_rows:
                 sim = _cosine(q_vec, _unpack_vec(r["embedding"]))
-                if sim > 0.15:
+                if sim > (0.15 if query_embedding is not None else 0.45):   # trigram yedegi: dusuk esik her seyi eslestirir
                     key = (r["path"], float(r["start_sec"]))
                     cur = results.get(key)
                     score = round((cur["score"] if cur else 0.0) + sim, 4)

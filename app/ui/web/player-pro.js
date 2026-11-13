@@ -101,7 +101,7 @@
           const b = this.bufs[ch];
           const v1 = b[idx1] * (1.0 - f1) + b[(idx1 + 1) % len] * f1;
           const v2 = b[idx2] * (1.0 - f2) + b[(idx2 + 1) % len] * f2;
-          out[ch][i] = v1 * mix + v2 * (1.0 - mix);
+          out[ch][i] = v1 * (1.0 - mix) + v2 * mix;   // atlayan uc (phase 0/len: v1, half: v2) o anda sessiz olmali
         }
         this.w = (this.w + 1) % len;
         this.phase = (this.phase + (1.0 - ratio) + len) % len;
@@ -112,22 +112,20 @@
   registerProcessor("kami-dsp-processor", KamiDspProcessor);`;
 
   function wireChain() {
-    if (typeof PL === "undefined" || !PL.ctx || !PL.gain || !PL.boost) return;
+    // Zincir PL.boost -> PL.delay arasina girer: EQ (PL.gain -> eq -> boost) ve diger baglantilar bozulmaz.
+    if (typeof PL === "undefined" || !PL.ctx || !PL.boost || !PL.delay) return;
     if (!PRO.clarityFilter || !PRO.rgGain) return;
-    try { PL.gain.disconnect(); } catch { /* ilk baglanti */ }
+    if (!PRO.wired) { try { PL.boost.disconnect(PL.delay); } catch { /* zaten ayrik */ } }
     try { PRO.clarityFilter.disconnect(); } catch { /* */ }
     try { PRO.rgGain.disconnect(); } catch { /* */ }
-    if (PRO.workletNode) {
-      try { PRO.workletNode.disconnect(); } catch { /* */ }
-    }
-    // PL.gain -> PRO.clarityFilter -> PRO.rgGain -> (PRO.workletNode) -> PL.boost (-> PL.delay -> PL.an -> destination)
-    PL.gain.connect(PRO.clarityFilter);
+    if (PRO.workletNode) { try { PRO.workletNode.disconnect(); } catch { /* */ } }
+    if (!PRO.wired) PL.boost.connect(PRO.clarityFilter);
     PRO.clarityFilter.connect(PRO.rgGain);
     if (PRO.workletNode && Math.abs(PRO.pitchSemi) > 0.05) {
       PRO.rgGain.connect(PRO.workletNode);
-      PRO.workletNode.connect(PL.boost);
+      PRO.workletNode.connect(PL.delay);
     } else {
-      PRO.rgGain.connect(PL.boost);
+      PRO.rgGain.connect(PL.delay);
     }
     PRO.wired = true;
   }

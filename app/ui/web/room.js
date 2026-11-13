@@ -193,6 +193,20 @@ function onPeerGone(pid) {
   S.meters.delete(pid);
   dropRx(pid);
 }
+// iPhone: Safari arka plana gecince iOS mikrofonu keser (PiP'de dinleme surer). Odadakiler bunu gorsun;
+// geri gelince mikrofon kendiliginden toparlansin.
+const IOS = /iPhone|iPad/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+document.addEventListener("visibilitychange", () => {
+  if (!S.core) return;
+  if (IOS) S.core.setMe({ bg: document.hidden });
+  if (!document.hidden) setTimeout(micRecover, 400);
+});
+async function micRecover() {
+  const t = S.micRaw?.getAudioTracks()[0];
+  if (!S.micRaw || !t || t.readyState === "live" && !t.muted) return;
+  try { await S.ctx?.resume(); } catch { /* dokunus bekliyor */ }
+  try { await buildMic(); toast("Mikrofon yeniden açıldı."); } catch { toast("Mikrofon açılamadı; ekrana bir kez dokun."); }
+}
 document.addEventListener("click", async () => {
   for (const a of S.audios.values()) if (a.paused) a.play().catch(() => {});
   try { await S.ctx?.resume?.(); } catch { /* yok */ }
@@ -335,7 +349,8 @@ function onRoster(list) {
     el.querySelector(".tk-face").textContent = (p.name || "?").trim().charAt(0).toUpperCase();
     el.querySelector("b").textContent = p.name + (me ? " (sen)" : "");
     el.querySelector("small").innerHTML = (p.muted ? `<svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6M3 3l18 18"/></svg>` : "") +
-      (p.deaf ? `<svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2M3 3l18 18"/></svg>` : "") + (p.sharing ? "ekran paylaşıyor" : "");
+      (p.deaf ? `<svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2M3 3l18 18"/></svg>` : "") + (p.sharing ? "ekran paylaşıyor" : "") +
+      (p.bg ? `<span class="bg">arka planda · mikrofonu kapalı</span>` : "");
   }
   box.querySelectorAll(".tk").forEach((el) => { if (!seen.has(el.dataset.id)) el.remove(); });
   layout();
