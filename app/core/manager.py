@@ -58,13 +58,13 @@ class PageLinkRejected(CaptureRejected):
 
 
 _GENERIC_NAMES = frozenset({
-    "video", "playback", "stream", "media", "master", "playlist", "index",
-    "download", "file", "watch", "player", "embed", "chunklist", "output",
+    "video", "playback", "videoplayback", "stream", "media", "master", "playlist", "index",
+    "download", "file", "watch", "player", "embed", "chunklist", "output", "tauvideo",
 })
 
 
 def _smart_filename(filename: str, page_title: str, mime: str = "", url: str = "") -> str:
-    """Rastgele hash / jenerik dosya adini (orn. basdasdwisad.mp4) sayfa basligiyla okunur hale getirir."""
+    """Rastgele hash / jenerik video-ses dosya adini sayfa basligiyla okunur hale getirir."""
     import re
     clean_title = re.sub(
         r"\s*[-|•]\s*(?:YouTube|Dailymotion|Vimeo|Twitch|Watch Online|İzle|Full HD).*$",
@@ -82,8 +82,18 @@ def _smart_filename(filename: str, page_title: str, mime: str = "", url: str = "
             ext = ".mp4"
         elif "audio/" in (mime or "").lower():
             ext = ".mp3"
+    ext_low = ext.lower()
+    is_media_file = (
+        ext_low in (".mp4", ".m4v", ".webm", ".mkv", ".mov", ".flv", ".avi", ".ts",
+                    ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".wav", ".flac",
+                    ".m3u8", ".mpd")
+        or (mime or "").lower().startswith(("video/", "audio/"))
+        or "mpegurl" in (mime or "").lower()
+    )
+    if filename and not is_media_file:
+        return filename
     if not filename:
-        return sanitize_filename(f"{clean_title}{ext}")
+        return sanitize_filename(f"{clean_title}{ext}") if is_media_file else filename
     low = stem.lower()
     is_generic = low in _GENERIC_NAMES
     is_hash = (
@@ -92,7 +102,7 @@ def _smart_filename(filename: str, page_title: str, mime: str = "", url: str = "
         and (
             re.fullmatch(r"[0-9a-f]{8,}", low) is not None
             or re.fullmatch(r"\d{6,}", low) is not None
-            or len(stem) >= 10
+            or (re.search(r"[a-z]", low) is not None and re.search(r"\d", low) is not None)
         )
     )
     if is_generic or is_hash:

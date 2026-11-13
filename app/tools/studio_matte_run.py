@@ -113,16 +113,27 @@ def main(argv: list[str]) -> int:
         if not frames:
             break
         if predict_batch:
-            for rgba_bytes in predict_batch(frames, w, h):
-                enc.stdin.write(rgba_bytes)
+            try:
+                for rgba_bytes in predict_batch(frames, w, h):
+                    enc.stdin.write(rgba_bytes)
+            except RuntimeError as exc:
+                if "out of memory" not in str(exc).lower():
+                    raise
+                import torch
+                torch.cuda.empty_cache()
+                batch_sz = 1
+                for f in frames:
+                    for rgba_bytes in predict_batch([f], w, h):
+                        enc.stdin.write(rgba_bytes)
         else:
             im = Image.frombytes("RGB", (w, h), frames[0])
             mask = predict(im)
             rgba = im.convert("RGBA")
             rgba.putalpha(mask.convert("L").resize((w, h)))
             enc.stdin.write(rgba.tobytes())
+        prev_n = n
         n += len(frames)
-        if n % 5 == 0 or len(frames) < batch_sz:
+        if n // 5 != prev_n // 5 or len(frames) < batch_sz:
             el = time.time() - t0
             emit(p=round(min(0.99, n / total), 3), line=f"{n}/{total} kare · kalan ~{int(el / max(1, n) * max(0, total - n))} sn")
     enc.stdin.close()

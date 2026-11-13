@@ -153,6 +153,74 @@ def _pick_genius_hit(hits: list[dict[str, Any]], title: str) -> str:
     return ""
 
 
+class _GeniusParser:
+    """data-lyrics-container='true' bloklarini ic ice <div> derinligiyle cikarir; baslik/ceviriler copunu atlar."""
+
+    def __init__(self) -> None:
+        from html.parser import HTMLParser
+
+        class _P(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__(convert_charrefs=True)
+                self.parts: list[str] = []
+                self._buf: list[str] = []
+                self._in_container = False
+                self._depth = 0
+                self._skip_depth = 0
+
+            def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+                ad = {k.lower(): (v or "") for k, v in attrs}
+                if tag == "div" and not self._in_container and ad.get("data-lyrics-container") == "true":
+                    self._in_container = True
+                    self._depth = 1
+                    self._buf = []
+                    return
+                if not self._in_container:
+                    return
+                if self._skip_depth:
+                    if tag in ("div", "span", "p", "section"):
+                        self._skip_depth += 1
+                    return
+                if ad.get("data-exclude-from-selection") == "true" or "LyricsHeader" in ad.get("class", ""):
+                    if tag in ("div", "span", "p", "section"):
+                        self._skip_depth = 1
+                    return
+                if tag == "div":
+                    self._depth += 1
+                elif tag == "br":
+                    self._buf.append("\n")
+
+            def handle_endtag(self, tag: str) -> None:
+                if not self._in_container:
+                    return
+                if self._skip_depth:
+                    if tag in ("div", "span", "p", "section"):
+                        self._skip_depth -= 1
+                    return
+                if tag == "div":
+                    self._depth -= 1
+                    if self._depth <= 0:
+                        txt = "".join(self._buf).strip()
+                        if txt:
+                            self.parts.append(txt)
+                        self._in_container = False
+                elif tag == "p":
+                    self._buf.append("\n")
+
+            def handle_data(self, data: str) -> None:
+                if self._in_container and not self._skip_depth:
+                    self._buf.append(data)
+
+        self.parser = _P()
+
+    def parse(self, raw_html: str) -> str:
+        self.parser.feed(raw_html)
+        self.parser.close()
+        text = "\n\n".join(self.parser.parts)
+        lines = [line.rstrip() for line in text.splitlines()]
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 def genius_fetch_lyrics(url: str, session: requests.Session | None = None) -> str:
     """Genius sarki sayfasindan data-lyrics-container bloklarini ceker."""
     if not url or not url.startswith("https://genius.com/"):
@@ -166,18 +234,14 @@ def genius_fetch_lyrics(url: str, session: requests.Session | None = None) -> st
     except requests.RequestException:
         log.warning("Genius sayfa cekme hatasi", exc_info=True)
         return ""
-    blocks = re.findall(
-        r'<div[^>]*data-lyrics-container="true"[^>]*>(.*?)</div>(?=\s*(?:<div[^>]*data-lyrics-container|<div class="LyricsFooter|$))',
-        raw_html, flags=re.S | re.I,
-    )
-    if not blocks:
-        blocks = re.findall(r'<div[^>]*data-lyrics-container="true"[^>]*>(.*?)</div>', raw_html, flags=re.S | re.I)
-    parts = [_html_to_lyrics(b) for b in blocks]
-    return "\n\n".join(p for p in parts if p).strip()
+    return _GeniusParser().parse(raw_html)
+
+
+_TR_ASCII = str.maketrans("çğıİöşüÇĞÖŞÜ", "cgiiosucgosu")
 
 
 def _az_slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+    return re.sub(r"[^a-z0-9]", "", (text or "").translate(_TR_ASCII).lower())
 
 
 def azlyrics_fetch_lyrics(artist: str, title: str, session: requests.Session | None = None) -> str:

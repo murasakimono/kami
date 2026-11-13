@@ -168,8 +168,8 @@ function classify(url, ct, size) {
   if (SKIP_HOST.test(u.hostname)) return null;
   const path = u.pathname.toLowerCase();
   ct = (ct || "").toLowerCase().split(";")[0].trim();
-  if (/mpegurl/.test(ct) || path.endsWith(".m3u8") || HIDDEN_HLS.test(path) ||
-      (ct === "text/plain" && /master|playlist|hls|m3u8|stream/i.test(url))) return "hls";
+  if (/mpegurl/.test(ct) || path.endsWith(".m3u8")) return "hls";
+  if (HIDDEN_HLS.test(path) || (ct === "text/plain" && /master|playlist|hls|m3u8|stream/i.test(url))) return "hls-probe";
   if (/dash\+xml/.test(ct) || path.endsWith(".mpd")) return "dash";
   if (SEGMENT.test(path + u.search) || /mp2t|iso\.segment/.test(ct)) return null;
   const isMedia = /^(video|audio)\//.test(ct) || (MEDIA_EXT.test(path) && !/^(text|image)\//.test(ct));
@@ -220,9 +220,18 @@ chrome.webRequest.onHeadersReceived.addListener((d) => {
     const list = await getTabMedia(d.tabId);
     const base = d.url.split("#")[0];
     if (list.some((m) => m.url === base)) return;
+    let finalKind = kind;
+    if (kind === "hls-probe") {
+      try {
+        const r = await fetch(d.url, { credentials: "include", headers: { Range: "bytes=0-511" } });
+        const head = (await r.text()).trimStart();
+        if (!head.startsWith("#EXTM3U")) return;
+        finalKind = "hls";
+      } catch (_) { return; }
+    }
     let pageUrl = "";
     try { pageUrl = (await chrome.tabs.get(d.tabId)).url || ""; } catch (_) { return; }
-    list.unshift({ url: base, kind, size, mime: ct.split(";")[0], pageUrl, at: Date.now() });
+    list.unshift({ url: base, kind: finalKind, size, mime: ct.split(";")[0], pageUrl, at: Date.now() });
     list.length = Math.min(list.length, MAX_PER_TAB);
     await chrome.storage.session.set({ [mediaKey(d.tabId)]: list });
     setBadgeCount(d.tabId, list.length);
@@ -298,7 +307,7 @@ async function sendMedia({ url, pageUrl = "", mode = "choose", title = "" }) {
 
 async function onVideoButton(msg, sender) {
   const pageUrl = msg.pageUrl || (sender.tab && sender.tab.url) || "";
-  const tabTitle = msg.title || (sender.tab && sender.tab.title) || "";
+  const tabTitle = (sender.tab && sender.tab.title) || msg.title || "";
   const src = msg.src || "";
   let url = pageUrl, title = tabTitle;
   let host = "";
@@ -334,8 +343,14 @@ async function handleDownload(item) {
   }
   let pageTitle = "";
   try {
-    const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (active && active.title) pageTitle = active.title;
+    if (typeof item.tabId === "number" && item.tabId >= 0) {
+      const t = await chrome.tabs.get(item.tabId);
+      if (t && t.title) pageTitle = t.title;
+    } else if (item.referrer) {
+      const tabs = await chrome.tabs.query({});
+      const match = tabs.find((t) => t.url === item.referrer);
+      if (match && match.title) pageTitle = match.title;
+    }
   } catch (_) {}
   const res = await sendToKami({
     url,

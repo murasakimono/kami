@@ -25,9 +25,15 @@ def test_opensubs_accepts_matching_show_and_episode():
 
 
 def test_smart_filename_renames_random_hash_and_generic():
-    assert _smart_filename("basdasdwisad.mp4", "Kyle XY S01E02 - İzle", "video/mp4") == "Kyle XY S01E02.mp4"
+    assert _smart_filename("a8f9c2d1e4.mp4", "Kyle XY S01E02 - İzle", "video/mp4") == "Kyle XY S01E02.mp4"
+    assert _smart_filename("x9k2m8p4q1z7.mp4", "Kyle XY S01E02 - İzle", "video/mp4") == "Kyle XY S01E02.mp4"
     assert _smart_filename("master.m3u8", "Dragon Ball Z - Bölüm 12", "") == "Dragon Ball Z - Bölüm 12.m3u8"
+    assert _smart_filename("TauVideo.mp4", "Dragon Ball (1986) 1. Sezon 2. Bölüm - AnimeciX", "video/mp4") == "Dragon Ball (1986) 1. Sezon 2. Bölüm - AnimeciX.mp4"
     assert _smart_filename("Kyle.XY.S01E02.mkv", "DiziBox", "video/x-matroska") == "Kyle.XY.S01E02.mkv"
+    assert _smart_filename("chromesetup.exe", "Google Chrome - İndir", "") == "chromesetup.exe"
+    assert _smart_filename("screenshot.png", "Google Chrome - İndir", "") == "screenshot.png"
+    assert _smart_filename("installation.zip", "Google Chrome - İndir", "") == "installation.zip"
+    assert _smart_filename("report2024.pdf", "Google Chrome - İndir", "") == "report2024.pdf"
 
 
 def test_lyrics_genius_and_azlyrics_fallback(tmp_path):
@@ -47,7 +53,7 @@ def test_lyrics_genius_and_azlyrics_fallback(tmp_path):
     }
     genius_page_ok = MagicMock(
         status_code=200,
-        text='<div data-lyrics-container="true">İlk satır<br/>İkinci satır</div>',
+        text='<div data-lyrics-container="true"><div class="LyricsHeader__Container-sc-1" data-exclude-from-selection="true">531 Contributors<span>Translations</span></div><div>İlk satır<br/>İkinci satır</div></div>',
     )
     session.get.side_effect = [lrclib_empty, lrclib_search_empty, genius_search_ok, genius_page_ok]
 
@@ -76,3 +82,4 @@ def test_lyrics_azlyrics_fallback_when_genius_empty(tmp_path):
     assert res["lyrics"] == "plain"
     assert res["source"] == "azlyrics"
     assert (tmp_path / "Artist - Track.txt").read_text(encoding="utf-8").strip() == "Hello world\nSecond line"
+    assert lyrics._az_slug("Yaşamak Öldürür") == "yasamakoldurur"

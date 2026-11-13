@@ -789,7 +789,7 @@ class StudioMixin:
             meth = m.get("supportedGenerationMethods") or []
             if "image" in name and "generateContent" in meth:
                 img.append({"id": name, "name": m.get("displayName") or name})
-            elif "veo" in name and ("predictLongRunning" in meth or "generateVideos" in meth or not meth):
+            elif ("veo" in name or "omni" in name) and ("predictLongRunning" in meth or "generateVideos" in meth or not meth):
                 vid.append({"id": name, "name": m.get("displayName") or name})
         return {"image": img, "video": vid}
 
