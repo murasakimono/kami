@@ -91,7 +91,9 @@ class Api(StudioMixin):
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
     JOB_METHODS = frozenset({
-        "add_url", "pic_ai", "editor_vectorize", "editor_gif", "room_open", "room_relink", "editor_export", "editor_project_save", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
+        "add_url", "pic_ai", "pic_freq_sep", "pic_seam_carve", "pic_clone_lut", "pic_hdr_merge",
+        "pic_focus_stack", "pic_ecom_pack", "pic_mockup", "pic_watermark_embed",
+        "editor_vectorize", "editor_gif", "room_open", "room_relink", "editor_export", "editor_project_save", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
@@ -1932,6 +1934,56 @@ class Api(StudioMixin):
             return {"ok": False}
         with open(r[0], encoding="utf-8") as f:
             return {"ok": True, "path": r[0], "data": f.read()}
+
+    # ---------- Faz 10: Picture Pro, Lightroom, Mockup, OKLCH & Telif Imzasi ----------
+
+    def pic_freq_sep(self, image: str, radius: float = 4.0) -> dict[str, Any]:
+        from app.core.picture_pro import frequency_separation
+        return frequency_separation(str(image), radius=float(radius))
+
+    def pic_seam_carve(self, image: str, target_w: int, target_h: int, out_path: str = "") -> dict[str, Any]:
+        from app.core.picture_pro import seam_carve_resize
+        return seam_carve_resize(str(image), int(target_w), int(target_h), str(out_path or ""))
+
+    def pic_clone_lut(self, src_image: str, ref_image: str, out_cube: str, size: int = 17) -> dict[str, Any]:
+        from app.core.picture_pro import clone_lut_from_reference
+        return clone_lut_from_reference(str(src_image), str(ref_image), str(out_cube), size=int(size))
+
+    def pic_cube_to_hald(self, cube_path: str, out_png: str) -> dict[str, Any]:
+        from app.core.picture_pro import cube_to_haldclut
+        return cube_to_haldclut(str(cube_path), str(out_png))
+
+    def pic_hdr_merge(self, images: list[str], out_path: str) -> dict[str, Any]:
+        from app.core.picture_pro import hdr_merge_mertens
+        return hdr_merge_mertens([str(x) for x in (images or [])], str(out_path))
+
+    def pic_focus_stack(self, images: list[str], out_path: str) -> dict[str, Any]:
+        from app.core.picture_pro import focus_stack_laplacian
+        return focus_stack_laplacian([str(x) for x in (images or [])], str(out_path))
+
+    def pic_ecom_pack(self, image: str, pad_ratio: float = 0.12, size: int = 1200, shadow: bool = True) -> dict[str, Any]:
+        from app.core.picture_pro import ecommerce_studio_pack
+        return ecommerce_studio_pack(str(image), pad_ratio=float(pad_ratio), size=int(size), shadow=bool(shadow))
+
+    def pic_mockup(self, design: str, base: str, dst_quad: list[list[float]], out_path: str = "") -> dict[str, Any]:
+        from app.core.picture_pro import perspective_mockup
+        return perspective_mockup(str(design), str(base), dst_quad or [], str(out_path or ""))
+
+    def pic_oklch_palette(self, image: str, count: int = 6) -> dict[str, Any]:
+        from app.core.picture_pro import oklch_palette
+        return oklch_palette(str(image), count=int(count))
+
+    def pic_watermark_embed(self, image: str, text: str, out_path: str = "") -> dict[str, Any]:
+        from app.core.picture_pro import embed_blind_watermark
+        return embed_blind_watermark(str(image), str(text), str(out_path or ""))
+
+    def pic_watermark_read(self, image: str) -> dict[str, Any]:
+        from app.core.picture_pro import extract_blind_watermark
+        return extract_blind_watermark(str(image))
+
+    def pic_ai_bridge_status(self) -> dict[str, Any]:
+        from app.core.picture_pro import ai_bridge_status
+        return ai_bridge_status()
 
     def picture_poll(self) -> list[dict[str, Any]]:
         with self._inbox_lock:
