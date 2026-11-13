@@ -1208,6 +1208,37 @@ document.addEventListener("click", e => {
     marker: () => { snap(); (ST.p.markers ||= []).push({ t: +ST.t.toFixed(3), kind: "note" }); changed(); },
     snap: () => { ST.snap = !ST.snap; b.classList.toggle("on", ST.snap); },
     ripple: () => { ST.ripple = !ST.ripple; b.classList.toggle("on", ST.ripple); },
+    smartcut: async () => {
+      const id = [...ST.sel][0]; const c = ST.p?.clips.find(x => x.id === id);
+      const asset = c && ST.p?.assets?.[c.asset];
+      if (!c || !asset?.path) return toast("Önce bir video/ses klibi seç");
+      busy("Kayıpsız Smart Cut…");
+      const r = await api.studio_smart_cut(asset.path, c.in || 0, c.out || 0, "");
+      busy(null);
+      toast(r?.ok ? "Smart Cut kaydedildi: " + r.path.split(/[\\/]/).pop() : (r?.error || "Smart Cut başarısız"));
+    },
+    enhance: async () => {
+      const id = [...ST.sel][0]; const c = ST.p?.clips.find(x => x.id === id);
+      const asset = c && ST.p?.assets?.[c.asset];
+      if (!c || !asset?.path) return toast("Önce ses/video klibi seç");
+      busy("Ses netleştiriliyor (-14 LUFS)…");
+      const r = await api.studio_audio_enhance(asset.path, "", "medium");
+      busy(null);
+      toast(r?.ok ? "Ses iyileştirildi: " + r.path.split(/[\\/]/).pop() : (r?.error || "Ses hatası"));
+    },
+    compound: async () => {
+      const ids = [...ST.sel];
+      if (!ids.length || !ST.p) return toast("Önce klip seç");
+      const first = ST.p.clips.find(x => x.id === ids[0]);
+      snap();
+      if (ids.length === 1 && first?.kind === "compound") {
+        const r = await api.studio_compound_expand(ST.p.clips, first.id);
+        if (r?.ok) { ST.p.clips = r.clips; ST.sel.clear(); changed(); toast("Bileşik klip açıldı"); }
+      } else {
+        const r = await api.studio_compound_create(ST.p.clips, ids, "Bileşik Klip");
+        if (r?.ok) { ST.p.clips = r.clips; ST.sel = new Set([r.compound.id]); changed(); toast("Bileşik klip oluşturuldu"); }
+      }
+    },
     addtrack: async () => { const k = await modal(`<h3>İz ekle</h3><div class="row" style="justify-content:stretch">${[["video", "Video / görsel"], ["audio", "Ses"], ["text", "Metin"], ["fx", "Efekt"]].map(([k, l]) => `<button class="tb" data-v="${k}">${l}</button>`).join("")}</div>`); if (k) { snap(); addTrack(k); changed(); } },
     zin: () => setZoom(ST.px * 1.4), zout: () => setZoom(ST.px / 1.4),
     zfit: () => setZoom((scroller.clientWidth - 40) / Math.max(5, projEnd())),
@@ -1289,6 +1320,10 @@ async function boot() {
   afterLoad();
   window.renderPanel?.("media");
   assInit();
+  $("#editModeSel")?.addEventListener("change", (e) => {
+    ST.editMode = e.target.value;
+    if (ST.editMode === "ripple") { ST.ripple = true; $("#rippleBtn")?.classList.add("on"); }
+  });
   inbox();
 }
 window.addEventListener("pywebviewready", boot);

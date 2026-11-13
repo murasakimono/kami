@@ -18,7 +18,8 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "studio_silences", "studio_freezes", "studio_scenes",
                "studio_myinstants", "studio_fetch_sound", "studio_freesound", "studio_pack_add", "studio_save", "studio_open",
                "studio_stock", "studio_stock_get", "studio_fonts_download", "studio_template", "studio_sfx", "studio_lut_read",
-               "studio_gemini_models", "studio_lottie", "studio_catalog_fonts"}
+               "studio_gemini_models", "studio_lottie", "studio_catalog_fonts",
+               "studio_multicam_sync", "studio_smart_cut", "studio_audio_enhance", "studio_audio_duck"}
 
 
 class StudioMixin:
@@ -964,3 +965,64 @@ class StudioMixin:
             return {"ok": True, "path": out}
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:300]}
+
+    # ---- Faz 8: Premiere Kurgu, Metin Montaj, Multi-Cam, Smart Cut & Broadcast Ses ----
+
+    def studio_transcript_cuts(self, words: list[dict[str, Any]], keep_indices: list[int] | None = None,
+                               total_dur: float = 0.0, captions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        from app.core.studio_edit import remap_captions_for_cuts, transcript_to_cuts
+        cuts = transcript_to_cuts(words or [], keep_indices, total_dur=float(total_dur or 0.0))
+        remapped = remap_captions_for_cuts(captions or [], cuts) if captions else []
+        return {"ok": True, "cuts": cuts, "captions": remapped}
+
+    def studio_multicam_sync(self, paths: list[str]) -> dict[str, Any]:
+        from app.core.studio_edit import multicam_sync
+        ff = self._media.ffmpeg() if self._media else ""
+        return multicam_sync(ff, [str(p) for p in (paths or [])])
+
+    def studio_timeline_edit(self, clips: list[dict[str, Any]], mode: str, clip_id: str,
+                             delta: float, edge: str = "out") -> dict[str, Any]:
+        from app.core.studio_edit import apply_timeline_edit
+        updated = apply_timeline_edit(clips or [], str(mode or "ripple"), str(clip_id), float(delta), str(edge or "out"))
+        return {"ok": True, "clips": updated}
+
+    def studio_jl_cut(self, clip: dict[str, Any], audio_lead: float = 0.0, audio_tail: float = 0.0) -> dict[str, Any]:
+        from app.core.studio_edit import apply_jl_cut
+        return {"ok": True, "clip": apply_jl_cut(clip or {}, float(audio_lead), float(audio_tail))}
+
+    def studio_compound_create(self, clips: list[dict[str, Any]], clip_ids: list[str], name: str = "Bileşik Klip") -> dict[str, Any]:
+        from app.core.studio_edit import create_compound_clip
+        return create_compound_clip(clips or [], [str(x) for x in (clip_ids or [])], str(name or "Bileşik Klip"))
+
+    def studio_compound_expand(self, clips: list[dict[str, Any]], compound_id: str) -> dict[str, Any]:
+        from app.core.studio_edit import expand_compound_clip
+        return {"ok": True, "clips": expand_compound_clip(clips or [], str(compound_id))}
+
+    def studio_smart_cut(self, path: str, start: float, end: float, out_path: str = "") -> dict[str, Any]:
+        from app.core.studio_edit import smart_cut
+        ff = self._media.ffmpeg() if self._media else ""
+        return smart_cut(ff, str(path or ""), float(start), float(end), str(out_path or ""))
+
+    def studio_audio_enhance(self, path: str, out_path: str = "", strength: str = "medium") -> dict[str, Any]:
+        from app.core.studio_audio import enhance_audio_file
+        ff = self._media.ffmpeg() if self._media else ""
+        return enhance_audio_file(ff, str(path or ""), str(out_path or ""), str(strength or "medium"))
+
+    def studio_audio_duck(self, music_path: str, voice_path: str, out_path: str) -> dict[str, Any]:
+        from app.core.studio_audio import duck_music_with_voice
+        ff = self._media.ffmpeg() if self._media else ""
+        return duck_music_with_voice(ff, str(music_path or ""), str(voice_path or ""), str(out_path or ""))
+
+    def studio_bilingual_subs(self, segments: list[dict[str, Any]], fmt: str = "ass",
+                              width: int = 1920, height: int = 1080) -> dict[str, Any]:
+        from app.core.studio_audio import assign_speakers, build_bilingual_ass, build_bilingual_srt
+        tagged = assign_speakers(segments or [])
+        if str(fmt).lower() == "srt":
+            content = build_bilingual_srt(tagged)
+        else:
+            content = build_bilingual_ass(tagged, width=int(width), height=int(height))
+        return {"ok": True, "fmt": str(fmt).lower(), "content": content, "segments": tagged}
+
+    def studio_subtitle_edit(self, path: str, fmt: str = "ass") -> dict[str, Any]:
+        from app.core.studio_audio import subtitle_edit_convert
+        return subtitle_edit_convert(str(path or ""), str(fmt or "ass"))
