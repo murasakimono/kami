@@ -1043,12 +1043,13 @@ class StudioMixin:
         from app.core.studio_brand import list_recipes
         return list_recipes()
 
-    def studio_run_recipe(self, project: dict[str, Any], recipe_id: str) -> dict[str, Any]:
+    def studio_run_recipe(self, project: dict[str, Any], recipe_id: str,
+                          clip_ids: list[str] | None = None) -> dict[str, Any]:
         from app.core.studio_brand import BrandKitStore, apply_viral_recipe
         pid = str((self._manager.settings.get("active_profile") if self._manager else "kisisel") or "kisisel")
         kit = BrandKitStore().load(pid)
         try:
-            return apply_viral_recipe(project or {}, str(recipe_id), brand_kit=kit)
+            return apply_viral_recipe(project or {}, str(recipe_id), brand_kit=kit, clip_ids=clip_ids)
         except KeyError as exc:
             return {"ok": False, "error": str(exc)}
 

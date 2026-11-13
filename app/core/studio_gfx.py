@@ -347,7 +347,10 @@ def graphic(kind: str, ts, col, esc, rrect, s: float, e: float, W: int, H: int, 
         r = 150 * k
         c.ev(3, 0.3, None, f"\\an5\\pos({W / 2:.0f},{H * 0.82:.0f})\\p1\\1c{acc}\\bord{5 * k:.0f}\\3c&H00FFFFFF&\\shad0\\fscx0\\fscy0\\t(0,220,\\fscx110\\fscy110)\\t(220,320,\\fscx100\\fscy100)\\fad(0,300)",
              _ellipse(r, r))
-        c.ev(4, 0.45, None, f"\\an5\\pos({W / 2:.0f},{H * 0.82:.0f})\\fn{c.font}\\fs{28 * k:.0f}\\b1\\bord0\\shad0\\fad(200,300)", esc(st.get("label", "ABONE OL")))
+        if not st.get("avatarImg"):
+            c.ev(4, 0.45, None, f"\\an5\\pos({W / 2:.0f},{H * 0.82:.0f})\\fn{c.font}\\fs{28 * k:.0f}\\b1\\bord0\\shad0\\fad(200,300)", esc(st.get("label", "ABONE OL")))
+        if st.get("channel"):
+            c.ev(4, 0.45, None, f"\\an5\\pos({W / 2:.0f},{H * 0.925:.0f})\\fn{c.font}\\fs{26 * k:.0f}\\b1\\bord{2 * k:.0f}\\shad0\\fad(200,300)", esc(st.get("channel", "")))
     elif kind == "callout":
         x, y = W * float(st.get("x", 0.5)), H * float(st.get("y", 0.5))
         sz = 130 * k * float(st.get("ring", 1))

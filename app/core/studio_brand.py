@@ -66,11 +66,92 @@ VIRAL_RECIPES: dict[str, dict[str, Any]] = {
     },
     "minimal_shorts": {
         "id": "minimal_shorts",
-        "name": "Minimal Shorts / Reels (9:16 Odak)",
-        "desc": "Dikey güvenli alan uyumlu merkez tipografi ve nefes zoom (breath).",
+        "name": "Minimal Shorts / Reels",
+        "desc": "Dikey güvenli alan uyumlu temiz tipografi ve nefes zoom (breath).",
         "grade": {"con": 0.08, "sat": 1.04},
         "zoom_preset": "breath",
         "sub_style": "classic",
+        "shutter_angle": 180,
+        "lufs": -14.0,
+    },
+    "rap_mv_dark": {
+        "id": "rap_mv_dark",
+        "name": "Rap Klip / 3EVLER Tarzı",
+        "desc": "Yüksek kontrast koyu sinematik ton, sert zoom vuruşu (crash) ve keskin flaş geçişi.",
+        "grade": {"con": 0.24, "sat": 0.88, "exp": -0.06, "temp": -0.05},
+        "zoom_preset": "crash",
+        "trans_in": "flash",
+        "fx": ["vignette", "film"],
+        "sub_style": "none",
+        "shutter_angle": 180,
+        "lufs": -13.0,
+    },
+    "roblox_gaming": {
+        "id": "roblox_gaming",
+        "name": "Roblox / Oyun Hızlı Kurgu",
+        "desc": "Canlı doygun renkler, enerjik pop zoom (push-fast) ve sallantı animasyonu.",
+        "grade": {"con": 0.14, "sat": 1.25, "exp": 0.05},
+        "zoom_preset": "push-fast",
+        "trans_in": "pop-in",
+        "anim_loop": "wobble",
+        "sub_style": "hormozi",
+        "shutter_angle": 180,
+        "lufs": -14.0,
+    },
+    "anime_velocity": {
+        "id": "anime_velocity",
+        "name": "Anime Edit / Velocity",
+        "desc": "Parlak neon renkler, sert whip geçişi ve ritmik zoom vuruşu.",
+        "grade": {"con": 0.22, "sat": 1.3, "exp": 0.04},
+        "zoom_preset": "crash",
+        "trans_in": "whip",
+        "fx": ["glow"],
+        "sub_style": "none",
+        "shutter_angle": 270,
+        "lufs": -13.5,
+    },
+    "mrbeast_retention": {
+        "id": "mrbeast_retention",
+        "name": "MrBeast / Yüksek Tutma",
+        "desc": "Parlak net görüntü, hızlı yaklaşma (dolly-in) ve dikkat çekici pop giriş.",
+        "grade": {"con": 0.15, "sat": 1.18, "exp": 0.07},
+        "zoom_preset": "dolly-in",
+        "trans_in": "zoom",
+        "sub_style": "hormozi",
+        "shutter_angle": 180,
+        "lufs": -14.0,
+    },
+    "podcast_clip": {
+        "id": "podcast_clip",
+        "name": "Podcast / Kesit Vurgu",
+        "desc": "Doğal sıcak cilt tonu, yumuşak nefes zoom ve net konuşma altyazısı.",
+        "grade": {"con": 0.1, "sat": 1.02, "temp": 0.05},
+        "zoom_preset": "breath",
+        "sub_style": "clean_box",
+        "shutter_angle": 180,
+        "lufs": -14.0,
+    },
+    "retro_vhs": {
+        "id": "retro_vhs",
+        "name": "Retro VHS / 90'lar",
+        "desc": "VHS renk kayması, tarama çizgileri ve nostaljik salınım (swing).",
+        "grade": {"con": 0.1, "sat": 0.9, "temp": 0.08},
+        "zoom_preset": "kb-zoom-lr",
+        "trans_in": "vhs-roll",
+        "fx": ["vhs"],
+        "anim_loop": "swing",
+        "sub_style": "none",
+        "shutter_angle": 180,
+        "lufs": -14.5,
+    },
+    "cinematic_vlog": {
+        "id": "cinematic_vlog",
+        "name": "Sinematik Vlog / Gezi",
+        "desc": "Altın saat sıcaklığı, akıcı Ken Burns hareketi ve yumuşak kararma.",
+        "grade": {"con": 0.12, "sat": 1.12, "temp": 0.1, "exp": 0.02},
+        "zoom_preset": "kb-zoom-lr",
+        "trans_in": "fade",
+        "sub_style": "cinematic",
         "shutter_angle": 180,
         "lufs": -14.0,
     },
@@ -122,8 +203,9 @@ def list_recipes() -> list[dict[str, Any]]:
     return [copy.deepcopy(v) for v in VIRAL_RECIPES.values()]
 
 
-def apply_viral_recipe(project: dict[str, Any], recipe_id: str, brand_kit: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Projeye secilen viral kurgu recetesini (grade, shutter, marka rengi) uygular."""
+def apply_viral_recipe(project: dict[str, Any], recipe_id: str, brand_kit: dict[str, Any] | None = None,
+                       clip_ids: list[str] | None = None) -> dict[str, Any]:
+    """Projeye (veya sadece secili kliplere) secilen viral kurgu recetesini uygular."""
     if recipe_id not in VIRAL_RECIPES:
         raise KeyError(f"Bilinmeyen recete: {recipe_id}")
     rec = VIRAL_RECIPES[recipe_id]
@@ -135,8 +217,11 @@ def apply_viral_recipe(project: dict[str, Any], recipe_id: str, brand_kit: dict[
     from app.core.studio_packs import ZOOM3
     zoom_map = {z["id"]: copy.deepcopy(z["kf"]) for z in ZOOM3 if "id" in z and "kf" in z}
     zoom_kf = zoom_map.get(rec["zoom_preset"], [])
+    target_set = set(str(cid) for cid in clip_ids) if clip_ids else None
     applied_clips = 0
     for c in pr.get("clips") or []:
+        if target_set is not None and str(c.get("id", "")) not in target_set:
+            continue
         if c.get("kind") in (None, "video", "image"):
             g = dict(c.get("grade") or {})
             for k, v in rec["grade"].items():
@@ -145,6 +230,15 @@ def apply_viral_recipe(project: dict[str, Any], recipe_id: str, brand_kit: dict[
             c["shutterAngle"] = rec["shutter_angle"]
             if zoom_kf:
                 c["zoom"] = copy.deepcopy(zoom_kf)
+            if rec.get("trans_in"):
+                c["trans"] = {"in": rec["trans_in"], "dur": 0.35, "over": True}
+            if rec.get("fx"):
+                existing_fx = [f for f in (c.get("fx") or []) if f not in rec["fx"]]
+                c["fx"] = existing_fx + list(rec["fx"])
+            if rec.get("anim_loop"):
+                anim = dict(c.get("anim") or {})
+                anim["loop"] = rec["anim_loop"]
+                c["anim"] = anim
             applied_clips += 1
     pr.setdefault("markers", []).append({
         "id": f"m_{uuid.uuid4().hex[:6]}",

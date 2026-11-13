@@ -268,25 +268,63 @@ pb.addEventListener("click", e => {
   renderPanel();
 });
 
-// ---------------------------------------------------------------- efektler
+// ---------------------------------------------------------------- efektler & hareket animasyonlari
 let fxThumb = "";
 P.fx = () => {
   try { const cv = document.createElement("canvas"); cv.width = 160; cv.height = 90; cv.getContext("2d").drawImage($("#view"), 0, 0, 160, 90); fxThumb = cv.toDataURL("image/jpeg", .7); } catch { fxThumb = ""; }
+  const tab = P.fx.tab || "fx";
+  const tabs = `<div class="seg" style="margin-bottom:8px"><button class="${tab === "fx" ? "on" : ""}" data-fxtab="fx">🎨 Renk & Görsel FX</button><button class="${tab === "anim" ? "on" : ""}" data-fxtab="anim">🎞 Hareket & Salıncak</button></div>`;
+  const c = firstSel();
+  const q = (P.fx.q || "").toLowerCase();
+  if (tab === "anim") {
+    const ca = ST.cat.canim || { in: {}, out: {}, loop: {} };
+    const an = c?.anim || {};
+    const mk = (slot, title, items) => {
+      const entries = Object.entries(items || {}).filter(([k, n]) => k !== "none" && (!q || n.toLowerCase().includes(q) || k.toLowerCase().includes(q)));
+      if (!entries.length) return "";
+      return sec(title) + `<div class="grid2">${entries.map(([k, n]) => `<div class="card${an[slot] === k ? " on" : ""}" data-canim="${slot}:${k}"><b>${esc(n)}</b><small>${slot === "loop" ? "Sürekli oynar" : slot === "in" ? "Giriş" : "Çıkış"}</small></div>`).join("")}</div>`;
+    };
+    pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe hareket animasyonu uygula / kaldır (ör. Salıncak = Sallan)." : "Önce zaman çizelgesinden bir video veya görsel klibi seç."}</div>` +
+      `<input class="in" id="fxQ" placeholder="Salıncak, sarsıntı, 3B, nabız ara…" value="${esc(P.fx.q || "")}" style="width:100%;margin-bottom:6px">` +
+      mk("loop", "Sürekli Hareket (Salıncak · Nabız · Sarsıntı)", ca.loop) +
+      mk("in", "Giriş Animasyonları", ca.in) +
+      mk("out", "Çıkış Animasyonları", ca.out);
+    const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 180); };
+    return;
+  }
   const packs = {};
   for (const [id, f] of Object.entries(ST.cat.fx)) (packs[f.pack] ||= []).push([id, f]);
-  const c = firstSel(), on = new Set(c?.fx || []);
-  const q = (P.fx.q || "").toLowerCase();
+  const on = new Set(c?.fx || []);
   const card = ([id, f]) => `<div class="card${on.has(id) ? " on" : ""}" data-fx="${id}" draggable="true" data-item='${esc(JSON.stringify({ type: "fx", id }))}'><div class="sw" style="${fxThumb ? `background-image:url(${fxThumb});` : ""}filter:${f.css || "none"}"></div><b>${esc(f.name)}</b>${favStar("fx", id)}</div>`;
   const all = Object.entries(ST.cat.fx).filter(([id, f]) => !q || f.name.toLowerCase().includes(q) || f.pack.toLowerCase().includes(q));
   const favs = all.filter(([id]) => isFav("fx", id));
-  pb.innerHTML = `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe uygula / kaldır. Sağ panelden Tümü / Giriş / Çıkış seç." : "Klip seçili değil: tıklayınca efekt izine (tüm görüntüye) 3 sn eklenir."} Sürükle: efekt izine istediğin yere. ★: favori.</div>` +
+  pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe uygula / kaldır. Sağ panelden Tümü / Giriş / Çıkış seç." : "Klip seçili değil: tıklayınca efekt izine (tüm görüntüye) 3 sn eklenir."} Sürükle: efekt izine istediğin yere. ★: favori.</div>` +
     `<input class="in" id="fxQ" placeholder="${Object.keys(ST.cat.fx).length} efekt içinde ara…" value="${esc(P.fx.q || "")}" style="width:100%;margin-bottom:6px">` +
     (favs.length ? sec("★ Favoriler") + `<div class="grid2">${favs.map(card).join("")}</div>` : "") +
     Object.entries(packs).map(([pk, items]) => { const it = items.filter(x => all.includes(x) || all.some(y => y[0] === x[0])); return it.length ? sec(pk) + `<div class="grid2">${it.map(card).join("")}</div>` : ""; }).join("");
   const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 180); };
 };
 pb.addEventListener("click", e => {
-  const f = e.target.closest("[data-fx]"); if (!f || panel !== "fx") return;
+  if (panel !== "fx") return;
+  const tb = e.target.closest("[data-fxtab]");
+  if (tb) { P.fx.tab = tb.dataset.fxtab; P.fx(); return; }
+  const ca = e.target.closest("[data-canim]");
+  if (ca) {
+    const [slot, kind] = ca.dataset.canim.split(":");
+    const targets = selClips().filter(x => ["video", "image"].includes(clipKind(x)));
+    if (!targets.length) { toast("Önce bir video veya görsel klibi seç"); return; }
+    snap();
+    for (const x of targets) {
+      x.anim = { ...(x.anim || {}) };
+      if (x.anim[slot] === kind) delete x.anim[slot];
+      else x.anim[slot] = kind;
+      if (slot === "in" && !x.anim.inDur) x.anim.inDur = 0.5;
+      if (slot === "out" && !x.anim.outDur) x.anim.outDur = 0.5;
+    }
+    changed(); renderPanel(); renderInsp();
+    return;
+  }
+  const f = e.target.closest("[data-fx]"); if (!f) return;
   const id = f.dataset.fx, c = firstSel();
   snap();
   if (c && ["video", "image"].includes(clipKind(c))) {

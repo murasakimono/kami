@@ -737,10 +737,65 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         n_in += 1
         return n_in - 1
 
-    graph.append(f"color=c={project.get('bg', '#000000').replace('#', '0x')}:s={W}x{H}:r={FPS}:d={total:.3f},format=yuva420p[base0]")
+    def _make_pattern_png() -> Path | None:
+        pat = str(project.get("bgPattern") or "")
+        if project.get("bgMode") != "pattern" or not pat:
+            return None
+        try:
+            from PIL import Image, ImageDraw
+            c1 = project.get("bg", "#140D24") or "#140D24"
+            c2 = project.get("bg2", "#5B21B6") or "#5B21B6"
+            def _rgb(hx: str, fb: tuple[int, int, int]) -> tuple[int, int, int]:
+                hx = hx.lstrip("#")
+                return tuple(int(hx[i:i+2], 16) for i in (0, 2, 4)) if len(hx) == 6 else fb
+            r1, g1, b1 = _rgb(c1, (20, 13, 36))
+            r2, g2, b2 = _rgb(c2, (91, 33, 182))
+            img = Image.new("RGB", (W, H), (r1, g1, b1))
+            dr = ImageDraw.Draw(img)
+            if pat.startswith("gradient") or pat == "aurora":
+                cols = {
+                    "gradient-violet": ((20, 11, 46), (109, 40, 217)),
+                    "gradient-sunset": ((35, 11, 46), (236, 72, 153)),
+                    "gradient-neon": ((9, 24, 44), (16, 185, 129)),
+                    "aurora": ((10, 18, 38), (124, 58, 237)),
+                }.get(pat, ((r1, g1, b1), (r2, g2, b2)))
+                a, b = cols
+                for y in range(0, H, 2):
+                    u = y / max(1, H - 1)
+                    col = (int(a[0] + (b[0] - a[0]) * u), int(a[1] + (b[1] - a[1]) * u), int(a[2] + (b[2] - a[2]) * u))
+                    dr.line([(0, y), (W, y)], fill=col, width=2)
+            elif pat == "grid":
+                step = max(24, W // 24)
+                for x in range(0, W, step):
+                    dr.line([(x, 0), (x, H)], fill=(r2, g2, b2), width=2)
+                for y in range(0, H, step):
+                    dr.line([(0, y), (W, y)], fill=(r2, g2, b2), width=2)
+            elif pat == "dots":
+                step = max(24, W // 24)
+                rad = max(2, step // 10)
+                for x in range(step // 2, W, step):
+                    for y in range(step // 2, H, step):
+                        dr.ellipse([x - rad, y - rad, x + rad, y + rad], fill=(r2, g2, b2))
+            elif pat == "stripes":
+                step = max(28, W // 20)
+                for x in range(-H, W + H, step):
+                    dr.line([(x, 0), (x + H, H)], fill=(r2, g2, b2), width=max(4, step // 3))
+            out = work / "bg_pattern.png"
+            img.save(out)
+            return out
+        except Exception:
+            return None
+
+    pat_png = _make_pattern_png()
+    if pat_png:
+        pidx = add_input(["-loop", "1", "-t", f"{total:.3f}", "-i", str(pat_png)])
+        graph.append(f"[{pidx}:v]scale={W}:{H},fps={FPS},format=yuva420p[base0]")
+    else:
+        graph.append(f"color=c={project.get('bg', '#000000').replace('#', '0x')}:s={W}x{H}:r={FPS}:d={total:.3f},format=yuva420p[base0]")
     cur = "base0"
     vis = [c for c in clips if tracks.get(c["track"], {}).get("kind") == "video" and c.get("asset") in assets]
     vis.sort(key=lambda c: (order.get(c["track"], 0), c["start"]))
+    bg_blur_pct = float(project.get("bgBlur", 45) or 0) if project.get("bgMode") == "blur" else 0.0
     audio_parts: list[str] = []
     k = 0
     for c in vis:
@@ -846,6 +901,10 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
                 ch.append(_fx_chain(fx["ff"], W, H, 0.0, f"c{k}{fid}"))
         anf, _ = studio_anim.clip_filters(c, d, cut0, FPS, W, H, f"an{k}")
         ch += anf
+        if c.get("flipH"):
+            ch.append("hflip")
+        if c.get("flipV"):
+            ch.append("vflip")
         sc, rot = float(c.get("scale", 1) or 1), float(c.get("rot", 0) or 0)
         if abs(sc - 1) > 1e-3:
             ch.append(f"scale=iw*{sc:.4f}:ih*{sc:.4f}")
@@ -871,7 +930,14 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             ch.append(_trans_in(tin, tdur, W, H, f"tr{k}", cut0, FPS))
         off = max(s, T0) - T0
         ch.append(f"setpts=PTS+{off:.4f}/TB")
-        graph.append(f"[{ii}:v]" + ",".join(ch) + f"[c{k}]")
+        if bg_blur_pct > 0 and order.get(c["track"], 0) == 0:
+            sig = max(1.0, bg_blur_pct * 0.65)
+            graph.append(f"[{ii}:v]" + ",".join(ch) + f",split[c{k}][bg{k}]")
+            graph.append(f"[bg{k}]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},gblur=sigma={sig:.1f},eq=brightness=-0.10[bgo{k}]")
+            graph.append(f"[{cur}][bgo{k}]overlay=eof_action=pass:enable='between(t,{off:.4f},{off + seg:.4f})'[bgc{k}]")
+            cur = f"bgc{k}"
+        else:
+            graph.append(f"[{ii}:v]" + ",".join(ch) + f"[c{k}]")
         ox = f"(W-w)/2+{float(c.get('x', 0)) * W:.1f}"
         oy = f"(H-h)/2+{float(c.get('y', 0)) * H:.1f}"
         if anf:
@@ -917,6 +983,43 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         graph.append(f"[{cur}]{sh}subtitles=k.ass:fontsdir=fonts{un}[b{k}]")
         cur = f"b{k}"
         k += 1
+    # kanal profil fotografi (endscreen / channel sablonlari icin dairesel avatar)
+    for c in clips:
+        st = c.get("style") or {}
+        av = st.get("avatarImg")
+        if not av or (c.get("graphic") != "endscreen" and c.get("subscribe") != "channel"):
+            continue
+        s, d = float(c["start"]) - T0, float(c["dur"])
+        if s + d <= 0 or s >= total:
+            continue
+        try:
+            from PIL import Image, ImageDraw
+            import base64, io
+            if str(av).startswith("data:image"):
+                raw = base64.b64decode(str(av).split(",", 1)[1])
+                im = Image.open(io.BytesIO(raw)).convert("RGBA")
+            elif Path(str(av)).is_file():
+                im = Image.open(str(av)).convert("RGBA")
+            else:
+                continue
+            sz = max(48, int(round(126 * (H / 1080.0) * (float(st.get("size", 100) or 100) / 100.0))))
+            im = im.resize((sz, sz), Image.LANCZOS)
+            mask = Image.new("L", (sz, sz), 0)
+            ImageDraw.Draw(mask).ellipse((0, 0, sz - 1, sz - 1), fill=255)
+            im.putalpha(mask)
+            avp = work / f"avatar_{k}.png"
+            im.save(avp)
+            aidx = add_input(["-loop", "1", "-t", f"{total:.3f}", "-i", str(avp)])
+            if c.get("graphic") == "endscreen":
+                ax, ay = int(round(W / 2 - sz / 2)), int(round(H * 0.82 - sz / 2))
+            else:
+                ax = int(round(W * float(st.get("x", 0.5)) - 225 * (H / 1080.0) - sz / 2))
+                ay = int(round(H * float(st.get("y", 0.8)) - sz / 2))
+            graph.append(f"[{cur}][{aidx}:v]overlay=x={ax}:y={ay}:enable='between(t,{max(0, s):.4f},{s + d:.4f})'[b{k}]")
+            cur = f"b{k}"
+            k += 1
+        except Exception:
+            pass
     graph.append(f"[{cur}]format=yuv420p[vout]")
     # ses
     for c in clips:

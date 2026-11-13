@@ -60,20 +60,27 @@ def test_brand_kit_and_viral_recipes(tmp_path: Path) -> None:
     assert store.load("magaza")["primary"] == "#FF3366"
 
     recs = list_recipes()
-    assert {r["id"] for r in recs} == {
-        "iman_gadzhi", "magnates_media", "ali_abdaal", "fps_frag", "minimal_shorts"
-    }
+    assert len(recs) >= 12
+    assert {
+        "iman_gadzhi", "magnates_media", "ali_abdaal", "fps_frag", "minimal_shorts",
+        "rap_mv_dark", "roblox_gaming", "anime_velocity", "mrbeast_retention",
+        "podcast_clip", "retro_vhs", "cinematic_vlog",
+    }.issubset({r["id"] for r in recs})
 
     proj = {
         "name": "Test",
-        "clips": [{"id": "c1", "kind": "video", "start": 0.0, "in": 0.0, "out": 5.0}],
+        "clips": [
+            {"id": "c1", "kind": "video", "start": 0.0, "in": 0.0, "out": 5.0},
+            {"id": "c2", "kind": "video", "start": 5.0, "in": 0.0, "out": 5.0},
+        ],
         "markers": [],
     }
-    res = apply_viral_recipe(proj, "iman_gadzhi", brand_kit=saved)
+    res = apply_viral_recipe(proj, "iman_gadzhi", brand_kit=saved, clip_ids=["c1"])
     assert res["ok"] is True
     assert res["applied_clips"] == 1
     assert res["project"]["shutterAngle"] == 180
     assert res["project"]["clips"][0]["grade"]["con"] == 0.16
+    assert "grade" not in res["project"]["clips"][1]
 
 
 def test_mcp_recipe_tools_and_scopes_js() -> None:
