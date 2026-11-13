@@ -47,7 +47,7 @@ def detect_scenes(video_path: str | Path, *, threshold: float = 0.32, max_scenes
         "-vf", f"select='gt(scene,{threshold:.2f})',showinfo",
         "-f", "null", "-",
     ]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180, creationflags=NO_WINDOW)
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180, creationflags=NO_WINDOW)
     times: list[float] = [0.0]
     for m in re.finditer(r"pts_time:([0-9]+(?:\.[0-9]+)?)", r.stderr or ""):
         t = round(float(m.group(1)), 2)
@@ -74,7 +74,7 @@ def measure_replaygain(media_path: str | Path, *, target_lufs: float = -18.0) ->
 
     r = subprocess.run(
         [ff, "-hide_banner", "-i", str(p), "-af", "ebur128=peak=true", "-f", "null", "-"],
-        capture_output=True, text=True, timeout=120, creationflags=NO_WINDOW,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, creationflags=NO_WINDOW,
     )
     stderr = r.stderr or ""
     m_i = re.findall(r"I:\s*(-?[0-9]+(?:\.[0-9]+)?)\s*LUFS", stderr)

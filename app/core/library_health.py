@@ -174,7 +174,7 @@ def detect_encoder(ffmpeg: str = "") -> str:
     if not ff:
         return ""
     try:
-        r = subprocess.run([ff, "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=10, creationflags=NO_WINDOW)
+        r = subprocess.run([ff, "-hide_banner", "-encoders"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, creationflags=NO_WINDOW)
         out = r.stdout or ""
         for cand in ("av1_nvenc", "hevc_nvenc", "libx265", "libx264"):
             if cand in out:
@@ -190,12 +190,12 @@ def measure_vmaf(distorted: str | Path, reference: str | Path, ffmpeg: str = "")
     if not ff:
         return None
     try:
-        flt = subprocess.run([ff, "-hide_banner", "-filters"], capture_output=True, text=True, timeout=10, creationflags=NO_WINDOW)
+        flt = subprocess.run([ff, "-hide_banner", "-filters"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, creationflags=NO_WINDOW)
         if "libvmaf" not in (flt.stdout or ""):
             return None
         r = subprocess.run(
             [ff, "-i", str(distorted), "-i", str(reference), "-lavfi", "libvmaf", "-f", "null", "-"],
-            capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, creationflags=NO_WINDOW,
         )
         m = re.search(r"VMAF score:\s*([0-9]+(?:\.[0-9]+)?)", r.stderr or "")
         return float(m.group(1)) if m else None
@@ -224,7 +224,7 @@ def smart_compress(
     q_flag = "-cq" if "nvenc" in enc else "-crf"
     cmd = [ff, "-y", "-i", str(src_p), "-c:v", enc, q_flag, str(cq), "-c:a", "aac", "-b:a", "192k", str(out_p)]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, creationflags=NO_WINDOW)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800, creationflags=NO_WINDOW)
     except subprocess.TimeoutExpired:
         return {"ok": False, "codec": enc, "error": "Sikistirma zaman asimina ugradi"}
     if r.returncode != 0 or not out_p.is_file():
@@ -236,7 +236,7 @@ def smart_compress(
         better_cq = max(14, cq - 4)
         cmd_retry = [ff, "-y", "-i", str(src_p), "-c:v", enc, q_flag, str(better_cq), "-c:a", "aac", "-b:a", "192k", str(out_p)]
         try:
-            r2 = subprocess.run(cmd_retry, capture_output=True, text=True, timeout=1800, creationflags=NO_WINDOW)
+            r2 = subprocess.run(cmd_retry, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800, creationflags=NO_WINDOW)
             if r2.returncode == 0 and out_p.is_file():
                 vmaf = measure_vmaf(out_p, src_p, ff)
         except subprocess.TimeoutExpired:
@@ -278,6 +278,7 @@ def scan_health(
     current: dict[str, dict[str, Any]] = {}
     corrupted: list[dict[str, str]] = []
     decode_errors: list[dict[str, str]] = []
+    unverified: list[dict[str, str]] = []
     new_files: list[str] = []
     ok_count = 0
 
@@ -303,12 +304,12 @@ def scan_health(
             try:
                 dr = subprocess.run(
                     [ff, "-v", "error", "-i", str(p), "-f", "null", "-"],
-                    capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW,
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, creationflags=NO_WINDOW,
                 )
                 if dr.returncode != 0 or (dr.stderr or "").strip():
                     decode_errors.append({"file": rel, "error": (dr.stderr or "decode error").strip()[:200]})
             except subprocess.TimeoutExpired:
-                decode_errors.append({"file": rel, "error": "decode timeout"})
+                unverified.append({"file": rel, "reason": "kontrol edilemedi (300 sn asimi)"})
 
     missing = [k for k in prev if k not in current]
     man_p.parent.mkdir(parents=True, exist_ok=True)
@@ -322,4 +323,5 @@ def scan_health(
         "missing": missing,
         "corrupted_bitrot": corrupted,
         "decode_errors": decode_errors,
+        "unverified": unverified,
     }

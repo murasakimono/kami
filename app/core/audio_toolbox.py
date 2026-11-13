@@ -76,7 +76,7 @@ def apply_audio_fx(
 
     r = subprocess.run(
         [ff, "-y", "-i", str(src_p), "-af", ",".join(filters), str(out_p)],
-        capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, creationflags=NO_WINDOW,
     )
     if r.returncode != 0 or not out_p.is_file():
         return {"ok": False, "error": (r.stderr or "").splitlines()[-1:] or "FX hatasi"}
@@ -158,7 +158,7 @@ def synthesize_tts(text: str, out_wav: str | Path, *, lang: str = "tr") -> dict[
             if models:
                 r = subprocess.run(
                     [piper, "-m", str(models[0]), "--output_file", str(dst)],
-                    input=clean, text=True, capture_output=True, timeout=60, creationflags=NO_WINDOW,
+                    input=clean, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=60, creationflags=NO_WINDOW,
                 )
                 if r.returncode == 0 and dst.is_file():
                     return {"ok": True, "path": str(dst), "engine": "piper"}
@@ -175,7 +175,7 @@ def synthesize_tts(text: str, out_wav: str | Path, *, lang: str = "tr") -> dict[
     env = {**os.environ, "KAMI_TTS_OUT": str(dst), "KAMI_TTS_TEXT": clean}
     r = subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-        env=env, capture_output=True, text=True, timeout=45, creationflags=NO_WINDOW,
+        env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45, creationflags=NO_WINDOW,
     )
     if r.returncode == 0 and dst.is_file():
         return {"ok": True, "path": str(dst), "engine": "windows_sapi"}
