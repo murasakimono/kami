@@ -7,91 +7,82 @@
 <link rel="stylesheet" href="studio.css">
 <script src="vendor/jassub/jassub.umd.js"></script>
 </head>
-<body>
+<body data-page="edit">
 <div id="app">
-  <header id="top">
-    <span class="logo">KAMI<b>STUDIO</b></span>
-    <input id="pname" value="Yeni proje" spellcheck="false" title="Proje adı">
-    <span id="saved"></span>
-    <button class="tb icon" data-a="undo" title="Geri al (Ctrl+Z)">↶</button>
-    <button class="tb icon" data-a="redo" title="Yinele (Ctrl+Y)">↷</button>
-    <select class="tb" id="ratio" title="Video boyutu">
-      <option value="1920x1080">16:9 · YouTube</option>
-      <option value="1080x1920">9:16 · Reels / TikTok / Shorts</option>
-      <option value="1080x1080">1:1 · Kare</option>
-      <option value="1080x1350">4:5 · Instagram</option>
-      <option value="2560x1440">16:9 · 1440p</option>
-      <option value="3840x2160">16:9 · 4K</option>
-      <option value="1280x720">16:9 · 720p</option>
-    </select>
-    <span class="sp"></span>
-    <button class="tb" data-a="new" title="Yeni proje">＋ Yeni</button>
-    <button class="tb" data-a="open" title="Proje aç (Ctrl+O)">Aç</button>
-    <button class="tb" data-a="save" title="Kaydet (Ctrl+S)">Kaydet</button>
-    <button class="tb" data-a="keys" title="Kısayollar">⌨</button>
-    <button class="tb pri" data-a="export" title="Dışa aktar (Ctrl+E)">⬇ Dışa aktar</button>
-  </header>
+  <!-- MEDYA sayfasi: buyuk tarayici (proje, stok, yapay zeka, animasyon, ses, font) -->
+  <section id="browser" class="pane"></section>
 
-  <aside id="rail">
-    <button data-panel="media" class="on"><i>▦</i>Medya</button>
-    <button data-panel="sound"><i>♪</i>Ses/Meme</button>
-    <button data-panel="text"><i>T</i>Metin</button>
-    <button data-panel="captions"><i>≡</i>Altyazı</button>
-    <button data-panel="fx"><i>✦</i>Efekt</button>
-    <button data-panel="trans"><i>⇋</i>Geçiş</button>
-    <button data-panel="zoom"><i>⊕</i>Zoom</button>
-    <button data-panel="subscribe"><i>🔔</i>Abone</button>
-    <button data-panel="ai"><i>✧</i>Akıllı</button>
-    <button data-panel="plugins"><i>⧉</i>Eklenti</button>
-  </aside>
-
-  <section id="panel">
+  <!-- KURGU: kutuphane cekmecesi -->
+  <section id="panel" class="pane">
+    <nav id="libtabs"></nav>
     <div class="ph"><b id="panelTitle">Medya</b><span class="sp"></span><span id="panelTools"></span></div>
     <div id="panelBody"></div>
   </section>
 
+  <!-- RENK: klip seridi -->
+  <section id="strip" class="pane"></section>
+
+  <!-- Onizleme (tum sayfalarda) -->
   <main id="stage">
     <div id="viewArea">
+      <div id="viewHud">
+        <span id="tc"><b>00:00.00</b><span>/ 00:00.00</span></span>
+        <span class="sp"></span>
+        <select class="hb" id="ratio" title="Video boyutu">
+          <option value="1920x1080">16:9 · YouTube</option><option value="1080x1920">9:16 · Shorts/Reels/TikTok</option>
+          <option value="1080x1080">1:1 · Kare</option><option value="1080x1350">4:5 · Instagram</option>
+          <option value="2560x1440">16:9 · 1440p</option><option value="3840x2160">16:9 · 4K</option><option value="1280x720">16:9 · 720p</option>
+        </select>
+        <select class="hb" id="pq" title="Önizleme kalitesi"><option value="0.5">½</option><option value="0.75" selected>¾</option><option value="1">Tam</option></select>
+        <button class="hb" data-a="safe" title="Güvenli alan">⌗</button>
+        <button class="hb" data-a="snapshot" title="Kareyi PNG kaydet">⧉</button>
+        <button class="hb" data-a="full" title="Tam ekran (F)">⛶</button>
+      </div>
       <div id="viewWrap">
         <canvas id="view"></canvas>
         <canvas id="assView"></canvas>
         <div id="guides"></div>
         <div id="handles"></div>
       </div>
-      <div id="emptyHint"><div><b>Videoları buraya bırak</b>ya da soldan “İçe aktar”</div></div>
-    </div>
-    <div id="transport">
-      <button class="tb" data-a="home" title="Başa (Home)">⏮</button>
-      <button class="tb" data-a="back" title="1 kare geri (←)">◀︎</button>
-      <button class="tb pri" id="playBtn" data-a="play" title="Oynat / durdur (Boşluk)">▶</button>
-      <button class="tb" data-a="fwd" title="1 kare ileri (→)">▶︎</button>
-      <button class="tb" data-a="end" title="Sona (End)">⏭</button>
-      <span id="tc"><b>00:00.00</b> <span>/ 00:00.00</span></span>
-      <span class="sp"></span>
-      <select class="tb" id="pq" title="Önizleme kalitesi"><option value="0.5">Önizleme ½</option><option value="0.75" selected>Önizleme ¾</option><option value="1">Tam</option></select>
-      <button class="tb" data-a="safe" title="Güvenli alan / orta çizgi">⌗</button>
-      <button class="tb" data-a="snapshot" title="Bu kareyi PNG kaydet">📷</button>
-      <button class="tb" data-a="full" title="Tam ekran önizleme (F)">⛶</button>
+      <div id="emptyHint"><div><b>Videoları buraya bırak</b>ya da Medya sayfasından ekle</div></div>
+      <div id="transport">
+        <button class="tp" data-a="home" title="Başa (Home)">⏮</button>
+        <button class="tp" data-a="back" title="1 kare geri (←)">‹</button>
+        <button class="tp big" id="playBtn" data-a="play" title="Oynat / durdur (Boşluk)">▶</button>
+        <button class="tp" data-a="fwd" title="1 kare ileri (→)">›</button>
+        <button class="tp" data-a="end" title="Sona (End)">⏭</button>
+      </div>
     </div>
   </main>
 
-  <aside id="insp"></aside>
-  <div id="split" title="Sürükle: zaman çizelgesi yüksekliği"></div>
+  <aside id="insp" class="pane"></aside>
 
+  <!-- RENK: araclar ve kapsamlar -->
+  <section id="color" class="pane"></section>
+  <section id="scopes" class="pane"><canvas id="scWave"></canvas><canvas id="scParade"></canvas><canvas id="scVec"></canvas><canvas id="scHist"></canvas></section>
+
+  <!-- SES: mikser -->
+  <section id="mixer" class="pane"></section>
+
+  <!-- TESLIM -->
+  <section id="deliver" class="pane"></section>
+
+  <div id="split" title="Sürükle: zaman çizelgesi yüksekliği"></div>
   <footer id="tl">
     <div id="tlbar">
       <button class="tb" data-a="split" title="Böl (S)">✂ Böl</button>
       <button class="tb" data-a="del" title="Sil (Del) · Shift+Del boşluğu kapatır">🗑</button>
       <button class="tb" data-a="dup" title="Çoğalt (Ctrl+D)">⧉</button>
+      <button class="tb" data-a="freeze" title="Kare dondur + zoom + tık (Q)">❄ Dondur</button>
       <button class="tb" data-a="marker" title="İşaret (M)">⚑</button>
-      <span style="width:8px"></span>
-      <button class="tb on" data-a="snap" id="snapBtn" title="Mıknatıs: kenarlara, oynatma kafasına ve vuruşlara yapış">🧲 Yapış</button>
-      <button class="tb" data-a="ripple" id="rippleBtn" title="Silince sonrakileri kaydır">⇤ Kaydır</button>
+      <span class="sep"></span>
+      <button class="tb on" data-a="snap" id="snapBtn" title="Mıknatıs">🧲</button>
+      <button class="tb" data-a="ripple" id="rippleBtn" title="Silince sonrakileri kaydır">⇤</button>
       <button class="tb" data-a="addtrack" title="İz ekle">＋ İz</button>
       <span class="sp"></span>
       <span id="selInfo" class="hint"></span>
       <button class="tb icon" data-a="zout" title="Uzaklaş (-)">－</button>
-      <input type="range" id="tlZoom" min="8" max="600" value="80" title="Zaman ölçeği">
+      <input type="range" id="tlZoom" min="4" max="600" value="80" title="Zaman ölçeği">
       <button class="tb icon" data-a="zin" title="Yakınlaş (+)">＋</button>
       <button class="tb icon" data-a="zfit" title="Hepsini sığdır">⇔</button>
     </div>
@@ -100,13 +91,40 @@
       <div id="tlScroll"><div id="tlInner"><div id="ruler"><canvas></canvas></div><div id="lanes"></div><div id="playhead"></div></div></div>
     </div>
   </footer>
+
+  <!-- Sayfa doku (DaVinci mantigi): sol proje, orta sayfalar, sag islemler -->
+  <nav id="dock">
+    <div class="dk-l">
+      <span class="logo">KAMI<b>STUDIO</b></span>
+      <input id="pname" value="Yeni proje" spellcheck="false" title="Proje adı">
+      <span id="saved"></span>
+    </div>
+    <div class="dk-pages">
+      <button data-page="media" title="Medya (Shift+1)"><i>▦</i><span>Medya</span></button>
+      <button data-page="edit" title="Kurgu (Shift+2)"><i>✂</i><span>Kurgu</span></button>
+      <button data-page="color" title="Renk (Shift+3)"><i>◐</i><span>Renk</span></button>
+      <button data-page="audio" title="Ses (Shift+4)"><i>♫</i><span>Ses</span></button>
+      <button data-page="deliver" title="Teslim (Shift+5)"><i>⬇</i><span>Teslim</span></button>
+    </div>
+    <div class="dk-r">
+      <button class="tb icon" data-a="undo" title="Geri al (Ctrl+Z)">↶</button>
+      <button class="tb icon" data-a="redo" title="Yinele (Ctrl+Y)">↷</button>
+      <button class="tb" data-a="new" title="Yeni proje">Yeni</button>
+      <button class="tb" data-a="open" title="Aç (Ctrl+O)">Aç</button>
+      <button class="tb" data-a="save" title="Kaydet (Ctrl+S)">Kaydet</button>
+      <button class="tb icon" data-a="keys" title="Kısayollar">⌨</button>
+      <button class="tb pri" data-a="export" title="Hızlı dışa aktar (Ctrl+E)">⬇ Dışa aktar</button>
+    </div>
+  </nav>
 </div>
 <div id="modal" hidden></div>
 <div id="toast"></div>
 <div id="busy" hidden></div>
 
 <script src="studio-fx.js"></script>
+<script src="studio-gl.js"></script>
 <script src="studio.js"></script>
 <script src="studio-panels.js"></script>
+<script src="studio-pages.js"></script>
 </body>
 </html>

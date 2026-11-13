@@ -81,3 +81,36 @@ def test_mcp_protocol(tmp_path, monkeypatch):
     r = M.handle({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "add_effect", "arguments": {"mode": "yok"}}})
     assert r["result"]["isError"]
     assert M.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+
+
+def test_pro_features(tmp_path, monkeypatch):
+    monkeypatch.setattr(S, "home_dir", lambda: tmp_path)
+    # renk: bos ayar = birim LUT
+    assert not S.grade_active({}) and S.grade_active({"exp": 0.5})
+    r, g, b = S.grade_pixel({"sat": 1}, 0.3, 0.5, 0.7)
+    assert abs(r - 0.3) < 1e-6 and abs(b - 0.7) < 1e-6
+    f = S.bake_grade({"exp": 0.2}, tmp_path / "g.cube")
+    n, data = S.parse_cube(f)
+    assert n == S.LUT_N and len(data) == n ** 3
+    # hiz rampasi: sabit 2x = yari sure
+    c = {"dur": 4.0, "srcLen": 4.0, "ramp": [{"p": 0, "s": 2}, {"p": 1, "s": 2}]}
+    assert abs(S.ramp_duration(c) - 2.0) < 1e-6
+    # sablon + kare dondurma
+    p = _proj()
+    added = S.apply_template(p, "yt-lower", 2.0)
+    assert any(x.get("graphic") == "lower" for x in p["clips"] if x["id"] in added)
+    vid = next(x for x in p["clips"] if x["track"] == "v1")
+    before = len(p["clips"])
+    S.apply_template(p, "freeze", 3.0, clip_id=vid["id"])
+    assert any(x.get("freeze") for x in p["clips"]) and len(p["clips"]) >= before + 2
+    # teslim bicimleri
+    args, _ = S.build_export(_proj(), str(tmp_path / "o.gif"), tmp_path, "libx264", {"format": "gif"})
+    assert "palettegen" in args[args.index("-filter_complex") + 1]
+    args, _ = S.build_export(_proj(), str(tmp_path / "o.mp3"), tmp_path, "libx264", {"format": "mp3", "lufs": -14})
+    assert "libmp3lame" in args and "loudnorm" in args[args.index("-filter_complex") + 1]
+    # grafik + YouTube abone dizisi ASS uretir
+    from app.core import studio_gfx as G
+    for kind in G.SUBSCRIBE_PRO:
+        assert G.subscribe(kind, S._ts, S._col, S._esc, S._rrect, 0, 4, 1920, 1080, {})
+    for kind in G.GRAPHICS:
+        assert G.graphic(kind, S._ts, S._col, S._esc, S._rrect, 0, 4, 1920, 1080, {"title": "x"})

@@ -659,7 +659,10 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
                 ch.append("despill=type=" + ("blue" if len(g) == 6 and int(g[4:6], 16) > int(g[2:4], 16) else "green"))
         ch.append(f"fps={FPS}")
         fit = c.get("fit", "cover" if tracks[c["track"]].get("id") == "v1" or len([t for t in tracks.values() if t['kind'] == 'video']) == 1 else "contain")
-        if fit == "contain":
+        if c.get("crop") in ("half-w", "half-h"):   # yan yana / ust-alt
+            bw, bh = (W // 2 // 2 * 2, H) if c["crop"] == "half-w" else (W, H // 2 // 2 * 2)
+            ch.append(f"scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},format=rgba")
+        elif fit == "contain":
             ch.append(f"scale={W}:{H}:force_original_aspect_ratio=decrease,format=rgba,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0")
         elif fit == "stretch":
             ch.append(f"scale={W}:{H},format=rgba")
@@ -720,7 +723,8 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         cur = f"b{k}"
         if (a.get("audio") and not c.get("freeze") and not tracks[c["track"]].get("mute")
                 and float(c.get("vol", 1) if c.get("vol") is not None else 1) > 0 and frame_t is None):
-            audio_parts.append((_audio_chain(ii, c, cut0, seg, off, speed, ramp), bool(tracks[c["track"]].get("duck"))))
+            cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(tracks[c["track"]].get("vol", 1) or 0)}
+            audio_parts.append((_audio_chain(ii, cv, cut0, seg, off, speed, ramp), bool(tracks[c["track"]].get("duck"))))
         k += 1
     # efekt izi: zaman araliginda tum goruntuye uygula
     for c in sorted([c for c in clips if tracks.get(c["track"], {}).get("kind") == "fx"], key=lambda c: (order.get(c["track"], 0), c["start"])):
@@ -767,11 +771,12 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         seg = min(d - cut0, T1 - max(s, T0))
         src_in = float(c.get("in", 0)) + cut0 * speed
         ii = add_input(["-ss", f"{src_in:.3f}", "-t", f"{seg * speed + 0.05:.3f}", "-i", a["path"]])
-        audio_parts.append((_audio_chain(ii, c, cut0, seg, max(s, T0) - T0, speed), bool(t.get("duck"))))
+        cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(t.get("vol", 1) if t.get("vol") is not None else 1)}
+        audio_parts.append((_audio_chain(ii, cv, cut0, seg, max(s, T0) - T0, speed), bool(t.get("duck"))))
     if frame_t is not None:
         return [*inputs, "-filter_complex", ";".join(graph), "-map", "[vout]", "-frames:v", "1", out], total
     master = project.get("master") or {}
-    lufs = opts.get("lufs", master.get("lufs"))
+    lufs = master.get("lufs") if "lufs" in master else opts.get("lufs")
     tail = (f"loudnorm=I={float(lufs):.1f}:TP=-1.5:LRA=11," if lufs else "") + f"alimiter=limit=0.97,apad,atrim=0:{total:.3f}"
     if audio_parts:
         for i, (part, _m) in enumerate(audio_parts):

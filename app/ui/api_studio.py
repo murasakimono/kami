@@ -16,7 +16,9 @@ log = logging.getLogger(__name__)
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"
 
 STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "studio_silences", "studio_freezes", "studio_scenes",
-               "studio_myinstants", "studio_fetch_sound", "studio_freesound", "studio_pack_add", "studio_save", "studio_open"}
+               "studio_myinstants", "studio_fetch_sound", "studio_freesound", "studio_pack_add", "studio_save", "studio_open",
+               "studio_stock", "studio_stock_get", "studio_fonts_download", "studio_template", "studio_sfx", "studio_lut_read",
+               "studio_gemini_models", "studio_lottie", "studio_catalog_fonts"}
 
 
 class StudioMixin:
@@ -64,7 +66,7 @@ class StudioMixin:
         return {**cat, "fontUrls": fonts, "jassub": f"{self._media.base}/j/" if self._media else "", "home": str(home),
                 "packs": [{"name": p.get("name"), "id": p.get("_id"), "fx": len(p.get("fx") or {}), "sounds": len(p.get("sounds") or [])}
                           for p in self._studio_packs()],
-                "freesound": bool(self._fs_store().load())}
+                "freesound": bool(self._fs_store().load()), "keys": self.studio_keys_status()}
 
     # ---- medya
     def studio_info(self, paths: list[str]) -> list[dict[str, Any]]:
@@ -259,9 +261,25 @@ class StudioMixin:
 
     # ---- disa aktarim
     def studio_export(self, project: dict, out: str, opts: dict | None = None) -> dict[str, Any]:
+        from app.core import studio
         if not self._media or not self._media.ffmpeg():
             return {"ok": False, "error": "no_ffmpeg"}
-        return {"ok": True, "job": self._st().export(project, str(out), opts or {})}
+        o = dict(opts or {})
+        pre = studio.DELIVER.get(str(o.get("preset", "")))
+        if pre:
+            o = {**{k: v for k, v in pre.items() if k != "name"}, **o}
+        return {"ok": True, "job": self._st().export(project, str(out), o)}
+
+    def studio_pick_save_ext(self, name: str, ext: str) -> str:
+        from app.core import studio
+        ext = ext if ext.startswith(".") else "." + ext
+        safe = re.sub(r'[<>:"/\\|?*]+', "_", str(name or "Video")).strip() or "Video"
+        label = {".mp4": "MP4 video", ".mov": "QuickTime (ProRes)", ".webm": "WebM", ".gif": "GIF", ".mp3": "MP3 ses", ".wav": "WAV ses", ".png": "PNG"}.get(ext, ext)
+        r = self._studio_dialog("save", (f"{label} (*{ext})",), name=safe + ext, folder=str(studio.home_dir() / "Çıktılar"))
+        if not r:
+            return ""
+        p = r[0]
+        return p if p.lower().endswith(ext) else p + ext
 
     def studio_job(self, jid: str) -> dict[str, Any]:
         return self._st().job(str(jid))
@@ -525,3 +543,378 @@ class StudioMixin:
             cfg.with_suffix(".json.bak").write_text(cfg.read_text("utf-8"), "utf-8")
         cfg.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
         return {"ok": True, "config": str(cfg)}
+
+
+    # =================================================================================================================
+    # Pro: fontlar, LUT, sablonlar, SFX, stok, Gemini/Flow, arka plan silme, Lottie
+    def studio_catalog_fonts(self) -> dict[str, Any]:
+        """Tum fontlar: {aile: url} (JASSUB ihtiyac olunca indirir)."""
+        from app.core import studio
+        idx = studio.fonts_index()
+        m = {}
+        if self._media:
+            for fam, path in idx.items():
+                try:
+                    m[fam] = self._media.asset_url(path)
+                except Exception:
+                    pass
+        return {"fonts": sorted(idx, key=str.lower), "map": m, "google": list(studio.GOOGLE_FONTS)}
+
+    def studio_fonts_download(self) -> dict[str, Any]:
+        from app.core import studio
+        got = studio.download_google_fonts()
+        return {"ok": bool(got), "fonts": got}
+
+    def studio_luts(self) -> list[dict[str, Any]]:
+        from app.core import studio
+        return [{"name": f.name, "title": f.stem} for f in sorted(studio.lut_dir().glob("*.cube"), key=lambda q: q.name.lower())]
+
+    def studio_lut_read(self, name: str) -> dict[str, Any]:
+        from app.core import studio
+        f = studio.lut_dir() / Path(str(name)).name
+        n, data = studio.parse_cube(f)
+        return {"n": n, "data": [round(v, 4) for t in data for v in t]}
+
+    def studio_lut_import(self) -> list[str]:
+        import shutil
+        from app.core import studio
+        got = []
+        for p in self._studio_dialog("multi", ("LUT (*.cube)",)):
+            try:
+                studio.parse_cube(Path(p))
+                shutil.copy2(p, studio.lut_dir() / Path(p).name)
+                got.append(Path(p).name)
+            except Exception as exc:
+                log.warning("LUT alinamadi %s: %s", p, exc)
+        return got
+
+    def studio_template(self, project: dict, tid: str, t: float, clip_id: str = "") -> dict[str, Any]:
+        from app.core import studio
+        try:
+            added = studio.apply_template(project, str(tid), float(t), self._media.ffmpeg() if self._media else "", str(clip_id or ""),
+                                          info=self._st().info)
+        except (KeyError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+        for a in project.get("assets", {}).values():
+            if not a.get("url") and os.path.isfile(a.get("path", "")):
+                a["url"] = self._studio_url(a["path"], a)
+        return {"ok": True, "project": project, "added": added}
+
+    def studio_sfx(self) -> list[dict[str, Any]]:
+        from app.core import studio
+        got = studio.ensure_sfx(self._media.ffmpeg() if self._media else "")
+        return [{"key": k, "name": studio.SFX[k][1], "path": p, "url": self._media.asset_url(p) if self._media else "", "kind": "audio"}
+                for k, p in got.items()]
+
+    # ---- anahtarlar (DPAPI)
+    _KEYS = ("pexels", "pixabay", "unsplash", "gemini")
+
+    def _key_store(self, name: str):
+        from app import paths
+        from app.core.debrid import TokenStore
+        return TokenStore(paths.DATA_DIR / f"studio_{name}_key.bin")
+
+    def studio_keys_status(self) -> dict[str, bool]:
+        return {k: bool(self._key_store(k).load()) for k in self._KEYS}
+
+    def studio_key_set(self, name: str, key: str) -> dict[str, Any]:
+        if name not in self._KEYS:
+            return {"ok": False}
+        key = str(key or "").strip()
+        if key:
+            self._key_store(name).save(key)
+        else:
+            self._key_store(name).clear()
+        return {"ok": True, "keys": self.studio_keys_status()}
+
+    def _get_json(self, url: str, headers: dict | None = None, timeout: float = 20) -> Any:
+        req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
+        return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+
+    # ---- stok arama
+    def studio_stock(self, source: str, q: str, kind: str = "photo", page: int = 1) -> dict[str, Any]:
+        """Kaynaklar: pexels, pixabay, unsplash (anahtar ister), openverse (anahtarsiz). Ortak bicim doner."""
+        q = str(q or "").strip()[:100] or "nature"
+        page = max(1, int(page or 1))
+        try:
+            if source == "openverse":
+                ep = "audio" if kind == "audio" else "images"
+                d = self._get_json(f"https://api.openverse.org/v1/{ep}/?" + urllib.parse.urlencode({"q": q, "page": page, "page_size": 30}))
+                return {"items": [{"id": r["id"], "thumb": r.get("thumbnail") or r.get("url"), "url": r.get("url"), "w": r.get("width"),
+                                   "h": r.get("height"), "by": r.get("creator") or "", "page": r.get("foreign_landing_url"),
+                                   "license": f"CC {str(r.get('license', '')).upper()} {r.get('license_version', '')}".strip(),
+                                   "kind": "audio" if kind == "audio" else "photo", "dur": (r.get("duration") or 0) / 1000,
+                                   "name": r.get("title") or q} for r in d.get("results", [])]}
+            key = self._key_store(source).load()
+            if not key:
+                return {"error": "no_key"}
+            if source == "pexels":
+                if kind == "video":
+                    d = self._get_json("https://api.pexels.com/videos/search?" + urllib.parse.urlencode({"query": q, "page": page, "per_page": 30}),
+                                       {"Authorization": key})
+                    items = []
+                    for v in d.get("videos", []):
+                        files = sorted([f for f in v.get("video_files", []) if f.get("file_type") == "video/mp4" and f.get("width")],
+                                       key=lambda f: f["width"])
+                        best = next((f for f in files if f["width"] >= 1920), files[-1] if files else None)
+                        prev = next((f for f in files if f["width"] >= 640), files[0] if files else None)
+                        if best:
+                            items.append({"id": v["id"], "thumb": v.get("image"), "preview": prev["link"] if prev else "", "url": best["link"],
+                                          "w": best["width"], "h": best["height"], "dur": v.get("duration"), "by": (v.get("user") or {}).get("name", ""),
+                                          "page": v.get("url"), "license": "Pexels", "kind": "video", "name": f"pexels-{v['id']}"})
+                    return {"items": items}
+                d = self._get_json("https://api.pexels.com/v1/search?" + urllib.parse.urlencode({"query": q, "page": page, "per_page": 30}),
+                                   {"Authorization": key})
+                return {"items": [{"id": r["id"], "thumb": r["src"]["medium"], "url": r["src"]["original"], "w": r["width"], "h": r["height"],
+                                   "by": r.get("photographer", ""), "page": r.get("url"), "license": "Pexels", "kind": "photo",
+                                   "name": (r.get("alt") or f"pexels-{r['id']}")[:60]} for r in d.get("photos", [])]}
+            if source == "pixabay":
+                base = "https://pixabay.com/api/videos/?" if kind == "video" else "https://pixabay.com/api/?"
+                d = self._get_json(base + urllib.parse.urlencode({"key": key, "q": q, "page": page, "per_page": 30, "safesearch": "true"}))
+                items = []
+                for r in d.get("hits", []):
+                    if kind == "video":
+                        vs = r.get("videos") or {}
+                        best = vs.get("large") if (vs.get("large") or {}).get("url") else vs.get("medium") or {}
+                        prev = vs.get("small") or vs.get("tiny") or {}
+                        items.append({"id": r["id"], "thumb": prev.get("thumbnail") or best.get("thumbnail") or "", "preview": prev.get("url", ""),
+                                      "url": best.get("url", ""), "w": best.get("width"), "h": best.get("height"), "dur": r.get("duration"),
+                                      "by": r.get("user", ""), "page": r.get("pageURL"), "license": "Pixabay", "kind": "video", "name": f"pixabay-{r['id']}"})
+                    else:
+                        items.append({"id": r["id"], "thumb": r.get("webformatURL"), "url": r.get("largeImageURL") or r.get("webformatURL"),
+                                      "w": r.get("imageWidth"), "h": r.get("imageHeight"), "by": r.get("user", ""), "page": r.get("pageURL"),
+                                      "license": "Pixabay", "kind": "photo", "name": (r.get("tags") or f"pixabay-{r['id']}")[:60]})
+                return {"items": items}
+            if source == "unsplash":
+                d = self._get_json("https://api.unsplash.com/search/photos?" + urllib.parse.urlencode({"query": q, "page": page, "per_page": 30}),
+                                   {"Authorization": f"Client-ID {key}", "Accept-Version": "v1"})
+                return {"items": [{"id": r["id"], "thumb": r["urls"]["small"], "url": r["urls"]["full"], "w": r["width"], "h": r["height"],
+                                   "by": (r.get("user") or {}).get("name", ""), "page": (r.get("links") or {}).get("html"),
+                                   "dl": (r.get("links") or {}).get("download_location"), "license": "Unsplash", "kind": "photo",
+                                   "name": (r.get("alt_description") or f"unsplash-{r['id']}")[:60]} for r in d.get("results", [])]}
+        except Exception as exc:
+            return {"error": str(exc)[:200]}
+        return {"error": "bad_source"}
+
+    def studio_stock_get(self, source: str, item: dict) -> dict[str, Any]:
+        """Secilen stok ogesini Videolar\\Kami Studio\\Stok\\<kaynak> altina indirir, ice aktarir; atif bilgisini saklar."""
+        from app.core import studio
+        url = str(item.get("url") or "")
+        if not url.startswith("https://"):
+            return {"ok": False, "error": "bad_url"}
+        d = studio.home_dir() / "Stok" / str(source).capitalize()
+        d.mkdir(parents=True, exist_ok=True)
+        ext = Path(urllib.parse.urlsplit(url).path).suffix.lower()
+        if ext not in studio.IMAGE_EXT | studio.VIDEO_EXT | studio.AUDIO_EXT:
+            ext = ".mp4" if item.get("kind") == "video" else ".mp3" if item.get("kind") == "audio" else ".jpg"
+        safe = re.sub(r'[<>:"/\\|?*\s]+', "_", f"{item.get('name', 'stok')}_{item.get('id', '')}")[:90]
+        dst = d / (safe + ext)
+        try:
+            if source == "unsplash" and item.get("dl"):   # Unsplash kurali: indirme sayaci
+                key = self._key_store("unsplash").load()
+                try:
+                    self._get_json(str(item["dl"]), {"Authorization": f"Client-ID {key}"})
+                except Exception:
+                    pass
+            if not dst.is_file():
+                req = urllib.request.Request(url, headers={"User-Agent": UA})
+                with urllib.request.urlopen(req, timeout=120) as r, open(dst.with_suffix(dst.suffix + ".part"), "wb") as f:
+                    while True:
+                        b = r.read(1 << 20)
+                        if not b:
+                            break
+                        f.write(b)
+                os.replace(dst.with_suffix(dst.suffix + ".part"), dst)
+            credits = studio.home_dir() / "Stok" / "atiflar.txt"
+            with open(credits, "a", encoding="utf-8") as f:
+                f.write(f"{dst.name}\t{item.get('by', '')}\t{item.get('license', '')}\t{item.get('page', '')}\n")
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        i = self._st().info(str(dst))
+        if i.get("ok"):
+            i["url"] = self._studio_url(str(dst), i)
+            i["credit"] = f"{item.get('by', '')} / {item.get('license', '')}"
+        return {"ok": bool(i.get("ok")), "info": i, "path": str(dst)}
+
+    # ---- Gemini (gorsel / video) + Flow
+    GEMINI = "https://generativelanguage.googleapis.com/v1beta"
+
+    def studio_gemini_models(self) -> dict[str, Any]:
+        key = self._key_store("gemini").load()
+        if not key:
+            return {"error": "no_key"}
+        try:
+            d = self._get_json(f"{self.GEMINI}/models?pageSize=200", {"x-goog-api-key": key})
+        except Exception as exc:
+            return {"error": str(exc)[:200]}
+        img, vid = [], []
+        for m in d.get("models", []):
+            name = m.get("name", "").replace("models/", "")
+            meth = m.get("supportedGenerationMethods") or []
+            if "image" in name and "generateContent" in meth:
+                img.append({"id": name, "name": m.get("displayName") or name})
+            elif ("veo" in name or "omni" in name) and ("predictLongRunning" in meth or "generateVideos" in meth or not meth):
+                vid.append({"id": name, "name": m.get("displayName") or name})
+        return {"image": img, "video": vid}
+
+    def studio_gemini(self, kind: str, prompt: str, model: str, aspect: str = "16:9", ref: str = "") -> dict[str, Any]:
+        """Arka planda uretir; durum studio_job. Sonuc Videolar\\Kami Studio\\Yapay Zeka altina kaydedilir."""
+        import base64
+        key = self._key_store("gemini").load()
+        if not key:
+            return {"ok": False, "error": "no_key"}
+        st = self._st()
+        jid = "g" + str(int(time.time() * 1000))
+        job = {"id": jid, "state": "running", "p": 0.05, "error": "", "cancel": threading.Event(), "line": "gönderiliyor"}
+        st.jobs[jid] = job
+        from app.core import studio
+        outdir = studio.home_dir() / "Yapay Zeka"
+        outdir.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+
+        def post(url: str, body: dict) -> dict:
+            req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
+                                         headers={"Content-Type": "application/json", "x-goog-api-key": key, "User-Agent": UA})
+            try:
+                return json.loads(urllib.request.urlopen(req, timeout=180).read())
+            except urllib.error.HTTPError as e:
+                raise RuntimeError(e.read().decode("utf-8", "replace")[:400]) from e
+
+        def run() -> None:
+            try:
+                if kind == "image":
+                    parts = [{"text": prompt}]
+                    if ref and os.path.isfile(ref):
+                        mime = "image/png" if ref.lower().endswith(".png") else "image/jpeg"
+                        parts.insert(0, {"inline_data": {"mime_type": mime, "data": base64.b64encode(Path(ref).read_bytes()).decode()}})
+                    d = post(f"{self.GEMINI}/models/{model}:generateContent",
+                             {"contents": [{"parts": parts}], "generationConfig": {"responseModalities": ["IMAGE"], "imageConfig": {"aspectRatio": aspect}}})
+                    saved = []
+                    for cand in d.get("candidates", []):
+                        for prt in (cand.get("content") or {}).get("parts", []):
+                            inl = prt.get("inlineData") or prt.get("inline_data")
+                            if inl and inl.get("data"):
+                                f = outdir / f"gemini-{stamp}-{len(saved) + 1}.png"
+                                f.write_bytes(base64.b64decode(inl["data"]))
+                                saved.append(str(f))
+                    if not saved:
+                        raise RuntimeError("görsel dönmedi: " + json.dumps(d)[:300])
+                    job.update(state="done", p=1.0, result={"paths": saved})
+                else:
+                    d = post(f"{self.GEMINI}/models/{model}:predictLongRunning",
+                             {"instances": [{"prompt": prompt}], "parameters": {"aspectRatio": aspect}})
+                    op = d.get("name")
+                    if not op:
+                        raise RuntimeError(json.dumps(d)[:300])
+                    t0 = time.time()
+                    while not job["cancel"].is_set():
+                        time.sleep(8)
+                        o = self._get_json(f"{self.GEMINI}/{op}", {"x-goog-api-key": key})
+                        job.update(p=min(0.95, 0.1 + (time.time() - t0) / 240), line="üretiliyor")
+                        if o.get("done"):
+                            if o.get("error"):
+                                raise RuntimeError(str(o["error"].get("message", o["error"]))[:300])
+                            resp = o.get("response") or {}
+                            vids = ((resp.get("generateVideoResponse") or {}).get("generatedSamples") or resp.get("generatedVideos") or [])
+                            saved = []
+                            for i, v in enumerate(vids):
+                                uri = ((v.get("video") or {}).get("uri"))
+                                if uri:
+                                    sep = "&" if "?" in uri else "?"
+                                    data = urllib.request.urlopen(urllib.request.Request(f"{uri}{sep}key={key}", headers={"User-Agent": UA}), timeout=300).read()
+                                    f = outdir / f"gemini-{stamp}-{i + 1}.mp4"
+                                    f.write_bytes(data)
+                                    saved.append(str(f))
+                            if not saved:
+                                raise RuntimeError("video dönmedi")
+                            job.update(state="done", p=1.0, result={"paths": saved})
+                            return
+                    job.update(state="cancelled")
+            except Exception as exc:
+                log.warning("Gemini: %s", exc)
+                job.update(state="error", error=str(exc)[:400])
+        threading.Thread(target=run, daemon=True, name="studio-gemini").start()
+        return {"ok": True, "job": jid}
+
+    def studio_open_url(self, url: str) -> bool:
+        url = str(url or "")
+        if not url.startswith("https://"):
+            return False
+        try:
+            os.startfile(url)   # type: ignore[attr-defined]
+            return True
+        except Exception:
+            import webbrowser
+            return webbrowser.open(url)
+
+    def studio_downloads_since(self, since: float) -> list[dict[str, Any]]:
+        """Indirilenler klasorune since'ten sonra dusen medya (Flow/Gemini'den indirdiklerin) - tek tikla ice aktarma icin."""
+        from app.core import studio
+        d = Path.home() / "Downloads"
+        out = []
+        try:
+            for f in d.iterdir():
+                if f.is_file() and studio.asset_kind(str(f)) and f.stat().st_mtime > float(since) and not f.name.endswith((".part", ".crdownload", ".tmp")):
+                    out.append({"path": str(f), "name": f.name, "t": f.stat().st_mtime})
+        except OSError:
+            pass
+        return sorted(out, key=lambda x: -x["t"])[:20]
+
+    # ---- arka plan silme (video, kare kare BiRefNet) ve Lottie
+    def studio_matte(self, path: str, start: float, dur: float, model: str = "birefnet-general") -> dict[str, Any]:
+        from app.core import aitools
+        if not aitools.installed("iopaint"):
+            return {"ok": False, "error": "need_tool", "tool": "iopaint"}
+        st = self._st()
+        jid = "m" + str(int(time.time() * 1000))
+        job = {"id": jid, "state": "running", "p": 0.0, "error": "", "cancel": threading.Event(), "started": time.time(), "line": ""}
+        st.jobs[jid] = job
+        from app.core import studio
+        outdir = studio.home_dir() / "Arka plansız"
+        outdir.mkdir(parents=True, exist_ok=True)
+        out = outdir / f"{Path(path).stem}-{int(float(start))}-{int(float(dur))}s.webm"
+
+        def run() -> None:
+            args = ["app.tools.studio_matte_run", str(path), str(out), f"{float(start):.3f}", f"{float(dur):.3f}", str(model), self._media.ffmpeg()]
+
+            def prog(m: dict) -> None:
+                job.update(p=float(m.get("p", job["p"])), line=str(m.get("line", job.get("line", ""))))
+            res = aitools._run_once(args, prog, job["cancel"], "iopaint", {})
+            if "done" in res and out.is_file():
+                i = st.info(str(out))
+                i["alpha"] = True
+                i["url"] = self._media.asset_url(str(out))
+                job.update(state="done", p=1.0, result=i)
+            else:
+                job.update(state="error", error=str(res.get("error", "olmadı"))[:300])
+        threading.Thread(target=run, daemon=True, name="studio-matte").start()
+        return {"ok": True, "job": jid}
+
+    def studio_lottie(self, src: str) -> dict[str, Any]:
+        """Lottie (.json/.lottie dosyasi ya da LottieFiles adresi) -> seffaf WebM (VP9 alfa) ve ice aktarma bilgisi."""
+        from app.core import lottie_conv, studio
+        try:
+            p = lottie_conv.fetch(str(src), studio.home_dir() / "Animasyonlar")
+            out = lottie_conv.to_webm(p, self._media.ffmpeg())
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+        i = self._st().info(str(out))
+        i["alpha"] = True
+        i["url"] = self._media.asset_url(str(out))
+        return {"ok": True, "info": i}
+
+    def studio_pick_lottie(self) -> str:
+        r = self._studio_dialog("open", ("Lottie (*.json;*.lottie)",))
+        return r[0] if r else ""
+
+    def studio_frame_png(self, project: dict, t: float, out: str = "") -> dict[str, Any]:
+        """Tam cozunurlukte tek kare (kapak/thumbnail)."""
+        from app.core import studio
+        if not out:
+            safe = re.sub(r'[<>:"/\\|?*]+', "_", str(project.get("name", "kare")))
+            out = str(studio.home_dir() / "Çıktılar" / f"{safe}-{int(float(t) * 1000)}.png")
+        try:
+            self._st().frame(project, float(t), out)
+            return {"ok": True, "path": out}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}

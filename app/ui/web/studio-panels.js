@@ -1,24 +1,24 @@
 "use strict";
 // Kami Studio sol paneller: medya, ses/meme, metin, altyazi, efekt, gecis, zoom, abone, akilli araclar, eklentiler.
 const PANELS = {
-  media: "Medya", sound: "Ses & Meme", text: "Metin", captions: "Altyazı", fx: "Efektler", trans: "Geçişler",
-  zoom: "Zoom", subscribe: "Abone ol", ai: "Akıllı araçlar", plugins: "Eklentiler & Claude",
+  media: "Proje", sound: "Ses & Meme", text: "Metin", graphics: "Grafik", captions: "Altyazı", fx: "Efektler", trans: "Geçişler",
+  zoom: "Zoom", subscribe: "Abone ol", templates: "Şablonlar", ai: "Akıllı araçlar", plugins: "Eklentiler & Claude",
 };
+const PANEL_IC = { media: "▦", sound: "♪", text: "T", graphics: "◆", captions: "≡", fx: "✦", trans: "⇋", zoom: "⊕", subscribe: "🔔", templates: "❖", ai: "✧", plugins: "⧉" };
+$("#libtabs").innerHTML = Object.entries(PANELS).map(([k, v]) => `<button data-panel="${k}" title="${v}"><i>${PANEL_IC[k]}</i>${v.split(" ")[0]}</button>`).join("");
 let panel = "media";
 const pb = $("#panelBody");
 
 function renderPanel(name) {
   if (name) panel = name;
-  $$("#rail button").forEach(b => b.classList.toggle("on", b.dataset.panel === panel));
+  $$("#libtabs button").forEach(b => b.classList.toggle("on", b.dataset.panel === panel));
   $("#panelTitle").textContent = PANELS[panel];
   $("#panelTools").innerHTML = "";
   (P[panel] || (() => ""))();
 }
-$("#rail").addEventListener("click", e => {
+$("#libtabs").addEventListener("click", e => {
   const b = e.target.closest("[data-panel]"); if (!b) return;
-  if (b.dataset.panel === panel && !document.body.classList.contains("nopanel")) document.body.classList.add("nopanel");
-  else { document.body.classList.remove("nopanel"); renderPanel(b.dataset.panel); }
-  layoutView();
+  renderPanel(b.dataset.panel);
 });
 const sec = t => `<div class="sec">${t}</div>`;
 const firstSel = () => selClips()[0];
@@ -60,17 +60,21 @@ pb.addEventListener("click", async e => {
 pb.addEventListener("dblclick", e => { const as = e.target.closest("[data-aid]"); if (as) dropAsset(as.dataset.aid, ST.t, null); });
 
 // ---------------------------------------------------------------- ses & meme
-let sndTab = "Sesler", sndCache = {}, sndAudio = null;
+let sndTab = "kami", sndCache = {}, sndAudio = null;
 const slots = (() => { try { return JSON.parse(localStorage.kstSlots || "{}"); } catch { return {}; } })();
 const saveSlots = () => { try { localStorage.kstSlots = JSON.stringify(slots); } catch { } };
 P.sound = async () => {
   $("#panelTools").innerHTML = `<button class="tb" id="sndDir" title="Klasörü aç">📁</button>`;
   $("#sndDir").onclick = () => api.studio_open_folder(sndTab === "Memeler" ? "Memeler" : "Sesler");
-  const tabs = [["Sesler", "Seslerim"], ["Memeler", "Memelerim"], ["myinstants", "Myinstants"], ["freesound", "Freesound"], ["pack", "Paketler"]];
+  const tabs = [["kami", "Kami SFX"], ["Sesler", "Seslerim"], ["Memeler", "Memelerim"], ["myinstants", "Myinstants"], ["freesound", "Freesound"], ["pack", "Paketler"]];
   let h = `<div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${sndTab === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
   const sl = Object.entries(slots);
   if (sl.length) h += sec("Hızlı (1-9 tuşu)") + `<div class="chips">${sl.sort().map(([k, s]) => `<span class="chip">${k} · ${esc(s.name.slice(0, 18))}<button data-unslot="${k}">✕</button></span>`).join("")}</div>`;
-  if (sndTab === "Sesler" || sndTab === "Memeler") {
+  if (sndTab === "kami") {
+    pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği telifsiz efektler (tık, whoosh, boom, zil, riser…). Sürükle ya da ＋.</div><div id="sndList" class="hint">Hazırlanıyor…</div>`;
+    const items = await job("studio_sfx", []);
+    sndRender(items.map(i => ({ ...i, local: true })));
+  } else if (sndTab === "Sesler" || sndTab === "Memeler") {
     h += `<div class="hint">${sndTab === "Sesler" ? "Videolar\\Kami Studio\\Sesler" : "Videolar\\Kami Studio\\Memeler"} klasörüne attığın her şey burada. İnternetten seçtiklerin de buraya iner.</div><input class="in" id="sndQ" placeholder="Ara…">`;
     pb.innerHTML = h + `<div id="sndList" class="hint">Yükleniyor…</div>`;
     const items = sndCache[sndTab] = await api.studio_library(sndTab);
@@ -148,6 +152,7 @@ async function dropItem(it, t, tid) {
   } else if (it.type === "text") addText(it.preset, t);
   else if (it.type === "fx") addFxClip(it.id, t);
   else if (it.type === "sub") addSub(it.kind, t);
+  else if (it.type === "gfx") addGfx(it.kind, t);
 }
 window.dropItem = dropItem;
 window.quickSlot = n => { const s = slots[n]; if (s) dropItem(s, ST.t); else toast(`${n} tuşu boş — Ses panelinde ★ ile ata`); };
@@ -179,6 +184,36 @@ function addText(i, t) {
   const c = placeAt({ text: p.up ? "ÜST YAZI" : p.n === "RAGE" ? "AAAAAA!" : "Yazını yaz", dur: 3, style: { ...p.s } }, "text", t);
   ST.sel = new Set([c.id]); changed(); setTimeout(() => $("#insp textarea")?.select(), 50);
 }
+
+// ---------------------------------------------------------------- grafik
+P.graphics = () => {
+  pb.innerHTML = `<div class="hint">Hareketli grafikler (vektör, her çözünürlükte keskin). Tıkla: oynatma kafasına ekler; yazıları sağdan değiştir.</div>` +
+    `<div class="grid2">${Object.entries(ST.cat.graphics || {}).map(([k, v]) => `<div class="card" data-gfx="${k}" draggable="true" data-item='${esc(JSON.stringify({ type: "gfx", kind: k }))}'><b>${esc(v)}</b></div>`).join("")}</div>`;
+};
+pb.addEventListener("click", e => { const g = e.target.closest("[data-gfx]"); if (g && panel === "graphics") addGfx(g.dataset.gfx, ST.t); });
+const GFX_DEF = { lower: { title: "İsim Soyisim", sub: "Unvan", x: .07, y: .8 }, "lower-min": { title: "İsim", sub: "Unvan", x: .07, y: .82 }, location: { title: "İstanbul, Türkiye", x: .06, y: .1 },
+  chapter: { num: "01", title: "BÖLÜM", x: .5, y: .5 }, endscreen: {}, callout: { title: "Burası!", x: .5, y: .45 }, progress: {}, highlight: { title: "ÖNEMLİ", x: .5, y: .5 },
+  counter: { from: 0, to: 1000, x: .5, y: .5 }, quote: { title: "Alıntı", sub: "Kişi", x: .5, y: .5 } };
+function addGfx(kind, t) { snap(); const c = placeAt({ graphic: kind, dur: kind === "endscreen" ? 20 : kind === "progress" ? Math.max(5, projEnd() - t) : 4, style: { ...(GFX_DEF[kind] || {}) } }, "text", t); ST.sel = new Set([c.id]); changed(); }
+
+// ---------------------------------------------------------------- sablonlar
+P.templates = () => {
+  const groups = {};
+  for (const t of ST.cat.templates || []) (groups[t.group] ||= []).push(t);
+  pb.innerHTML = `<div class="hint">Tek tıkla hazır kurgu parçaları (yazı + efekt + ses). Oynatma kafasına eklenir, hepsi düzenlenebilir. ❄ olanlar seçili video klibe uygulanır.</div>` +
+    Object.entries(groups).map(([g, items]) => sec(g) + `<div class="grid2">${items.map(t => `<div class="card" data-tpl="${t.id}"><b>${t.needs ? "❄ " : ""}${esc(t.name)}</b></div>`).join("")}</div>`).join("");
+};
+async function applyTemplate(id, t = ST.t) {
+  const c = selClips()[0];
+  busy("Şablon ekleniyor…");
+  const p = clone(ST.p);
+  const r = await job("studio_template", [p, id, t, c?.id || ""]); busy(null);
+  if (!r.ok) { toast(r.error || "olmadı", 3500); return; }
+  snap(); ST.p = r.project; for (const a of Object.values(ST.p.assets)) prepAsset(a);
+  ST.sel = new Set(r.added.slice(0, 1)); changed();
+}
+window.applyTemplate = applyTemplate;
+pb.addEventListener("click", e => { const t = e.target.closest("[data-tpl]"); if (t && panel === "templates") applyTemplate(t.dataset.tpl); });
 
 // ---------------------------------------------------------------- altyazi
 P.captions = () => {
@@ -257,10 +292,15 @@ pb.addEventListener("click", async e => {
 // ---------------------------------------------------------------- abone ol
 P.subscribe = () => {
   pb.innerHTML = `<div class="hint">Tıkla: oynatma kafasına 4 sn ekler. Yazıyı, rengi ve konumu sağdan değiştir (ör. “ABONE OL” yerine “SUBSCRIBE”). Önizlemede ekrandaki yeşil kutuyla taşıyabilirsin.</div>` +
-    `<div class="grid2">${Object.entries(ST.cat.subscribe).map(([k, v]) => `<div class="card" data-sub="${k}" draggable="true" data-item='${esc(JSON.stringify({ type: "sub", kind: k }))}'><b>${esc(v)}</b></div>`).join("")}</div>`;
+    `<div class="grid2">${Object.entries(ST.cat.subscribe).map(([k, v]) => `<div class="card" data-sub="${k}" draggable="true" data-item='${esc(JSON.stringify({ type: "sub", kind: k }))}'><b>${esc(v)}</b></div>`).join("")}</div>` +
+    `<div class="hint" style="margin-top:10px">Tık ve zil sesleri için “YouTube” şablonlarına bak (Şablonlar sekmesi). Hazır yeşil perde animasyonları: Medya sayfası → Stok → “subscribe green screen”, sonra Perdeyi sil.</div>`;
 };
 pb.addEventListener("click", e => { const s = e.target.closest("[data-sub]"); if (s && panel === "subscribe") addSub(s.dataset.sub, ST.t); });
-function addSub(kind, t) { snap(); const c = placeAt({ subscribe: kind, dur: 4, style: { y: .8, x: .5 } }, "text", t); ST.sel = new Set([c.id]); changed(); }
+function addSub(kind, t) {
+  snap(); const pro = kind.startsWith("yt") || ["play-morph", "channel", "folding", "3d", "wave", "meme", "social", "lss"].includes(kind);
+  const c = placeAt({ subscribe: kind, dur: pro ? 3.6 : 4, style: { y: kind === "social" ? .5 : .8, x: .5, ...(pro && (kind.startsWith("yt") || kind === "channel") ? { label: "Abone ol", done: "Abone olundu" } : {}) } }, "text", t);
+  ST.sel = new Set([c.id]); changed();
+}
 
 // ---------------------------------------------------------------- akilli araclar
 const AI_TOOLS = [
@@ -272,6 +312,8 @@ const AI_TOOLS = [
   ["montage", "Vuruşa montaj", "Medya kutusunda seçtiğin videolardan müziğin vuruşlarına oturan bir edit dizer (AMV/edit)."],
   ["beatzoom", "Vuruşlarda zoom", "Her vuruşta klibe kısa zoom darbesi ekler."],
   ["captions", "Otomatik altyazı", "Whisper ile kelime zamanlı altyazı (kinetik stiller)."],
+  ["matte", "Arka planı sil (video)", "Yeşil perde olmadan kişiyi keser (kare kare BiRefNet, ekran kartı). Sonuç şeffaf yeni klip olur."],
+  ["splitscreen", "Yan yana (podcast/tepki)", "Seçili iki video klibini ekranı bölerek yan yana (dikeyde üst-alt) dizer."],
   ["reframe", "Dikey çerçeve (yüz takibi)", "Videoyu 9:16 yapar, konuşan yüzü kadrajda tutar."],
 ];
 P.ai = () => {
@@ -292,6 +334,8 @@ async function needTool(r) {
 async function aiAction(kind, c) {
   if (kind === "unreframe") { snap(); delete c.reframe; changed(); return; }
   if (kind === "montage") return montage();
+  if (kind === "splitscreen") return splitScreen();
+  if (kind === "matte") return matte(c);
   if (kind === "beatzoom") return beatZoom(c);
   if (["silence", "freeze", "scenes", "beats", "captions", "reframe", "cutbeats"].includes(kind)) {
     const want = kind === "beats" || kind === "silence" || kind === "captions" ? ["video", "audio"] : ["video"];
@@ -364,6 +408,32 @@ async function aiAction(kind, c) {
   } catch (e) { busy(null); toast("Olmadı: " + e.message, 5000); }
 }
 window.aiAction = aiAction;
+async function matte(c) {
+  c = c && clipKind(c) === "video" ? c : needSel(["video"]); if (!c) return;
+  const a = assetOf(c), sp = c.speed || 1, len = c.dur * sp;
+  const m = await modal(`<h3>Arka planı sil</h3><div class="hint">${fmt(len)} video kare kare işlenecek (1080p'de saniyede ~2-4 kare; ${Math.round(len * 30 / 3 / 60)} dk civarı). Sonuç şeffaf bir klip olarak aynı yere konur, ses korunur.</div>
+    <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb" data-v="birefnet-general-lite">Hızlı</button><button class="tb pri" data-v="birefnet-general">En iyi kalite</button></div>`);
+  if (!m) return;
+  const r = await api.studio_matte(a.path, c.in || 0, len, m);
+  if (await needTool(r)) return;
+  if (!r.ok) { toast(r.error || "olmadı"); return; }
+  try {
+    const j = await waitStudioJob(r.job, "Arka plan siliniyor");
+    const i = j.result; snap();
+    let aid = "a1", n = 1; while (ST.p.assets[aid]) aid = "a" + (++n);
+    ST.p.assets[aid] = { path: i.path, kind: "video", dur: i.dur, w: i.w, h: i.h, audio: i.audio, name: i.name, alpha: true, url: i.url };
+    prepAsset(ST.p.assets[aid]);
+    c.asset = aid; c.in = 0; delete c.speed; changed(); toast("Arka plan silindi — altına istediğin videoyu/görseli koy");
+  } catch (e) { toast("Olmadı: " + e.message, 5000); }
+}
+function splitScreen() {
+  const cs = selClips().filter(c => clipKind(c) === "video");
+  if (cs.length !== 2) { toast("Zaman çizelgesinde iki video klibi seç (Shift+tık)"); return; }
+  snap(); const vert = ST.p.h > ST.p.w;
+  cs.forEach((c, i) => { c.fit = "cover"; c.scale = .5; if (vert) { c.x = 0; c.y = i ? .25 : -.25; c.scale = 1; c.crop = "half-h"; } else { c.x = i ? .25 : -.25; c.y = 0; c.scale = 1; c.crop = "half-w"; } });
+  cs[1].start = cs[0].start; if (cs[1].track === cs[0].track) { cs[1].track = addTrack("video"); }
+  changed(); toast("Yan yana dizildi");
+}
 function afterLoadPub() { $("#ratio").value = `${ST.p.w}x${ST.p.h}`; layoutView(); }
 async function montage() {
   const music = ST.p.clips.find(c => ST.sel.has(c.id) && clipKind(c) === "audio") || ST.p.clips.find(c => clipKind(c) === "audio");

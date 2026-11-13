@@ -93,7 +93,7 @@ def t_catalog() -> Any:
     c = S.catalog()
     return {"fx": {k: f"{v['name']} [{v['pack']}]" for k, v in c["fx"].items()}, "trans": c["trans"],
             "zoom": [{"id": z["id"], "name": z["name"]} for z in c["zoom"]], "captions": c["captions"], "anims": c["anims"],
-            "subscribe": c["subscribe"], "fonts": c["fonts"]}
+            "subscribe": c["subscribe"], "graphics": c["graphics"], "templates": c["templates"], "afx": c["afx"], "deliver": c["deliver"]}
 
 
 @tool("new_project", "Yeni proje oluşturur ve Studio'nun açık projesi yapar. Dikey video için w=1080,h=1920.",
@@ -368,6 +368,77 @@ def t_setp(set: dict, path: str = "") -> Any:
             pr[k] = set[k]
     save(p, pr)
     return {k: pr[k] for k in ("name", "w", "h", "fps", "bg")}
+
+
+@tool("apply_template", "Hazır şablonu t anına ekler (catalog.templates). 'freeze' için clip gerekir (kare dondur + zoom + tık).",
+      {"id": STR, "t": N, "clip": STR, "path": PATH}, ["id", "t"])
+def t_tpl(id: str, t: float, clip: str = "", path: str = "") -> Any:
+    p, pr = load(path)
+    added = S.apply_template(pr, id, float(t), _ffmpeg(), clip, info=ST.info)
+    save(p, pr)
+    return {"added": added}
+
+
+@tool("add_graphic", "Hareketli grafik ekler: lower, lower-min, location, chapter, endscreen, callout, progress, highlight, counter, quote. "
+      "style: title, sub, num, from/to/prefix/suffix, color, x, y, size, font.", {"kind": STR, "start": N, "dur": N, "style": {"type": "object"}, "path": PATH}, ["kind", "start"])
+def t_gfx(kind: str, start: float, dur: float = 4, style: dict | None = None, path: str = "") -> Any:
+    p, pr = load(path)
+    c = S.add_clip(pr, graphic=kind, start=float(start), dur=float(dur), style=style or {})
+    save(p, pr)
+    return c
+
+
+@tool("set_grade", "Renk düzeltme: exp (-2..2), con (-0.6..0.8), sat (0..2), temp/tint (-1..1), lift/gamma/gain [r,g,b] (-0.5..0.5), lut (Videolar\\Kami Studio\\LUT içindeki .cube adı), lutMix (0..1).",
+      {"clip": STR, "grade": {"type": "object"}, "path": PATH}, ["clip", "grade"])
+def t_grade(clip: str, grade: dict, path: str = "") -> Any:
+    p, pr = load(path)
+    c = S.find_clip(pr, clip)
+    c["grade"] = {**(c.get("grade") or {}), **grade}
+    save(p, pr)
+    return c["grade"]
+
+
+@tool("set_ramp", "Hız rampası: points=[{p: 0-1 kaynak konumu, s: hız}] (ör. montaj: [{p:0,s:3},{p:.4,s:.35},{p:.6,s:.35},{p:1,s:3}]). Boş liste rampayı kaldırır.",
+      {"clip": STR, "points": {"type": "array", "items": {"type": "object"}}, "path": PATH}, ["clip", "points"])
+def t_ramp(clip: str, points: list, path: str = "") -> Any:
+    p, pr = load(path)
+    c = S.find_clip(pr, clip)
+    if not points:
+        if c.get("srcLen"):
+            c["dur"] = c["srcLen"] / float(c.get("speed", 1) or 1)
+        c.pop("ramp", None)
+        c.pop("srcLen", None)
+    else:
+        c.setdefault("srcLen", c["dur"] * float(c.get("speed", 1) or 1))
+        c["ramp"] = points
+        c["dur"] = round(S.ramp_duration(c), 3)
+    save(p, pr)
+    return {"dur": c["dur"]}
+
+
+@tool("set_audio_fix", "Klip ses düzeltmeleri: fx listesi (nr1, nr2, voice, gate, bass, radio, phone, cave). Ayrıca duck_track ile bir izi müzik olarak işaretle (konuşmada kısılır).",
+      {"clip": STR, "fx": {"type": "array", "items": STR}, "duck_track": STR, "lufs": N, "path": PATH})
+def t_afx(clip: str = "", fx: list | None = None, duck_track: str = "", lufs: float | None = None, path: str = "") -> Any:
+    p, pr = load(path)
+    if clip:
+        S.find_clip(pr, clip)["afx"] = [f for f in (fx or []) if f in S.AUDIO_FIX]
+    if duck_track:
+        for t in pr["tracks"]:
+            if t["id"] == duck_track:
+                t["duck"] = True
+    if lufs is not None:
+        pr.setdefault("master", {})["lufs"] = float(lufs) or None
+    save(p, pr)
+    return {"ok": True}
+
+
+@tool("set_key", "Yeşil/mavi perde silme: on, color (#00ff00), sim (0.01-0.6), smooth (0-0.4), spill.", {"clip": STR, "key": {"type": "object"}, "path": PATH}, ["clip", "key"])
+def t_key(clip: str, key: dict, path: str = "") -> Any:
+    p, pr = load(path)
+    c = S.find_clip(pr, clip)
+    c["key"] = {**(c.get("key") or {}), **key}
+    save(p, pr)
+    return c["key"]
 
 
 # ---------------------------------------------------------------------------------------------------------------

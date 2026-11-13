@@ -293,10 +293,39 @@ function dropEl(id) { const r = ST.rt[id]; if (!r) return; try { r.el.pause(); r
 function stopAll() { for (const id of Object.keys(ST.rt)) dropEl(id); }
 function activeAt(t, kind) { return ST.p.clips.filter(c => t >= c.start - 1e-4 && t < c.start + c.dur && !trackOf(c).hide && (!kind || trackOf(c).kind === kind)); }
 function trackOrder(id) { const i = ST.p.tracks.findIndex(t => t.id === id); return ST.p.tracks.length - i; }
-function srcTime(c, t) { return (c.in || 0) + (t - c.start) * (c.speed || 1); }
+// hiz rampasi: [tl0, tl1, src0, src1, hiz] dilimleri (studio.py ramp_table ile ayni)
+const RAMP_N = 24;
+function rampSpeed(pts, p) {
+  const ps = [...pts].sort((a, b) => a.p - b.p);
+  if (p <= ps[0].p) return ps[0].s;
+  for (let i = 1; i < ps.length; i++) if (p <= ps[i].p) { const a = ps[i - 1], b = ps[i]; return a.s + (b.s - a.s) * (p - a.p) / Math.max(1e-6, b.p - a.p); }
+  return ps.at(-1).s;
+}
+function rampTable(c) {
+  const L = c.srcLen || c.dur * (c.speed || 1), out = []; let t = 0;
+  for (let i = 0; i < RAMP_N; i++) { const a0 = L * i / RAMP_N, a1 = L * (i + 1) / RAMP_N, sp = Math.max(.05, rampSpeed(c.ramp, (i + .5) / RAMP_N)); const d = (a1 - a0) / sp; out.push([t, t + d, a0, a1, sp]); t += d; }
+  return out;
+}
+function rampAt(c, local) {
+  const tab = c._rt && c._rk === JSON.stringify([c.ramp, c.srcLen, c.dur]) ? c._rt : (c._rk = JSON.stringify([c.ramp, c.srcLen, c.dur]), c._rt = rampTable(c));
+  for (const [t0, t1, a0, , sp] of tab) if (local < t1) return [a0 + (local - t0) * sp, sp];
+  const l = tab.at(-1); return [l[3], l[4]];
+}
+function rampApply(c, pts) {
+  if (!pts) { if (c.srcLen) c.dur = c.srcLen / (c.speed || 1); delete c.ramp; delete c.srcLen; return; }
+  c.srcLen ||= c.dur * (c.speed || 1); c.ramp = pts; c.dur = +rampTable(c).at(-1)[1].toFixed(3);
+}
+function srcTime(c, t) {
+  if (c.freeze) return c.in || 0;
+  if (c.ramp?.length) return (c.in || 0) + rampAt(c, t - c.start)[0];
+  return (c.in || 0) + (t - c.start) * (c.speed || 1);
+}
+function curSpeed(c, t) { return c.freeze ? 0 : c.ramp?.length ? rampAt(c, t - c.start)[1] : (c.speed || 1); }
 function clipVol(c, t) {
   const tr = trackOf(c); if (tr.mute) return 0;
   let v = c.vol ?? 1; const l = t - c.start;
+  if (tr.duck && ST.p.clips.some(x => x !== c && !trackOf(x).duck && !trackOf(x).mute && (trackOf(x).kind === "audio" || (trackOf(x).kind === "video" && assetOf(x)?.audio)) && t >= x.start && t < x.start + x.dur))
+    v *= 1 - .7 * ((ST.p.master || {}).duck ?? .6);
   if (c.fadeIn > 0 && l < c.fadeIn) v *= l / c.fadeIn;
   if (c.fadeOut > 0 && c.dur - l < c.fadeOut) v *= Math.max(0, (c.dur - l) / c.fadeOut);
   return clamp(v, 0, 2);
@@ -317,9 +346,9 @@ function syncMedia(t, hard = false) {
     if (act) {
       const want = srcTime(c, t), vol = clipVol(c, t);
       const gain = Math.min(1, vol);
-      el.volume = gain; el.muted = !(a.audio || a.kind === "audio") || vol <= 0;
-      el.playbackRate = clamp(c.speed || 1, .0625, 16);
-      if (ST.playing) {
+      el.volume = gain; el.muted = !(a.audio || a.kind === "audio") || vol <= 0 || c.freeze;
+      el.playbackRate = clamp(curSpeed(c, t) || 1, .0625, 16);
+      if (ST.playing && !c.freeze) {
         if (el.paused) { el.currentTime = want; el.play().catch(() => {}); }
         else if (Math.abs(el.currentTime - want) > .25) el.currentTime = want;
       } else {
@@ -365,10 +394,21 @@ function drawClip(c, t) {
   fbx.setTransform(1, 0, 0, 1, 0, 0); fbx.clearRect(0, 0, W, H);
   fbx.filter = [adjCss(c.adj), fxCss(c.fx)].filter(Boolean).join(" ") || "none";
   let dw = W, dh = H;
-  if (fit === "cover") { const k = Math.max(W / sw, H / sh); dw = sw * k; dh = sh * k; }
-  else if (fit === "contain") { const k = Math.min(W / sw, H / sh); dw = sw * k; dh = sh * k; }
-  fbx.drawImage(s.src, sx, sy, sw, sh, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  if (c.crop === "half-w" || c.crop === "half-h") {   // yan yana: kutuya kapla, kutu disi saydam
+    const bw = c.crop === "half-w" ? W / 2 : W, bh = c.crop === "half-h" ? H / 2 : H, k = Math.max(bw / sw, bh / sh);
+    const cw = bw / k, chh = bh / k;
+    fbx.drawImage(s.src, sx + (sw - cw) / 2, sy + (sh - chh) / 2, cw, chh, (W - bw) / 2, (H - bh) / 2, bw, bh);
+  } else {
+    if (fit === "cover") { const k = Math.max(W / sw, H / sh); dw = sw * k; dh = sh * k; }
+    else if (fit === "contain") { const k = Math.min(W / sw, H / sh); dw = sw * k; dh = sh * k; }
+    fbx.drawImage(s.src, sx, sy, sw, sh, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  }
   fbx.filter = "none";
+  if (SGL.ok && SGL.active(c)) {
+    if (c.grade?.lut && !SGL.has(c.grade.lut)) loadLut(c.grade.lut);
+    const out = SGL.process(fitBuf, W, H, c);
+    if (out) { fbx.clearRect(0, 0, W, H); fbx.drawImage(out, 0, 0); }
+  }
   // 2) zoom + efekt katmanlari -> clipBuf
   let src = fitBuf;
   const zk = c.zoom?.length ? kfResolve(c.zoom, c.dur) : null;
@@ -401,6 +441,11 @@ function drawClip(c, t) {
   vctx.drawImage(src, -W / 2, -H / 2);
   vctx.restore();
 }
+const lutLoading = new Set();
+async function loadLut(name) {
+  if (lutLoading.has(name)) return; lutLoading.add(name);
+  try { const r = await job("studio_lut_read", [name]); SGL.setLut(name, r.n, r.data); draw(); } catch (e) { toast("LUT okunamadı: " + name); }
+}
 let drawQ = false;
 function draw() { if (!drawQ) { drawQ = true; requestAnimationFrame(() => { drawQ = false; drawNow(); }); } }
 function drawNow() {
@@ -429,7 +474,7 @@ function updateTC() {
 let wall0 = 0, t0 = 0, raf = 0;
 function play(on = !ST.playing) {
   if (on && ST.t >= projEnd() - .02) ST.t = 0;
-  ST.playing = on; $("#playBtn").textContent = on ? "❚❚" : "▶";
+  ST.playing = on; $("#playBtn").textContent = on ? "❚❚" : "▶"; document.body.classList.toggle("playing", on);
   if (on) { wall0 = performance.now(); t0 = ST.t; syncMedia(ST.t, true); assTime(); raf = requestAnimationFrame(tick); }
   else { cancelAnimationFrame(raf); syncMedia(ST.t, true); assTime(); draw(); }
 }
@@ -463,13 +508,14 @@ async function assInit() {
     jas = new JASSUB({
       canvas: $("#assView"), subContent: assLast, workerUrl: jasBlob,
       wasmUrl: ST.cat.jassub + "jassub-worker.wasm", modernWasmUrl: ST.cat.jassub + "jassub-worker-modern.wasm",
-      fonts: ST.cat.fontUrls || [], availableFonts: { "liberation sans": ST.cat.jassub + "default.woff2" }, fallbackFont: "liberation sans",
+      fonts: ST.cat.fontUrls || [], availableFonts: { "liberation sans": ST.cat.jassub + "default.woff2", ...Object.fromEntries(Object.entries(ST.fontMap || {}).map(([k, v]) => [k.toLowerCase(), v])) }, fallbackFont: "liberation sans",
       onDemandRender: false, targetFps: 30, prescaleFactor: 1, prescaleHeightLimit: 2160,
     });
     const r = $("#viewWrap").getBoundingClientRect(); assResize(Math.round(r.width), Math.round(r.height));
     assDirty(true);
   } catch (e) { console.warn("JASSUB", e); jas = null; }
 }
+window.jasReloadFonts = async () => { try { jas?.destroy(); } catch { } jas = null; assLast = ""; await assInit(); };
 function assResize(w, h) {
   if (!jas || !ST.p) return;
   jas._videoWidth = ST.p.w; jas._videoHeight = ST.p.h;
@@ -566,11 +612,12 @@ function clipEl(c, t) {
   const w = Math.max(3, c.dur * ST.px);
   el.style.left = (c.start * ST.px) + "px"; el.style.width = w + "px";
   let label = "";
-  if (k === "text") label = c.subscribe ? `🔔 Abone: ${ST.cat.subscribe[c.subscribe] || c.subscribe}` : c.words ? `≡ Altyazı (${c.words.length} kelime)` : "T " + (c.text || "");
+  if (k === "text") label = c.subscribe ? `🔔 ${ST.cat.subscribe[c.subscribe] || c.subscribe}` : c.graphic ? `◆ ${ST.cat.graphics?.[c.graphic] || c.graphic}` : c.words ? `≡ Altyazı (${c.words.length} kelime)` : "T " + (c.text || "");
   else if (k === "fx") label = "✦ " + (ST.cat.fx[c.mode]?.name || c.mode);
   else label = a?.name || "?";
   const tags = [];
   if ((c.speed || 1) !== 1) tags.push(`${c.speed}×`);
+  if (c.ramp?.length) tags.push("⤳"); if (c.freeze) tags.push("❄"); if (c.key?.on) tags.push("▣"); if (c.grade && SGL.active({ grade: c.grade })) tags.push("◐"); if (c.afx?.length) tags.push("♪" + c.afx.length);
   if (c.fx?.length) tags.push("✦" + c.fx.length);
   if (c.zoom?.length) tags.push("⊕");
   if (c.reframe?.length) tags.push("▯");
@@ -617,7 +664,7 @@ function drawRuler() {
   for (let t = 0; t * ST.px < w; t += minor) {
     const x = Math.round(t * ST.px) + .5 - x0, isM = Math.abs(t / major - Math.round(t / major)) < 1e-6;
     g.beginPath(); g.moveTo(x, isM ? 10 : 18); g.lineTo(x, 26); g.stroke();
-    if (isM) g.fillText(major < 1 ? (Math.round(t * 100) / 100) + "s" : fmt(t, false), x + 3, 10);
+    if (isM) { const tt = Math.round(t * 1000) / 1000; g.fillText(major < 1 ? tt + "s" : fmt(tt + 1e-6, false), x + 3, 10); }
   }
   g.fillStyle = "rgba(255,181,71,.8)";
   for (const m of ST.p.markers || []) g.fillRect(Math.round(m.t * ST.px) - 1, 20, 3, 6);
@@ -797,6 +844,8 @@ function renderInsp() {
   if (k === "video" || k === "audio") {
     h += `<div class="sec">Hız</div>` + fld("Hız", "speed", .1, 8, .05, c.speed || 1) +
       `<div class="row tight">${[.25, .5, 1, 1.5, 2, 4].map(v => `<button class="tb" data-speed="${v}">${v}×</button>`).join("")}</div>`;
+    if (k === "video") h += `<div class="sec">Hız rampası</div><div class="grid3 ramps">${Object.entries(RAMPS).map(([id, r]) => `<button class="tb${(id === "none" && !c.ramp) ? " on" : ""}" data-ramp="${id}">${r.n}</button>`).join("")}</div>` +
+      (c.ramp ? `<canvas id="rampCv" width="270" height="96" title="Noktayı sürükle · çift tık: nokta ekle · sağ tık: sil"></canvas><div class="hint">Yukarı = hızlı, aşağı = yavaş. Klip süresi kendiliğinden ayarlanır.</div>` : "");
   }
   if (k === "audio" || (k === "video" && a?.audio)) {
     h += `<div class="sec">Ses</div>` + fld("Ses düzeyi", "vol", 0, 2, .01, c.vol ?? 1) + fld("Açılış", "fadeIn", 0, 5, .05, c.fadeIn || 0) + fld("Kapanış", "fadeOut", 0, 5, .05, c.fadeOut || 0);
@@ -810,6 +859,15 @@ function renderInsp() {
     h += zoomInsp(c);
     h += `<div class="sec">Dikey çerçeve</div><div class="row"><button class="tb" data-a2="reframe">▯ Yüzü takip et</button>${c.reframe?.length ? '<button class="tb" data-a2="unreframe">Kaldır</button>' : ""}</div>`;
   }
+  if (k === "audio" || (k === "video" && a?.audio)) h += `<div class="sec">Ses düzeltme</div><div class="chips">${Object.entries(ST.cat.afx || {}).map(([id, n]) => `<button class="tb${(c.afx || []).includes(id) ? " on" : ""}" data-afx="${id}" style="font-size:11px;padding:4px 8px">${esc(n)}</button>`).join("")}</div><div class="hint">Önizlemede duyulmaz, dışa aktarımda uygulanır. Sesin altına müzik girsin istiyorsan müzik izinde “Kıs” (Ses sayfası).</div>`;
+  if (k === "video" || k === "image") {
+    const ky = c.key || {};
+    h += `<div class="sec">Perde (yeşil/mavi) · arka plan</div>` + chk("Perdeyi sil", "key.on", ky.on) +
+      (ky.on ? color("Perde rengi", "key.color", ky.color || "#00ff00") + fld("Benzerlik", "key.sim", .01, .6, .005, ky.sim ?? .15) + fld("Yumuşaklık", "key.smooth", 0, .4, .005, ky.smooth ?? .08) + chk("Taşmayı temizle", "key.spill", ky.spill ?? true) +
+        `<div class="row"><button class="tb" data-a2="pipette">⌖ Pipet: önizlemeden renk al</button></div>` : "") +
+      (k === "video" ? `<div class="row"><button class="tb" data-a2="matte">✂ Yapay zekayla arka planı sil</button></div>` : "") +
+      `<div class="row"><button class="tb" data-a2="tocolor">◐ Renk sayfasında düzenle</button></div>`;
+  }
   if (k === "audio" || k === "video") h += `<div class="sec">Akıllı</div><div class="row"><button class="tb" data-a2="silence">Sessizlikleri kırp</button><button class="tb" data-a2="beats">Vuruşları bul</button></div>`;
   if (k === "text") h += textInsp(c);
   if (k === "fx") {
@@ -820,6 +878,7 @@ function renderInsp() {
   }
   h += `<div class="sec">Zaman</div>` + `<div class="grid2"><label class="fld w2" style="grid-template-columns:44px 1fr"><span>Başla</span><input type="number" class="in" data-k="start" step="0.01" value="${c.start.toFixed(2)}"></label><label class="fld w2" style="grid-template-columns:44px 1fr"><span>Süre</span><input type="number" class="in" data-k="dur" step="0.01" value="${c.dur.toFixed(2)}"></label></div>`;
   box.innerHTML = h;
+  rampCanvas(c);
 }
 function zoomInsp(c) {
   const kf = kfResolve(c.zoom || [], c.dur);
@@ -832,13 +891,28 @@ function zoomInsp(c) {
 function textInsp(c) {
   const st = c.style || {};
   const fonts = Object.fromEntries((ST.cat.fonts || []).map(f => [f, f]));
+  const fontIn = (key, val) => `<label class="fld w2"><span>Font</span><input class="in" list="fontList" data-k="${key}" value="${esc(val)}" spellcheck="false"></label>`;
   let h = "";
+  if (c.graphic) {
+    const G = c.graphic;
+    h += `<div class="sec">Grafik</div>` + sel("Tür", "graphic", ST.cat.graphics || {}, G) +
+      (["lower", "lower-min", "location", "chapter", "callout", "highlight", "quote"].includes(G) ? `<label class="fld w2"><span>Başlık</span><input class="in" data-k="style.title" value="${esc(st.title || "")}"></label>` : "") +
+      (["lower", "lower-min", "location", "quote"].includes(G) ? `<label class="fld w2"><span>Alt yazı</span><input class="in" data-k="style.sub" value="${esc(st.sub || "")}"></label>` : "") +
+      (G === "chapter" ? `<label class="fld w2"><span>Numara</span><input class="in" data-k="style.num" value="${esc(st.num || "01")}"></label>` : "") +
+      (G === "counter" ? `<label class="fld w2"><span>Başla</span><input type="number" class="in" data-k="style.from" value="${st.from ?? 0}"></label><label class="fld w2"><span>Bitir</span><input type="number" class="in" data-k="style.to" value="${st.to ?? 1000}"></label><label class="fld w2"><span>Ön ek</span><input class="in" data-k="style.prefix" value="${esc(st.prefix || "")}"></label><label class="fld w2"><span>Son ek</span><input class="in" data-k="style.suffix" value="${esc(st.suffix || "")}"></label>` : "") +
+      (G === "endscreen" ? `<label class="fld w2"><span>Kutu 1</span><input class="in" data-k="style.v1" value="${esc(st.v1 || "Önerilen video")}"></label><label class="fld w2"><span>Kutu 2</span><input class="in" data-k="style.v2" value="${esc(st.v2 || "Son video")}"></label>` : "") +
+      color("Vurgu rengi", "style.color", st.color || (G === "highlight" ? "#FFE600" : "#8B5CF6")) + fld("Boyut", "style.size", 30, 250, 1, st.size ?? 100) +
+      fld("X", "style.x", 0, 1, .005, st.x ?? .5) + fld("Y", "style.y", 0, 1, .005, st.y ?? .5) + fontIn("style.font", st.font || "Segoe UI");
+    return h;
+  }
   if (c.subscribe) {
     h += `<div class="sec">Abone animasyonu</div>` + sel("Tür", "subscribe", ST.cat.subscribe, c.subscribe) +
       `<label class="fld w2"><span>Yazı</span><input class="in" data-k="style.label" value="${esc(st.label || "ABONE OL")}"></label>` +
       `<label class="fld w2"><span>Sonra</span><input class="in" data-k="style.done" value="${esc(st.done || "ABONE OLUNDU")}"></label>` +
       color("Renk", "style.color", st.color || "#ff1f1f") + fld("Boyut", "style.size", 30, 250, 1, st.size ?? 100) +
-      fld("X", "style.x", 0, 1, .005, st.x ?? .5) + fld("Y", "style.y", 0, 1, .005, st.y ?? .8) + sel("Font", "style.font", fonts, st.font || "Chakra Petch");
+      fld("X", "style.x", 0, 1, .005, st.x ?? .5) + fld("Y", "style.y", 0, 1, .005, st.y ?? .8) + fontIn("style.font", st.font || (c.subscribe.startsWith("yt") || c.subscribe === "channel" ? "Segoe UI" : "Chakra Petch")) +
+      (c.subscribe === "channel" ? `<label class="fld w2"><span>Kanal</span><input class="in" data-k="style.channel" value="${esc(st.channel || "Kanal Adı")}"></label><label class="fld w2"><span>Abone</span><input class="in" data-k="style.subs" value="${esc(st.subs || "1,2 Mn abone")}"></label>` + color("Avatar", "style.avatarColor", st.avatarColor || "#8B5CF6") : "") +
+      (c.subscribe === "social" ? ["yt", "ig", "tt"].map(x => `<label class="fld w2"><span>${{ yt: "YouTube", ig: "Instagram", tt: "TikTok" }[x]}</span><input class="in" data-k="style.${x}" value="${esc(st[x] ?? "@kanal")}"></label>`).join("") : "");
     return h;
   }
   if (c.words) {
@@ -852,7 +926,7 @@ function textInsp(c) {
       `<div class="fld w2"><span>Konum</span><div class="seg" data-seg="style.pos">${[["top", "Üst"], ["center", "Orta"], ["bottom", "Alt"], ["custom", "Serbest"]].map(([v, l]) => `<button data-v="${v}" class="${(st.pos || "bottom") === v ? "on" : ""}">${l}</button>`).join("")}</div></div>` +
       ((st.pos || "bottom") === "custom" ? fld("X", "style.x", 0, 1, .005, st.x ?? .5) + fld("Y", "style.y", 0, 1, .005, st.y ?? .5) : "");
   }
-  h += `<div class="sec">Yazı tipi</div>` + sel("Font", "style.font", fonts, st.font || "Chakra Petch") + fld("Boyut", "style.size", 2, 30, .1, st.size ?? (c.words ? 7.5 : 7)) +
+  h += `<div class="sec">Yazı tipi</div>` + fontIn("style.font", st.font || "Chakra Petch") + fld("Boyut", "style.size", 2, 30, .1, st.size ?? (c.words ? 7.5 : 7)) +
     color("Renk", "style.color", st.color || "#ffffff") + color("Kenar rengi", "style.outlineColor", st.outlineColor || "#000000") + fld("Kenar", "style.outline", 0, 20, .5, st.outline ?? 6) +
     fld("Gölge", "style.shadow", 0, 20, .5, st.shadow || 0) + chk("Parlama", "style.glow", st.glow) + (st.glow ? color("Parlama rengi", "style.glowColor", st.glowColor || st.color || "#ffffff") : "") +
     chk("Kalın", "style.bold", st.bold ?? true) + chk("İtalik", "style.italic", st.italic) + chk("Kutulu", "style.box", st.box) + (st.box ? color("Kutu rengi", "style.boxColor", st.boxColor || "#000000") : "") +
@@ -874,6 +948,52 @@ function multiInsp(cs) {
   return `<div class="hint">Toplu ayar: değerler seçili tüm kliplere uygulanır.</div>` + fld("Ses düzeyi", "vol", 0, 2, .01, cs[0].vol ?? 1) + fld("Hız", "speed", .1, 8, .05, cs[0].speed || 1) +
     fld("Opaklık", "opacity", 0, 1, .01, cs[0].opacity ?? 1) + `<div class="row"><button class="tb" data-a2="align">Uç uca diz</button><button class="tb" data-a2="del">Sil</button></div>`;
 }
+const RAMPS = {
+  none: { n: "Yok", p: null },
+  montage: { n: "Montaj", p: [{ p: 0, s: 3 }, { p: .4, s: .35 }, { p: .6, s: .35 }, { p: 1, s: 3 }] },
+  slow: { n: "Yavaşla", p: [{ p: 0, s: 1 }, { p: .5, s: 1 }, { p: 1, s: .3 }] },
+  fast: { n: "Hızlan", p: [{ p: 0, s: .4 }, { p: 1, s: 3 }] },
+  bullet: { n: "Bullet time", p: [{ p: 0, s: 1.5 }, { p: .45, s: .2 }, { p: .55, s: .2 }, { p: 1, s: 1.5 }] },
+  flash: { n: "Flaş hız", p: [{ p: 0, s: 4 }, { p: .5, s: 1 }, { p: 1, s: 4 }] },
+  hit: { n: "Vuruş anı", p: [{ p: 0, s: 1 }, { p: .47, s: 1.2 }, { p: .5, s: .22 }, { p: .7, s: .22 }, { p: .73, s: 1.2 }, { p: 1, s: 1 }] },
+  speedup: { n: "Hızlı giriş", p: [{ p: 0, s: 5 }, { p: .3, s: 1 }, { p: 1, s: 1 }] },
+  slowend: { n: "Ağır çıkış", p: [{ p: 0, s: 1 }, { p: .7, s: 1 }, { p: 1, s: .25 }] },
+};
+function drawRamp(c) {
+  const cv = $("#rampCv"); if (!cv || !c.ramp) return;
+  const g = cv.getContext("2d"), W = cv.width, H = cv.height, y = s => H - 8 - (Math.log2(s) + 3.3) / 6.3 * (H - 16);
+  g.clearRect(0, 0, W, H); g.fillStyle = "#07050C"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(255,255,255,.08)"; for (const s of [.25, .5, 1, 2, 4]) { g.beginPath(); g.moveTo(0, y(s)); g.lineTo(W, y(s)); g.stroke(); }
+  g.fillStyle = "#8E86A3"; g.font = "9px Chakra Petch"; for (const s of [.25, 1, 4]) g.fillText(s + "×", 3, y(s) - 2);
+  g.strokeStyle = "#2EE6A6"; g.lineWidth = 2; g.beginPath();
+  for (let i = 0; i <= 100; i++) { const p = i / 100, X = p * W, Y = y(rampSpeed(c.ramp, p)); i ? g.lineTo(X, Y) : g.moveTo(X, Y); }
+  g.stroke(); g.fillStyle = "#FFB547"; for (const q of c.ramp) { g.beginPath(); g.arc(q.p * W, y(q.s), 4.5, 0, 7); g.fill(); }
+}
+function rampCanvas(c) {
+  const cv = $("#rampCv"); if (!cv) return;
+  drawRamp(c);
+  const W = cv.width, H = cv.height, sOf = Y => clamp(2 ** ((H - 8 - Y) / (H - 16) * 6.3 - 3.3), .1, 8), y = s => H - 8 - (Math.log2(s) + 3.3) / 6.3 * (H - 16);
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height]; };
+  cv.oncontextmenu = e => { e.preventDefault(); const [X, Y] = pos(e); const pts = c.ramp; const i = pts.findIndex(q => Math.hypot(q.p * W - X, y(q.s) - Y) < 9); if (i > 0 && i < pts.length - 1) { snap(); pts.splice(i, 1); rampApply(c, pts); changed(); } };
+  cv.ondblclick = e => { const [X, Y] = pos(e); snap(); const pts = [...c.ramp, { p: clamp(X / W, .01, .99), s: +sOf(Y).toFixed(2) }].sort((a, b) => a.p - b.p); rampApply(c, pts); changed(); };
+  cv.onpointerdown = e => {
+    const [X, Y] = pos(e), pts = c.ramp, i = pts.findIndex(q => Math.hypot(q.p * W - X, y(q.s) - Y) < 9); if (i < 0) return;
+    cv.setPointerCapture(e.pointerId); snap();
+    cv.onpointermove = ev => { const [x2, y2] = pos(ev); const q = pts[i];
+      if (i > 0 && i < pts.length - 1) q.p = +clamp(x2 / W, pts[i - 1].p + .01, pts[i + 1].p - .01).toFixed(3);
+      q.s = +sOf(y2).toFixed(2); rampApply(c, pts); drawRamp(c); draw(); };
+    cv.onpointerup = () => { cv.onpointermove = null; changed(); };
+  };
+}
+let pipette = false;
+$("#view").addEventListener("click", e => {
+  if (!pipette) return; pipette = false; document.body.style.cursor = "";
+  const r = view.getBoundingClientRect(), x = Math.round((e.clientX - r.left) * PW / r.width), y = Math.round((e.clientY - r.top) * PH / r.height);
+  const c = selClips()[0]; if (!c) return;
+  const keyOn = c.key?.on; if (keyOn) c.key.on = false; drawNow();
+  const d = vctx.getImageData(x, y, 1, 1).data; if (keyOn) c.key.on = true;
+  snap(); c.key = { ...(c.key || {}), on: true, color: "#" + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, "0")).join("") }; changed();
+});
 let inspSnap = false;
 $("#insp").addEventListener("pointerdown", () => { inspSnap = false; });
 function inspSet(k, v, live) {
@@ -884,7 +1004,7 @@ function inspSet(k, v, live) {
     else if (k === "start" || k === "dur") c[k] = Math.max(k === "dur" ? .05 : 0, v);
     else setK(c, k, v);
   }
-  const textual = k === "text" || k.startsWith("style.") || k === "subscribe" || k === "mode" || k === "date" || k === "cam";
+  const textual = k === "text" || k.startsWith("style.") || k === "subscribe" || k === "graphic" || k === "mode" || k === "date" || k === "cam";
   if (textual) assDirty();
   if (live) { draw(); if (k === "speed" || k === "start" || k === "dur" || k === "vol" || k.startsWith("fade")) renderTimeline(); renderHandles(); ST.dirty = true; scheduleSave(); }
   else changed();
@@ -914,6 +1034,8 @@ $("#insp").addEventListener("click", async e => {
   const c = selClips()[0];
   if (b.closest("[data-seg]")) { inspSet(b.closest("[data-seg]").dataset.seg, b.dataset.v, false); return; }
   if (b.dataset.speed) { inspSet("speed", +b.dataset.speed, false); return; }
+  if (b.dataset.ramp) { snap(); rampApply(c, RAMPS[b.dataset.ramp].p && clone(RAMPS[b.dataset.ramp].p)); changed(); return; }
+  if (b.dataset.afx) { snap(); const s2 = new Set(c.afx || []); s2.has(b.dataset.afx) ? s2.delete(b.dataset.afx) : s2.add(b.dataset.afx); c.afx = [...s2]; if (!c.afx.length) delete c.afx; changed(false); renderInsp(); return; }
   if (b.dataset.unfx) { snap(); c.fx = c.fx.filter(x => x !== b.dataset.unfx); if (!c.fx.length) delete c.fx; changed(); return; }
   if (b.dataset.kfdel != null) { snap(); const kf = kfResolve(c.zoom, c.dur); kf.splice(+b.dataset.kfdel, 1); c.zoom = kf.length ? kf : undefined; if (!c.zoom) delete c.zoom; changed(); return; }
   const a2 = b.dataset.a2;
@@ -937,6 +1059,8 @@ $("#insp").addEventListener("click", async e => {
   } else if (a2 === "clearmk") { snap(); ST.p.markers = []; changed(); }
   else if (a2 === "align") { snap(); let t = Math.min(...selClips().map(x => x.start)); for (const x of selClips().sort((a, b) => a.start - b.start)) { x.start = t; t += x.dur; } changed(); }
   else if (a2 === "del") deleteSel();
+  else if (a2 === "pipette") { pipette = true; document.body.style.cursor = "crosshair"; toast("Önizlemede perde rengine tıkla"); }
+  else if (a2 === "tocolor") window.setPage?.("color");
   else window.aiAction?.(a2, c);
 });
 window.focusInsp = () => { renderInsp(); $("#insp").scrollTop = 0; };
@@ -1000,9 +1124,10 @@ document.addEventListener("click", e => {
     addtrack: async () => { const k = await modal(`<h3>İz ekle</h3><div class="row" style="justify-content:stretch">${[["video", "Video / görsel"], ["audio", "Ses"], ["text", "Metin"], ["fx", "Efekt"]].map(([k, l]) => `<button class="tb" data-v="${k}">${l}</button>`).join("")}</div>`); if (k) { snap(); addTrack(k); changed(); } },
     zin: () => setZoom(ST.px * 1.4), zout: () => setZoom(ST.px / 1.4),
     zfit: () => setZoom((scroller.clientWidth - 40) / Math.max(5, projEnd())),
+    snapshot: async () => { busy("Kare kaydediliyor…"); const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url; const r = await api.studio_frame_png(p, ST.t, ""); busy(null); if (r.ok) { toast("Kaydedildi: " + r.path.split(/[\\/]/).pop()); } else toast(r.error || "olmadı"); },
     safe: () => document.body.classList.toggle("safe"),
     full: () => { const w = $("#viewArea"); document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen(); },
-    snapshot: () => { const a2 = document.createElement("a"); const cv = document.createElement("canvas"); cv.width = PW; cv.height = PH; const g = cv.getContext("2d"); g.drawImage(view, 0, 0); g.drawImage($("#assView"), 0, 0, PW, PH); a2.href = cv.toDataURL("image/png"); a2.download = `${ST.p.name}-${fmt(ST.t).replace(/[:.]/g, "-")}.png`; a2.click(); },
+    snapshotOld: () => { const a2 = document.createElement("a"); const cv = document.createElement("canvas"); cv.width = PW; cv.height = PH; const g = cv.getContext("2d"); g.drawImage(view, 0, 0); g.drawImage($("#assView"), 0, 0, PW, PH); a2.href = cv.toDataURL("image/png"); a2.download = `${ST.p.name}-${fmt(ST.t).replace(/[:.]/g, "-")}.png`; a2.click(); },
     keys: () => modal(`<h3>Kısayollar</h3><div class="keys">${[["Boşluk", "Oynat / durdur"], ["S", "Oynatma kafasında böl"], ["Del", "Sil (Shift: boşluğu kapat)"], ["Ctrl+Z / Y", "Geri al / yinele"], ["Ctrl+C / V / D", "Kopyala / yapıştır / çoğalt"], ["← →", "1 kare (Shift: 1 sn)"], ["Home / End", "Başa / sona"], ["M", "İşaret koy"], ["+ / −", "Zaman ölçeği (Ctrl+tekerlek)"], ["1-9", "Hızlı ses/meme (Ses panelinde ★ ile ata)"], ["F", "Tam ekran önizleme"], ["Ctrl+S / E / O", "Kaydet / dışa aktar / aç"]].map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join("")}</div><div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`),
   })[a]?.();
 });
