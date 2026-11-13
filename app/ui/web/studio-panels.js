@@ -66,13 +66,13 @@ const saveSlots = () => { try { localStorage.kstSlots = JSON.stringify(slots); }
 P.sound = async () => {
   $("#panelTools").innerHTML = `<button class="tb" id="sndDir" title="Klasörü aç">📁</button>`;
   $("#sndDir").onclick = () => api.studio_open_folder(sndTab === "Memeler" ? "Memeler" : "Sesler");
-  const tabs = [["kami", "Kami SFX"], ["Sesler", "Seslerim"], ["Memeler", "Memelerim"], ["myinstants", "Myinstants"], ["freesound", "Freesound"], ["pack", "Paketler"]];
+  const tabs = [["kami", "Kami SFX"], ["trmeme", "TR Meme"], ["memevid", "Meme Video"], ["Sesler", "Seslerim"], ["Memeler", "Memelerim"], ["myinstants", "Myinstants"], ["freesound", "Freesound"], ["pack", "Paketler"]];
   let h = `<div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${sndTab === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
   const sl = Object.entries(slots);
   if (sl.length) h += sec("Hızlı (1-9 tuşu)") + `<div class="chips">${sl.sort().map(([k, s]) => `<span class="chip">${k} · ${esc(s.name.slice(0, 18))}<button data-unslot="${k}">✕</button></span>`).join("")}</div>`;
   if (sndTab === "kami") {
-    pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği <span id="sfxCnt">${sndCache.kami?.length || 52}</span> telifsiz ses & meme efekti. Sürükle ya da ＋.</div>` +
-      `<div class="catpills" id="sndCats"></div><input class="in" id="kamiSndQ" placeholder="Vine boom, metal pipe, whoosh, rizz ara…" value="${esc(P.sound.q || "")}" style="width:100%;margin-bottom:6px"><div id="sndList" class="hint">Hazırlanıyor…</div>`;
+    pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği <span id="sfxCnt">${sndCache.kami?.length || 70}</span> telifsiz ses & meme efekti. Sürükle ya da ＋.</div>` +
+      `<div class="catpills" id="sndCats"></div><input class="in" id="kamiSndQ" placeholder="Vine boom, slow-mo böcek, earrape, rizz ara…" value="${esc(P.sound.q || "")}" style="width:100%;margin-bottom:6px"><div id="sndList" class="hint">Hazırlanıyor…</div>`;
     const items = sndCache.kami || (sndCache.kami = await job("studio_sfx", []));
     const sc = $("#sfxCnt"); if (sc) sc.textContent = items.length;
     const renderKami = () => {
@@ -84,6 +84,66 @@ P.sound = async () => {
     renderKami();
     $("#kamiSndQ").oninput = e => { P.sound.q = e.target.value; renderKami(); };
     $("#sndCats").onclick = e => { const b = e.target.closest("[data-sndcat]"); if (b) { P.sound.cat = b.dataset.sndcat; renderKami(); } };
+  } else if (sndTab === "trmeme") {
+    pb.innerHTML = h + `<div class="hint">Güncel Türkçe memeler, slow-mo AI hamam böceği ve shitpost sesleri. Tıkla dinle veya ＋ ile ekle.</div>` +
+      `<div class="row"><input class="in" id="trSndQ" placeholder="Hamam böceği, Toqtir, Kurtlar Vadisi, earrape…" value="${esc(P.sound.trQ || "")}" style="flex:1"><button class="tb" id="trLiveBtn" style="flex:none" title="Myinstants Türkiye canlı trendleri">🔥 TR Trend</button></div>` +
+      `<div class="catpills" id="trSndCats"></div><div id="sndList" class="hint">Yükleniyor…</div>`;
+    const bank = sndCache.trBank || (sndCache.trBank = await api.studio_tr_meme_bank());
+    const renderTr = () => {
+      const all = [
+        ...(bank.sounds || []).map(i => ({ ...i, kind: "audio", folder: "TR Memeler" })),
+        ...(sndCache.trLive || []).map(i => ({ ...i, cat: "🔥 Canlı TR Trend", kind: "audio", folder: "TR Memeler" })),
+      ];
+      const cat = P.sound.trCat || "Tümü", q = (P.sound.trQ || "").toLowerCase();
+      const cats = ["Tümü", ...new Set(all.map(i => i.cat || "Diğer"))];
+      $("#trSndCats").innerHTML = cats.map(c => `<button class="${c === cat ? "on" : ""}" data-trcat="${esc(c)}">${esc(c)}</button>`).join("");
+      sndRender(all.filter(i => (cat === "Tümü" || (i.cat || "Diğer") === cat) && (!q || i.name.toLowerCase().includes(q) || (i.cat || "").toLowerCase().includes(q))));
+    };
+    renderTr();
+    $("#trSndQ").oninput = e => { P.sound.trQ = e.target.value; renderTr(); };
+    $("#trSndCats").onclick = e => { const b = e.target.closest("[data-trcat]"); if (b) { P.sound.trCat = b.dataset.trcat; renderTr(); } };
+    $("#trLiveBtn").onclick = async () => {
+      $("#sndList").innerHTML = '<div class="hint">Myinstants Türkiye canlı trendleri çekiliyor…</div>';
+      const r = await job("studio_myinstants_trending", ["tr", 1]);
+      if (r[0]?.error) { toast("Olmadı: " + r[0].error); renderTr(); return; }
+      sndCache.trLive = r; P.sound.trCat = "🔥 Canlı TR Trend"; renderTr();
+    };
+  } else if (sndTab === "memevid") {
+    const mvTags = ["slow motion ai hamam böceği", "türkçe yeşil ekran meme", "türkçe shitpost derleme", "dost kayaoğlu yeşil ekran", "toqtir yeşil ekran", "oiia cat green screen"];
+    pb.innerHTML = h + `<div class="hint">AI hamam böceği, Türkçe shitpost ve hazır yeşil ekran (Chroma Key) klipleri. Tek tıkla Memelerim'e iner ve çizelgeye yerleşir.</div>` +
+      `<div class="row"><input class="in" id="mvQ" placeholder="ör. hamam böceği, yeşil ekran, türkçe shitpost" value="${esc(P.sound.mvQ || "")}" style="flex:1"><button class="tb" id="mvGo" style="flex:none">Ara</button></div>` +
+      `<div class="catpills" id="mvQuick">${mvTags.map(t => `<button data-mvquick="${esc(t)}">${esc(t)}</button>`).join("")}</div>` +
+      `<div class="catpills" id="mvCats"></div><div id="sndList" class="hint">Yükleniyor…</div>`;
+    const bank = sndCache.trBank || (sndCache.trBank = await api.studio_tr_meme_bank());
+    const renderMv = () => {
+      const all = [...(sndCache.mvSearch || []).map(i => ({ ...i, cat: "🔎 Arama Sonuçları" })), ...(bank.videos || [])];
+      const cat = P.sound.mvCat || (sndCache.mvSearch?.length ? "🔎 Arama Sonuçları" : "Tümü");
+      const cats = ["Tümü", ...new Set(all.map(i => i.cat || "Diğer"))];
+      $("#mvCats").innerHTML = cats.map(c => `<button class="${c === cat ? "on" : ""}" data-mvcat="${esc(c)}">${esc(c)}</button>`).join("");
+      const list = all.filter(i => cat === "Tümü" || (i.cat || "Diğer") === cat);
+      const box = $("#sndList"); if (!box) return;
+      box.className = "";
+      box.innerHTML = list.length ? list.map(i => {
+        const th = i.thumb || `https://i.ytimg.com/vi/${esc(i.id)}/hqdefault.jpg`;
+        const d = JSON.stringify({ url: i.url, name: i.name, greenscreen: !!i.greenscreen });
+        return `<div class="snd" data-mv='${esc(d)}' style="gap:6px"><img src="${esc(th)}" style="width:46px;height:28px;object-fit:cover;border-radius:4px;flex:none">` +
+          `<b title="${esc(i.name)}">${i.greenscreen ? "🟩 " : ""}${esc(i.name)}</b>` +
+          `<span class="du" style="position:static;opacity:.7;font-size:10px">${i.dur ? fmt(i.dur, false) : ""}</span>` +
+          `<button data-mvput title="İndir ve oynatma kafasına ekle${i.greenscreen ? " (Yeşil ekran otomatik)" : ""}">＋</button></div>`;
+      }).join("") : '<div class="hint">Bir şey yok.</div>';
+    };
+    const goMv = async () => {
+      const q = $("#mvQ").value.trim(); if (!q) return;
+      P.sound.mvQ = q;
+      $("#sndList").innerHTML = '<div class="hint">YouTube üzerinden aranıyor…</div>';
+      const r = await job("studio_meme_video_search", [q]);
+      if (r[0]?.error) { $("#sndList").innerHTML = `<div class="hint">Olmadı: ${esc(r[0].error)}</div>`; return; }
+      sndCache.mvSearch = r; P.sound.mvCat = "🔎 Arama Sonuçları"; renderMv();
+    };
+    renderMv();
+    $("#mvGo").onclick = goMv; $("#mvQ").onkeydown = e => { if (e.key === "Enter") goMv(); };
+    $("#mvCats").onclick = e => { const b = e.target.closest("[data-mvcat]"); if (b) { P.sound.mvCat = b.dataset.mvcat; renderMv(); } };
+    $("#mvQuick").onclick = e => { const b = e.target.closest("[data-mvquick]"); if (b) { $("#mvQ").value = b.dataset.mvquick; goMv(); } };
   } else if (sndTab === "Sesler" || sndTab === "Memeler") {
     h += `<div class="hint">${sndTab === "Sesler" ? "Videolar\\Kami Studio\\Sesler" : "Videolar\\Kami Studio\\Memeler"} klasörüne attığın her şey burada. İnternetten seçtiklerin de buraya iner.</div><input class="in" id="sndQ" placeholder="Ara…">`;
     pb.innerHTML = h + `<div id="sndList" class="hint">Yükleniyor…</div>`;
@@ -93,10 +153,10 @@ P.sound = async () => {
   } else if (sndTab === "myinstants" || sndTab === "freesound") {
     const fsNeed = sndTab === "freesound" && !ST.cat.freesound;
     const trendTags = sndTab === "myinstants"
-      ? ["vine boom", "kurban oldugum", "yarim ekmek", "merve", "kurt adam", "iett", "burhan abi", "sigma", "sad hamster", "english or spanish", "flashbang", "bruh", "taco bell", "metal pipe"]
+      ? ["vine boom", "hamam bocegi", "kurban oldugum", "yarim ekmek", "merve", "kurtlar vadisi", "toqtir", "dost kayaoglu", "recep ivedik", "iett", "burhan abi", "hayda", "sigma", "sad hamster", "english or spanish", "flashbang", "bruh", "taco bell", "metal pipe"]
       : ["whoosh", "riser", "cinematic impact", "camera shutter", "glitches", "gunshot", "applause", "thunder"];
     h += fsNeed ? `<div class="hint">Freesound için ücretsiz API anahtarı gerekir: freesound.org → hesabın → API (“Apply for API key”). Anahtar Windows'ta şifreli saklanır.</div><div class="row"><input class="in" id="fsKey" placeholder="API anahtarı"><button class="tb" id="fsSave">Kaydet</button></div>`
-      : `<div class="row"><input class="in" id="sndQ" placeholder="${sndTab === "myinstants" ? "ör. bruh, vine boom, merve, kurban olduğum" : "ör. whoosh, impact, horror"}" style="flex:1"><button class="tb" id="sndGo" style="flex:none">Ara</button></div>` +
+      : `<div class="row"><input class="in" id="sndQ" placeholder="${sndTab === "myinstants" ? "ör. bruh, vine boom, merve, kurban olduğum" : "ör. whoosh, impact, horror"}" style="flex:1"><button class="tb" id="sndGo" style="flex:none">Ara</button>${sndTab === "myinstants" ? `<button class="tb" id="sndTrLive" style="flex:none" title="Türkiye canlı trendleri">🔥 TR</button>` : ""}</div>` +
         `<div class="catpills" id="mTrends">${trendTags.map(t => `<button data-mquick="${esc(t)}">${esc(t)}</button>`).join("")}</div>`;
     pb.innerHTML = h + `<div id="sndList"></div>`;
     if (fsNeed) { $("#fsSave").onclick = async () => { await api.studio_freesound_key($("#fsKey").value); ST.cat.freesound = true; renderPanel(); }; return; }
@@ -108,6 +168,12 @@ P.sound = async () => {
       sndCache[sndTab] = r; sndRender(r.map(i => ({ ...i, kind: "audio" })));
     };
     $("#sndGo").onclick = go; $("#sndQ").onkeydown = e => { if (e.key === "Enter") go(); };
+    if ($("#sndTrLive")) $("#sndTrLive").onclick = async () => {
+      $("#sndList").innerHTML = '<div class="hint">TR trendleri çekiliyor…</div>';
+      const r = await job("studio_myinstants_trending", ["tr", 1]);
+      if (r[0]?.error) { $("#sndList").innerHTML = `<div class="hint">Olmadı: ${esc(r[0].error)}</div>`; return; }
+      sndCache[sndTab] = r; sndRender(r.map(i => ({ ...i, kind: "audio", folder: "TR Memeler" })));
+    };
     $("#mTrends").onclick = e => { const b = e.target.closest("[data-mquick]"); if (b) { $("#sndQ").value = b.dataset.mquick; go(); } };
     if (sndCache[sndTab]) sndRender(sndCache[sndTab].map(i => ({ ...i, kind: "audio" })));
   } else {
@@ -120,7 +186,7 @@ function sndRender(items) {
   const box = $("#sndList"); if (!box) return;
   box.className = "";
   box.innerHTML = items.length ? items.slice(0, 200).map(i => {
-    const d = JSON.stringify({ type: "sound", path: i.path || "", url: i.url, name: i.name, kind: i.kind, local: !!i.local });
+    const d = JSON.stringify({ type: "sound", path: i.path || "", url: i.url, name: i.name, kind: i.kind, local: !!i.local, folder: i.folder || "" });
     return `<div class="snd" draggable="true" data-item='${esc(d)}'><button data-prev="${esc(i.url)}" title="Dinle">${i.kind === "audio" ? "▶" : "👁"}</button><b title="${esc(i.name)}">${esc(i.name)}</b>` +
       `<button data-star title="Hızlı tuşa ata">★</button><button data-put title="Oynatma kafasına ekle">＋</button></div>`;
   }).join("") : '<div class="hint">Bir şey yok.</div>';
@@ -128,6 +194,24 @@ function sndRender(items) {
 pb.addEventListener("click", async e => {
   const t = e.target.closest("[data-tab]"); if (t) { sndTab = t.dataset.tab; renderPanel(); return; }
   const us = e.target.closest("[data-unslot]"); if (us) { delete slots[us.dataset.unslot]; saveSlots(); renderPanel(); return; }
+  const mv = e.target.closest("[data-mvput]");
+  if (mv) {
+    const it = JSON.parse(mv.closest("[data-mv]").dataset.mv);
+    busy("Meme klibi indiriliyor: " + it.name);
+    const r = await job("studio_meme_video_fetch", [it.url, it.name, !!it.greenscreen]);
+    busy(null);
+    if (!r?.ok) { toast("İndirilemedi: " + (r?.error || "?")); return; }
+    sndCache.Memeler = null;
+    const ids = await importPaths([r.path]);
+    const aid = ids[0]; if (!aid) return;
+    const a = ST.p.assets[aid]; snap();
+    const ov = it.greenscreen ? ST.p.tracks.find(x => x.id === "v2") : null;
+    const c = placeAt({ asset: aid, dur: a.dur || 5, in: 0, fit: it.greenscreen ? "contain" : "cover", scale: it.greenscreen ? 0.65 : 1 }, ov ? "v2" : "video", ST.t);
+    if (it.greenscreen) { c.key = { on: true, color: "#00ff00", sim: 0.25, smooth: 0.08 }; }
+    ST.sel = new Set([c.id]); changed();
+    toast(it.greenscreen ? "Eklendi + yeşil ekran anahtarı açıldı" : "Meme klibi eklendi");
+    return;
+  }
   const pv = e.target.closest("[data-prev]");
   if (pv) {
     const row = pv.closest("[data-item]"), it = JSON.parse(row.dataset.item);
@@ -147,7 +231,8 @@ async function soundAsset(it) {
   let path = it.path;
   if (!it.local || !path) {
     busy("İndiriliyor: " + it.name);
-    const r = await job("studio_fetch_sound", [it.url, it.name, sndTab === "freesound" ? "Freesound" : sndTab === "pack" ? "Paket" : "Myinstants"]);
+    const folder = it.folder || (sndTab === "freesound" ? "Freesound" : sndTab === "pack" ? "Paket" : sndTab === "trmeme" ? "TR Memeler" : "Myinstants");
+    const r = await job("studio_fetch_sound", [it.url, it.name, folder]);
     busy(null);
     if (!r?.ok) { toast("İndirilemedi: " + r?.error); return null; }
     path = r.path; sndCache.Sesler = null;

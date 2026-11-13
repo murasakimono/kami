@@ -436,3 +436,91 @@ def test_wave4_pro_pack_stabilize_solo_close_gaps(tmp_path: Path):
     r = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-400:]
     assert out.is_file() and out.stat().st_size > 1000
+
+
+def test_dalga5_tr_memes_and_sfx_ffmpeg(tmp_path: Path, monkeypatch):
+    import shutil
+    import subprocess
+    import pytest
+    from app.core import studio_brand as SB
+    from app.core import studio_tr_memes as TM
+    from app.ui import api_studio as AS
+
+    cat = S.catalog()
+    assert len(TM.SFX_TR_MEME) >= 18
+    assert len(TM.FX_TR_MEME) >= 5
+    assert len(TM.TEMPLATES_TR_MEME) >= 5
+    assert len(TM.RECIPES_TR_MEME) >= 4
+    assert len(TM.TR_MEME_SOUNDS) >= 50
+    assert len(TM.TR_MEME_VIDEOS) >= 20
+    assert len(TM.AI_MEME_PROMPTS) >= 5
+
+    # Wiring kontrolleri
+    assert len(S.SFX) >= 70
+    assert all(k in S.SFX for k in TM.SFX_TR_MEME)
+    assert all(k in S.SFX_CAT for k in TM.SFX_TR_MEME)
+    assert all(k in S.FX for k in TM.FX_TR_MEME)
+    assert all(k in SB.VIRAL_RECIPES for k in TM.RECIPES_TR_MEME)
+    empty_fx = [k for k, v in S.FX.items() if not v.get("css") and not v.get("ov")]
+    assert not empty_fx, f"Onizlemesiz efektler: {empty_fx}"
+    assert len(cat["fx"]) >= 192
+    assert len(cat["templates"]) >= 29
+
+    # Myinstants HTML blok ayristirma duzeltmesi
+    sample_html = (
+        '<div class="instant">'
+        '<div class="small-button-background"></div>'
+        '<button type="button" onclick="play(\'/media/sounds/test-bocek.mp3\', \'loader-1\', \'button-1\')"></button>'
+        '<div id="loader-1"></div><div class="small-button-shadow"></div>'
+        '<a href="/en/instant/test/" class="instant-link link-secondary">AI Hamam Böceği Slow-Mo &amp; Dram</a>'
+        '</div>'
+    )
+    parsed = AS._parse_myinstants(sample_html)
+    assert parsed == [{"name": "AI Hamam Böceği Slow-Mo & Dram", "url": "https://www.myinstants.com/media/sounds/test-bocek.mp3"}]
+
+    # TR meme bankasi URL ve veri kontrolleri
+    bank = AS.StudioMixin().studio_tr_meme_bank()
+    assert all(s["url"].startswith("https://") for s in bank["sounds"])
+    assert all(v["url"].startswith("https://") for v in bank["videos"])
+    assert all(p["title"] and p["prompt"] for p in bank["aiPrompts"])
+
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        pytest.skip("ffmpeg yok")
+
+    monkeypatch.setattr(S, "home_dir", lambda: tmp_path / "studio_home")
+    st = S.Studio(lambda: ff)
+
+    # Sablon & viral recete uygulama kontrolleri
+    for rec_id in TM.RECIPES_TR_MEME:
+        pr = S.new_project("rec_" + rec_id, 320, 180, 24)
+        pr["assets"]["v1"] = {"path": str(tmp_path / "dummy.mp4"), "kind": "video", "dur": 4.0, "w": 320, "h": 180, "audio": True, "name": "dummy"}
+        S.add_clip(pr, asset="v1", track="v1", start=0.0, dur=4.0)
+        res = SB.apply_viral_recipe(pr, rec_id)
+        assert res["ok"] and res["applied_clips"] >= 1
+
+    for tpl in TM.TEMPLATES_TR_MEME:
+        pr = S.new_project("tpl_" + tpl["id"], 320, 180, 24)
+        created = S.apply_template(pr, tpl["id"], 0.0, ffmpeg=ff, info=st.info)
+        assert len(created) >= 1
+
+    # 18 yeni SFX'in hepsi gercek ffmpeg ile wav uretmeli
+    for sid in TM.SFX_TR_MEME:
+        built = S.ensure_sfx(ff, sid)
+        assert sid in built and Path(built[sid]).is_file() and Path(built[sid]).stat().st_size > 800, f"SFX uretilemedi: {sid}"
+
+    # 5 yeni TR Meme FX'inin tamami gercek ffmpeg export'unda hatasiz calismali
+    v1 = tmp_path / "meme_src.mp4"
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=24:d=3",
+                    "-f", "lavfi", "-i", "sine=frequency=220:duration=3",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(v1)], check=True)
+    pr_fx = S.new_project("dalga5_fx", 320, 180, 24)
+    pr_fx["assets"]["v1"] = {"path": str(v1), "kind": "video", "dur": 3.0, "w": 320, "h": 180, "audio": True, "name": "meme"}
+    for idx, fx_id in enumerate(TM.FX_TR_MEME):
+        S.add_clip(pr_fx, asset="v1", track="v1", start=idx * 0.4, dur=0.4, fx=[fx_id])
+    out = tmp_path / "dalga5_fx_out.mp4"
+    args, total = S.build_export(pr_fx, str(out), tmp_path, "libx264", {"quality": "medium"})
+    assert abs(total - len(TM.FX_TR_MEME) * 0.4) < 1e-6
+    r = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert out.is_file() and out.stat().st_size > 1000

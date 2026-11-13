@@ -1,6 +1,7 @@
 """Kami Studio api'si (Api sinifina karisim olarak eklenir; JS: api.studio_*)."""
 from __future__ import annotations
 
+import html as _html
 import json
 import logging
 import os
@@ -16,10 +17,42 @@ log = logging.getLogger(__name__)
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"
 
 STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "studio_silences", "studio_freezes", "studio_scenes",
-               "studio_myinstants", "studio_fetch_sound", "studio_freesound", "studio_pack_add", "studio_save", "studio_open",
+               "studio_myinstants", "studio_myinstants_trending", "studio_tr_meme_bank", "studio_meme_video_search", "studio_meme_video_fetch",
+               "studio_fetch_sound", "studio_freesound", "studio_pack_add", "studio_save", "studio_open",
                "studio_stock", "studio_stock_get", "studio_fonts_download", "studio_template", "studio_sfx", "studio_lut_read",
                "studio_gemini_models", "studio_lottie", "studio_catalog_fonts",
                "studio_multicam_sync", "studio_smart_cut", "studio_audio_enhance", "studio_audio_duck"}
+
+
+def _parse_myinstants(page_html: str, limit: int = 60) -> list[dict[str, Any]]:
+    """Myinstants kart bloklarindan gercek baslik + MP3 adreslerini cikarir."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for block in re.split(r'<div\s+class="instant\b', page_html)[1:]:
+        pm = re.search(r"play\('(/media/sounds/[^']+\.mp3)'", block)
+        if not pm:
+            continue
+        u = "https://www.myinstants.com" + pm.group(1)
+        if u in seen:
+            continue
+        seen.add(u)
+        lm = re.search(r'<a[^>]*class="instant-link[^"]*"[^>]*>(.*?)</a>', block, re.S)
+        raw_name = _html.unescape(re.sub(r"<[^>]+>", "", lm.group(1))) if lm else Path(pm.group(1)).stem
+        name = re.sub(r"\s+", " ", raw_name).strip()[:80]
+        if not name:
+            name = urllib.parse.unquote(Path(pm.group(1)).stem).replace("-", " ").replace("_", " ")
+        out.append({"name": name, "url": u})
+        if len(out) >= limit:
+            break
+    if not out:
+        for m in re.finditer(r"(/media/sounds/[^'\"]+\.mp3)", page_html):
+            u = "https://www.myinstants.com" + m.group(1)
+            if u not in seen:
+                seen.add(u)
+                out.append({"name": urllib.parse.unquote(Path(m.group(1)).stem).replace("-", " ").replace("_", " "), "url": u})
+                if len(out) >= limit:
+                    break
+    return out
 
 
 class StudioMixin:
@@ -361,22 +394,106 @@ class StudioMixin:
         url = "https://www.myinstants.com/en/search/?name=" + urllib.parse.quote(str(q or "")[:80])
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA})
-            html = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", "replace")
+            page_html = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", "replace")
         except Exception as exc:
             return [{"error": str(exc)[:120]}]
-        out, seen = [], set()
-        for m in re.finditer(r"play\('(/media/sounds/[^']+\.mp3)'[^>]*>.*?</button>\s*(?:</div>\s*)?<a[^>]*class=\"instant-link[^\"]*\"[^>]*>([^<]+)</a>", html, re.S):
-            u = "https://www.myinstants.com" + m.group(1)
-            if u not in seen:
-                seen.add(u)
-                out.append({"name": re.sub(r"\s+", " ", m.group(2)).strip()[:80], "url": u})
-        if not out:   # duzen degistiyse: yalniz ses adresleri
-            for m in re.finditer(r"(/media/sounds/[^'\"]+\.mp3)", html):
-                u = "https://www.myinstants.com" + m.group(1)
-                if u not in seen:
-                    seen.add(u)
-                    out.append({"name": urllib.parse.unquote(Path(m.group(1)).stem).replace("-", " ").replace("_", " "), "url": u})
-        return out[:60]
+        return _parse_myinstants(page_html)
+
+    def studio_myinstants_trending(self, region: str = "tr", page: int = 1) -> list[dict[str, Any]]:
+        """Myinstants canli bolgesel trend sesleri (varsayilan Turkiye)."""
+        reg = re.sub(r"[^a-z]", "", str(region or "tr").lower())[:5] or "tr"
+        pg = max(1, min(10, int(page or 1)))
+        url = f"https://www.myinstants.com/en/index/{reg}/?page={pg}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            page_html = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", "replace")
+        except Exception as exc:
+            return [{"error": str(exc)[:120]}]
+        return _parse_myinstants(page_html)
+
+    def studio_tr_meme_bank(self) -> dict[str, Any]:
+        """Hazir guncel Turkce meme sesleri, AI bocek videolari, yesil ekranlar ve Gemini promptlari."""
+        from app.core.studio_tr_memes import AI_MEME_PROMPTS, TR_MEME_SOUNDS, TR_MEME_VIDEOS
+        return {
+            "sounds": TR_MEME_SOUNDS,
+            "videos": TR_MEME_VIDEOS,
+            "aiPrompts": AI_MEME_PROMPTS,
+        }
+
+    def studio_meme_video_search(self, q: str) -> list[dict[str, Any]]:
+        """YouTube uzerinden guncel Turkce meme / yesil ekran / AI bocek klibi arar."""
+        query = str(q or "").strip()[:100]
+        if not query:
+            return []
+        try:
+            import yt_dlp
+            opts = {"quiet": True, "no_warnings": True, "skip_download": True, "extract_flat": True, "noplaylist": True}
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                res = ydl.extract_info(f"ytsearch12:{query}", download=False)
+        except Exception as exc:
+            return [{"error": str(exc)[:120]}]
+        out: list[dict[str, Any]] = []
+        for e in (res or {}).get("entries") or []:
+            vid = str(e.get("id") or "").strip()
+            if not vid:
+                continue
+            title = str(e.get("title") or vid).strip()
+            low = (title + " " + query).lower()
+            gs = any(k in low for k in ("green screen", "yeşil ekran", "yesil ekran", "yeşil perde", "chroma"))
+            u = str(e.get("url") or "")
+            if not u.startswith("http"):
+                u = f"https://www.youtube.com/watch?v={vid}"
+            out.append({
+                "id": vid,
+                "name": title[:90],
+                "dur": int(e.get("duration") or 0),
+                "greenscreen": gs,
+                "url": u,
+                "thumb": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+            })
+        return out
+
+    def studio_meme_video_fetch(self, url: str, name: str = "", greenscreen: bool = False) -> dict[str, Any]:
+        """Secilen meme / yesil ekran / AI bocek klibini Memeler klasorune MP4 olarak indirir."""
+        from app.core import studio
+        from app.engines.ytdlp_engine import find_ffmpeg
+        u = str(url or "").strip()
+        if not u.startswith("https://"):
+            return {"ok": False, "error": "bad_url"}
+        safe = re.sub(r'[<>:"/\\|?*]+', "_", str(name or "meme_klip")).strip(" .")[:80] or "meme_klip"
+        sub = "Yeşil Ekran" if greenscreen else "TR Memeler"
+        d = studio.home_dir() / "Memeler" / sub
+        d.mkdir(parents=True, exist_ok=True)
+        dst = d / f"{safe}.mp4"
+        if not (dst.is_file() and dst.stat().st_size > 1000):
+            try:
+                import yt_dlp
+                opts = {
+                    "quiet": True,
+                    "no_warnings": True,
+                    "noplaylist": True,
+                    "format": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                    "merge_output_format": "mp4",
+                    "outtmpl": str(d / f"{safe}.%(ext)s"),
+                    "overwrites": True,
+                }
+                ff = find_ffmpeg()
+                if ff:
+                    opts["ffmpeg_location"] = ff
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    ydl.download([u])
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)[:140]}
+        if not dst.is_file():
+            alts = sorted(d.glob(f"{safe}.*"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if alts:
+                dst = alts[0]
+        if not dst.is_file():
+            return {"ok": False, "error": "download_missing"}
+        i = self._st().info(str(dst))
+        if i.get("ok"):
+            i["url"] = self._studio_url(str(dst), i)
+        return {"ok": True, "path": str(dst), "info": i, "greenscreen": bool(greenscreen)}
 
     def studio_fetch_sound(self, url: str, name: str = "", folder: str = "İndirilen") -> dict[str, Any]:
         """Internetten secilen sesi Sesler\\<klasor> altina indir (kutuphanede kalir)."""

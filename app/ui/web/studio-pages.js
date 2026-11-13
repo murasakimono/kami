@@ -126,11 +126,15 @@ async function stockGet(it, toTimeline) {
 async function brAI() {
   const m = $("#brmain");
   const hasKey = ST.cat.keys?.gemini;
+  const bank = BR.trBank || (BR.trBank = await api.studio_tr_meme_bank().catch(() => ({ aiPrompts: [] })));
+  const prompts = bank?.aiPrompts || [];
+  const promptChips = prompts.length ? `<div class="hint" style="margin-top:6px">🐛 Slow-Mo AI Böcek & TR Meme Promptları (tıkla ${hasKey ? "doldur + " : ""}kopyala):</div><div class="catpills" id="aiMemeChips">${prompts.map((p, i) => `<button data-aiprompt="${i}">${esc(p.title)}</button>`).join("")}</div>` : "";
   m.innerHTML = `<div class="brhead"><h2>Yapay zeka ile üret</h2></div>
     <div class="aigrid">
       <div class="aicard"><h3>Gemini (API)</h3>${hasKey ? `
         <div class="seg"><button data-aik="image" class="${BR.aiKind === "image" ? "on" : ""}">Görsel</button><button data-aik="video" class="${BR.aiKind === "video" ? "on" : ""}">Video</button></div>
         <textarea class="in" id="aiP" placeholder="Ne üretilsin? Ör: neon ışıklı yağmurlu İstanbul sokağı, sinematik, 35mm" style="min-height:90px"></textarea>
+        ${promptChips}
         <div class="row"><select class="in" id="aiM" style="flex:1"><option>modeller yükleniyor…</option></select>
           <select class="in" id="aiA" style="flex:none;width:110px">${["16:9", "9:16", "1:1", "4:5"].map(r => `<option${r === aspectOf() ? " selected" : ""}>${r}</option>`).join("")}</select></div>
         ${BR.aiKind === "image" ? `<label class="fld w2"><span>Referans</span><select class="in" id="aiR"><option value="">yok</option>${Object.values(ST.p.assets).filter(a => a.kind === "image").map(a => `<option value="${esc(a.path)}">${esc(a.name)}</option>`).join("")}</select></label>` : ""}
@@ -140,8 +144,16 @@ async function brAI() {
       <div class="aicard"><h3>Google Flow / Gemini uygulaması</h3>
         <div class="hint">Aboneliğinle Flow'da (Veo) ya da Gemini'de üret, indir; Kami indirilenler klasörünü izler ve yeni dosyayı tek tıkla projeye ekler.</div>
         <div class="row"><button class="tb pri" data-flow="https://labs.google/fx/tools/flow">Flow'u aç ↗</button><button class="tb" data-flow="https://gemini.google.com/app">Gemini'yi aç ↗</button></div>
+        ${hasKey ? "" : promptChips}
         <div id="watchBox" class="hint">${BR.watch ? "İndirilenler izleniyor…" : "Açınca izleme başlar."}</div><div id="foundList"></div></div>
     </div>`;
+  if ($("#aiMemeChips")) $("#aiMemeChips").onclick = e => {
+    const b = e.target.closest("[data-aiprompt]"); if (!b) return;
+    const item = prompts[+b.dataset.aiprompt]; if (!item) return;
+    if ($("#aiP")) $("#aiP").value = item.prompt;
+    try { navigator.clipboard?.writeText(item.prompt); } catch { }
+    toast("Prompt kopyalandı: " + item.title);
+  };
   if (!hasKey) return;
   const r = BR.models || await job("studio_gemini_models", []);
   if (r.error) { $("#aiM").innerHTML = `<option>${esc(r.error)}</option>`; return; }

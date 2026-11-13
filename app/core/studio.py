@@ -125,7 +125,11 @@ from app.core.studio_pro_pack import (  # noqa: E402
     AUDIO_FIX_NAMES_PRO, AUDIO_FIX_PRO, CAPTIONS_PRO, FX_PRO,
     SFX_CAT_PRO, SFX_PRO, TEMPLATES_PRO, TRANS_PRO, ZOOM_PRO, trans_in_pro,
 )
+from app.core.studio_tr_memes import (  # noqa: E402
+    FX_TR_MEME, SFX_CAT_TR_MEME, SFX_TR_MEME, TEMPLATES_TR_MEME,
+)
 FX.update({k: v for k, v in FX_PRO.items() if k not in FX})
+FX.update({k: v for k, v in FX_TR_MEME.items() if k not in FX})
 CAPTIONS2.update({k: v for k, v in CAPTIONS_PRO.items() if k not in CAPTIONS2})
 
 # Gecis (klip girisi): ffmpeg + onizleme ayni adla
@@ -2097,6 +2101,7 @@ SFX = {
     "cash-register": ("aevalsrc='0.5*(random(0)-0.5)*exp(-t*45)*lt(t,0.09)+0.65*sin(2*PI*2637*(t-0.1))*exp(-(t-0.1)*4)*gte(t,0.1)+0.45*sin(2*PI*3951*(t-0.1))*exp(-(t-0.1)*5)*gte(t,0.1)':d=0.9", "Kasa Sesi (Cha-Ching)"),
     "record-scratch": ("aevalsrc='0.65*sin(2*PI*(420+260*sin(2*PI*11*t))*t)*exp(-t*5)+0.35*(random(0)-0.5)*exp(-t*6)':d=0.45,bandpass=f=1500:w=2200", "Plak Durma (Scratch)"),
     **SFX_PRO,
+    **SFX_TR_MEME,
 }
 
 SFX_CAT = {
@@ -2111,6 +2116,7 @@ SFX_CAT = {
     "record-scratch": "Meme & Shitpost", "plak": "Meme & Shitpost",
     "riser": "Dramatik & Gerilim", "kalp": "Dramatik & Gerilim", "dramatic-dun": "Dramatik & Gerilim", "daktilo": "Dramatik & Gerilim",
     **SFX_CAT_PRO,
+    **SFX_CAT_TR_MEME,
 }
 
 
@@ -2126,7 +2132,8 @@ def ensure_sfx(ffmpeg: str, name: str = "") -> dict[str, str]:
     for key, (expr, label) in SFX.items():
         if name and key != name:
             continue
-        f = sfx_dir() / f"{label}.wav"
+        safe_lbl = re.sub(r'[<>:"/\\|?*]+', "-", label).strip() or key
+        f = sfx_dir() / f"{safe_lbl}.wav"
         if not f.is_file() and ffmpeg:
             subprocess.run([ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-f", "lavfi", "-i", expr,
                             "-af", "aformat=channel_layouts=stereo,aresample=48000,afade=t=out:st=0:d=0.02:curve=nofade,alimiter=limit=0.95",
@@ -2198,7 +2205,7 @@ TEMPLATES = [
         {"t": 0, "graphic": "quote", "dur": 5, "style": {"title": "Kaybetmekten korkma.", "sub": "Biri"}}, {"t": 0, "sfx": "ding"}]},
     {"id": "counter", "group": "Vlog & belgesel", "name": "Sayaç (istatistik)", "items": [
         {"t": 0, "graphic": "counter", "dur": 3, "style": {"from": 0, "to": 1000000, "suffix": " izlenme"}}, {"t": 0, "sfx": "riser"}]},
-] + TEMPLATES_PRO
+] + TEMPLATES_PRO + TEMPLATES_TR_MEME
 TEMPLATE_NAMES = [{"id": t["id"], "group": t["group"], "name": t["name"], "needs": t.get("needs", "")} for t in TEMPLATES]
 
 
