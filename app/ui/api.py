@@ -1722,10 +1722,21 @@ class Api(StudioMixin):
             desktop.toast("Kami", ("Could not save: " if en else "Kaydedilemedi: ") + str(res.get("error", "")), [])
 
     # ---------- Fotograf goruntuleyici ----------
-    IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".jfif", ".heic", ".tif", ".tiff")
+    # RAW (faz 5): rawpy/LibRaw ile kamera beyaz dengesiyle gelistirilir (Canon CR2/CR3, Nikon NEF, Sony ARW, Fuji RAF, DNG...)
+    RAW_EXT = (".cr2", ".cr3", ".nef", ".nrw", ".arw", ".srf", ".sr2", ".raf", ".orf", ".rw2", ".pef", ".dng", ".srw", ".3fr", ".iiq")
+    IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".jfif", ".heic", ".tif", ".tiff") + RAW_EXT
+
+    @staticmethod
+    def _open_raw(path: str, half: bool = True):
+        """RAW -> PIL RGB. half=True: goruntuleyici/onizleme icin yari cozunurluk (cok daha hizli)."""
+        import rawpy
+        from PIL import Image
+        with rawpy.imread(path) as r:
+            rgb = r.postprocess(use_camera_wb=True, half_size=half, no_auto_bright=False, output_bps=8)
+        return Image.fromarray(rgb)
 
     def image_data(self, path: str, max_side: int = 3000) -> dict[str, Any]:
-        """Goruntuleyici icin data URL (buyuk/HEIC gorseller kucultulup JPEG/PNG'ye cevrilir)."""
+        """Goruntuleyici icin data URL (buyuk/HEIC/RAW gorseller kucultulup JPEG/PNG'ye cevrilir)."""
         import base64
         import io
         path = str(path or "")
@@ -1733,7 +1744,14 @@ class Api(StudioMixin):
             return {"ok": False, "error": "no_file"}
         try:
             from PIL import Image, ImageOps
-            im = Image.open(path)
+            if path.lower().endswith(self.RAW_EXT):
+                try:
+                    im = self._open_raw(path, half=max_side <= 3000)
+                except ImportError:
+                    return {"ok": False, "error": "raw_unsupported"}
+                im.format = "RAW"
+            else:
+                im = Image.open(path)
             w, h = im.size
             fmt = (im.format or "").upper()
             exif = {}
