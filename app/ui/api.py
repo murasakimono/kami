@@ -2917,8 +2917,8 @@ class Api(StudioMixin):
         key = self._phone_key.load() if self._phone_key else ""
         local_url = f"http://{lan_ip()}:{port}/bridge" + (f"?k={key}" if key else "")
         tunnel_url = ""
-        if _room.SERVER.tunnel_url and _room.SERVER.room:
-            base_t = _room.SERVER.tunnel_url.rstrip("/")
+        if _room.SERVER.public and _room.SERVER.room:
+            base_t = _room.SERVER.public.rstrip("/")
             tunnel_url = f"{base_t}/{_room.SERVER.room.id}/bridge" + (f"?k={key}" if key else "")
         return {"ok": True, "url": local_url, "tunnel_url": tunnel_url, "key": key}
 
@@ -3035,7 +3035,7 @@ class Api(StudioMixin):
 
     def _pw_store(self):
         from app import paths
-        from app.core.vault import TokenStore
+        from app.core.debrid import TokenStore
         return TokenStore(paths.DATA_DIR / "archive_passwords.bin")
 
     def chain_get(self) -> dict[str, Any]:
