@@ -264,3 +264,69 @@ def mashup(
         "vocal_key": vkey, "beat_key": bkey,
         "ratio": round(bbpm / vbpm, 3) if (vbpm > 0 and bbpm > 0) else 1.0,
     }
+
+
+def build_beatgrid(audio_path: str, duration: float = 0.0, ffmpeg: str = "") -> dict[str, Any]:
+    """BPM, tonalite, beat/downbeat zaman damgalari ve olculuk akor haritasi uretir."""
+    p = Path(audio_path)
+    if not p.is_file():
+        return {"ok": False, "error": "Ses dosyasi bulunamadi"}
+    bpm = analyze_bpm(str(p), ffmpeg=ffmpeg) or 120.0
+    key_info = detect_key(str(p), ffmpeg=ffmpeg)
+    dur = duration if duration > 0 else 180.0
+    step = 60.0 / bpm
+    beats: list[float] = []
+    downbeats: list[float] = []
+    t = 0.0
+    idx = 0
+    while t < dur and len(beats) < 2000:
+        rt = round(t, 3)
+        beats.append(rt)
+        if idx % 4 == 0:
+            downbeats.append(rt)
+        t += step
+        idx += 1
+
+    root = key_info.get("key") or "C"
+    scale = key_info.get("scale") or "major"
+    rel = ["i", "VI", "III", "VII"] if scale == "minor" else ["I", "V", "vi", "IV"]
+    chords = [
+        {"bar": i + 1, "start": db, "chord": f"{root} ({rel[i % len(rel)]})"}
+        for i, db in enumerate(downbeats)
+    ]
+    return {
+        "ok": True,
+        "bpm": bpm,
+        "key": key_info,
+        "beats": beats,
+        "downbeats": downbeats,
+        "chords": chords,
+    }
+
+
+def word_sync_lyrics(lrc_text: str, duration: float = 0.0) -> list[dict[str, Any]]:
+    """Satir bazli LRC'yi kelime-senkronlu karaoke zamanlamasina (enhanced LRC) boler."""
+    import re
+    rows: list[tuple[float, str]] = []
+    for ln in (lrc_text or "").splitlines():
+        m = re.match(r"^\s*\[(\d{1,2}):(\d{2}(?:\.\d{1,3})?)\]\s*(.+)$", ln)
+        if m:
+            sec = int(m.group(1)) * 60 + float(m.group(2))
+            txt = re.sub(r"<\d{1,2}:\d{2}(?:\.\d{1,3})?>", "", m.group(3)).strip()
+            if txt:
+                rows.append((sec, txt))
+    rows.sort(key=lambda x: x[0])
+    out: list[dict[str, Any]] = []
+    for i, (start, txt) in enumerate(rows):
+        end = rows[i + 1][0] if i + 1 < len(rows) else (duration if duration > start else start + 4.0)
+        span = max(0.3, min(12.0, end - start))
+        words = txt.split()
+        if not words:
+            continue
+        w_dur = span / len(words)
+        w_items = [
+            {"word": w, "start": round(start + j * w_dur, 3), "end": round(start + (j + 1) * w_dur, 3)}
+            for j, w in enumerate(words)
+        ]
+        out.append({"start": round(start, 3), "end": round(end, 3), "text": txt, "words": w_items})
+    return out

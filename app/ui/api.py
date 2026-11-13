@@ -3188,3 +3188,33 @@ class Api(StudioMixin):
         from app.core.library_health import scan_health
         man = manifest_path or str(Path(folder) / ".kami_health.json")
         return scan_health(folder, man, deep_decode=deep_decode)
+
+    # ---------- Faz 12: Sahne Haritasi, ReplayGain, Beatgrid, Word-Karaoke & Ses Kutusu ----------
+    def player_detect_scenes(self, video_path: str, threshold: float = 0.32) -> dict[str, Any]:
+        from app.core.scene_detect import detect_scenes
+        return detect_scenes(video_path, threshold=threshold)
+
+    def player_replaygain(self, media_path: str, target_lufs: float = -18.0) -> dict[str, Any]:
+        from app.core.scene_detect import measure_replaygain
+        return measure_replaygain(media_path, target_lufs=target_lufs)
+
+    def beat_grid(self, audio_path: str, duration: float = 0.0) -> dict[str, Any]:
+        from app.core.kami_beat import build_beatgrid
+        return build_beatgrid(audio_path, duration=duration)
+
+    def lyrics_word_sync(self, lrc_text: str, duration: float = 0.0) -> dict[str, Any]:
+        from app.core.kami_beat import word_sync_lyrics
+        return {"ok": True, "lines": word_sync_lyrics(lrc_text, duration=duration)}
+
+    def audio_fx_apply(self, src: str, dst: str = "", preset: str = "vocal_studio", reverb: float = 0.2) -> dict[str, Any]:
+        from app.core.audio_toolbox import apply_audio_fx
+        return apply_audio_fx(src, dst, preset=preset, reverb=reverb)
+
+    def audio_to_midi(self, src: str) -> dict[str, Any]:
+        from app.core.audio_toolbox import audio_to_notes
+        return audio_to_notes(src)
+
+    def tts_speak(self, text: str, out_wav: str = "", lang: str = "tr") -> dict[str, Any]:
+        from app.core.audio_toolbox import synthesize_tts
+        target = out_wav or str(Path(self._manager.settings.get("download_dir", "Downloads")) / f"tts_{int(time.time())}.wav")
+        return synthesize_tts(text, target, lang=lang)
