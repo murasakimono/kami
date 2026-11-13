@@ -296,3 +296,11 @@ body.sunak > .topbar, body.sunak > .layout { position: relative; z-index: 2; }
 #sunak .sk-room.on { box-shadow: inset 0 -2px 0 var(--sk-em); }
 #sunak .sk-room i { font-style: normal; color: var(--sk-em); font-weight: 700; }
 #sunak .sk-room i:empty { display: none; }
+
+/* Faz 17: PixiJS v8 GPU Sunak sahnesi aktifken eski DOM katmanini cakismasiz gizle */
+canvas.sk-fx-gpu { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+#sunak .sk-altar canvas.sk-altar-gpu { position: absolute; inset: 0; width: 300px; height: 330px; pointer-events: none; z-index: 1; }
+body.sunak-gpu #skAltar svg.sk-ring { opacity: 0; pointer-events: none; }
+body.sunak-gpu #skAltar canvas.sk-char { opacity: 0; pointer-events: none; }
+body.sunak-gpu #skFx { display: none; }
+body.sunak.fx-off canvas.sk-fx-gpu { display: none; }

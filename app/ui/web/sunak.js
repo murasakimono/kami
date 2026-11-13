@@ -99,7 +99,15 @@ function skBuild() {
   if (window.KamiEye) {
     // Sunak'ta tam boy karakter; sadece goz kesiti (eye/assets) eklenti ve widget icin
     SK.eye = new KamiEye($("#skEye"), { assets: "eye/char/", eyeY: 0.38, mirrorFrame: true });
-    SK.eye.ready.then(() => SK.eye.start()).catch((e) => console.error(e));
+    SK.eye.ready.then(() => {
+      if (window.KamiSunakGPU?.available?.()) {
+        window.KamiSunakGPU.initAltar($("#skAltar"), SK.eye).then((ok) => {
+          if (!ok) SK.eye.start();
+        });
+      } else {
+        SK.eye.start();
+      }
+    }).catch((e) => console.error(e));
   }
   requestAnimationFrame(skFrame);
   SK.built = true;
@@ -151,10 +159,11 @@ function skBind() {
   document.addEventListener("mousemove", (e) => SK.eye?.lookAt(e.clientX, e.clientY));
   // dosya surukleme: ruh uyanir, birakinca yutar (asil ekleme extras.js'teki drop dinleyicisinde)
   let depth = 0;
-  document.addEventListener("dragenter", () => { depth++; altar.classList.add("drop"); SK.eye?.set({ mood: "alert" }); });
-  document.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; altar.classList.remove("drop"); SK.eye?.set({ mood: "idle" }); } });
+  document.addEventListener("dragenter", () => { depth++; altar.classList.add("drop"); SK.eye?.set({ mood: "alert" }); window.KamiSunakGPU?.setState?.({ drop: true, mood: "alert" }); });
+  document.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; altar.classList.remove("drop"); SK.eye?.set({ mood: "idle" }); window.KamiSunakGPU?.setState?.({ drop: false, mood: "idle" }); } });
   document.addEventListener("drop", () => {
     depth = 0; altar.classList.remove("drop"); altar.classList.remove("swallow"); void altar.offsetWidth; altar.classList.add("swallow");
+    window.KamiSunakGPU?.triggerSwallow?.();
     SK.eye?.set({ mood: "happy" }); SK.happyUntil = Date.now() + 1500;
   });
 }
@@ -482,11 +491,20 @@ function skState(s) {
   fill.setAttribute("stroke-dashoffset", String(SK_RING_C * (1 - SK.speedFrac)));
   $("#skAltar").classList.toggle("full", SK.speedFrac > 0.92);
   const sel = its.find((d) => d.id === SK.sel);
+  const moodNow = Date.now() < SK.happyUntil ? "happy" : $("#skAltar").classList.contains("drop") ? "alert" : "idle";
+  const errNow = !s.engine_ok || (sel && sel.status === "error");
   SK.eye?.set({
     isDownloading: active.length > 0,
     downloadSpeed: Math.min(1, spd / (125 * 1024 * 1024)),
-    isError: !s.engine_ok || (sel && sel.status === "error"),
-    mood: Date.now() < SK.happyUntil ? "happy" : $("#skAltar").classList.contains("drop") ? "alert" : "idle",
+    isError: errNow,
+    mood: moodNow,
+  });
+  window.KamiSunakGPU?.setState?.({
+    speedFrac: SK.speedFrac,
+    isDownloading: active.length > 0,
+    isError: errNow,
+    mood: moodNow,
+    drop: $("#skAltar").classList.contains("drop"),
   });
   skTrackSpeeds();
   const fc = $("#followCount")?.textContent; const fn = $("#skFollowN");
@@ -521,9 +539,19 @@ function skFrame(t) {
 const FX = { on: (() => { try { return localStorage.getItem("kami.fx") !== "0"; } catch { return true; } })(), parts: [], last: 0 };
 function fxSprite(w, h, draw) { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); return c; }
 function fxInit() {
+  const fog = document.createElement("div"); fog.id = "skFog"; document.body.prepend(fog);
+  if (window.KamiSunakGPU?.available?.()) {
+    window.KamiSunakGPU.initBg().then((ok) => {
+      if (!ok) fxInit2D();
+    });
+    document.body.classList.toggle("fx-off", !FX.on);
+    return;
+  }
+  fxInit2D();
+}
+function fxInit2D() {
   const c = document.createElement("canvas");
   c.id = "skFx"; document.body.prepend(c);
-  const fog = document.createElement("div"); fog.id = "skFog"; document.body.prepend(fog);
   const ctx = c.getContext("2d");
   let W = 0, H = 0, dpr = 1;
   const resize = () => { dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; c.width = W * dpr; c.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
@@ -591,7 +619,7 @@ function fxInit() {
   requestAnimationFrame(loop);
   document.body.classList.toggle("fx-off", !FX.on);
 }
-function fxToggle(on) { FX.on = on; document.body.classList.toggle("fx-off", !on); try { localStorage.setItem("kami.fx", on ? "1" : "0"); } catch { /* yok */ } }
+function fxToggle(on) { FX.on = on; window.KamiSunakGPU?.setFx?.(on); document.body.classList.toggle("fx-off", !on); try { localStorage.setItem("kami.fx", on ? "1" : "0"); } catch { /* yok */ } }
 
 skBuild();
 fxInit();

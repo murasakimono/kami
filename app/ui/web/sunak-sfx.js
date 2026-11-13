@@ -38,6 +38,7 @@
     localStorage.setItem(COSTUME_KEY, id);
     const el = document.querySelector("#skEye, #sunak .sk-char");
     if (el) el.style.filter = COSTUMES[id] || "";
+    window.KamiSunakGPU?.setCostume?.(id);
     return id;
   }
 
