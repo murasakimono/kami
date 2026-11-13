@@ -178,3 +178,22 @@ def test_zoom_presets_unique_and_valid():
     assert len(ids) == len(set(ids)) and len(ids) >= 16
     for z in S.ZOOM_PRESETS:
         assert S.kf_resolve(z["kf"], 2.0), z["id"]
+
+
+def test_all_fx_run_in_ffmpeg():
+    """Butun efekt zincirleri (FX + FX2 + FX3) gercek ffmpeg'de calisir (ffmpeg yoksa atlanir)."""
+    import shutil
+    import subprocess
+    import pytest
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        pytest.skip("ffmpeg yok")
+    bad = []
+    for fid, fx in S.FX.items():
+        ch = S._fx_chain(fx["ff"], 320, 180, 0.0, "c0" + fid.replace("-", ""))
+        g = f"[0:v]format=rgba,{ch},format=rgba[o]"
+        r = subprocess.run([ff, "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=0.4", "-filter_complex", g,
+                            "-map", "[o]", "-f", "null", "-"], capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            bad.append((fid, r.stderr[-200:]))
+    assert not bad, bad

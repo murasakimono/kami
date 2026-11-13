@@ -115,6 +115,8 @@ FX: dict[str, dict[str, Any]] = {
 
 from app.core.studio_fx2 import FX2 as _FX2  # noqa: E402
 FX.update({k: v for k, v in _FX2.items() if k not in FX})
+from app.core.studio_fx3 import FX3 as _FX3  # noqa: E402
+FX.update({k: v for k, v in _FX3.items() if k not in FX})
 
 # Gecis (klip girisi): ffmpeg + onizleme ayni adla
 TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom vuruşu", "slide": "Kaydırma (sağdan)", "blur": "Bulanık", "glitch": "Glitch",
