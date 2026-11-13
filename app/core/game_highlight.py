@@ -65,6 +65,16 @@ def detect_roi_highlight(image_path: str | Path, keywords: tuple[str, ...] | lis
         return {"hit": False, "keyword": "", "text": ""}
 
 
+def default_killfeed_roi() -> tuple[int, int, int, int]:
+    """Birincil ekranin sag-ust kosesi (cogu FPS/MOBA'da kill-feed burada): genislik %35, yukseklik %30."""
+    try:
+        u32 = ctypes.windll.user32
+        sw, sh = int(u32.GetSystemMetrics(0)), int(u32.GetSystemMetrics(1))
+    except Exception:
+        sw, sh = 1920, 1080
+    return (int(sw * 0.65), 0, sw, int(sh * 0.30))
+
+
 class HighlightWatcher:
     """Oyun acikken belirli araliklarla ROI'yi izleyip otomatik recorder.save_replay() tetikler."""
 
@@ -102,7 +112,8 @@ class HighlightWatcher:
         else:
             try:
                 from PIL import ImageGrab
-                im = ImageGrab.grab(bbox=self.roi)
+                # ROI verilmediyse tum ekrani degil sag-ust kill-feed kosesini oku (hiz + yanlis tetik onleme)
+                im = ImageGrab.grab(bbox=self.roi or default_killfeed_roi())
                 tmp = Path(tempfile.gettempdir()) / f"kami_roi_{int(time.time() * 1000)}.png"
                 im.save(tmp)
                 roi_file = tmp
@@ -117,6 +128,8 @@ class HighlightWatcher:
             hit = (detect_fn or detect_roi_highlight)(roi_file, self.keywords)
             if not hit.get("hit"):
                 return {"triggered": False, "reason": "no_keyword", "title": title}
+            if self.recorder is None:
+                return {"triggered": False, "reason": "no_recorder", "title": title}
             clip_path = self.recorder.save_replay()
             self.last_trigger = now
             self.saved_clips.append(clip_path)
@@ -130,19 +143,22 @@ class HighlightWatcher:
             self.games = list(games)
         if keywords:
             self.keywords = list(keywords)
-        if self.running:
+        if self.running and self._thread is not None and self._thread.is_alive():
             return {"ok": True, "running": True}
-        self._stop.clear()
+        # Her dongu kendi durdurma bayragini kullanir: hizli stop->start iki thread birakmaz
+        stop_ev = threading.Event()
+        self._stop = stop_ev
         self.running = True
 
         def _loop() -> None:
-            while not self._stop.is_set():
+            while not stop_ev.is_set():
                 try:
                     self.check_once()
                 except Exception as exc:
                     log.debug("HighlightWatcher dongu hatasi: %s", exc)
-                self._stop.wait(max(0.5, float(interval_sec)))
-            self.running = False
+                stop_ev.wait(max(0.5, float(interval_sec)))
+            if self._stop is stop_ev:
+                self.running = False
 
         self._thread = threading.Thread(target=_loop, name="kami-highlight-watch", daemon=True)
         self._thread.start()
@@ -165,19 +181,10 @@ class HighlightWatcher:
 
 
 def virtual_camera_status() -> dict[str, Any]:
-    """pyvirtualcam ve RobustVideoMatting hazirlik durumunu raporlar."""
-    has_vcam = False
-    has_rvm = False
-    try:
-        import pyvirtualcam  # noqa: F401
-        has_vcam = True
-    except Exception:
-        pass
-    try:
-        import torch  # noqa: F401
-        has_rvm = True
-    except Exception:
-        pass
+    """pyvirtualcam ve GPU matting hazirlik durumunu raporlar (agir torch'u ana surece YUKLEMEDEN)."""
+    import importlib.util
+    has_vcam = importlib.util.find_spec("pyvirtualcam") is not None
+    has_rvm = importlib.util.find_spec("torch") is not None
     return {
         "ok": True,
         "pyvirtualcam_installed": has_vcam,

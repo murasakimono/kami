@@ -37,6 +37,21 @@ def _ffprobe() -> str:
     return shutil.which("ffprobe") or ""
 
 
+def _has_audio(video_path: Path) -> bool:
+    fp = _ffprobe()
+    if not fp:
+        return True
+    try:
+        r = subprocess.run(
+            [fp, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_type",
+             "-of", "csv=p=0", str(video_path)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15, creationflags=NO_WINDOW,
+        )
+        return "audio" in (r.stdout or "").lower()
+    except Exception:
+        return True
+
+
 def safe_zone_rect(platform: str = "tiktok", width: int = 1080, height: int = 1920) -> dict[str, int]:
     """Dikey videoda arayuz butonlarinin kapatmadigi guvenli piksel dikdortgenini doner."""
     z = SAFE_ZONES.get((platform or "tiktok").lower(), SAFE_ZONES["tiktok"])
@@ -232,18 +247,49 @@ def render_ugc_matrix(
     outputs: list[dict[str, Any]] = []
 
     norm = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+    audio_cache: dict[Path, bool] = {}
+    dur_cache: dict[Path, float] = {}
+
+    def _clip_audio(p: Path) -> bool:
+        if p not in audio_cache:
+            audio_cache[p] = _has_audio(p)
+        return audio_cache[p]
+
+    def _clip_dur(p: Path) -> float:
+        if p not in dur_cache:
+            dur_cache[p] = max(0.1, _probe_size(p)[2] or 1.0)
+        return dur_cache[p]
+
     for hi, hp in enumerate(valid_hooks):
         for ci, cp in enumerate(valid_ctas):
             out_p = dst_dir / f"ugc_h{hi + 1}_c{ci + 1}_{platform}.mp4"
-            fc = (
-                f"[0:v]{norm}[v0];[1:v]{norm}[v1];[2:v]{norm}[v2];"
-                f"[0:a]aresample=48000[a0];[1:a]aresample=48000[a1];[2:a]aresample=48000[a2];"
-                f"[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[v][a]"
-            )
+            clips = [hp, body_p, cp]
+            has_any_audio = any(_clip_audio(p) for p in clips)
+            v_parts = f"[0:v]{norm}[v0];[1:v]{norm}[v1];[2:v]{norm}[v2];"
+            if has_any_audio:
+                a_parts = ""
+                concat_inputs = ""
+                for idx, p in enumerate(clips):
+                    if _clip_audio(p):
+                        a_parts += f"[{idx}:a]aresample=48000,aformat=channel_layouts=stereo[a{idx}];"
+                    else:
+                        a_parts += f"anullsrc=r=48000:cl=stereo,atrim=duration={_clip_dur(p):.3f}[a{idx}];"
+                    concat_inputs += f"[v{idx}][a{idx}]"
+                fc = f"{v_parts}{a_parts}{concat_inputs}concat=n=3:v=1:a=1[v][a]"
+                cmd = [
+                    ff, "-y", "-i", str(hp), "-i", str(body_p), "-i", str(cp),
+                    "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "192k", str(out_p),
+                ]
+            else:
+                fc = f"{v_parts}[v0][v1][v2]concat=n=3:v=1:a=0[v]"
+                cmd = [
+                    ff, "-y", "-i", str(hp), "-i", str(body_p), "-i", str(cp),
+                    "-filter_complex", fc, "-map", "[v]",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", str(out_p),
+                ]
             r = subprocess.run(
-                [ff, "-y", "-i", str(hp), "-i", str(body_p), "-i", str(cp),
-                 "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
-                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "192k", str(out_p)],
+                cmd,
                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600, creationflags=NO_WINDOW,
             )
             if r.returncode == 0 and out_p.is_file():

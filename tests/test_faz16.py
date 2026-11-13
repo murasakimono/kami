@@ -58,3 +58,10 @@ def test_voice_command_parser():
 
     cmd2 = voice_cmd.parse_voice_command("kami ekran oku")
     assert cmd2["action"] == "ocr"
+
+
+def test_voice_capabilities_shape():
+    caps = voice_cmd.voice_capabilities()
+    assert caps["ok"] is True
+    assert "silero_vad_ready" in caps
+    assert "faster_whisper_ready" in caps

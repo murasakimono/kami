@@ -88,3 +88,46 @@ def test_game_highlight_watcher_and_vcam(tmp_path: Path):
     vc = game_highlight.virtual_camera_status()
     assert vc["ok"] is True
     assert "pyvirtualcam_installed" in vc
+
+
+def test_highlight_watcher_no_recorder(tmp_path):
+    from app.core import game_highlight
+
+    roi_img = tmp_path / "roi.png"
+    roi_img.write_bytes(b"\x89PNG\r\n\x1a\n")
+    watcher = game_highlight.HighlightWatcher(recorder=None)
+    res = watcher.check_once(
+        window_title_fn=lambda: "VALORANT",
+        grab_roi_fn=lambda: roi_img,
+        detect_fn=lambda _p, _kw: {"hit": True, "keyword": "ACE"},
+    )
+    assert res["triggered"] is False
+    assert res["reason"] == "no_recorder"
+
+
+def test_ugc_matrix_silent_clips(tmp_path, monkeypatch):
+    from app.core import clip_factory
+
+    hook = tmp_path / "hook.mp4"
+    body = tmp_path / "body.mp4"
+    cta = tmp_path / "cta.mp4"
+    for p in (hook, body, cta):
+        p.write_bytes(b"fake-mp4")
+
+    monkeypatch.setattr(clip_factory, "_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(clip_factory, "_has_audio", lambda _p: False)
+    seen_cmds = []
+
+    class _FakeRes:
+        returncode = 0
+
+    def _fake_run(cmd, **_kwargs):
+        seen_cmds.append(cmd)
+        Path(cmd[-1]).write_bytes(b"out-mp4")
+        return _FakeRes()
+
+    monkeypatch.setattr(clip_factory.subprocess, "run", _fake_run)
+    res = clip_factory.render_ugc_matrix([hook], body, [cta], tmp_path / "out")
+    assert res["ok"] is True
+    assert len(res["outputs"]) == 1
+    assert "concat=n=3:v=1:a=0[v]" in " ".join(seen_cmds[0])

@@ -3268,7 +3268,13 @@ class Api(StudioMixin):
     def highlight_watcher_start(self, games: list[str] | None = None, keywords: list[str] | None = None) -> dict[str, Any]:
         if not self.recorder:
             return {"ok": False, "error": "Recorder hazir degil"}
-        return self._hw().start(games=games, keywords=keywords)
+        hw = self._hw()
+        hw.recorder = self.recorder   # izleyici recorder baglanmadan once olusturulduysa guncelle
+        try:   # vurgu kaydedebilmek icin replay tamponu acik olmali
+            self.recorder.start_replay()
+        except Exception:
+            log.debug("highlight: replay tamponu baslatilamadi", exc_info=True)
+        return hw.start(games=games, keywords=keywords)
 
     def highlight_watcher_stop(self) -> dict[str, Any]:
         return self._hw().stop()

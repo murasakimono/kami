@@ -33,18 +33,10 @@ def parse_voice_command(text: str, *, require_wake: bool = True) -> dict[str, An
 
 
 def voice_capabilities() -> dict[str, Any]:
-    has_vad = False
-    has_whisper = False
-    try:
-        import torch  # noqa: F401
-        has_vad = True
-    except Exception:
-        pass
-    try:
-        import faster_whisper  # noqa: F401
-        has_whisper = True
-    except Exception:
-        pass
+    import importlib.util
+
+    has_vad = importlib.util.find_spec("torch") is not None
+    has_whisper = importlib.util.find_spec("faster_whisper") is not None
     return {
         "ok": True,
         "silero_vad_ready": has_vad,

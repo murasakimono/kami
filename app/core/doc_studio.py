@@ -96,6 +96,9 @@ def convert_document(src_path: str | Path, target_format: str = "html", out_path
     fmt = (target_format or "html").strip().lower().lstrip(".")
     ext = "tex" if fmt == "latex" else fmt
     dst = Path(out_path) if out_path else p.with_suffix(f".{ext}")
+    if dst.resolve() == p.resolve():
+        # Kaynak belgenin uzerine yazmayi onle
+        dst = p.with_name(f"{p.stem}_donusturuldu.{ext}")
     dst.parent.mkdir(parents=True, exist_ok=True)
 
     pandoc = shutil.which("pandoc") or shutil.which("pandoc.exe")

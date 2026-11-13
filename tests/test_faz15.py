@@ -47,3 +47,17 @@ def test_manga_translate_page_inpaint_and_typeset(tmp_path: Path):
     assert res["bubbles"] == 1
     assert out_page.is_file()
     assert res["items"][0]["translated"] == "MERHABA!"
+
+
+def test_convert_document_same_extension_safety(tmp_path):
+    from pathlib import Path
+    from app.core import doc_studio
+
+    src = tmp_path / "notlar.txt"
+    src.write_text("<p>Merhaba</p>", encoding="utf-8")
+    res = doc_studio.convert_document(src, "txt")
+    assert res["ok"] is True
+    out_p = tmp_path / "notlar_donusturuldu.txt"
+    assert out_p.is_file()
+    assert Path(res["path"]).resolve() == out_p.resolve()
+    assert src.read_text(encoding="utf-8") == "<p>Merhaba</p>"
