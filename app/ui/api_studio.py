@@ -877,7 +877,7 @@ class StudioMixin:
         def run() -> None:
             try:   # eski kurulumlar: onnxruntime-gpu CUDA 13 surumu GPU'yu kullanamiyor -> bir kez duzelt
                 env = Path(aitools.python_exe("iopaint")).resolve().parent.parent
-                mark = env / ".kami_ort_cuda12"
+                mark = env / ".kami_studio_matte2"
                 if not mark.exists():
                     job.update(line="yapay zeka ortamı güncelleniyor (bir kez)")
                     if aitools.install("iopaint", lambda s: job.update(line=str(s)[-120:])):

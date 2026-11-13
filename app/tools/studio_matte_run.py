@@ -17,6 +17,47 @@ def emit(**kw) -> None:
     sys.stdout.flush()
 
 
+def _torch_birefnet(model: str):
+    """BiRefNet (resmi agirliklar, transformers) - ekran kartinda fp16: kare basina ~0.2-0.4 sn. Olmazsa None."""
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return None
+        from PIL import Image
+        from transformers import AutoModelForImageSegmentation
+        repo = {"birefnet-general-lite": "ZhengPeng7/BiRefNet_lite"}.get(model, "ZhengPeng7/BiRefNet")
+        net = AutoModelForImageSegmentation.from_pretrained(repo, trust_remote_code=True)
+        net.to("cuda").eval().half()
+        torch.backends.cudnn.benchmark = True
+        mean = torch.tensor([0.485, 0.456, 0.406], device="cuda").view(1, 3, 1, 1).half()
+        std = torch.tensor([0.229, 0.224, 0.225], device="cuda").view(1, 3, 1, 1).half()
+        emit(p=0.02, line="aygıt: CUDA (torch fp16)")
+
+        def predict(im):
+            import numpy as np
+            x = torch.from_numpy(np.asarray(im.resize((1024, 1024), Image.BILINEAR))).to("cuda").permute(2, 0, 1)[None].half() / 255
+            with torch.no_grad():
+                y = net((x - mean) / std)[-1].sigmoid()[0, 0].float().clamp(0, 1).mul(255).byte().cpu().numpy()
+            return Image.fromarray(y).resize(im.size, Image.BILINEAR)
+        return predict
+    except Exception as exc:
+        emit(p=0.02, line=f"torch yolu olmadı ({type(exc).__name__}), rembg deneniyor")
+        return None
+
+
+def _rembg(model: str):
+    try:
+        import torch  # noqa: F401  (CUDA DLL'leri onnxruntime icin)
+        import onnxruntime as ort
+        if hasattr(ort, "preload_dlls"):
+            ort.preload_dlls()
+    except Exception:
+        pass
+    from rembg import new_session, remove
+    sess = new_session(model, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    return lambda im: remove(im, session=sess, only_mask=True, post_process_mask=True)
+
+
 def main(argv: list[str]) -> int:
     from app.tools import load_args
     src, out, start, dur, model, ff = load_args(argv)[:6]
@@ -35,20 +76,8 @@ def main(argv: list[str]) -> int:
     fps = float(num) / float(den or 1)
     total = max(1, int(dur_f * fps))
     emit(p=0.01, line="model yükleniyor")
-    try:   # torch'un CUDA/cuDNN DLL'lerini once yukle: onnxruntime GPU'yu bulsun (yoksa sessizce CPU'ya duser)
-        import torch  # noqa: F401
-        import onnxruntime as ort
-        if hasattr(ort, "preload_dlls"):
-            ort.preload_dlls()
-    except Exception:
-        pass
     from PIL import Image
-    from rembg import new_session, remove
-    sess = new_session(model, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-    try:
-        emit(p=0.02, line="aygıt: " + ",".join(sess.inner_session.get_providers()[:1]))
-    except Exception:
-        pass
+    predict = _torch_birefnet(model) or _rembg(model)
     dec = subprocess.Popen([ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-ss", start, "-t", dur, "-i", src,
                             "-vf", f"scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], stdout=subprocess.PIPE, creationflags=NOWIN)
     enc = subprocess.Popen([ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{w}x{h}",
@@ -63,7 +92,7 @@ def main(argv: list[str]) -> int:
         if len(buf) < size:
             break
         im = Image.frombytes("RGB", (w, h), buf)
-        mask = remove(im, session=sess, only_mask=True, post_process_mask=True)
+        mask = predict(im)
         rgba = im.convert("RGBA")
         rgba.putalpha(mask.convert("L").resize((w, h)))
         enc.stdin.write(rgba.tobytes())

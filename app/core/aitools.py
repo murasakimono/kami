@@ -41,7 +41,7 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     "iopaint": {   # Kami Picture yapay zeka: LaMa silme, SAM tikla-sec, arka plan, 4x buyutme, yuz duzeltme
         "module": "iopaint",
-        "packages": ["iopaint==1.6.0", "rembg[gpu]", "onnxruntime-gpu>=1.20,<1.23", "torch>=2.3,<2.9", "torchvision<0.24"],   # ORT 1.23+ CUDA 13 ister, torch cu128 = CUDA 12   # rembg: RemoveBG eklentisi ister (yoksa sunucu kapanir)
+        "packages": ["iopaint==1.6.0", "rembg[gpu]", "onnxruntime-gpu>=1.20,<1.23", "kornia", "torch>=2.3,<2.9", "torchvision<0.24"],   # ORT 1.23+ CUDA 13 ister, torch cu128 = CUDA 12   # rembg: RemoveBG eklentisi ister (yoksa sunucu kapanir)
         "extra_index": "https://download.pytorch.org/whl/cu128",
         "size_gb": 4.5,    # torch CUDA ~2.8 GB + diffusers/transformers + modeller (LaMa, SAM2, RMBG, ESRGAN, GFPGAN) ~1 GB
         "python": "3.11",  # IOPaint Pillow 9.5.0'a bagli (3.12 tekerlegi yok)
