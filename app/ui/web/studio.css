@@ -500,3 +500,15 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 @keyframes tvWhipV { from { transform: translateY(100%); filter: blur(6px); } } @keyframes tvSpin180 { from { transform: rotate(-180deg); } }
 @keyframes tvRoll { 0% { transform: translateY(-100%); } 50% { transform: translateY(30%); } }
 /* ---- altyazi on ayar kartlari: davranis sinifi + font (JS: class="capv cv-<b>" style="font-family:'<font>'") ---- */
+
+/* ---- Dalga 2: anahtar kare, bezier egrisi, maske ve ayar katmani ---- */
+.fld.kfa { grid-template-columns: 18px 64px 1fr 46px; }
+.kfbtn { border: 0; background: transparent; color: var(--mute); padding: 0; font-size: 11px; line-height: 1; cursor: pointer; opacity: .65; }
+.kfbtn:hover { opacity: 1; color: #C4B5FD; }
+.kfbtn.has { opacity: 1; color: #A855F7; }
+.kfbtn.on { opacity: 1; color: var(--em); text-shadow: 0 0 6px var(--em); }
+.kf { cursor: pointer; }
+.kf.sel { border-color: var(--violet); background: rgba(139,92,246,.14); }
+.clip .kfm.ukf { background: var(--em); }
+.bez-hd { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+#bezCv { width: 100%; border: 1px solid var(--line); border-radius: 8px; cursor: crosshair; display: block; margin-top: 4px; }

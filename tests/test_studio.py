@@ -282,3 +282,49 @@ def test_silence_asymmetric_pad_and_selective_restore():
     assert len(restored) == 1
     assert len(p["cuts"]) == 1
     assert abs(S.project_end(p) - (20.0 - 2.9)) < 0.01
+
+
+def test_wave2_catalog_and_mask_blend_adj_kf_ffmpeg(tmp_path: Path):
+    import shutil
+    import subprocess
+    import pytest
+
+    cat = S.catalog()
+    assert len(cat["blends"]) == 9 and "screen" in cat["blends"] and "multiply" in cat["blends"]
+    assert len(cat["masks"]) == 8 and "heart" in cat["masks"] and "circle" in cat["masks"]
+    assert "easeOutExpo" in cat["bezierPresets"] and "pop" in cat["bezierPresets"]
+
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        pytest.skip("ffmpeg yok")
+
+    v1 = tmp_path / "base.mp4"
+    v2 = tmp_path / "ov.mp4"
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=24:d=2",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-shortest",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(v1)], check=True)
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "smptebars=s=320x180:r=24:d=2",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(v2)], check=True)
+
+    p = S.new_project("wave2", 640, 360, 24)
+    p["assets"]["a1"] = {"path": str(v1), "kind": "video", "dur": 2.0, "w": 320, "h": 180, "audio": True, "name": "base"}
+    p["assets"]["a2"] = {"path": str(v2), "kind": "video", "dur": 2.0, "w": 320, "h": 180, "audio": False, "name": "ov"}
+
+    S.add_clip(p, asset="a1", track="v1", start=0, dur=2.0, kf=[
+        {"t": 0.0, "scale": 1.0, "x": -0.1, "rot": 0, "opacity": 1.0, "vol": 0.8},
+        {"t": 1.0, "scale": 1.25, "x": 0.05, "rot": 8, "opacity": 0.85, "vol": 0.3, "bez": "easeOutExpo"},
+        {"t": 2.0, "scale": 1.0, "x": 0.0, "rot": 0, "opacity": 1.0, "vol": 1.0, "bez": [0.34, 1.45, 0.64, 1.0]},
+    ])
+    S.add_clip(p, asset="a2", track="v2", start=0.0, dur=1.0, blend="screen",
+               mask={"type": "heart", "x": 0.5, "y": 0.5, "w": 0.6, "h": 0.6, "rot": 15, "feather": 4, "invert": False})
+    S.add_clip(p, asset="a2", track="v2", start=1.0, dur=1.0, blend="multiply",
+               mask={"type": "circle", "x": 0.5, "y": 0.5, "w": 0.5, "h": 0.5, "rot": 0, "feather": 6, "invert": True})
+    S.add_clip(p, mode="adjustment", track="fx", start=0.2, dur=1.5,
+               adj={"bri": 8, "con": 12, "sat": 20}, fx=["vhs"], opacity=0.75, blend="overlay")
+
+    out = tmp_path / "wave2_out.mp4"
+    args, total = S.build_export(p, str(out), tmp_path, "libx264", {"quality": "medium"})
+    assert abs(total - 2.0) < 1e-6
+    r = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert out.is_file() and out.stat().st_size > 1000

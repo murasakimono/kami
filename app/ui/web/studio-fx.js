@@ -234,5 +234,88 @@ const SFX = (() => {
     };
   }
 
-  return { overlay, shakeOffset, transIn, transMask, pixelate, tint, copy, SmartCache, createSmartCache, webCodecsInfo };
+  function evalBezier(p1x, p1y, p2x, p2y, u) {
+    u = Math.max(0, Math.min(1, u));
+    if (u <= 0) return 0; if (u >= 1) return 1;
+    const ax = 3 * p1x - 3 * p2x + 1, bx = 3 * p2x - 6 * p1x, cx = 3 * p1x;
+    let t = u;
+    for (let i = 0; i < 6; i++) {
+      const xt = ((ax * t + bx) * t + cx) * t - u;
+      const dx = (3 * ax * t + 2 * bx) * t + cx;
+      if (Math.abs(xt) < 1e-5 || Math.abs(dx) < 1e-6) break;
+      t = Math.max(0, Math.min(1, t - xt / dx));
+    }
+    const t2 = t * t, t3 = t2 * t, mt = 1 - t;
+    return 3 * mt * mt * t * p1y + 3 * mt * t2 * p2y + t3;
+  }
+
+  const BLEND_JS = {
+    normal: "source-over", screen: "screen", overlay: "overlay", multiply: "multiply",
+    lighten: "lighten", darken: "darken", dodge: "color-dodge", difference: "difference", addition: "lighter",
+  };
+
+  const maskC = document.createElement("canvas"), maskG = maskC.getContext("2d");
+  const shapeC = document.createElement("canvas"), shapeG = shapeC.getContext("2d");
+  function _drawMaskShape(g, mask, W, H) {
+    const t = mask.type;
+    const cx = (mask.x ?? 0.5) * W, cy = (mask.y ?? 0.5) * H;
+    const rx = Math.max(2, (mask.w ?? 0.55) * W * 0.5), ry = Math.max(2, (mask.h ?? 0.55) * H * 0.5);
+    const rad = ((mask.rot || 0) * Math.PI) / 180;
+    g.save();
+    g.translate(cx, cy);
+    if (rad) g.rotate(rad);
+    g.beginPath();
+    if (t === "circle") g.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    else if (t === "rect") g.rect(-rx, -ry, rx * 2, ry * 2);
+    else if (t === "split") g.rect(-W * 2, -H * 2, W * 2, H * 4);
+    else if (t === "mirror") g.rect(-W * 2, -ry, W * 4, ry * 2);
+    else if (t === "filmstrip") {
+      const sw = Math.max(8, W / 5), gap = sw * 0.14;
+      for (let x = -W; x < W; x += sw) g.rect(x - sw * 0.5 + gap, -ry, sw - gap, ry * 2);
+    } else if (t === "star") {
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5, r = i % 2 === 0 ? 1 : 0.42;
+        const px = Math.cos(a) * rx * r, py = Math.sin(a) * ry * r;
+        i ? g.lineTo(px, py) : g.moveTo(px, py);
+      }
+      g.closePath();
+    } else if (t === "heart") {
+      for (let i = 0; i <= 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        const hx = Math.pow(Math.sin(a), 3), hy = -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 16;
+        const px = hx * rx * 0.85, py = (hy + 0.15) * ry * 0.85;
+        i ? g.lineTo(px, py) : g.moveTo(px, py);
+      }
+      g.closePath();
+    }
+    g.restore();
+  }
+  function applyMask(src, mask, W, H, PS = 1) {
+    if (!mask || !mask.type || mask.type === "none") return src;
+    if (maskC.width !== W || maskC.height !== H) { maskC.width = shapeC.width = W; maskC.height = shapeC.height = H; }
+    shapeG.setTransform(1, 0, 0, 1, 0, 0);
+    shapeG.clearRect(0, 0, W, H);
+    shapeG.fillStyle = "#fff";
+    if (mask.invert) {
+      shapeG.fillRect(0, 0, W, H);
+      shapeG.globalCompositeOperation = "destination-out";
+    }
+    _drawMaskShape(shapeG, mask, W, H);
+    shapeG.fill();
+    shapeG.globalCompositeOperation = "source-over";
+
+    maskG.setTransform(1, 0, 0, 1, 0, 0);
+    maskG.clearRect(0, 0, W, H);
+    maskG.globalCompositeOperation = "source-over";
+    maskG.filter = "none";
+    maskG.drawImage(src, 0, 0, W, H);
+    maskG.globalCompositeOperation = "destination-in";
+    if ((mask.feather || 0) > 0.5) maskG.filter = `blur(${(mask.feather * PS).toFixed(1)}px)`;
+    maskG.drawImage(shapeC, 0, 0);
+    maskG.filter = "none";
+    maskG.globalCompositeOperation = "source-over";
+    return maskC;
+  }
+
+  return { overlay, shakeOffset, transIn, transMask, pixelate, tint, copy, SmartCache, createSmartCache, webCodecsInfo, evalBezier, BLEND_JS, applyMask };
 })();

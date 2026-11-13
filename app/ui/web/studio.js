@@ -259,12 +259,17 @@ function dropCuts(ids) {
 }
 function kfResolve(kf, dur) { return (kf || []).map(k => ({ ...k, t: Math.max(0, k.t < 0 ? dur + k.t : k.t) })).sort((a, b) => a.t - b.t); }
 const EASE = { out: u => 1 - (1 - u) * (1 - u), in: u => u * u, inout: u => u * u * (3 - 2 * u) };
+function _kfEaseVal(b, u) {
+  const bz = Array.isArray(b.bez) && b.bez.length === 4 ? b.bez : (typeof b.bez === "string" ? ST.cat.bezierPresets?.[b.bez] : null);
+  if (bz && SFX.evalBezier) return SFX.evalBezier(+bz[0], +bz[1], +bz[2], +bz[3], u);
+  return (EASE[b.e] || (x => x))(u);
+}
 function kfAt(kf, key, t, def) {
-  const pts = kf.filter(k => key in k || key === "z");
+  const pts = kf.filter(k => key in k || (key === "z" && !("scale" in k)));
   if (!pts.length) return def;
   if (t <= pts[0].t) return pts[0][key] ?? def;
   for (let i = 1; i < pts.length; i++) {
-    if (t < pts[i].t) { const a = pts[i - 1], b = pts[i], u = (t - a.t) / Math.max(1e-3, b.t - a.t); const e = EASE[b.e] || (x => x); return (a[key] ?? def) + ((b[key] ?? def) - (a[key] ?? def)) * e(u); }
+    if (t < pts[i].t) { const a = pts[i - 1], b = pts[i], u = (t - a.t) / Math.max(1e-3, b.t - a.t); return (a[key] ?? def) + ((b[key] ?? def) - (a[key] ?? def)) * _kfEaseVal(b, u); }
   }
   return pts.at(-1)[key] ?? def;
 }
@@ -441,7 +446,8 @@ function srcTime(c, t) {
 function curSpeed(c, t) { return c.freeze ? 0 : c.ramp?.length ? rampAt(c, t - c.start)[1] : (c.speed || 1); }
 function clipVol(c, t) {
   const tr = trackOf(c); if (tr.mute) return 0;
-  let v = c.vol ?? 1; const l = t - c.start;
+  const l = t - c.start, ukf = c.kf?.length ? kfResolve(c.kf, c.dur) : null;
+  let v = ukf ? kfAt(ukf, "vol", l, c.vol ?? 1) : (c.vol ?? 1);
   if (tr.duck && ST.p.clips.some(x => x !== c && !trackOf(x).duck && !trackOf(x).mute && (trackOf(x).kind === "audio" || (trackOf(x).kind === "video" && assetOf(x)?.audio)) && t >= x.start && t < x.start + x.dur))
     v *= 1 - .7 * ((ST.p.master || {}).duck ?? .6);
   if (c.fadeIn > 0 && l < c.fadeIn) v *= l / c.fadeIn;
@@ -596,8 +602,10 @@ function drawClip(c, t) {
     cbx.clearRect(0, 0, W, H); cbx.drawImage(cp, 0, -oy); cbx.drawImage(cp, 0, H - oy); SFX.overlay(cbx, "grain", W, H, t, local);
   }
   if (tr?.rgb) SFX.overlay(cbx, "rgb-strong", W, H, t, local);
-  // 3) donusum + saydamlik -> ana tuval
-  let alpha = c.opacity ?? 1;
+  if (c.mask?.type && c.mask.type !== "none" && SFX.applyMask) src = SFX.applyMask(src, c.mask, W, H, PS) || src;
+  // 3) donusum + evrensel anahtar kare + blend -> ana tuval
+  const ukf = c.kf?.length ? kfResolve(c.kf, c.dur) : null;
+  let alpha = ukf ? kfAt(ukf, "opacity", local, c.opacity ?? 1) : (c.opacity ?? 1);
   const fi = Math.max(c.fadeIn || 0, c.trans?.in === "fade" ? (c.trans.dur || .35) : 0);
   if (fi > 0 && local < fi) alpha *= local / fi;
   if (c.fadeOut > 0 && c.dur - local < c.fadeOut) alpha *= Math.max(0, (c.dur - local) / c.fadeOut);
@@ -605,19 +613,23 @@ function drawClip(c, t) {
   alpha *= A.a;
   vctx.save();
   vctx.globalAlpha = clamp(alpha, 0, 1);
+  if (c.blend && c.blend !== "normal" && SFX.BLEND_JS?.[c.blend]) vctx.globalCompositeOperation = SFX.BLEND_JS[c.blend];
   const bl = Math.max(tr?.blur || 0, A.b * .45);
   if (bl > .05) vctx.filter = `blur(${bl * PS}px)`;
   if (tr?.mask) SFX.transMask(vctx, tr.mask, W, H);
-  const sc = c.scale ?? 1, rot = ((c.rot || 0) + A.r + (tr?.rot || 0)) * Math.PI / 180;
-  // contain'de bos kenarlar saydam: transform merkezi = cizilen goruntunun merkezi
-  vctx.translate(W / 2 + ((c.x || 0) + A.x) * W + shx + (tr?.dx || 0) * W, H / 2 + ((c.y || 0) + A.y) * H + shy + (tr?.dy || 0) * H);
+  const sc = ukf ? kfAt(ukf, "scale", local, c.scale ?? 1) : (c.scale ?? 1);
+  const kx = ukf ? kfAt(ukf, "x", local, c.x || 0) : (c.x || 0);
+  const ky = ukf ? kfAt(ukf, "y", local, c.y || 0) : (c.y || 0);
+  const kr = ukf ? kfAt(ukf, "rot", local, c.rot || 0) : (c.rot || 0);
+  const rot = (kr + A.r + (tr?.rot || 0)) * Math.PI / 180;
+  vctx.translate(W / 2 + (kx + A.x) * W + shx + (tr?.dx || 0) * W, H / 2 + (ky + A.y) * H + shy + (tr?.dy || 0) * H);
   if (rot) vctx.rotate(rot);
   const ksx = sc * A.s * A.sx * (tr?.sx || 1), ksy = sc * A.s * A.sy * (tr?.sy || 1);
   if (ksx !== 1 || ksy !== 1 || c.flipH || c.flipV) {
     vctx.scale((c.flipH ? -1 : 1) * Math.max(1e-4, ksx), (c.flipV ? -1 : 1) * Math.max(1e-4, ksy));
   }
   vctx.drawImage(src, -W / 2, -H / 2);
-  if (tr?.pix > .01) { vctx.globalAlpha *= tr.pix; vctx.drawImage(SFX.pixelate(src, W, H, 1), -W / 2, -H / 2); }   // ffmpeg: pikselli kopya ile karisim
+  if (tr?.pix > .01) { vctx.globalAlpha *= tr.pix; vctx.drawImage(SFX.pixelate(src, W, H, 1), -W / 2, -H / 2); }
   vctx.restore();
 }
 const lutLoading = new Set();
@@ -678,12 +690,30 @@ function drawNow() {
   }
   for (const c of vis) { try { drawClip(c, t); } catch (e) { /* cerceve hazir degil */ } }
   for (const c of activeAt(t, "fx").sort((a, b) => trackOrder(a.track) - trackOrder(b.track))) {
-    const fx = ST.cat.fx[c.mode]; if (!fx) continue;
     const local = t - c.start;
-    if (fx.css) { const cp = SFX.copy(vctx, W, H); vctx.save(); vctx.filter = fx.css; vctx.drawImage(cp, 0, 0); vctx.restore(); }
-    const [sx, sy] = SFX.shakeOffset(fx.ov || [], t, W);
-    if (sx || sy) { const cp = SFX.copy(vctx, W, H); vctx.save(); vctx.translate(sx, sy); vctx.scale(1.04, 1.04); vctx.translate(-W * .02, -H * .02); vctx.drawImage(cp, 0, 0); vctx.restore(); }
-    for (const ov of fx.ov || []) SFX.overlay(vctx, ov, W, H, t, local);
+    const fids = [...(c.mode && c.mode !== "adjustment" ? [c.mode] : []), ...(c.fx || [])];
+    const hasFilter = adjCss(c.adj) || fxCss(fids) || (SGL.ok && SGL.active(c)) || (c.blend && c.blend !== "normal") || ((c.opacity ?? 1) < 0.999);
+    if (hasFilter) {
+      cbx.setTransform(1, 0, 0, 1, 0, 0); cbx.clearRect(0, 0, W, H);
+      cbx.filter = [adjCss(c.adj), fxCss(fids)].filter(Boolean).join(" ") || "none";
+      cbx.drawImage(view, 0, 0, W, H); cbx.filter = "none";
+      if (SGL.ok && SGL.active(c)) {
+        if (c.grade?.lut && !SGL.has(c.grade.lut)) loadLut(c.grade.lut);
+        const out = SGL.process(clipBuf, W, H, c);
+        if (out) { cbx.clearRect(0, 0, W, H); cbx.drawImage(out, 0, 0); }
+      }
+      vctx.save();
+      vctx.globalAlpha = clamp(c.opacity ?? 1, 0, 1);
+      if (c.blend && c.blend !== "normal" && SFX.BLEND_JS?.[c.blend]) vctx.globalCompositeOperation = SFX.BLEND_JS[c.blend];
+      vctx.drawImage(clipBuf, 0, 0);
+      vctx.restore();
+    }
+    for (const id of fids) {
+      const fx = ST.cat.fx[id]; if (!fx) continue;
+      const [sx, sy] = SFX.shakeOffset(fx.ov || [], t, W);
+      if (sx || sy) { const cp = SFX.copy(vctx, W, H); vctx.save(); vctx.translate(sx, sy); vctx.scale(1.04, 1.04); vctx.translate(-W * .02, -H * .02); vctx.drawImage(cp, 0, 0); vctx.restore(); }
+      for (const ov of fx.ov || []) SFX.overlay(vctx, ov, W, H, t, local);
+    }
   }
   for (const c of activeAt(t, "text")) {
     const av = c.style?.avatarImg;
@@ -858,13 +888,16 @@ function clipEl(c, t) {
   el.style.left = (c.start * ST.px) + "px"; el.style.width = w + "px";
   let label = "";
   if (k === "text") label = c.subscribe ? `🔔 ${ST.cat.subscribe[c.subscribe] || c.subscribe}` : c.graphic ? `◆ ${ST.cat.graphics?.[c.graphic] || c.graphic}` : c.words ? `≡ Altyazı (${c.words.length} kelime)` : "T " + (c.text || "");
-  else if (k === "fx") label = "✦ " + (ST.cat.fx[c.mode]?.name || c.mode);
+  else if (k === "fx") label = c.mode === "adjustment" ? "✨ Ayar Katmanı" : ("✦ " + (ST.cat.fx[c.mode]?.name || c.mode));
   else if (k === "compound") label = "⧉ " + (c.name || `Bileşik (${c.children?.length || 0} klip)`);
   else label = a?.name || "?";
   const tags = [];
   if ((c.speed || 1) !== 1) tags.push(`${c.speed}×`);
   if (c.ramp?.length) tags.push("⤳"); if (c.freeze) tags.push("❄"); if (c.key?.on) tags.push("▣"); if (c.grade && SGL.active({ grade: c.grade })) tags.push("◐"); if (c.afx?.length) tags.push("♪" + c.afx.length);
   if (c.fx?.length) tags.push("✦" + c.fx.length);
+  if (c.kf?.length) tags.push("◆" + c.kf.length);
+  if (c.mask?.type && c.mask.type !== "none") tags.push("◒");
+  if (c.blend && c.blend !== "normal") tags.push("◧");
   if (c.zoom?.length) tags.push("⊕");
   if (c.reframe?.length) tags.push("▯");
   if (c.trans?.in && c.trans.in !== "none") tags.push("⇋");
@@ -885,6 +918,7 @@ function clipEl(c, t) {
   if (c.fadeIn > 0) { const f = document.createElement("div"); f.className = "fade"; f.style.width = c.fadeIn * ST.px + "px"; el.appendChild(f); }
   if (c.fadeOut > 0) { const f = document.createElement("div"); f.className = "fade o"; f.style.width = c.fadeOut * ST.px + "px"; el.appendChild(f); }
   for (const z of kfResolve(c.zoom || [], c.dur)) { const d = document.createElement("div"); d.className = "kfm"; d.style.left = z.t * ST.px + "px"; el.appendChild(d); }
+  for (const z of kfResolve(c.kf || [], c.dur)) { const d = document.createElement("div"); d.className = "kfm ukf"; d.style.left = z.t * ST.px + "px"; el.appendChild(d); }
   return el;
 }
 function waveCanvas(c, pk, w, h, big) {
@@ -1151,6 +1185,42 @@ function color(label, key, val) { return `<label class="fld w2"><span>${label}</
 function chk(label, key, val) { return `<label class="fld w2"><span>${label}</span><input type="checkbox" data-k="${key}" ${val ? "checked" : ""} style="justify-self:start;accent-color:var(--violet)"></label>`; }
 function getK(c, k) { return k.split(".").reduce((o, p) => o?.[p], c); }
 function setK(c, k, v) { const ps = k.split("."); let o = c; for (const p of ps.slice(0, -1)) o = (o[p] ||= {}); if (v === "" || v == null) delete o[ps.at(-1)]; else o[ps.at(-1)] = v; }
+const UKF_DEFS = { scale: ["Ölçek", 1], x: ["X", 0], y: ["Y", 0], rot: ["Döndür", 0], opacity: ["Opaklık", 1], vol: ["Ses", 1] };
+function ukfResolve(c) { return kfResolve(c.kf || [], c.dur); }
+function ukfActiveIdx(kf, lt) {
+  if (kf.length < 2) return -1;
+  if (ST.bezIdx >= 1 && ST.bezIdx < kf.length) return ST.bezIdx;
+  const i = kf.findIndex(k => k.t > lt);
+  return i >= 1 ? i : kf.length - 1;
+}
+function fldkf(c, label, key, min, max, step, val) {
+  const lt = clamp(ST.t - c.start, 0, c.dur);
+  const kfs = c.kf || [];
+  const near = kfs.some(k => key in k && Math.abs((k.t < 0 ? c.dur + k.t : k.t) - lt) < .06);
+  const any = kfs.some(k => key in k);
+  const cur = any && ST.t >= c.start && ST.t <= c.start + c.dur ? kfAt(ukfResolve(c), key, lt, val) : val;
+  return `<label class="fld kfa"><button type="button" class="kfbtn${near ? " on" : any ? " has" : ""}" data-ukf="${key}" title="Oynatma kafasına anahtar kare (◆) ekle / kaldır">◆</button><span>${label}</span><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${cur}"><input type="number" class="num" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${+(+cur).toFixed(3)}"></label>`;
+}
+function ukfInsp(c) {
+  const kf = ukfResolve(c), lt = clamp(ST.t - c.start, 0, c.dur);
+  const ai = ukfActiveIdx(kf, lt);
+  const rows = kf.map((k, i) => {
+    const ps = Object.keys(UKF_DEFS).filter(p => p in k).map(p => `${UKF_DEFS[p][0]}:${(+k[p]).toFixed(2)}`).join(" · ");
+    return `<div class="kf${i === ai ? " sel" : ""}" data-ukfpick="${i}" title="Tıkla: zamana git & eğriyi düzenle"><b>${k.t.toFixed(2)}s</b><span>${esc(ps || "kare")}</span><button data-ukfdel="${i}" title="Sil">✕</button></div>`;
+  }).join("");
+  const curBez = ai >= 1 ? (Array.isArray(kf[ai].bez) ? kf[ai].bez : (ST.cat.bezierPresets?.[kf[ai].bez] || [0, 0, 1, 1])) : [0, 0, 1, 1];
+  const bezMap = { linear: "Doğrusal", ease: "Yumuşak", easeOutExpo: "Expo Out", snappy: "Keskin", filmEase: "Sinema", pop: "Yaylı" };
+  let bHtml = "";
+  if (kf.length >= 2 && ai >= 1) {
+    const activeKey = typeof kf[ai].bez === "string" ? kf[ai].bez : "";
+    bHtml = `<div class="bez-hd"><span class="hint">Eğri: ${kf[ai - 1].t.toFixed(2)}s → ${kf[ai].t.toFixed(2)}s</span></div>` +
+      `<div class="catpills">${Object.entries(bezMap).map(([id, n]) => `<button type="button" class="${activeKey === id ? "on" : ""}" data-bez="${id}">${n}</button>`).join("")}</div>` +
+      `<canvas id="bezCv" width="210" height="120" title="Mor/yeşil tutamaçları sürükle (overshoot için yukarı/aşağı taşıyabilirsin)"></canvas>` +
+      `<div class="hint" style="margin-top:2px">P(${curBez.map(v => (+v).toFixed(2)).join(", ")})</div>`;
+  }
+  return `<div class="sec">Anahtar Kareler & Bezier ◆</div><div class="kfl">${rows || '<span class="hint">Özellik yanındaki ◆ simgesine tıkla (Ölçek, Konum, Döndür, Opaklık, Ses).</span>'}</div>` +
+    bHtml + (kf.length ? `<div class="row" style="margin-top:4px"><button class="tb" data-a2="ukfclear">◆ Tümünü temizle</button></div>` : "");
+}
 function renderInsp() {
   const box = $("#insp"); if (!ST.p) return;
   if (ST.cutSel.size) {
@@ -1167,14 +1237,25 @@ function renderInsp() {
   if (!cs.length) { box.innerHTML = projInsp(); return; }
   if (cs.length > 1) { box.innerHTML = `<div class="ph"><b>${cs.length} klip</b></div>${multiInsp(cs)}`; return; }
   const c = cs[0], k = clipKind(c), a = assetOf(c);
-  let h = `<div class="ph"><b>${{ video: "Video", image: "Görsel", audio: "Ses", text: c.subscribe ? "Abone" : c.words ? "Altyazı" : "Metin", fx: "Efekt" }[k]}</b><span class="sp"></span><span class="hint">${fmt(c.start)} · ${c.dur.toFixed(2)} sn</span></div>`;
+  let h = `<div class="ph"><b>${{ video: "Video", image: "Görsel", audio: "Ses", text: c.subscribe ? "Abone" : c.words ? "Altyazı" : "Metin", fx: c.mode === "adjustment" ? "Ayar Katmanı" : "Efekt" }[k]}</b><span class="sp"></span><span class="hint">${fmt(c.start)} · ${c.dur.toFixed(2)} sn</span></div>`;
   if (a) h += `<div class="hint" style="margin-top:-4px">${esc(a.name)}${a.missing ? ' <b style="color:var(--red)">(dosya yok)</b>' : ""}</div>`;
   if (k === "video" || k === "image") {
+    const blends = ST.cat.blends || { normal: "Normal", screen: "Ekran (Screen)", overlay: "Kaplama (Overlay)", multiply: "Çarpma (Multiply)", lighten: "Aydınlat", darken: "Koyulaştır", dodge: "Soldur (Dodge)", difference: "Fark", addition: "Ekle (Add)" };
+    const masks = ST.cat.masks || { none: "Yok", circle: "Daire / Elips", rect: "Dikdörtgen", split: "Bölünmüş", mirror: "Ayna", filmstrip: "Film Şeridi", star: "Yıldız", heart: "Kalp" };
+    const mk = c.mask || {};
     h += `<div class="sec">Görüntü</div>` + `<div class="fld w2"><span>Sığdır</span><div class="seg" data-seg="fit">${[["cover", "Kapla"], ["contain", "Sığdır"], ["stretch", "Uzat"]].map(([v, l]) => `<button data-v="${v}" class="${defaultFit(c) === v ? "on" : ""}">${l}</button>`).join("")}</div></div>` +
-      fld("Ölçek", "scale", .05, 4, .01, c.scale ?? 1) + fld("Konum X", "x", -1, 1, .005, c.x || 0) + fld("Konum Y", "y", -1, 1, .005, c.y || 0) +
-      fld("Döndür", "rot", -180, 180, 1, c.rot || 0) +
+      fldkf(c, "Ölçek", "scale", .05, 4, .01, c.scale ?? 1) + fldkf(c, "Konum X", "x", -1, 1, .005, c.x || 0) + fldkf(c, "Konum Y", "y", -1, 1, .005, c.y || 0) +
+      fldkf(c, "Döndür", "rot", -180, 180, 1, c.rot || 0) +
       `<div class="row tight" style="margin-bottom:6px"><button class="tb" data-a2="rot90" title="90° saat yönünde döndür">↻ 90°</button><button class="tb${c.flipH ? " on" : ""}" data-a2="flipH" title="Yatay ayna">⇄ Ayna</button><button class="tb${c.flipV ? " on" : ""}" data-a2="flipV" title="Dikey ters çevir">⇅ Ters çevir</button><button class="tb" data-a2="resetXform" title="Dönüşümü sıfırla">↺</button></div>` +
-      fld("Opaklık", "opacity", 0, 1, .01, c.opacity ?? 1);
+      fldkf(c, "Opaklık", "opacity", 0, 1, .01, c.opacity ?? 1) +
+      sel("Karışım", "blend", blends, c.blend || "normal");
+    h += `<div class="sec">Maske</div>` + sel("Şekil", "mask.type", masks, mk.type || "none");
+    if (mk.type && mk.type !== "none") {
+      h += fld("Merkez X", "mask.x", 0, 1, .01, mk.x ?? .5) + fld("Merkez Y", "mask.y", 0, 1, .01, mk.y ?? .5) +
+        fld("Genişlik", "mask.w", .05, 1.5, .01, mk.w ?? .55) + fld("Yükseklik", "mask.h", .05, 1.5, .01, mk.h ?? .55) +
+        fld("Açı", "mask.rot", -180, 180, 1, mk.rot || 0) + fld("Yumuşaklık", "mask.feather", 0, 40, 1, mk.feather ?? 4) +
+        chk("Ters çevir (İç↔Dış)", "mask.invert", mk.invert);
+    }
   }
   if (k === "video" || k === "audio") {
     h += `<div class="sec">Hız</div>` + fld("Hız", "speed", .1, 8, .05, c.speed || 1) +
@@ -1183,8 +1264,9 @@ function renderInsp() {
       (c.ramp ? `<canvas id="rampCv" width="270" height="96" title="Noktayı sürükle · çift tık: nokta ekle · sağ tık: sil"></canvas><div class="hint">Yukarı = hızlı, aşağı = yavaş. Klip süresi kendiliğinden ayarlanır.</div>` : "");
   }
   if (k === "audio" || (k === "video" && a?.audio)) {
-    h += `<div class="sec">Ses</div>` + fld("Ses düzeyi", "vol", 0, 2, .01, c.vol ?? 1) + fld("Açılış", "fadeIn", 0, 5, .05, c.fadeIn || 0) + fld("Kapanış", "fadeOut", 0, 5, .05, c.fadeOut || 0);
+    h += `<div class="sec">Ses</div>` + fldkf(c, "Ses düzeyi", "vol", 0, 2, .01, c.vol ?? 1) + fld("Açılış", "fadeIn", 0, 5, .05, c.fadeIn || 0) + fld("Kapanış", "fadeOut", 0, 5, .05, c.fadeOut || 0);
   } else if (k === "video" || k === "image") h += `<div class="sec">Belir / kaybol</div>` + fld("Açılış", "fadeIn", 0, 5, .05, c.fadeIn || 0) + fld("Kapanış", "fadeOut", 0, 5, .05, c.fadeOut || 0);
+  if (k === "video" || k === "image" || k === "audio") h += ukfInsp(c);
   if (k === "video" || k === "image") {
     const ad = c.adj || {};
     h += `<div class="sec">Renk</div>` + fld("Parlaklık", "adj.bri", -50, 50, 1, ad.bri || 0) + fld("Kontrast", "adj.con", -50, 80, 1, ad.con || 0) +
@@ -1208,14 +1290,25 @@ function renderInsp() {
   if (k === "audio" || k === "video") h += `<div class="sec">Akıllı</div><div class="row"><button class="tb" data-a2="silence">Sessizlikleri kırp</button><button class="tb" data-a2="beats">Vuruşları bul</button></div>`;
   if (k === "text") h += textInsp(c);
   if (k === "fx") {
-    const opts = Object.fromEntries(Object.entries(ST.cat.fx).map(([id, f]) => [id, `${f.pack} · ${f.name}`]));
+    const opts = { adjustment: "✨ Ayar Katmanı (Renk + Yığma FX)", ...Object.fromEntries(Object.entries(ST.cat.fx).map(([id, f]) => [id, `${f.pack} · ${f.name}`])) };
     h += `<div class="sec">Mod</div>` + sel("Efekt", "mode", opts, c.mode);
-    if (["vhs", "cctv", "nightvision", "found", "bodycam"].includes(c.mode)) h += `<label class="fld w2"><span>Tarih</span><input class="in" data-k="date" value="${esc(c.date || "")}" placeholder="bugün"></label>`;
-    if (c.mode === "cctv") h += `<label class="fld w2"><span>Kamera adı</span><input class="in" data-k="cam" value="${esc(c.cam || "CAM 03")}"></label>`;
+    if (c.mode === "adjustment") {
+      const ad = c.adj || {}, blends = ST.cat.blends || { normal: "Normal", screen: "Ekran (Screen)", overlay: "Kaplama (Overlay)", multiply: "Çarpma (Multiply)" };
+      h += sel("Karışım", "blend", blends, c.blend || "normal") + fld("Opaklık", "opacity", 0, 1, .01, c.opacity ?? 1) +
+        `<div class="sec">Renk</div>` + fld("Parlaklık", "adj.bri", -50, 50, 1, ad.bri || 0) + fld("Kontrast", "adj.con", -50, 80, 1, ad.con || 0) +
+        fld("Doygunluk", "adj.sat", -100, 150, 1, ad.sat || 0) + fld("Ton", "adj.hue", -180, 180, 1, ad.hue || 0) +
+        fld("Sıcaklık", "adj.temp", -100, 100, 1, ad.temp || 0) + fld("Bulanık", "adj.blur", 0, 20, .5, ad.blur || 0) +
+        `<div class="sec">Efektler</div>` + (window.fxRows ? fxRows(c) : "") +
+        `<div class="row"><button class="tb" data-a2="tocolor">◐ Renk sayfasında düzenle</button></div>`;
+    } else {
+      if (["vhs", "cctv", "nightvision", "found", "bodycam"].includes(c.mode)) h += `<label class="fld w2"><span>Tarih</span><input class="in" data-k="date" value="${esc(c.date || "")}" placeholder="bugün"></label>`;
+      if (c.mode === "cctv") h += `<label class="fld w2"><span>Kamera adı</span><input class="in" data-k="cam" value="${esc(c.cam || "CAM 03")}"></label>`;
+    }
   }
   h += `<div class="sec">Zaman</div>` + `<div class="grid2"><label class="fld w2" style="grid-template-columns:44px 1fr"><span>Başla</span><input type="number" class="in" data-k="start" step="0.01" value="${c.start.toFixed(2)}"></label><label class="fld w2" style="grid-template-columns:44px 1fr"><span>Süre</span><input type="number" class="in" data-k="dur" step="0.01" value="${c.dur.toFixed(2)}"></label></div>`;
   box.innerHTML = h;
   rampCanvas(c);
+  bezCanvas(c);
 }
 function zoomInsp(c) {
   const kf = kfResolve(c.zoom || [], c.dur);
@@ -1328,6 +1421,43 @@ function rampCanvas(c) {
     cv.onpointerup = () => { cv.onpointermove = null; changed(); };
   };
 }
+function drawBez(cv, bz) {
+  const g = cv.getContext("2d"), W = cv.width, H = cv.height, px = 16, py = 24, uw = W - 2 * px, uh = H - 2 * py;
+  const X = u => px + u * uw, Y = v => H - py - v * uh;
+  g.clearRect(0, 0, W, H); g.fillStyle = "#07050C"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(255,255,255,.1)"; g.lineWidth = 1; g.strokeRect(px, H - py - uh, uw, uh);
+  g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(0), Y(0)); g.lineTo(X(1), Y(1)); g.stroke(); g.setLineDash([]);
+  const [p1x, p1y, p2x, p2y] = bz;
+  g.strokeStyle = "rgba(168,85,247,.5)"; g.beginPath(); g.moveTo(X(0), Y(0)); g.lineTo(X(p1x), Y(p1y)); g.moveTo(X(1), Y(1)); g.lineTo(X(p2x), Y(p2y)); g.stroke();
+  g.strokeStyle = "#2EE6A6"; g.lineWidth = 2.2; g.beginPath();
+  for (let i = 0; i <= 40; i++) { const u = i / 40, v = SFX.evalBezier ? SFX.evalBezier(p1x, p1y, p2x, p2y, u) : u; i ? g.lineTo(X(u), Y(v)) : g.moveTo(X(u), Y(v)); }
+  g.stroke();
+  for (const [cx, cy, col] of [[p1x, p1y, "#A855F7"], [p2x, p2y, "#FFB547"]]) { g.fillStyle = col; g.beginPath(); g.arc(X(cx), Y(cy), 5, 0, 7); g.fill(); }
+}
+function bezCanvas(c) {
+  const cv = $("#bezCv"); if (!cv || !c.kf?.length) return;
+  const list = c.kf.map(k => ({ k, t: Math.max(0, k.t < 0 ? c.dur + k.t : k.t) })).sort((a, b) => a.t - b.t);
+  const ai = ukfActiveIdx(list, clamp(ST.t - c.start, 0, c.dur)); if (ai < 1) return;
+  const tgt = list[ai].k;
+  const getBz = () => Array.isArray(tgt.bez) && tgt.bez.length === 4 ? [...tgt.bez] : [...(ST.cat.bezierPresets?.[tgt.bez] || [0, 0, 1, 1])];
+  drawBez(cv, getBz());
+  const W = cv.width, H = cv.height, px = 16, py = 24, uw = W - 2 * px, uh = H - 2 * py;
+  const X = u => px + u * uw, Y = v => H - py - v * uh;
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height]; };
+  cv.onpointerdown = e => {
+    const [mx, my] = pos(e), bz = getBz();
+    const d1 = Math.hypot(X(bz[0]) - mx, Y(bz[1]) - my), d2 = Math.hypot(X(bz[2]) - mx, Y(bz[3]) - my);
+    const h = d1 <= d2 && d1 < 16 ? 0 : d2 < 16 ? 1 : -1; if (h < 0) return;
+    cv.setPointerCapture(e.pointerId); snap();
+    cv.onpointermove = ev => {
+      const [x2, y2] = pos(ev);
+      const nx = +clamp((x2 - px) / uw, 0, 1).toFixed(2), ny = +clamp((H - py - y2) / uh, -0.35, 1.45).toFixed(2);
+      if (h === 0) { bz[0] = nx; bz[1] = ny; } else { bz[2] = nx; bz[3] = ny; }
+      tgt.bez = [...bz]; drawBez(cv, bz); draw();
+    };
+    cv.onpointerup = () => { cv.onpointermove = null; changed(); };
+  };
+}
 let pipette = false;
 $("#view").addEventListener("click", e => {
   if (!pipette) return; pipette = false; document.body.style.cursor = "";
@@ -1345,7 +1475,15 @@ function inspSet(k, v, live) {
   for (const c of cs) {
     if (k === "speed") { const a = assetOf(c), old = c.speed || 1; c.speed = v; c.dur = c.dur * old / v; if (a && a.kind !== "image") c.dur = Math.min(c.dur, (a.dur - (c.in || 0)) / v); }
     else if (k === "start" || k === "dur") c[k] = Math.max(k === "dur" ? .05 : 0, v);
-    else setK(c, k, v);
+    else if (k === "mask.type") {
+      if (!v || v === "none") delete c.mask;
+      else c.mask = { x: .5, y: .5, w: .55, h: .55, rot: 0, feather: 4, invert: false, ...(c.mask || {}), type: v };
+    } else if (k in UKF_DEFS && c.kf?.some(q => k in q)) {
+      const lt = +clamp(ST.t - c.start, 0, c.dur).toFixed(3);
+      let hit = c.kf.find(q => Math.abs((q.t < 0 ? c.dur + q.t : q.t) - lt) < .06);
+      if (!hit) { hit = { t: lt }; c.kf.push(hit); c.kf.sort((a, b) => (a.t < 0 ? c.dur + a.t : a.t) - (b.t < 0 ? c.dur + b.t : b.t)); }
+      hit[k] = v;
+    } else setK(c, k, v);
   }
   const textual = k === "text" || k.startsWith("style.") || k === "subscribe" || k === "graphic" || k === "mode" || k === "date" || k === "cam";
   if (textual) assDirty();
@@ -1375,16 +1513,54 @@ $("#insp").addEventListener("change", e => {
   inspSnap = false; changed();
 });
 $("#insp").addEventListener("click", async e => {
-  const b = e.target.closest("button, a[data-a2]"); if (!b) return;
-  e.preventDefault();
+  const pick = e.target.closest("[data-ukfpick]");
+  const b = e.target.closest("button, a[data-a2]");
   const c = selClips()[0];
+  if (pick && !b && c?.kf?.length) {
+    const idx = +pick.dataset.ukfpick, kf = ukfResolve(c);
+    if (kf[idx]) { ST.bezIdx = idx; seek(c.start + kf[idx].t); renderInsp(); }
+    return;
+  }
+  if (!b) return;
+  e.preventDefault();
   if (b.closest("[data-seg]")) { inspSet(b.closest("[data-seg]").dataset.seg, b.dataset.v, false); return; }
   if (b.dataset.speed) { inspSet("speed", +b.dataset.speed, false); return; }
   if (b.dataset.ramp) { snap(); rampApply(c, RAMPS[b.dataset.ramp].p && clone(RAMPS[b.dataset.ramp].p)); changed(); return; }
   if (b.dataset.afx) { snap(); const s2 = new Set(c.afx || []); s2.has(b.dataset.afx) ? s2.delete(b.dataset.afx) : s2.add(b.dataset.afx); c.afx = [...s2]; if (!c.afx.length) delete c.afx; changed(false); renderInsp(); return; }
   if (b.dataset.unfx) { snap(); c.fx = c.fx.filter(x => x !== b.dataset.unfx); if (!c.fx.length) delete c.fx; changed(); return; }
   if (b.dataset.kfdel != null) { snap(); const kf = kfResolve(c.zoom, c.dur); kf.splice(+b.dataset.kfdel, 1); c.zoom = kf.length ? kf : undefined; if (!c.zoom) delete c.zoom; changed(); return; }
+  if (b.dataset.ukf && c) {
+    const prop = b.dataset.ukf, def = UKF_DEFS[prop]?.[1] ?? 1, lt = +clamp(ST.t - c.start, 0, c.dur).toFixed(3);
+    snap();
+    c.kf ||= [];
+    const hitIdx = c.kf.findIndex(k => Math.abs((k.t < 0 ? c.dur + k.t : k.t) - lt) < .06);
+    if (hitIdx >= 0 && prop in c.kf[hitIdx]) {
+      delete c.kf[hitIdx][prop];
+      if (!Object.keys(UKF_DEFS).some(p => p in c.kf[hitIdx])) c.kf.splice(hitIdx, 1);
+    } else {
+      const curVal = c.kf.length ? kfAt(ukfResolve(c), prop, lt, c[prop] ?? def) : (c[prop] ?? def);
+      if (hitIdx >= 0) c.kf[hitIdx][prop] = +(+curVal).toFixed(3);
+      else c.kf.push({ t: lt, [prop]: +(+curVal).toFixed(3) });
+    }
+    c.kf.sort((a, b) => (a.t < 0 ? c.dur + a.t : a.t) - (b.t < 0 ? c.dur + b.t : b.t));
+    if (!c.kf.length) delete c.kf;
+    else ST.bezIdx = Math.max(1, c.kf.findIndex(k => Math.abs((k.t < 0 ? c.dur + k.t : k.t) - lt) < .06));
+    changed(); return;
+  }
+  if (b.dataset.ukfdel != null && c?.kf) {
+    const list = c.kf.map((k, ri) => ({ ri, t: Math.max(0, k.t < 0 ? c.dur + k.t : k.t) })).sort((a, b) => a.t - b.t);
+    const hit = list[+b.dataset.ukfdel];
+    if (hit) { snap(); c.kf.splice(hit.ri, 1); if (!c.kf.length) delete c.kf; changed(); }
+    return;
+  }
+  if (b.dataset.bez && c?.kf?.length) {
+    const list = c.kf.map(k => ({ k, t: Math.max(0, k.t < 0 ? c.dur + k.t : k.t) })).sort((a, b) => a.t - b.t);
+    const ai = ukfActiveIdx(list, clamp(ST.t - c.start, 0, c.dur));
+    if (ai >= 1) { snap(); list[ai].k.bez = b.dataset.bez; changed(); }
+    return;
+  }
   const a2 = b.dataset.a2;
+  if (a2 === "ukfclear" && c) { snap(); delete c.kf; delete ST.bezIdx; changed(); return; }
   if (a2 === "restoreCuts") { const n = restoreCuts([...ST.cutSel]); toast(`${n} kesilen bölge eski haline getirildi`); return; }
   if (a2 === "dropCuts") { dropCuts([...ST.cutSel]); toast("Kesim izi temizlendi"); return; }
   if (a2 === "rot90" && c) { snap(); for (const x of selClips()) x.rot = (((x.rot || 0) + 90 + 180) % 360) - 180; changed(); return; }

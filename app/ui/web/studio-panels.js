@@ -343,11 +343,13 @@ P.fx = () => {
   const card = ([id, f]) => `<div class="card${on.has(id) ? " on" : ""}" data-fx="${id}" draggable="true" data-item='${esc(JSON.stringify({ type: "fx", id }))}'><div class="sw" style="${fxThumb ? `background-image:url(${fxThumb});` : ""}filter:${f.css || "none"}"></div><b>${esc(f.name)}</b>${favStar("fx", id)}</div>`;
   const all = Object.entries(ST.cat.fx).filter(([id, f]) => (fc === "Tümü" || (fc === "★ Favori" ? isFav("fx", id) : f.pack === fc)) && (!q || f.name.toLowerCase().includes(q) || f.pack.toLowerCase().includes(q) || id.toLowerCase().includes(q)));
   const favs = fc === "Tümü" ? all.filter(([id]) => isFav("fx", id)) : [];
-  pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe uygula / kaldır. Sağ panelden Tümü / Giriş / Çıkış seç." : "Klip seçili değil: tıklayınca efekt izine 3 sn eklenir."} ★: favori.</div>` +
+  pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe uygula / kaldır. Sağ panelden Tümü / Giriş / Çıkış seç." : c && clipKind(c) === "fx" ? "Tıkla: seçili Ayar Katmanına ek efekt yığ." : "Klip seçili değil: tıklayınca efekt izine 3 sn eklenir."} ★: favori.</div>` +
+    `<div class="row" style="margin-bottom:6px"><button class="tb pri" id="addAdjBtn" style="width:100%">✨ + Ayar Katmanı Ekle (5 sn)</button></div>` +
     `<div class="catpills">${packNames.map(p => `<button class="${fc === p ? "on" : ""}" data-fxcat="${esc(p)}">${esc(p)}</button>`).join("")}</div>` +
     `<input class="in" id="fxQ" placeholder="${Object.keys(ST.cat.fx).length} efekt içinde ara…" value="${esc(P.fx.q || "")}" style="width:100%;margin-bottom:6px">` +
     (favs.length ? sec("★ Favoriler") + `<div class="grid2">${favs.map(card).join("")}</div>` : "") +
     Object.entries(packs).map(([pk, items]) => { const it = items.filter(x => all.some(y => y[0] === x[0])); return it.length ? sec(pk) + `<div class="grid2">${it.map(card).join("")}</div>` : ""; }).join("");
+  $("#addAdjBtn").onclick = () => { snap(); const cl = placeAt({ mode: "adjustment", dur: 5, adj: {}, opacity: 1, blend: "normal" }, "fx", ST.t); ST.sel = new Set([cl.id]); changed(); };
   const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 180); };
 };
 pb.addEventListener("click", e => {
@@ -375,8 +377,8 @@ pb.addEventListener("click", e => {
   const f = e.target.closest("[data-fx]"); if (!f) return;
   const id = f.dataset.fx, c = firstSel();
   snap();
-  if (c && ["video", "image"].includes(clipKind(c))) {
-    for (const x of selClips().filter(x => ["video", "image"].includes(clipKind(x)))) {
+  if (c && ["video", "image", "fx"].includes(clipKind(c))) {
+    for (const x of selClips().filter(x => ["video", "image", "fx"].includes(clipKind(x)))) {
       const s = new Set(x.fx || []); s.has(id) ? s.delete(id) : s.add(id); x.fx = [...s]; if (!x.fx.length) delete x.fx;
     }
     changed(); renderPanel();

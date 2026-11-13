@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app import paths
-from app.core import studio_anim, studio_gfx
+from app.core import studio_anim, studio_fx_adv, studio_gfx, studio_motion
 
 log = logging.getLogger(__name__)
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -198,7 +198,10 @@ def catalog() -> dict[str, Any]:
             "capb": {k: {"b": v["b"], "font": v["st"].get("font", "")} for k, v in CAPTIONS2.items()},
             "subscribe": {**studio_gfx.SUBSCRIBE_PRO, **SUBSCRIBE}, "graphics": studio_gfx.GRAPHICS, "fonts": FONTS,
             "deliver": {k: v["name"] for k, v in DELIVER.items()}, "afx": AUDIO_FIX_NAMES, "templates": TEMPLATE_NAMES,
-            "tanim": studio_anim.text_catalog(), "canim": studio_anim.clip_catalog()}
+            "tanim": studio_anim.text_catalog(), "canim": studio_anim.clip_catalog(),
+            "blends": {k: v[0] for k, v in studio_fx_adv.BLEND_MODES.items()},
+            "masks": studio_fx_adv.MASK_TYPES,
+            "bezierPresets": studio_motion.BEZIER_PRESETS}
 
 
 def load_templates() -> list[dict]:
@@ -858,16 +861,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             ch.append(f"scale={W}:{H},format=rgba")
         else:
             ch.append(f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},format=rgba")
-        adj = c.get("adj") or {}
-        if any(adj.get(x) for x in ("bri", "con", "sat")):
-            ch.append(f"eq=brightness={adj.get('bri', 0) / 100:.3f}:contrast={1 + adj.get('con', 0) / 100:.3f}:saturation={1 + adj.get('sat', 0) / 100:.3f}")
-        if adj.get("hue"):
-            ch.append(f"hue=h={adj['hue']}")
-        if adj.get("temp"):
-            tv = adj["temp"] / 200
-            ch.append(f"colorbalance=rs={tv:.3f}:bs={-tv:.3f}:rm={tv / 2:.3f}:bm={-tv / 2:.3f}")
-        if adj.get("blur"):
-            ch.append(f"gblur=sigma={adj['blur']}")
+        ch.extend(studio_fx_adv.adj_filters(c.get("adj")))
         gr = c.get("grade") or {}
         if grade_active(gr):
             bake_grade(gr, work / f"g{k}.cube")
@@ -899,22 +893,36 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
                           f"[{tg}A][{tg}C]overlay=enable='between(t,{a0 - cut0:.4f},{a1 - cut0:.4f})'")
             else:
                 ch.append(_fx_chain(fx["ff"], W, H, 0.0, f"c{k}{fid}"))
+        mf = studio_fx_adv.mask_filter(c.get("mask"), W, H)
+        if mf:
+            ch.append(mf)
         anf, _ = studio_anim.clip_filters(c, d, cut0, FPS, W, H, f"an{k}")
         ch += anf
         if c.get("flipH"):
             ch.append("hflip")
         if c.get("flipV"):
             ch.append("vflip")
+        ukf = kf_resolve(c.get("kf") or [], d)
+        t_clip = f"(t+{cut0:.4f})"
         sc, rot = float(c.get("scale", 1) or 1), float(c.get("rot", 0) or 0)
-        if abs(sc - 1) > 1e-3:
+        if any("scale" in q for q in ukf):
+            sc_ex = studio_fx_adv.kf_expr_adv(ukf, "scale", t_clip, sc)
+            ch.append(f"scale=w='max(2,2*floor(iw*({sc_ex})/2))':h='max(2,2*floor(ih*({sc_ex})/2))':eval=frame")
+        elif abs(sc - 1) > 1e-3:
             ch.append(f"scale=iw*{sc:.4f}:ih*{sc:.4f}")
-        arot = studio_anim.clip_exprs(c, d, f"(t+{cut0:.4f})")["r"] if anf else ""
-        if arot:   # donen animasyon: sabit cikti boyutu (bindirme boyut degisimini sevmez)
-            ch.append(f"rotate=a='{math.radians(rot):.5f}+({arot})*PI/180':c=black@0:ow='hypot(iw,ih)':oh='hypot(iw,ih)'")
+        arot = studio_anim.clip_exprs(c, d, t_clip)["r"] if anf else ""
+        has_krot = any("rot" in q for q in ukf)
+        if has_krot or arot:
+            rot_ex = studio_fx_adv.kf_expr_adv(ukf, "rot", t_clip, rot) if has_krot else f"{rot:.4f}"
+            a_expr = f"({rot_ex})*PI/180" + (f"+({arot})*PI/180" if arot else "")
+            ch.append(f"rotate=a='{a_expr}':c=black@0:ow='hypot(iw,ih)':oh='hypot(iw,ih)'")
         elif abs(rot) > 0.01:
             ch.append(f"rotate={math.radians(rot):.5f}:c=black@0:ow=rotw({math.radians(rot):.5f}):oh=roth({math.radians(rot):.5f})")
         op = float(c.get("opacity", 1) if c.get("opacity") is not None else 1)
-        if op < 0.999:
+        if any("opacity" in q for q in ukf):
+            op_ex = studio_fx_adv.kf_expr_adv(ukf, "opacity", f"(T+{cut0:.4f})", op)
+            ch.append(f"format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*clip({op_ex},0,1)'")
+        elif op < 0.999:
             ch.append(f"colorchannelmixer=aa={op:.3f}")
         fi, fo = float(c.get("fadeIn", 0) or 0), float(c.get("fadeOut", 0) or 0)
         tr = (c.get("trans") or {})
@@ -938,30 +946,54 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             cur = f"bgc{k}"
         else:
             graph.append(f"[{ii}:v]" + ",".join(ch) + f"[c{k}]")
-        ox = f"(W-w)/2+{float(c.get('x', 0)) * W:.1f}"
-        oy = f"(H-h)/2+{float(c.get('y', 0)) * H:.1f}"
+        t_pos = f"(t-{off:.4f}+{cut0:.4f})"
+        x_ex = studio_fx_adv.kf_expr_adv(ukf, "x", t_pos, float(c.get("x", 0) or 0)) if any("x" in q for q in ukf) else f"{float(c.get('x', 0) or 0):.4f}"
+        y_ex = studio_fx_adv.kf_expr_adv(ukf, "y", t_pos, float(c.get("y", 0) or 0)) if any("y" in q for q in ukf) else f"{float(c.get('y', 0) or 0):.4f}"
+        ox = f"(W-w)/2+({x_ex})*{W}"
+        oy = f"(H-h)/2+({y_ex})*{H}"
         if anf:
-            aex = studio_anim.clip_exprs(c, d, f"(t-{off:.4f}+{cut0:.4f})")
+            aex = studio_anim.clip_exprs(c, d, t_pos)
             if aex["x"]:
                 ox += f"+({aex['x']})*{W}"
             if aex["y"]:
                 oy += f"+({aex['y']})*{H}"
-        graph.append(f"[{cur}][c{k}]overlay=x='{ox}':y='{oy}':eof_action=pass:enable='between(t,{off:.4f},{off + seg:.4f})'[b{k}]")
+        graph.extend(studio_fx_adv.blend_composite_chain(
+            cur, f"c{k}", f"b{k}", k, c.get("blend", "normal"),
+            ox, oy, f"between(t,{off:.4f},{off + seg:.4f})", W, H, FPS
+        ))
         cur = f"b{k}"
         if (a.get("audio") and not c.get("freeze") and not tracks[c["track"]].get("mute")
                 and float(c.get("vol", 1) if c.get("vol") is not None else 1) > 0 and frame_t is None):
             cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(tracks[c["track"]].get("vol", 1) or 0)}
             audio_parts.append((_audio_chain(ii, cv, cut0, seg, off, speed, ramp), bool(tracks[c["track"]].get("duck"))))
         k += 1
-    # efekt izi: zaman araliginda tum goruntuye uygula
+    # efekt / ayar katmani izi: zaman araliginda tum goruntuye uygula
     for c in sorted([c for c in clips if tracks.get(c["track"], {}).get("kind") == "fx"], key=lambda c: (order.get(c["track"], 0), c["start"])):
-        fx = FX.get(c.get("mode", ""))
         s, d = float(c["start"]) - T0, float(c["dur"])
-        if not fx or s + d <= 0 or s >= total:
+        if s + d <= 0 or s >= total:
             continue
+        ach: list[str] = []
+        ach.extend(studio_fx_adv.adj_filters(c.get("adj")))
+        gr_fx = c.get("grade") or {}
+        if grade_active(gr_fx):
+            bake_grade(gr_fx, work / f"gfx{k}.cube")
+            ach.append(f"lut3d=file=gfx{k}.cube:interp=tetrahedral")
+        fids = ([c["mode"]] if c.get("mode") and c.get("mode") != "adjustment" else []) + [x for x in (c.get("fx") or []) if x != c.get("mode")]
+        for fid in fids:
+            fx = FX.get(fid)
+            if fx:
+                ach.append(_fx_chain(fx["ff"], W, H, s, f"x{k}_{re.sub(r'[^a-z0-9]', '', fid)}"))
+        if not ach:
+            continue
+        fx_op = float(c.get("opacity", 1) if c.get("opacity") is not None else 1)
+        if fx_op < 0.999:
+            ach.append(f"format=rgba,colorchannelmixer=aa={fx_op:.3f}")
         graph.append(f"[{cur}]split[fa{k}][fb{k}]")
-        graph.append(f"[fb{k}]{_fx_chain(fx['ff'], W, H, s, f'x{k}')}[fc{k}]")
-        graph.append(f"[fa{k}][fc{k}]overlay=enable='between(t,{max(0, s):.4f},{s + d:.4f})'[b{k}]")
+        graph.append(f"[fb{k}]{','.join(ach)}[fc{k}]")
+        graph.extend(studio_fx_adv.blend_composite_chain(
+            f"fa{k}", f"fc{k}", f"b{k}", k, c.get("blend", "normal"),
+            "0", "0", f"between(t,{max(0, s):.4f},{s + d:.4f})", W, H, FPS
+        ))
         cur = f"b{k}"
         k += 1
     # metin / altyazi / abone animasyonu / mod yazilari: ASS
@@ -1370,7 +1402,11 @@ def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: f
     for fx in (c.get("afx") or []):
         if fx in AUDIO_FIX:
             ch.append(AUDIO_FIX[fx])
-    if abs(vol - 1) > 1e-3:
+    ukf_a = kf_resolve(c.get("kf") or [], float(c.get("dur", 0) or 0))
+    if any("vol" in q for q in ukf_a):
+        v_ex = studio_fx_adv.kf_expr_adv(ukf_a, "vol", f"(t+{cut0:.4f})", vol)
+        ch.append(f"volume='{v_ex}':eval=frame")
+    elif abs(vol - 1) > 1e-3:
         ch.append(f"volume={vol:.3f}")
     fi, fo = float(c.get("fadeIn", 0) or 0), float(c.get("fadeOut", 0) or 0)
     d = float(c["dur"])
