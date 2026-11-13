@@ -35,9 +35,20 @@ def main(argv: list[str]) -> int:
     fps = float(num) / float(den or 1)
     total = max(1, int(dur_f * fps))
     emit(p=0.01, line="model yükleniyor")
+    try:   # torch'un CUDA/cuDNN DLL'lerini once yukle: onnxruntime GPU'yu bulsun (yoksa sessizce CPU'ya duser)
+        import torch  # noqa: F401
+        import onnxruntime as ort
+        if hasattr(ort, "preload_dlls"):
+            ort.preload_dlls()
+    except Exception:
+        pass
     from PIL import Image
     from rembg import new_session, remove
-    sess = new_session(model)
+    sess = new_session(model, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    try:
+        emit(p=0.02, line="aygıt: " + ",".join(sess.inner_session.get_providers()[:1]))
+    except Exception:
+        pass
     dec = subprocess.Popen([ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-ss", start, "-t", dur, "-i", src,
                             "-vf", f"scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], stdout=subprocess.PIPE, creationflags=NOWIN)
     enc = subprocess.Popen([ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{w}x{h}",
