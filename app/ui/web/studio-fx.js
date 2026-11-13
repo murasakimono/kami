@@ -133,7 +133,7 @@ const SFX = (() => {
     "checker": (c, e, W, H) => { const bw = W / 8, bh = H / 6; for (let i = 0; i < 8; i++) for (let j = 0; j < 6; j++) { const p = ((i + j) % 2) * .5, k = Math.max(0, Math.min(1, (e - p) * 2)); if (k > 0) c.rect(i * bw, j * bh, bw * k, bh); } },
     "stripes": (c, e, W, H) => { const s = W / 6; for (let k = -H; k < W + H; k += s) { c.moveTo(k, 0); c.lineTo(k + e * s + 1, 0); c.lineTo(k + e * s + 1 - H, H); c.lineTo(k - H, H); c.closePath(); } },
     "blocks": (c, e, W, H) => { const bw = W / 16, bh = H / 9; for (let i = 0; i < 16; i++) for (let j = 0; j < 9; j++) if (((i * 7 + j * 13) % 17) / 17 < e * 1.06) c.rect(i * bw, j * bh, bw + .5, bh + .5); },
-    "dissolve": (c, e, W, H) => { const b = Math.max(6, Math.round(W / 120)); for (let x = 0; x < W; x += b) for (let y = 0; y < H; y += b) { const h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; if (h - Math.floor(h) < e * 1.05) c.rect(x, y, b, b); } },
+    "dissolve": (c, e, W, H) => { const b = Math.max(14, Math.round(W / 60)); for (let x = 0; x < W; x += b) for (let y = 0; y < H; y += b) { const h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; if (h - Math.floor(h) < e * 1.05) c.rect(x, y, b, b); } },
   };
   // maske gecisleri: tuval koordinatinda klip yolu (studio.py _trans_in geq maskeleriyle ayni sekiller)
   function transMask(ctx, m, W, H) {
@@ -168,5 +168,70 @@ const SFX = (() => {
     pixOG.clearRect(0, 0, W, H); pixOG.imageSmoothingEnabled = false; pixOG.drawImage(pixC, 0, 0, W, H);
     return pixO;
   }
-  return { overlay, shakeOffset, transIn, transMask, pixelate, tint, copy };
+
+  // Faz 7.3: Akilli Kare / Segment Onbellegi (LRU) + WebCodecs yetenek bilgisi
+  function createSmartCache(maxEntries = 48) {
+    const map = new Map();
+    let hits = 0, misses = 0;
+    const keyOf = (clipId, frameIdx, sig = "") => `${clipId}|${frameIdx}|${sig}`;
+    function get(clipId, frameIdx, sig = "") {
+      const k = keyOf(clipId, frameIdx, sig);
+      if (!map.has(k)) { misses++; return null; }
+      const val = map.get(k);
+      map.delete(k);
+      map.set(k, val);
+      hits++;
+      return val;
+    }
+    function put(clipId, frameIdx, sig, bitmap) {
+      const k = keyOf(clipId, frameIdx, sig);
+      if (map.has(k)) {
+        const prev = map.get(k);
+        if (prev && prev !== bitmap && typeof prev.close === "function") { try { prev.close(); } catch {} }
+        map.delete(k);
+      }
+      map.set(k, bitmap);
+      while (map.size > maxEntries) {
+        const oldestKey = map.keys().next().value;
+        const oldest = map.get(oldestKey);
+        map.delete(oldestKey);
+        if (oldest && typeof oldest.close === "function") { try { oldest.close(); } catch {} }
+      }
+      return bitmap;
+    }
+    function invalidate(clipId) {
+      const prefix = `${clipId}|`;
+      for (const [k, v] of [...map.entries()]) {
+        if (k.startsWith(prefix)) {
+          map.delete(k);
+          if (v && typeof v.close === "function") { try { v.close(); } catch {} }
+        }
+      }
+    }
+    function clear() {
+      for (const v of map.values()) {
+        if (v && typeof v.close === "function") { try { v.close(); } catch {} }
+      }
+      map.clear();
+      hits = 0;
+      misses = 0;
+    }
+    function stats() {
+      const total = hits + misses;
+      return { size: map.size, maxEntries, hits, misses, hitRate: total ? +(hits / total).toFixed(3) : 0 };
+    }
+    return { get, put, has: (c, f, s = "") => map.has(keyOf(c, f, s)), invalidate, clear, stats };
+  }
+
+  const SmartCache = createSmartCache(48);
+  function webCodecsInfo() {
+    return {
+      videoDecoder: typeof VideoDecoder !== "undefined",
+      videoEncoder: typeof VideoEncoder !== "undefined",
+      crossOriginIsolated: typeof window !== "undefined" ? Boolean(window.crossOriginIsolated) : false,
+      sharedArrayBuffer: typeof SharedArrayBuffer !== "undefined",
+    };
+  }
+
+  return { overlay, shakeOffset, transIn, transMask, pixelate, tint, copy, SmartCache, createSmartCache, webCodecsInfo };
 })();

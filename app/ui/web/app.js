@@ -689,10 +689,65 @@ async function init() {
   bindRd();
   bindLive();
   bindExtras();
+  await initFaz7();
   await tick();
   // hafif yoklama (B10): pencere odaktayken 0,5 sn, arka planda 1,5 sn, gizliyken hic
   const loop = async () => { if (!document.hidden) { try { await tick(); } catch (_) { /* sonraki turda */ } } setTimeout(loop, document.hasFocus() ? 500 : 1500); };
   setTimeout(loop, 500);
+}
+
+// ---------- Faz 7: VRAM HUD + Profil Secici + Mini-Ada ----------
+async function refreshVramHud() {
+  const hud = $("#vramHud");
+  if (!hud || !api?.vram_status) return;
+  try {
+    const v = await api.vram_status();
+    hud.classList.remove("warn", "critical");
+    if (v.level === "warn" || v.level === "critical") hud.classList.add(v.level);
+    if (v.gpu_available) {
+      hud.textContent = `VRAM ${Math.round(v.vram_pct || 0)}%`;
+      hud.title = `${v.gpu_name || "GPU"} · ${v.vram_used_mb}/${v.vram_total_mb} MB · NVENC ${v.enc_util || 0}%`;
+    } else {
+      hud.textContent = `RAM ${Math.round(v.ram_pct || 0)}%`;
+      hud.title = `CPU ${Math.round(v.cpu_pct || 0)}% · RAM ${v.ram_used_mb || 0}/${v.ram_total_mb || 0} MB`;
+    }
+  } catch (_) {}
+}
+
+async function initFaz7() {
+  const sel = $("#profileSelect");
+  if (sel && api?.profiles_list) {
+    try {
+      const res = await api.profiles_list();
+      sel.innerHTML = "";
+      for (const p of (res.profiles || [])) {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        if (p.id === res.active) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      sel.addEventListener("change", async () => {
+        const r = await api.profile_switch(sel.value);
+        if (r?.ok) {
+          if (typeof applyAccent === "function" && r.profile?.accent_theme) {
+            applyAccent(r.profile.accent_theme);
+          }
+          toast(`Profil: ${r.profile?.name || sel.value}`);
+        }
+      });
+    } catch (_) {}
+  }
+  const ib = $("#islandBtn");
+  if (ib && api?.mini_island_toggle) {
+    ib.classList.toggle("on", Boolean(state.settings.mini_island));
+    ib.addEventListener("click", async () => {
+      const r = await api.mini_island_toggle();
+      if (r?.ok) ib.classList.toggle("on", Boolean(r.visible));
+    });
+  }
+  await refreshVramHud();
+  setInterval(() => { if (!document.hidden) refreshVramHud(); }, 3000);
 }
 
 window.addEventListener("pywebviewready", init);

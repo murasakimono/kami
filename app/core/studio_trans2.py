@@ -49,9 +49,9 @@ def trans_in2(kind: str, d: float, W: int, H: int, tag: str = "t", c0: float = 0
         inside = f"between({xs},0,W-1)*between({ys},0,H-1)"
         return (f"geq=r='r({xs},{ys})':g='g({xs},{ys})':b='b({xs},{ys})':a='if({inside},alpha({xs},{ys}),0)':{en}")
     if kind == "dip-black":
-        return f"eq=brightness='-0.9*(1-{u})':eval=frame"
+        return f"eq=brightness='-0.9*(1-{u})':eval=frame:{en}"
     if kind == "dip-pink":
-        return f"eq=brightness='0.35*(1-{u})':gamma_r='1+1.2*(1-{u})':gamma_g='1-0.3*(1-{u})':gamma_b='1+0.6*(1-{u})':eval=frame"
+        return f"eq=brightness='0.35*(1-{u})':gamma_r='1+1.2*(1-{u})':gamma_g='1-0.3*(1-{u})':gamma_b='1+0.6*(1-{u})':eval=frame:{en}"
     if kind == "whip-v":
         return f"pad=iw:ih*2:0:ih:color=black@0,crop={W}:{H}:x=0:y='ih/2*{e}',gblur=sigma=0.5:sigmaV=36:{en}"
     if kind == "spin180":

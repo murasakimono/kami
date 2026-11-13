@@ -4,7 +4,7 @@
 const SGL = (() => {
   const cv = document.createElement("canvas");
   const gl = cv.getContext("webgl2", { premultipliedAlpha: false, preserveDrawingBuffer: true });
-  if (!gl) return { ok: false, process: () => null, setLut: () => {} };
+  if (!gl) return { ok: false, process: () => null, processToFbo: () => null, disposeFbo: () => {}, fboStats: () => ({ count: 0, keys: [] }), setLut: () => {} };
   const VS = `#version 300 es
   in vec2 p; out vec2 uv; void main(){ uv = vec2(p.x*.5+.5, .5-p.y*.5); gl_Position = vec4(p,0.,1.); }`;
   const FS = `#version 300 es
@@ -78,5 +78,45 @@ const SGL = (() => {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     return cv;
   }
-  return { ok: true, process, setLut, active, has: n => !!luts[n] };
+  // Faz 7.3: WebGL2 FBO ping-pong havuzu (coklu gecis shader onbellekleme ve VRAM dostu temizlik)
+  const fboPool = new Map();
+  function ensureFbo(key, w, h) {
+    let entry = fboPool.get(key);
+    if (entry && entry.w === w && entry.h === h) return entry;
+    if (entry) {
+      gl.deleteFramebuffer(entry.fb);
+      gl.deleteTexture(entry.tex);
+    }
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) {
+      gl.texParameteri(gl.TEXTURE_2D, k, v);
+    }
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    entry = { fb, tex: t, w, h };
+    fboPool.set(key, entry);
+    return entry;
+  }
+  function processToFbo(key, src, w, h, c) {
+    const target = ensureFbo(key, w, h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fb);
+    process(src, w, h, c);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return target;
+  }
+  function disposeFbo(key) {
+    if (key) {
+      const e = fboPool.get(key);
+      if (e) { gl.deleteFramebuffer(e.fb); gl.deleteTexture(e.tex); fboPool.delete(key); }
+      return;
+    }
+    for (const e of fboPool.values()) { gl.deleteFramebuffer(e.fb); gl.deleteTexture(e.tex); }
+    fboPool.clear();
+  }
+  function fboStats() { return { count: fboPool.size, keys: [...fboPool.keys()] }; }
+  return { ok: true, process, processToFbo, ensureFbo, disposeFbo, fboStats, setLut, active, has: n => !!luts[n] };
 })();

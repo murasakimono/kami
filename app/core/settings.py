@@ -128,6 +128,9 @@ DEFAULTS: dict[str, Any] = {
     "grab_follow_profiles": [],      # Grab-All takip edilen profiller
     "player_skip_silence": False,    # Player sessizlik atlayici (2x)
     "player_rtx_vsr": False,         # Player donanim RTX VSR modu (WebGL kapatir)
+    # Faz 7: Profil izolasyonu ve Masaustu Mini-Ada
+    "active_profile": "kisisel",     # kisisel | icerik | magaza | ozel profil id
+    "mini_island": False,            # masaustu mini-ada seridi
 }
 
 

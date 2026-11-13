@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami Mini-Ada</title>
+<link rel="stylesheet" href="scroll.css">
+<link rel="stylesheet" href="sunak.css">
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; font-family: "Chakra Petch", sans-serif; }
+  .island {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 10px 0 12px; box-sizing: border-box;
+    background: linear-gradient(135deg, #161124, #09070E 78%);
+    border: 1px solid #3F315B; border-radius: 999px;
+    box-shadow: 0 8px 26px rgba(0,0,0,.55), inset 0 0 22px rgba(124,58,237,.16);
+  }
+  .eye {
+    width: 24px; height: 24px; flex: none; border-radius: 50%;
+    background: #120D1F url("eye/assets/idle.webp") center/125% no-repeat;
+    border: 1.5px solid #7C3AED;
+    cursor: pointer;
+  }
+  .metric { display: flex; align-items: baseline; gap: 4px; color: #F2EEFA; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .metric small { font-size: 10px; color: #9D93B3; font-weight: 600; }
+  .sep { width: 1px; height: 18px; background: rgba(255,255,255,.1); flex: none; }
+  .vram { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(46,230,166,.12); color: #2EE6A6; border: 1px solid rgba(46,230,166,.28); white-space: nowrap; }
+  .vram.warn { background: rgba(245,166,91,.15); color: #F5A65B; border-color: rgba(245,166,91,.35); }
+  .vram.critical { background: rgba(239,68,68,.18); color: #F87171; border-color: rgba(239,68,68,.4); }
+  .prof { font-size: 11px; color: #C4B5FD; max-width: 78px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spacer { flex: 1; }
+  .btn {
+    border: 1px solid rgba(167,139,250,.35); background: rgba(124,58,237,.22);
+    color: #EDE9FE; font: 700 11px "Chakra Petch", sans-serif;
+    padding: 4px 9px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { background: rgba(124,58,237,.42); }
+  .btn.clip { border-color: rgba(46,230,166,.38); background: rgba(20,184,138,.18); color: #A7F3D0; }
+  .btn.clip:hover { background: rgba(20,184,138,.36); }
+  .x {
+    width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent;
+    color: #7D7394; font-size: 12px; cursor: pointer; flex: none;
+  }
+  .x:hover { background: rgba(255,255,255,.08); color: #fff; }
+</style>
+</head>
+<body>
+<div class="island" id="island">
+  <div class="eye" id="openBtn" title="Kami'yi Aç"></div>
+  <div class="metric"><span id="spd">0,0</span><small>Mb/s</small></div>
+  <div class="sep"></div>
+  <div class="vram" id="vram" title="VRAM / RAM">VRAM —</div>
+  <div class="prof" id="prof" title="Aktif Profil">Kişisel</div>
+  <div class="spacer"></div>
+  <button class="btn clip" id="clipBtn" title="Son 30 sn anlik klip kaydet">30sn Klip</button>
+  <button class="btn" id="mainBtn" title="Ana Pencere">Aç</button>
+  <button class="x" id="closeBtn" title="Mini-Ada'yı Gizle">✕</button>
+</div>
+<script>
+  const $ = (s) => document.querySelector(s);
+  const api = () => window.pywebview && window.pywebview.api;
+
+  async function tick() {
+    const a = api();
+    if (!a) return;
+    try {
+      const st = await a.mini_island_state();
+      const mbit = ((st.speed || 0) * 8) / 1e6;
+      $("#spd").textContent = (mbit >= 100 ? Math.round(mbit) : mbit.toFixed(1).replace(".", ","));
+      const v = st.telemetry || {};
+      const vb = $("#vram");
+      vb.classList.remove("warn", "critical");
+      if (v.level === "warn" || v.level === "critical") vb.classList.add(v.level);
+      if (v.gpu_available) {
+        vb.textContent = `VRAM ${Math.round(v.vram_pct || 0)}%`;
+        vb.title = `${v.gpu_name || "GPU"} · ${v.vram_used_mb}/${v.vram_total_mb} MB · NVENC ${v.enc_util || 0}%`;
+      } else {
+        vb.textContent = `RAM ${Math.round(v.ram_pct || 0)}%`;
+        vb.title = `CPU ${Math.round(v.cpu_pct || 0)}% · RAM ${v.ram_used_mb || 0}/${v.ram_total_mb || 0} MB`;
+      }
+      if (st.profile && st.profile.name) {
+        $("#prof").textContent = st.profile.name;
+      }
+    } catch (_) {}
+  }
+
+  window.addEventListener("pywebviewready", () => {
+    tick();
+    setInterval(tick, 1200);
+  });
+
+  $("#openBtn").addEventListener("click", () => api()?.card_open());
+  $("#mainBtn").addEventListener("click", () => api()?.card_open());
+  $("#closeBtn").addEventListener("click", () => api()?.mini_island_toggle(false));
+  $("#clipBtn").addEventListener("click", async () => {
+    const btn = $("#clipBtn");
+    btn.textContent = "Kaydediliyor…";
+    try {
+      await api()?.job_start("rec_save_replay");
+      btn.textContent = "Klip ✓";
+    } catch (_) {
+      btn.textContent = "Hata";
+    }
+    setTimeout(() => { btn.textContent = "30sn Klip"; }, 1800);
+  });
+</script>
+<script src="accent.js"></script>
+</body>
+</html>

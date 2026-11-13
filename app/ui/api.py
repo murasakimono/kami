@@ -79,6 +79,11 @@ class Api(StudioMixin):
         self._card_win = None                            # masaustu mini karti (main kurar)
         self._card_hidden = False                        # kullanici bu oturumda kapatti
         self._show_main = None                           # main: ana pencereyi geri getir
+        self._ui_iso = None                              # Faz 7.1: COOP/COEP izole sunucu
+        self._profiles = None                            # Faz 7.4: Coklu profil deposu
+        self._island_win = None                          # Faz 7.5: Masaustu mini-ada seridi
+        self._island_shown = False
+        self._island_factory = None
         self._warns: list[dict[str, Any]] = []
         self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
         manager.events.on("ui.warn", lambda **kw: self._on_warn(kw))
@@ -3008,3 +3013,84 @@ class Api(StudioMixin):
             return {"ok": False, "error": "Geçersiz ayar"}
         self._manager.settings.set(key, val)
         return {"ok": True}
+
+    # ---------- Faz 7: Izolasyon, VRAM Guard, Profiller, Mini-Ada ----------
+
+    def _profile_store(self):
+        if self._profiles is None:
+            from app.core.profiles import ProfileStore
+            self._profiles = ProfileStore(settings=self._manager.settings)
+        return self._profiles
+
+    def isolation_info(self) -> dict[str, Any]:
+        if self._ui_iso is None:
+            return {"running": False, "port": 0, "origin": "", "probe_url": "", "coop": "same-origin", "coep": "credentialless"}
+        return self._ui_iso.info()
+
+    def vram_status(self) -> dict[str, Any]:
+        from app.core.vram_guard import snapshot
+        return snapshot()
+
+    def vram_preflight(self, required_mb: int = 1024) -> dict[str, Any]:
+        from app.core.vram_guard import preflight
+        return preflight(required_mb=required_mb)
+
+    def profiles_list(self) -> dict[str, Any]:
+        store = self._profile_store()
+        return {
+            "active": store.active_id(),
+            "profiles": store.list_profiles(),
+            "download_dir": str(store.effective_download_dir()),
+        }
+
+    def profile_switch(self, profile_id: str) -> dict[str, Any]:
+        store = self._profile_store()
+        try:
+            prof = store.switch_profile(profile_id)
+            return {"ok": True, "profile": prof, "download_dir": str(store.effective_download_dir())}
+        except KeyError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def profile_create(self, name: str, accent_theme: str = "mor", download_subfolder: str | None = None) -> dict[str, Any]:
+        store = self._profile_store()
+        try:
+            prof = store.create_profile(name, accent_theme=accent_theme, download_subfolder=download_subfolder)
+            return {"ok": True, "profile": prof}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def profile_delete(self, profile_id: str) -> dict[str, Any]:
+        ok = self._profile_store().delete_profile(profile_id)
+        return {"ok": ok}
+
+    def mini_island_state(self) -> dict[str, Any]:
+        from app.core.vram_guard import snapshot
+        card = self.card_state()
+        return {
+            "speed": card.get("speed", 0),
+            "active": card.get("n", 0),
+            "telemetry": snapshot(),
+            "profile": self._profile_store().active_profile(),
+            "visible": bool(self._island_shown),
+        }
+
+    def mini_island_toggle(self, show: bool | None = None) -> dict[str, Any]:
+        target = (not self._island_shown) if show is None else bool(show)
+        if target:
+            if self._island_win is None and self._island_factory is not None:
+                self._island_win = self._island_factory()
+            if self._island_win is not None:
+                try:
+                    self._island_win.show()
+                except Exception:
+                    log.debug("mini_island show", exc_info=True)
+            self._island_shown = True
+        else:
+            if self._island_win is not None:
+                try:
+                    self._island_win.hide()
+                except Exception:
+                    log.debug("mini_island hide", exc_info=True)
+            self._island_shown = False
+        self._manager.settings.set("mini_island", self._island_shown)
+        return {"ok": True, "visible": self._island_shown}

@@ -463,6 +463,7 @@ def _make_handler(server: MediaServer):
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")   # file:// sayfasi (Origin: null) + Web Audio
+            self.send_header("Cross-Origin-Resource-Policy", "cross-origin")
             self.send_header("Cache-Control", "no-store")
 
         def _err(self, code: int) -> None:

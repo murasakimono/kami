@@ -673,6 +673,34 @@ def main() -> int:
 
     threading.Thread(target=card_loop, name="kami-card", daemon=True).start()
 
+    # ---- Faz 7.5: Masaustu Mini-Ada Seridi
+    def _make_island_window():
+        sc = webview.screens[0] if webview.screens else None
+        w, h = 440, 52
+        x, y = ((sc.x + (sc.width - w) // 2), (sc.y + 14)) if sc else (None, None)
+        return webview.create_window(
+            "Kami Mini-Ada",
+            url=str(paths.WEB_DIR / "mini-island.html"),
+            js_api=api,
+            width=w,
+            height=h,
+            x=x,
+            y=y,
+            frameless=True,
+            easy_drag=True,
+            on_top=True,
+            resizable=False,
+            background_color="#09070E",
+            focus=False,
+        )
+
+    api._island_factory = _make_island_window
+    if settings.get("mini_island"):
+        try:
+            api.mini_island_toggle(True)
+        except Exception:
+            log.debug("mini_island acilamadi", exc_info=True)
+
     # Windows'la baslama ayari kayit defteriyle esit olsun (kullanici elle silmis olabilir)
     try:
         if bool(settings.get("autostart")) != desktop.autostart_enabled():
@@ -836,6 +864,16 @@ def main() -> int:
         atexit.register(media_srv.stop)
     except OSError:
         log.exception("Medya sunucusu acilamadi")
+
+    # ---- Faz 7.1: Cross-Origin Isolation (COOP/COEP + SharedArrayBuffer) yerel HTTP sunucusu
+    from app.core.web_isolation import UiIsolationServer
+    ui_iso_srv = UiIsolationServer(paths.WEB_DIR)
+    try:
+        ui_iso_srv.start()
+        api._ui_iso = ui_iso_srv
+        atexit.register(ui_iso_srv.stop)
+    except OSError:
+        log.exception("UiIsolationServer acilamadi")
 
     def tray_warn(**kw) -> None:
         if kw.get("kind") == "disk" and not winwin.is_foreground(front._hwnd()):
