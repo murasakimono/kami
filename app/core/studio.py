@@ -1343,6 +1343,9 @@ AUDIO_FIX = {
     "radio": "highpass=f=400,lowpass=f=3200,acompressor=threshold=-18dB:ratio=6",
     "phone": "highpass=f=500,lowpass=f=2800,aformat=sample_rates=8000,aresample=48000",
     "cave": "aecho=0.8:0.85:60|120:0.35|0.25",
+    "hot-montage": "acompressor=threshold=-14dB:ratio=4:attack=3:release=80:makeup=5,alimiter=limit=0.95",
+    "meme-earrape": "bass=g=11:f=85,acompressor=threshold=-12dB:ratio=8:makeup=8,asoftclip=type=tanh,alimiter=limit=0.98",
+    "muffle": "lowpass=f=650,volume=0.55",
 }
 
 
@@ -1978,6 +1981,38 @@ SFX = {
     "kalp": ("aevalsrc='0.9*sin(2*PI*48*t)*(exp(-mod(t,0.85)*18)+0.7*exp(-mod(t-0.18,0.85)*18)*gte(mod(t,0.85),0.18))':d=1.7", "Kalp atışı"),
     "plak": ("aevalsrc='0.6*(random(0)-0.5)*sin(PI*t/0.5)+0.4*sin(2*PI*(600-900*t)*t)*exp(-t*3)':d=0.5,bandpass=f=1800:w=2500", "Plak cızırtısı"),
     "swoosh-sol": ("anoisesrc=d=0.5:c=white:a=0.6,lowpass=f=3000,volume='sin(PI*t/0.5)^3':eval=frame", "Swoosh"),
+    # ---- Meme / Shitpost / Oyun / Fragmovie paketi (telifsiz FFmpeg sentezi)
+    "vine-boom-heavy": ("aevalsrc='1.1*sin(2*PI*(64-28*t)*t)*exp(-t*3.2)+0.45*sin(2*PI*128*t)*exp(-t*7)':d=1.5,aecho=0.8:0.65:35|85:0.4|0.2,asoftclip=type=tanh", "Vine Boom (Baslı)"),
+    "bruh-horn": ("aevalsrc='0.8*sin(2*PI*(115-28*t)*t)*(1+0.3*sin(2*PI*230*t))*exp(-t*2.4)':d=0.7,asoftclip=type=tanh", "Bruh Korn (Düşük)"),
+    "taco-bell": ("aevalsrc='0.65*sin(2*PI*494*t)*exp(-t*1.8)+0.4*sin(2*PI*988*t)*exp(-t*2.6)+0.25*sin(2*PI*1480*t)*exp(-t*3.5)':d=2.2", "Taco Bell Çanı"),
+    "wrong-buzzer": ("aevalsrc='0.65*(sgn(sin(2*PI*145*t))+0.6*sgn(sin(2*PI*152*t)))*exp(-t*1.4)':d=0.85,lowpass=f=2600", "Hatalı Buzzer (Bip)"),
+    "bonk-meme": ("aevalsrc='0.95*sin(2*PI*(520-380*t*3)*t)*exp(-t*22)+0.3*(random(0)-0.5)*exp(-t*55)':d=0.28", "Bonk (Kafa)"),
+    "oof-retro": ("aevalsrc='0.85*sin(2*PI*(340-210*t)*t)*exp(-t*8)+0.25*sin(2*PI*680*t)*exp(-t*12)':d=0.35,lowpass=f=2400", "Retro Oof"),
+    "airhorn-mlg": ("aevalsrc='0.55*(sgn(sin(2*PI*466*t))+0.7*sgn(sin(2*PI*587*t))+0.6*sgn(sin(2*PI*700*t)))*exp(-t*1.8)':d=0.9,bandpass=f=1200:w=2200,asoftclip=type=tanh", "MLG Hava Kornası"),
+    "dramatic-dun": ("aevalsrc='0.75*(sin(2*PI*110*t)*lt(t,0.22)+sin(2*PI*103.8*gte(t,0.28)*lt(t,0.5)*t)*gte(t,0.28)*lt(t,0.5)+sin(2*PI*92.5*t)*gte(t,0.55)*exp(-(t-0.55)*2.2))':d=1.8,asoftclip=type=tanh", "Dramatik Dun-Dun-Dun"),
+    "sad-trombone": ("aevalsrc='0.65*(sin(2*PI*293.7*t)*lt(t,0.35)+sin(2*PI*277.2*t)*gte(t,0.38)*lt(t,0.72)+sin(2*PI*261.6*t)*gte(t,0.75)*lt(t,1.1)+sin(2*PI*(246.9-18*(t-1.15))*t)*gte(t,1.15)*exp(-(t-1.15)*1.8))':d=2.2,lowpass=f=2200", "Üzgün Trombon (Wah)"),
+    "discord-ping": ("aevalsrc='0.65*sin(2*PI*880*t)*exp(-t*14)*lt(t,0.12)+0.7*sin(2*PI*1318.5*(t-0.11))*exp(-(t-0.11)*10)*gte(t,0.11)':d=0.45", "Bildirim (Discord Ping)"),
+    "flashbang": ("aevalsrc='0.8*(random(0)-0.5)*exp(-t*12)+0.55*sin(2*PI*3650*t)*exp(-t*1.6)':d=2.4,highpass=f=300", "Flashbang Çınlaması"),
+    "hitmarker": ("aevalsrc='0.9*(random(0)-0.5)*exp(-t*140)+0.6*sin(2*PI*3200*t)*exp(-t*160)':d=0.07", "FPS Hitmarker"),
+    "anime-teleport": ("aevalsrc='0.7*sin(2*PI*(1900-1400*t*3)*t)*exp(-t*10)+0.35*(random(0)-0.5)*exp(-t*14)':d=0.35", "Anime Işınlanma"),
+    "anime-punch": ("aevalsrc='1.0*sin(2*PI*(140-90*t)*t)*exp(-t*14)+0.65*(random(0)-0.5)*exp(-t*28)':d=0.32,asoftclip=type=tanh", "Anime Ağır Yumruk"),
+    "sub-drop": ("aevalsrc='0.95*sin(2*PI*(95-58*t*0.5)*t)*exp(-t*2.0)':d=2.0,asoftclip=type=tanh", "808 Sub Drop"),
+    "whip-crack": ("anoisesrc=d=0.28:c=white:a=0.9,bandpass=f=2200:w=2600,volume='exp(-t*16)*4':eval=frame", "Kamçı / Hızlı Geçiş"),
+    "cash-register": ("aevalsrc='0.5*(random(0)-0.5)*exp(-t*45)*lt(t,0.09)+0.65*sin(2*PI*2637*(t-0.1))*exp(-(t-0.1)*4)*gte(t,0.1)+0.45*sin(2*PI*3951*(t-0.1))*exp(-(t-0.1)*5)*gte(t,0.1)':d=0.9", "Kasa Sesi (Cha-Ching)"),
+    "record-scratch": ("aevalsrc='0.65*sin(2*PI*(420+260*sin(2*PI*11*t))*t)*exp(-t*5)+0.35*(random(0)-0.5)*exp(-t*6)':d=0.45,bandpass=f=1500:w=2200", "Plak Durma (Scratch)"),
+}
+
+SFX_CAT = {
+    "tik": "UI & Oyun", "fare-tik": "UI & Oyun", "deklansor": "UI & Oyun", "ding": "UI & Oyun",
+    "zil": "UI & Oyun", "discord-ping": "UI & Oyun", "flashbang": "UI & Oyun", "hitmarker": "UI & Oyun", "cash-register": "UI & Oyun",
+    "whoosh": "Geçiş & Hareket", "hizli-whoosh": "Geçiş & Hareket", "swoosh-sol": "Geçiş & Hareket",
+    "anime-teleport": "Geçiş & Hareket", "whip-crack": "Geçiş & Hareket", "glitch": "Geçiş & Hareket",
+    "bass-boom": "Vuruş & Darbe", "sub-drop": "Vuruş & Darbe", "anime-punch": "Vuruş & Darbe", "pop": "Vuruş & Darbe",
+    "vine-boom": "Meme & Shitpost", "vine-boom-heavy": "Meme & Shitpost", "bruh-horn": "Meme & Shitpost",
+    "taco-bell": "Meme & Shitpost", "wrong-buzzer": "Meme & Shitpost", "bonk-meme": "Meme & Shitpost",
+    "oof-retro": "Meme & Shitpost", "airhorn-mlg": "Meme & Shitpost", "sad-trombone": "Meme & Shitpost",
+    "record-scratch": "Meme & Shitpost", "plak": "Meme & Shitpost",
+    "riser": "Dramatik & Gerilim", "kalp": "Dramatik & Gerilim", "dramatic-dun": "Dramatik & Gerilim", "daktilo": "Dramatik & Gerilim",
 }
 
 
@@ -2004,7 +2039,8 @@ def ensure_sfx(ffmpeg: str, name: str = "") -> dict[str, str]:
 
 
 AUDIO_FIX_NAMES = {"nr1": "Gürültü azalt (hafif)", "nr2": "Gürültü azalt (güçlü)", "voice": "Ses netleştir (EQ + kompresör + de-esser)",
-                   "gate": "Kapı (nefes/arka sesi kes)", "bass": "Bas güçlendir", "radio": "Telsiz", "phone": "Telefon", "cave": "Mağara yankısı"}
+                   "gate": "Kapı (nefes/arka sesi kes)", "bass": "Bas güçlendir", "radio": "Telsiz", "phone": "Telefon", "cave": "Mağara yankısı",
+                   "hot-montage": "Sıcak montaj (-10 LUFS + Limiter)", "meme-earrape": "Meme Bas / Kulak Patlatan (-7 LUFS)", "muffle": "Meme duraksama (Lo-Pass Boğuk)"}
 
 
 # ---------------------------------------------------------------------------------------------------------------

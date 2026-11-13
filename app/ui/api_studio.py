@@ -640,7 +640,8 @@ class StudioMixin:
     def studio_sfx(self) -> list[dict[str, Any]]:
         from app.core import studio
         got = studio.ensure_sfx(self._media.ffmpeg() if self._media else "")
-        return [{"key": k, "name": studio.SFX[k][1], "path": p, "url": self._media.asset_url(p) if self._media else "", "kind": "audio"}
+        return [{"key": k, "name": studio.SFX[k][1], "cat": studio.SFX_CAT.get(k, "Diğer"), "path": p,
+                 "url": self._media.asset_url(p) if self._media else "", "kind": "audio"}
                 for k, p in got.items()]
 
     # ---- anahtarlar (DPAPI)

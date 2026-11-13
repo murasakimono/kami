@@ -60,12 +60,29 @@ def test_brand_kit_and_viral_recipes(tmp_path: Path) -> None:
     assert store.load("magaza")["primary"] == "#FF3366"
 
     recs = list_recipes()
-    assert len(recs) >= 12
+    assert len(recs) >= 20
     assert {
         "iman_gadzhi", "magnates_media", "ali_abdaal", "fps_frag", "minimal_shorts",
         "rap_mv_dark", "roblox_gaming", "anime_velocity", "mrbeast_retention",
         "podcast_clip", "retro_vhs", "cinematic_vlog",
+        "tech_commentary", "editorial_essay", "roblox_lyric_pop", "neon_void_vfx",
+        "fragmovie_velocity", "dark_trap_mv", "tr_shitpost_kick", "tr_max_loud_intro",
     }.issubset({r["id"] for r in recs})
+
+    from app.core import studio, studio_anim
+    ca = studio_anim.clip_catalog()
+    zids = {z["id"] for z in studio.ZOOM_PRESETS + studio.ZOOM3}
+    for r in recs:
+        assert all(f in studio.FX for f in r.get("fx", [])), r["id"]
+        if r.get("trans_in"):
+            assert r["trans_in"] in studio.TRANS, r["id"]
+        if r.get("zoom_preset"):
+            assert r["zoom_preset"] in zids, r["id"]
+        if r.get("anim_loop"):
+            assert r["anim_loop"] in ca["loop"], r["id"]
+        assert all(af in studio.AUDIO_FIX for af in r.get("audio_fx", [])), r["id"]
+    assert len(studio.SFX) >= 34
+    assert all(k in studio.SFX_CAT for k in studio.SFX)
 
     proj = {
         "name": "Test",

@@ -109,6 +109,7 @@ const SFX = (() => {
     else if (kind === "flip-v") r.sy = Math.max(.02, e);
     else if (kind === "dip-black") r.dark = .9 * (1 - u);
     else if (kind === "dip-pink") r.pink = .55 * (1 - u);
+    else if (kind === "dip-cyan") r.cyan = .55 * (1 - u);
     else if (kind === "whip-v") { r.dy = 1 - e; r.blur = 18 * (1 - u); }
     else if (kind === "spin180") r.rot = -180 * (1 - e);
     else if (kind === "vhs-roll") { r.roll = 1 - u; r.rgb = true; }

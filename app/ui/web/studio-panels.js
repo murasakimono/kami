@@ -71,9 +71,18 @@ P.sound = async () => {
   const sl = Object.entries(slots);
   if (sl.length) h += sec("Hızlı (1-9 tuşu)") + `<div class="chips">${sl.sort().map(([k, s]) => `<span class="chip">${k} · ${esc(s.name.slice(0, 18))}<button data-unslot="${k}">✕</button></span>`).join("")}</div>`;
   if (sndTab === "kami") {
-    pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği telifsiz efektler (tık, whoosh, boom, zil, riser…). Sürükle ya da ＋.</div><div id="sndList" class="hint">Hazırlanıyor…</div>`;
-    const items = await job("studio_sfx", []);
-    sndRender(items.map(i => ({ ...i, local: true })));
+    pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği ${34} telifsiz ses & meme efekti. Sürükle ya da ＋.</div>` +
+      `<div class="catpills" id="sndCats"></div><input class="in" id="kamiSndQ" placeholder="Vine boom, flashbang, whoosh, bruh ara…" value="${esc(P.sound.q || "")}" style="width:100%;margin-bottom:6px"><div id="sndList" class="hint">Hazırlanıyor…</div>`;
+    const items = sndCache.kami || (sndCache.kami = await job("studio_sfx", []));
+    const renderKami = () => {
+      const cat = P.sound.cat || "Tümü", q = (P.sound.q || "").toLowerCase();
+      const cats = ["Tümü", ...new Set(items.map(i => i.cat || "Diğer"))];
+      $("#sndCats").innerHTML = cats.map(c => `<button class="${c === cat ? "on" : ""}" data-sndcat="${esc(c)}">${esc(c)}</button>`).join("");
+      sndRender(items.filter(i => (cat === "Tümü" || (i.cat || "Diğer") === cat) && (!q || i.name.toLowerCase().includes(q) || (i.cat || "").toLowerCase().includes(q))).map(i => ({ ...i, local: true })));
+    };
+    renderKami();
+    $("#kamiSndQ").oninput = e => { P.sound.q = e.target.value; renderKami(); };
+    $("#sndCats").onclick = e => { const b = e.target.closest("[data-sndcat]"); if (b) { P.sound.cat = b.dataset.sndcat; renderKami(); } };
   } else if (sndTab === "Sesler" || sndTab === "Memeler") {
     h += `<div class="hint">${sndTab === "Sesler" ? "Videolar\\Kami Studio\\Sesler" : "Videolar\\Kami Studio\\Memeler"} klasörüne attığın her şey burada. İnternetten seçtiklerin de buraya iner.</div><input class="in" id="sndQ" placeholder="Ara…">`;
     pb.innerHTML = h + `<div id="sndList" class="hint">Yükleniyor…</div>`;
@@ -82,8 +91,12 @@ P.sound = async () => {
     $("#sndQ").oninput = e => sndRender(items.filter(i => i.name.toLowerCase().includes(e.target.value.toLowerCase())).map(i => ({ ...i, local: true })));
   } else if (sndTab === "myinstants" || sndTab === "freesound") {
     const fsNeed = sndTab === "freesound" && !ST.cat.freesound;
+    const trendTags = sndTab === "myinstants"
+      ? ["vine boom", "kurban oldugum", "yarim ekmek", "merve", "kurt adam", "iett", "burhan abi", "sigma", "sad hamster", "english or spanish", "flashbang", "bruh", "taco bell", "metal pipe"]
+      : ["whoosh", "riser", "cinematic impact", "camera shutter", "glitches", "gunshot", "applause", "thunder"];
     h += fsNeed ? `<div class="hint">Freesound için ücretsiz API anahtarı gerekir: freesound.org → hesabın → API (“Apply for API key”). Anahtar Windows'ta şifreli saklanır.</div><div class="row"><input class="in" id="fsKey" placeholder="API anahtarı"><button class="tb" id="fsSave">Kaydet</button></div>`
-      : `<div class="row"><input class="in" id="sndQ" placeholder="${sndTab === "myinstants" ? "ör. bruh, vine boom, ayy, oof" : "ör. whoosh, impact, horror"}" style="flex:1"><button class="tb" id="sndGo" style="flex:none">Ara</button></div>`;
+      : `<div class="row"><input class="in" id="sndQ" placeholder="${sndTab === "myinstants" ? "ör. bruh, vine boom, merve, kurban olduğum" : "ör. whoosh, impact, horror"}" style="flex:1"><button class="tb" id="sndGo" style="flex:none">Ara</button></div>` +
+        `<div class="catpills" id="mTrends">${trendTags.map(t => `<button data-mquick="${esc(t)}">${esc(t)}</button>`).join("")}</div>`;
     pb.innerHTML = h + `<div id="sndList"></div>`;
     if (fsNeed) { $("#fsSave").onclick = async () => { await api.studio_freesound_key($("#fsKey").value); ST.cat.freesound = true; renderPanel(); }; return; }
     const go = async () => {
@@ -94,6 +107,7 @@ P.sound = async () => {
       sndCache[sndTab] = r; sndRender(r.map(i => ({ ...i, kind: "audio" })));
     };
     $("#sndGo").onclick = go; $("#sndQ").onkeydown = e => { if (e.key === "Enter") go(); };
+    $("#mTrends").onclick = e => { const b = e.target.closest("[data-mquick]"); if (b) { $("#sndQ").value = b.dataset.mquick; go(); } };
     if (sndCache[sndTab]) sndRender(sndCache[sndTab].map(i => ({ ...i, kind: "audio" })));
   } else {
     const items = await api.studio_pack_sounds();
@@ -206,13 +220,40 @@ TEXT_PRESETS.push(...[
   { n: "Mono kod", s: { font: "Rubik Mono One", size: 6, anim: "type", pos: "center", color: "#ffffff", outline: 4 }, up: true },
   { n: "Spor kalın", s: { font: "Archivo Black", size: 10, anim: "slide", pos: "center", color: "#ffffff", outline: 6, rot: -5 }, up: true },
   { n: "Righteous retro", s: { font: "Righteous", size: 9, anim: "pop", pos: "center", color: "#FFD166", outline: 6, outlineColor: "#EF476F" } },
+  // 16-video analizinden turetilen tipografi sablonlari
+  { n: "birazdan.. Köşe", cat: "Meme", s: { font: "Montserrat Black", size: 6.5, anim: "pop", pos: "custom", x: .82, y: .12, color: "#ffffff", outline: 8, outlineColor: "#000000" } },
+  { n: "Beyaz Hap (Essay)", cat: "Sosyal", s: { font: "Poppins SemiBold", size: 4.5, anim: "pop", pos: "bottom", color: "#111111", box: true, boxColor: "#FFFFFF", outline: 0 } },
+  { n: "Krem Kart (MKBHD)", cat: "Sinema", s: { font: "Kami Serif", size: 5.5, anim: "fade", pos: "center", color: "#1e1b18", box: true, boxColor: "#F5EFE6", outline: 0 } },
+  { n: "Roblox Neon Arka", cat: "Neon", s: { font: "Anton", size: 12, anim: "zoom", pos: "center", color: "#00E5FF", glow: true, glowColor: "#00E5FF", outline: 5, outlineColor: "#091540" }, up: true },
+  { n: "TR Yorum Balonu", cat: "Meme", s: { font: "Inter SemiBold", size: 5.2, anim: "pop", pos: "center", color: "#ffffff", outline: 7, outlineColor: "#000000" } },
+  { n: "Impact Çığlık", cat: "Meme", s: { font: "Impact", size: 11, anim: "shake", pos: "top", color: "#ffffff", outline: 9, outlineColor: "#000000", bold: false }, up: true },
 ]);
 
+function textCat(p) {
+  if (p.cat) return p.cat;
+  const n = p.n.toLowerCase();
+  if (/meme|rage|yorum|korku|çizgi/.test(n)) return "Meme";
+  if (/neon|siber|glitch|oyun|bungee/.test(n)) return "Neon";
+  if (/haber|spor|etiket|kutulu|alt|sevimli/.test(n)) return "Sosyal";
+  if (/sinema|düğün|alıntı|daktilo|kalem|yazı|minimal/.test(n)) return "Sinema";
+  return "Başlık";
+}
 P.text = () => {
-  pb.innerHTML = `<div class="hint">Tıkla: oynatma kafasına ekler. Sürükle: istediğin yere. Ayrıntılar sağdaki panelde.</div>` +
-    `<div class="grid2">${TEXT_PRESETS.map((p, i) => `<div class="card" draggable="true" data-item='${esc(JSON.stringify({ type: "text", preset: i }))}' data-tp="${i}" style="font-family:'${p.s.font}';color:${p.s.color || "#fff"};${p.s.glow ? `text-shadow:0 0 8px ${p.s.glowColor}` : ""};${p.s.box ? `background:${p.s.boxColor};` : ""}font-size:15px;text-align:center">${esc(p.up ? p.n.toUpperCase() : p.n)}</div>`).join("")}</div>`;
+  const cat = P.text.cat || "Tümü", q = (P.text.q || "").toLowerCase();
+  const cats = ["Tümü", "Başlık", "Meme", "Sosyal", "Neon", "Sinema"];
+  const items = TEXT_PRESETS.map((p, i) => ({ p, i, c: textCat(p) }))
+    .filter(x => (cat === "Tümü" || x.c === cat) && (!q || x.p.n.toLowerCase().includes(q) || (x.p.s.font || "").toLowerCase().includes(q)));
+  pb.innerHTML = `<div class="hint">Tıkla: oynatma kafasına ekler. Sürükle: istediğin yere.</div>` +
+    `<div class="catpills">${cats.map(c => `<button class="${c === cat ? "on" : ""}" data-txcat="${c}">${c}</button>`).join("")}</div>` +
+    `<input class="in" id="txQ" placeholder="${TEXT_PRESETS.length} yazı stili içinde ara…" value="${esc(P.text.q || "")}" style="width:100%;margin-bottom:6px">` +
+    `<div class="grid2">${items.map(({ p, i }) => `<div class="card" draggable="true" data-item='${esc(JSON.stringify({ type: "text", preset: i }))}' data-tp="${i}" style="font-family:'${p.s.font}';color:${p.s.color || "#fff"};${p.s.glow ? `text-shadow:0 0 8px ${p.s.glowColor}` : ""};${p.s.box ? `background:${p.s.boxColor};` : ""}font-size:15px;text-align:center">${esc(p.up ? p.n.toUpperCase() : p.n)}</div>`).join("")}</div>`;
+  const qi = $("#txQ"); qi.oninput = () => { P.text.q = qi.value; clearTimeout(P.text.t); P.text.t = setTimeout(() => { P.text(); const n = $("#txQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 160); };
 };
-pb.addEventListener("click", e => { const tp = e.target.closest("[data-tp]"); if (tp && panel === "text") addText(+tp.dataset.tp, ST.t); });
+pb.addEventListener("click", e => {
+  if (panel !== "text") return;
+  const ct = e.target.closest("[data-txcat]"); if (ct) { P.text.cat = ct.dataset.txcat; P.text(); return; }
+  const tp = e.target.closest("[data-tp]"); if (tp) addText(+tp.dataset.tp, ST.t);
+});
 function addText(i, t) {
   const p = TEXT_PRESETS[i]; snap();
   const c = placeAt({ text: p.up ? "ÜST YAZI" : p.n === "RAGE" ? "AAAAAA!" : "Yazını yaz", dur: 3, style: { ...p.s } }, "text", t);
@@ -278,36 +319,43 @@ P.fx = () => {
   const q = (P.fx.q || "").toLowerCase();
   if (tab === "anim") {
     const ca = ST.cat.canim || { in: {}, out: {}, loop: {} };
-    const an = c?.anim || {};
+    const an = c?.anim || {}, ac = P.fx.acat || "Tümü";
+    const acats = [["Tümü", "Tümü"], ["loop", "Sürekli (Salıncak/Nabız)"], ["in", "Giriş"], ["out", "Çıkış"]];
     const mk = (slot, title, items) => {
+      if (ac !== "Tümü" && ac !== slot) return "";
       const entries = Object.entries(items || {}).filter(([k, n]) => k !== "none" && (!q || n.toLowerCase().includes(q) || k.toLowerCase().includes(q)));
       if (!entries.length) return "";
       return sec(title) + `<div class="grid2">${entries.map(([k, n]) => `<div class="card${an[slot] === k ? " on" : ""}" data-canim="${slot}:${k}"><b>${esc(n)}</b><small>${slot === "loop" ? "Sürekli oynar" : slot === "in" ? "Giriş" : "Çıkış"}</small></div>`).join("")}</div>`;
     };
-    pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe hareket animasyonu uygula / kaldır (ör. Salıncak = Sallan)." : "Önce zaman çizelgesinden bir video veya görsel klibi seç."}</div>` +
+    pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe hareket animasyonu uygula / kaldır (Salıncak, Nabız, Rage…)." : "Önce zaman çizelgesinden bir video veya görsel klibi seç."}</div>` +
+      `<div class="catpills">${acats.map(([k, l]) => `<button class="${ac === k ? "on" : ""}" data-ancat="${k}">${l}</button>`).join("")}</div>` +
       `<input class="in" id="fxQ" placeholder="Salıncak, sarsıntı, 3B, nabız ara…" value="${esc(P.fx.q || "")}" style="width:100%;margin-bottom:6px">` +
-      mk("loop", "Sürekli Hareket (Salıncak · Nabız · Sarsıntı)", ca.loop) +
+      mk("loop", "Sürekli Hareket (Salıncak · Nabız · Sarsıntı · Oyun)", ca.loop) +
       mk("in", "Giriş Animasyonları", ca.in) +
       mk("out", "Çıkış Animasyonları", ca.out);
-    const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 180); };
+    const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 180); };
     return;
   }
   const packs = {};
   for (const [id, f] of Object.entries(ST.cat.fx)) (packs[f.pack] ||= []).push([id, f]);
+  const fc = P.fx.cat || "Tümü", packNames = ["Tümü", "★ Favori", ...Object.keys(packs)];
   const on = new Set(c?.fx || []);
   const card = ([id, f]) => `<div class="card${on.has(id) ? " on" : ""}" data-fx="${id}" draggable="true" data-item='${esc(JSON.stringify({ type: "fx", id }))}'><div class="sw" style="${fxThumb ? `background-image:url(${fxThumb});` : ""}filter:${f.css || "none"}"></div><b>${esc(f.name)}</b>${favStar("fx", id)}</div>`;
-  const all = Object.entries(ST.cat.fx).filter(([id, f]) => !q || f.name.toLowerCase().includes(q) || f.pack.toLowerCase().includes(q));
-  const favs = all.filter(([id]) => isFav("fx", id));
-  pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe uygula / kaldır. Sağ panelden Tümü / Giriş / Çıkış seç." : "Klip seçili değil: tıklayınca efekt izine (tüm görüntüye) 3 sn eklenir."} Sürükle: efekt izine istediğin yere. ★: favori.</div>` +
+  const all = Object.entries(ST.cat.fx).filter(([id, f]) => (fc === "Tümü" || (fc === "★ Favori" ? isFav("fx", id) : f.pack === fc)) && (!q || f.name.toLowerCase().includes(q) || f.pack.toLowerCase().includes(q) || id.toLowerCase().includes(q)));
+  const favs = fc === "Tümü" ? all.filter(([id]) => isFav("fx", id)) : [];
+  pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe uygula / kaldır. Sağ panelden Tümü / Giriş / Çıkış seç." : "Klip seçili değil: tıklayınca efekt izine 3 sn eklenir."} ★: favori.</div>` +
+    `<div class="catpills">${packNames.map(p => `<button class="${fc === p ? "on" : ""}" data-fxcat="${esc(p)}">${esc(p)}</button>`).join("")}</div>` +
     `<input class="in" id="fxQ" placeholder="${Object.keys(ST.cat.fx).length} efekt içinde ara…" value="${esc(P.fx.q || "")}" style="width:100%;margin-bottom:6px">` +
     (favs.length ? sec("★ Favoriler") + `<div class="grid2">${favs.map(card).join("")}</div>` : "") +
-    Object.entries(packs).map(([pk, items]) => { const it = items.filter(x => all.includes(x) || all.some(y => y[0] === x[0])); return it.length ? sec(pk) + `<div class="grid2">${it.map(card).join("")}</div>` : ""; }).join("");
-  const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 180); };
+    Object.entries(packs).map(([pk, items]) => { const it = items.filter(x => all.some(y => y[0] === x[0])); return it.length ? sec(pk) + `<div class="grid2">${it.map(card).join("")}</div>` : ""; }).join("");
+  const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 180); };
 };
 pb.addEventListener("click", e => {
   if (panel !== "fx") return;
   const tb = e.target.closest("[data-fxtab]");
   if (tb) { P.fx.tab = tb.dataset.fxtab; P.fx(); return; }
+  const fcat = e.target.closest("[data-fxcat]"); if (fcat) { P.fx.cat = fcat.dataset.fxcat; P.fx(); return; }
+  const acat = e.target.closest("[data-ancat]"); if (acat) { P.fx.acat = acat.dataset.ancat; P.fx(); return; }
   const ca = e.target.closest("[data-canim]");
   if (ca) {
     const [slot, kind] = ca.dataset.canim.split(":");
@@ -340,12 +388,28 @@ function addFxClip(id, t, snapped) {
 }
 
 // ---------------------------------------------------------------- gecisler
+function transCat(k) {
+  if (/^(none|fade|flash|dip-|lightleak)/.test(k)) return "Temel & Flaş";
+  if (/^(slide|whip|spin|flip)/.test(k)) return "Hareket & Dönüş";
+  if (/^(wipe|diag|barn|blinds|wave|stripes)/.test(k)) return "Silme & Perde";
+  if (/^(iris|eye|clock|corner|diamond|heart|cross|checker|blocks|dissolve)/.test(k)) return "Şekilli & Maske";
+  return "Glitch & Pop";
+}
 P.trans = () => {
-  pb.innerHTML = `<div class="hint">Seçili klibin girişine uygulanır (önceki klipten bu klibe geçerken). Süreyi sağ panelden ayarla.</div><div class="grid2">${Object.entries(ST.cat.trans).map(([k, v]) => `<div class="card" data-tr="${k}" title="${esc(v)}"><i class="trv tv-${esc(k)}"></i><b>${esc(v)}</b></div>`).join("")}</div>` +
+  const cat = P.trans.cat || "Tümü", q = (P.trans.q || "").toLowerCase();
+  const cats = ["Tümü", "Temel & Flaş", "Hareket & Dönüş", "Silme & Perde", "Şekilli & Maske", "Glitch & Pop"];
+  const items = Object.entries(ST.cat.trans).filter(([k, v]) => (cat === "Tümü" || transCat(k) === cat) && (!q || v.toLowerCase().includes(q) || k.toLowerCase().includes(q)));
+  pb.innerHTML = `<div class="hint">Seçili klibin girişine uygulanır. Süreyi sağ panelden ayarla.</div>` +
+    `<div class="catpills">${cats.map(c => `<button class="${c === cat ? "on" : ""}" data-trcat="${c}">${c}</button>`).join("")}</div>` +
+    `<input class="in" id="trQ" placeholder="${Object.keys(ST.cat.trans).length} geçiş içinde ara…" value="${esc(P.trans.q || "")}" style="width:100%;margin-bottom:6px">` +
+    `<div class="grid2">${items.map(([k, v]) => `<div class="card" data-tr="${k}" title="${esc(v)}"><i class="trv tv-${esc(k)}"></i><b>${esc(v)}</b></div>`).join("")}</div>` +
     `<div class="row" style="margin-top:10px"><button class="tb" id="trAll">Seçili tüm kesimlere uygula</button></div>`;
+  const qi = $("#trQ"); qi.oninput = () => { P.trans.q = qi.value; clearTimeout(P.trans.t); P.trans.t = setTimeout(() => { P.trans(); const n = $("#trQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 160); };
   $("#trAll").onclick = () => toast("Önce klipleri seç (Shift+tık), sonra geçişe tıkla");
 };
 pb.addEventListener("click", e => {
+  if (panel !== "trans") return;
+  const ct = e.target.closest("[data-trcat]"); if (ct) { P.trans.cat = ct.dataset.trcat; P.trans(); return; }
   const t = e.target.closest("[data-tr]"); if (!t) return;
   const cs = selClips().filter(c => ["video", "image"].includes(clipKind(c)));
   if (!cs.length) { toast("Önce bir video klibi seç"); return; }
@@ -353,9 +417,16 @@ pb.addEventListener("click", e => {
 });
 
 // ---------------------------------------------------------------- zoom
+function zoomCat(z) {
+  if (/^(punch|double|crash|wobble|beat4|drop|micro-punch|velocity-snap|reaction)/.test(z.id)) return "Vuruş & Velocity";
+  if (/^(pan|tilt|dive|eyes|hud-focus|jumpcut-alt|glide)/.test(z.id)) return "Odak & Pan";
+  return "Sinematik & Yaklaş";
+}
 P.zoom = () => {
-  pb.innerHTML = `<div class="hint">Seçili klibe uygular. Kendi zoom'unu sağ panelde kare kare yap, “Şablon kaydet” ile buraya ekle; sonra başka videolara tek tıkla uygula.</div>` +
-    sec("Hazır") + `<div class="grid2">${ST.cat.zoom.filter(z => !z.user).map(z => `<div class="card" data-zm="${z.id}"><b>${esc(z.name)}</b><small>${z.kf.length} kare</small></div>`).join("")}</div>` +
+  const builtin = ST.cat.zoom.filter(z => !z.user), groups = {};
+  for (const z of builtin) (groups[zoomCat(z)] ||= []).push(z);
+  pb.innerHTML = `<div class="hint">Seçili klibe uygular. Sağ panelden kare kare düzenleyip “Şablon kaydet” ile buraya ekleyebilirsin.</div>` +
+    Object.entries(groups).map(([g, arr]) => sec(g) + `<div class="grid2">${arr.map(z => `<div class="card" data-zm="${z.id}"><b>${esc(z.name)}</b><small>${z.kf.length} kare</small></div>`).join("")}</div>`).join("") +
     sec("Benim şablonlarım") + (ST.cat.zoom.some(z => z.user) ? `<div class="grid2">${ST.cat.zoom.filter(z => z.user).map(z => `<div class="card" data-zm="${z.id}"><b>${esc(z.name)}</b><small>${z.kf.length} kare · <a href="#" data-zdel="${z.id}" style="color:var(--red)">sil</a></small></div>`).join("")}</div>` : '<div class="hint">Henüz yok.</div>') +
     sec("Vuruşa zoom") + `<div class="hint">İşaretli her vuruşta seçili klibe kısa “vuruş zoom” kareleri ekler.</div><div class="row"><button class="tb" id="zBeat">⊕ Vuruşlarda zoom</button></div>`;
   $("#zBeat").onclick = () => aiAction("beatzoom", firstSel());

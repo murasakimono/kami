@@ -13,7 +13,7 @@ $("#dock .dk-pages").addEventListener("click", e => { const b = e.target.closest
 document.addEventListener("keydown", e => {
   const tag = document.activeElement?.tagName; if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !$("#modal").hidden) return;
   if (e.shiftKey && /^Digit[1-5]$/.test(e.code)) { e.preventDefault(); setPage(["media", "edit", "color", "audio", "deliver"][+e.code.slice(5) - 1]); }
-  else if (!e.ctrlKey && e.key.toLowerCase() === "q") freezeFrame();
+  else if (!e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "f") { e.preventDefault(); freezeFrame(); }
 });
 document.addEventListener("click", e => { const b = e.target.closest('[data-a="freeze"]'); if (b) freezeFrame(); });
 function freezeFrame() {

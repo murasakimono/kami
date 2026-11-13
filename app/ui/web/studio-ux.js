@@ -131,7 +131,7 @@ function clipMenu(c, e) {
     "-",
   ];
   if (k === "video" && a?.audio) items.push({ ic: "♪", l: c.detached ? "Ses zaten ayrı" : "Sesi ayrı ize ayır", f: () => detachAudio(), dis: !!c.detached || (c.vol === 0) });
-  if (k === "video") items.push({ ic: "❄", l: "Kareyi dondur", k: "Q", f: () => freezeFrame?.() }, { ic: "✂", l: n > 1 ? `Arka planı sil (${n} klip)` : "Arka planı sil (bu klip)", f: () => matteSel() });
+  if (k === "video") items.push({ ic: "❄", l: "Kareyi dondur", k: "Shift+F", f: () => freezeFrame?.() }, { ic: "✂", l: n > 1 ? `Arka planı sil (${n} klip)` : "Arka planı sil (bu klip)", f: () => matteSel() });
   if (vis) items.push({ ic: "✦", l: "Animasyon ekle…", f: () => { animTab.clip = "in"; renderInsp(); $("#insp .atabs")?.scrollIntoView({ block: "center" }); } },
     { ic: "◐", l: "Renk sayfasında düzenle", f: () => setPage("color") });
   if (k === "text" && !c.subscribe && !c.graphic) items.push({ ic: "T", l: "Animasyon seç…", f: () => { animTab.text = "in"; renderInsp(); $("#insp .atabs")?.scrollIntoView({ block: "center" }); } });
@@ -345,7 +345,7 @@ window.matteSel = matteSel;
 // ---------------------------------------------------------------- kisayol listesi
 const KEYS = [
   ["Oynatma", [["Boşluk", "Oynat / durdur"], ["← →", "1 kare (Shift: 1 sn)"], ["↑ ↓", "Önceki / sonraki kesim noktası"], ["Ctrl+← →  ya da  [ ]", "Önceki / sonraki işaret"], ["Home / End", "Başa / sona"], ["F", "Tam ekran önizleme"]]],
-  ["Kurgu", [["S  ya da  B", "Oynatma kafasında böl (✂)"], ["Del", "Sil"], ["Shift+Del", "Sil ve boşluğu kapat"], ["Q", "Kareyi dondur"], ["Ctrl+C / V / D", "Kopyala / yapıştır / çoğalt"], ["Ctrl+A", "Tümünü seç"], ["Esc", "Seçimi kaldır"], ["Sağ tık", "Klip / iz / işaret menüsü"]]],
+  ["Kurgu", [["S  ya da  B", "Oynatma kafasında böl (✂)"], ["Q / W", "Oynatma kafasının solunu / sağını sil"], ["Del", "Sil"], ["Shift+Del", "Sil ve boşluğu kapat"], ["Shift+F", "Kareyi dondur"], ["Ctrl+C / V / D", "Kopyala / yapıştır / çoğalt"], ["Ctrl+A", "Tümünü seç"], ["Ctrl+L", "Bağlı video/ses kilidini aç/kapa"], ["Esc", "Seçimi kaldır"], ["Sağ tık", "Klip / iz / işaret menüsü"]]],
   ["İşaretler", [["M", "İşaret koy"], ["Sürükle", "İşareti taşı (cetvelde)"], ["Çift tık", "İşarete ad ver"], ["Alt+tık", "İşareti sil"]]],
   ["Proje", [["Ctrl+Z / Y", "Geri al / yinele"], ["Ctrl+S", "Kaydet (Shift: farklı kaydet)"], ["Ctrl+E", "Dışa aktar"], ["Ctrl+O", "Aç"], ["+ / −", "Zaman ölçeği (Ctrl+tekerlek)"], ["1-9", "Hızlı ses (Ses panelinde ★ ile ata)"], ["Shift+1…5", "Sayfalar: Medya, Kurgu, Renk, Ses, Teslim"]]],
 ];

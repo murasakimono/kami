@@ -26,6 +26,10 @@ ZOOM3 = [
     {"id": "breath", "name": "Nefes (yavaş nabız)", "kf": [{"t": 0, "z": 1}, {"t": 1, "z": 1.06, "e": "inout"}, {"t": 2, "z": 1, "e": "inout"}, {"t": 3, "z": 1.06, "e": "inout"}]},
     {"id": "drop", "name": "Drop (yaklaş-bırak)", "kf": [{"t": 0, "z": 1}, {"t": 0.5, "z": 1.35, "e": "in"}, {"t": 0.55, "z": 1, "e": "out"}]},
     {"id": "glide-in", "name": "Süzülerek yaklaş (sağa)", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": -0.001, "z": 1.35, "cx": 0.62, "cy": 0.5, "e": "inout"}]},
+    {"id": "micro-punch", "name": "Mikro vuruş (1.12x beat)", "kf": [{"t": 0, "z": 1}, {"t": 0.05, "z": 1.12, "e": "out"}, {"t": 0.16, "z": 1, "e": "inout"}]},
+    {"id": "jumpcut-alt", "name": "Jump-cut yakınlaş (1.45x)", "kf": [{"t": 0, "z": 1.45, "cx": 0.5, "cy": 0.44}, {"t": -0.001, "z": 1.45, "cx": 0.5, "cy": 0.44}]},
+    {"id": "hud-focus", "name": "HUD / Sohbet yakınlaştır", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.18, "z": 2.1, "cx": 0.22, "cy": 0.82, "e": "out"}]},
+    {"id": "velocity-snap", "name": "Velocity çarpma (2.0x -> 1x)", "kf": [{"t": 0, "z": 2.0, "e": "out"}, {"t": 0.14, "z": 1.0, "e": "out"}]},
 ]
 
 CAPTIONS2 = {

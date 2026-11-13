@@ -58,4 +58,7 @@ CLIP_LOOP2 = {
     "heartbeat-strong": {"name": "Güçlü kalp atışı", "beat": 0.15, "f": 1.4},
     "drunk": {"name": "Sarhoş salınım", "x": 0.01, "r": 4, "f": 0.8},
     "flip3d-fast": {"name": "3B salınım (hızlı)", "sx": 0.2, "f": 1.2},
+    "gaming-bounce": {"name": "Oyun ritim zıplaması", "y": 0.015, "f": 2.4},
+    "cinema-drift": {"name": "Sinematik kayma", "pan": 0.04},
+    "rage-shake": {"name": "Çığlık / Rage titreşimi", "x": 0.012, "y": 0.01, "f": 24},
 }

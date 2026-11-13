@@ -8,7 +8,7 @@ TRANS2 = {
     "heart": "Kalp açılış", "cross": "Artı açılış", "blinds-h": "Jaluzi (yatay)", "blinds-v": "Jaluzi (dikey)",
     "checker": "Dama tahtası", "stripes": "Çapraz şeritler", "blocks": "Blok blok", "dissolve": "Dağılarak belir",
     "pop-in": "Küçükten büyü", "bounce-in": "Yaylanarak büyü", "flip-h": "Yatay çevir", "flip-v": "Dikey çevir",
-    "dip-black": "Siyah flaş", "dip-pink": "Renkli flaş", "whip-v": "Dikey savurma", "spin180": "Yarım tur dön", "vhs-roll": "VHS sarma",
+    "dip-black": "Siyah flaş", "dip-pink": "Renkli flaş", "dip-cyan": "Camgöbeği flaş", "whip-v": "Dikey savurma", "spin180": "Yarım tur dön", "vhs-roll": "VHS sarma",
 }
 
 
@@ -52,6 +52,8 @@ def trans_in2(kind: str, d: float, W: int, H: int, tag: str = "t", c0: float = 0
         return f"eq=brightness='-0.9*(1-{u})':eval=frame:{en}"
     if kind == "dip-pink":
         return f"eq=brightness='0.35*(1-{u})':gamma_r='1+1.2*(1-{u})':gamma_g='1-0.3*(1-{u})':gamma_b='1+0.6*(1-{u})':eval=frame:{en}"
+    if kind == "dip-cyan":
+        return f"eq=brightness='0.35*(1-{u})':gamma_r='1-0.3*(1-{u})':gamma_g='1+0.9*(1-{u})':gamma_b='1+1.2*(1-{u})':eval=frame:{en}"
     if kind == "whip-v":
         return f"pad=iw:ih*2:0:ih:color=black@0,crop={W}:{H}:x=0:y='ih/2*{e}',gblur=sigma=0.5:sigmaV=36:{en}"
     if kind == "spin180":

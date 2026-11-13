@@ -590,6 +590,7 @@ function drawClip(c, t) {
   if (tr?.leak) SFX.tint(cbx, W, H, "#ff9a3c", "lighter", tr.leak);
   if (tr?.dark) SFX.tint(cbx, W, H, "#000", "source-atop", tr.dark);
   if (tr?.pink) SFX.tint(cbx, W, H, "#ff4fa0", "lighter", tr.pink);
+  if (tr?.cyan) SFX.tint(cbx, W, H, "#00e5ff", "lighter", tr.cyan);
   if (tr?.roll) {   // VHS sarma: goruntu dikeyde kayar (ffmpeg: crop y=mod(ih*4*(1-u),ih)) + gren
     const oy = H * ((4 * tr.roll) % 1), cp = SFX.copy(cbx, W, H);
     cbx.clearRect(0, 0, W, H); cbx.drawImage(cp, 0, -oy); cbx.drawImage(cp, 0, H - oy); SFX.overlay(cbx, "grain", W, H, t, local);
@@ -858,6 +859,7 @@ function clipEl(c, t) {
   let label = "";
   if (k === "text") label = c.subscribe ? `🔔 ${ST.cat.subscribe[c.subscribe] || c.subscribe}` : c.graphic ? `◆ ${ST.cat.graphics?.[c.graphic] || c.graphic}` : c.words ? `≡ Altyazı (${c.words.length} kelime)` : "T " + (c.text || "");
   else if (k === "fx") label = "✦ " + (ST.cat.fx[c.mode]?.name || c.mode);
+  else if (k === "compound") label = "⧉ " + (c.name || `Bileşik (${c.children?.length || 0} klip)`);
   else label = a?.name || "?";
   const tags = [];
   if ((c.speed || 1) !== 1) tags.push(`${c.speed}×`);
@@ -1564,19 +1566,49 @@ document.addEventListener("click", e => {
     autostyle: async () => {
       if (!ST.p?.clips.length) return toast("Önce zaman çizelgesine video ekle");
       const styles = [
-        { id: "roblox_gaming", name: "🎮 Roblox / Oyun Eğlence", desc: "Sessizlikleri sıkı kes (0.15s), enerjik pop zoom, canlı renk ve wobble animasyon." },
-        { id: "rap_mv_dark", name: "🎵 Rap Klip / 3EVLER Tarzı", desc: "Beat vuruşlarında kesim işaretleri, koyu sinematik kontrast, flaş geçişi & crash zoom." },
-        { id: "mrbeast_retention", name: "⚡ YouTube Retention / MrBeast", desc: "Sıkı sessizlik kırpma, hızlı dolly-in zoom ve dinamik geçişler." },
-        { id: "magnates_media", name: "🎬 Belgesel / Hikaye", desc: "Teal-turuncu film tonu, yavaş Ken Burns hareketi ve sinematik atmosfer." },
-        { id: "podcast_clip", name: "🎙 Podcast / Reels Kesiti", desc: "Konuşma netleştirme, yumuşak nefes zoom ve temiz kutulu altyazı stili." },
+        { id: "roblox_lyric_pop", name: "🧱 Roblox 9:16 Dikey", sil: true, beats: true, desc: "1.12x ritim mikro-vuruşları, enerjik oyun zıplaması ve beat işaretleme." },
+        { id: "fragmovie_velocity", name: "🎯 CS2 / Valorant Fragmovie", sil: false, beats: true, desc: "Beat vuruş işaretleme, camgöbeği flaş, RSMB savurma ve 2.0x velocity." },
+        { id: "neon_void_vfx", name: "✨ Neon Void 3D VFX Edit", sil: false, beats: true, desc: "Derin glow, ayna zemin yansıması, pembe flaş ve hızlı beat işaretleme." },
+        { id: "dark_trap_mv", name: "🦇 Dark Trap / 2.39:1 Klip", sil: false, beats: true, desc: "Anamorfik 2.39:1 bar, film yanığı, ember kıvılcım ve beat işaretleri." },
+        { id: "tr_shitpost_kick", name: "🔥 TR Shitpost / Kick Derleme", sil: true, beats: false, desc: "Sıkı sessizlik kırpma (0.3s), jump-cut crop, yamuk facecam ve rage titreşimi." },
+        { id: "tr_max_loud_intro", name: "📢 Max-Loud TR Monolog (-7 LUFS)", sil: true, beats: false, desc: "0 ölü hava kesimi, 9:16 dikey odak ve yüksek ses/bas meme modu." },
+        { id: "tech_commentary", name: "🎙 Tech Yorum & B-Roll (MKBHD)", sil: true, beats: false, desc: "Konuşma netleştirme EQ, yumuşak dolly yaklaşma ve editorial temiz ton." },
+        { id: "editorial_essay", name: "📰 Editorial Hareketli (Tasarımcı Dayı)", sil: true, beats: false, desc: "50/50 bölünmüş odak, net ses ve temiz kutulu bilgi anlatımı." },
+        { id: "mrbeast_retention", name: "⚡ YouTube Retention / MrBeast", sil: true, beats: false, desc: "Sıkı sessizlik kırpma, hızlı dolly-in zoom ve dinamik geçişler." },
+        { id: "podcast_clip", name: "🎙 Podcast / Reels Kesiti", sil: true, beats: false, desc: "Konuşma netleştirme, yumuşak nefes zoom ve temiz kutulu altyazı stili." },
       ];
       const selIds = [...ST.sel].filter(id => { const c = ST.p?.clips.find(x => x.id === id); return c && ["video", "image"].includes(clipKind(c)); });
       const cards = styles.map(s => `<button class="tb viral-card" data-v="${s.id}"><b>${s.name}</b><small>${s.desc}</small></button>`).join("");
-      const pick = await modal(`<h3>🤖 Oto-Kurgu (Kanal / Tür Tarzı)</h3><div class="hint" style="margin-bottom:8px">${selIds.length ? `Seçili ${selIds.length} klip` : "Tüm video"} seçilen kanal/tür tarzına göre otomatik düzenlenir.</div><div class="viral-grid">${cards}</div><div class="row" style="margin-top:8px"><button class="tb" data-v="">İptal</button></div>`);
+      const pick = await modal(`<h3>🤖 Oto-Kurgu (Kanal / Tür Tarzı)</h3><div class="hint" style="margin-bottom:6px">${selIds.length ? `🎯 Seçili ${selIds.length} klip` : "🎬 Tüm video"} seçilen kanal/tür tarzına göre otomatik düzenlenir.</div>` +
+        `<div class="row" style="gap:12px;margin-bottom:8px"><label class="chk"><input type="checkbox" id="autoSil" checked> Sessizlikleri otomatik kırp</label><label class="chk"><input type="checkbox" id="autoBeat" checked> Vuruş/beat işaretleri koy</label></div>` +
+        `<div class="viral-grid">${cards}</div><div class="row" style="margin-top:8px"><button class="tb" data-v="">İptal</button></div>`);
       if (!pick) return;
+      const doSil = $("#autoSil")?.checked ?? true, doBeat = $("#autoBeat")?.checked ?? true;
       snap();
-      const res = await api.studio_run_recipe(ST.p, pick, selIds.length ? selIds : null);
-      if (res?.ok) { ST.p = res.project; changed(); toast(`Oto-Kurgu uygulandı: ${pick}`); }
+      const targetClips = (selIds.length ? ST.p.clips.filter(x => selIds.includes(x.id)) : ST.p.clips).filter(x => ["video", "image"].includes(clipKind(x)));
+      let cutCount = 0, beatCount = 0;
+      if (doSil) {
+        for (const vc of [...targetClips]) {
+          const a = assetOf(vc); if (!a?.path || !a.audio) continue;
+          const sp = vc.speed || 1, rng = await job("studio_silences", [a.path, vc.in || 0, vc.dur * sp, -35, 0.35]);
+          if (rng?.length) cutCount += removeRanges(vc, rng, 0.08, 0.12);
+        }
+      }
+      if (doBeat) {
+        const audioC = ST.p.clips.find(x => x.kind === "audio" && assetOf(x)?.path) || targetClips.find(x => assetOf(x)?.audio && assetOf(x)?.path);
+        const a = audioC ? assetOf(audioC) : null;
+        if (a?.path) {
+          const b = await job("studio_beats", [a.path]);
+          const ts = (b?.beats || []).map(t => +(audioC.start + (t - (audioC.in || 0)) / (audioC.speed || 1)).toFixed(3)).filter(t => t >= 0);
+          if (ts.length) {
+            ST.p.markers = [...(ST.p.markers || []).filter(m => m.kind !== "beat"), ...ts.slice(0, 200).map(t => ({ t, kind: "beat" }))];
+            beatCount = Math.min(ts.length, 200);
+          }
+        }
+      }
+      const postIds = selIds.length ? [...ST.sel] : null;
+      const res = await api.studio_run_recipe(ST.p, pick, postIds);
+      if (res?.ok) { ST.p = res.project; changed(); toast(`Oto-Kurgu: ${pick} (${res.applied_clips} klip${cutCount ? `, ${cutCount} sessizlik` : ""}${beatCount ? `, ${beatCount} beat` : ""})`); }
       else toast(res?.error || "Oto-Kurgu uygulanamadı");
     },
     addtrack: async () => { const k = await modal(`<h3>İz ekle</h3><div class="row" style="justify-content:stretch">${[["video", "Video / görsel"], ["audio", "Ses"], ["text", "Metin"], ["fx", "Efekt"]].map(([k, l]) => `<button class="tb" data-v="${k}">${l}</button>`).join("")}</div>`); if (k) { snap(); addTrack(k); changed(); } },
