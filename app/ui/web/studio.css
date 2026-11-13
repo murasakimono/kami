@@ -249,6 +249,9 @@ textarea.in { min-height: 70px; resize: vertical; user-select: text; }
 .clip .lb em { font-style: normal; color: var(--em); margin-left: 4px; }
 .clip .tag { position: absolute; right: 3px; bottom: 3px; font-size: 9.5px; background: rgba(0,0,0,.6); padding: 0 4px; pointer-events: none; }
 .clip .eg { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 3; }
+.cut-mark { position: absolute; top: 2px; bottom: 2px; width: 8px; margin-left: -4px; z-index: 5; cursor: pointer; display: flex; justify-content: center; }
+.cut-mark::before { content: ""; width: 2px; height: 100%; background: #F5B94A; box-shadow: 0 0 6px rgba(245, 185, 74, .75); }
+.cut-mark.sel::before { width: 4px; background: #2EE6A6; box-shadow: 0 0 10px rgba(46, 230, 166, .95); }
 .clip .eg.l { left: 0; } .clip .eg.r { right: 0; }
 .clip .eg:hover, .clip.sel .eg { background: rgba(255,255,255,.18); }
 .clip .fade { position: absolute; top: 14px; bottom: 0; pointer-events: none; background: linear-gradient(to right, rgba(0,0,0,.55), transparent); }

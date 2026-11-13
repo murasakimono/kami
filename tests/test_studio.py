@@ -262,3 +262,23 @@ def test_real_transition_extends_previous_clip_under_next():
     args, _ = S.build_export(p, "C:/o.mp4", Path(__import__("tempfile").mkdtemp()), "libx264", {})
     g = " ".join(args)
     assert "between(t,0.0000,4.2000)" in g    # ilk klip gecis boyunca altta
+
+
+def test_silence_asymmetric_pad_and_selective_restore():
+    p = S.new_project("silence", 1280, 720, 30)
+    p["assets"]["a1"] = {"path": "C:/v/a.mp4", "kind": "video", "dur": 20.0, "w": 1280, "h": 720, "audio": True, "name": "a"}
+    c = S.add_clip(p, asset="a1", track="v1", start=0, dur=20.0, **{"in": 0})
+    # Iki sessiz bolge: [2.0, 6.0] (4 sn) ve [10.0, 14.0] (4 sn)
+    # Konusma sonrasi pay=0.1, konusma oncesi pay=1.0 -> her kesimden 2.9 sn kesilir
+    n = S.remove_ranges(p, c["id"], [[2.0, 6.0], [10.0, 14.0]], pad=0.1, pad_before=1.0)
+    assert n == 2
+    assert len(p["cuts"]) == 2
+    end_after_cut = S.project_end(p)
+    assert abs(end_after_cut - (20.0 - 2.9 - 2.9)) < 0.01
+
+    # Sadece ilk kesilen bolgeyi geri getir (ikinci kesim korunur!)
+    first_cut = sorted(p["cuts"], key=lambda x: x["seamStart"])[0]
+    restored = S.restore_cuts(p, [first_cut["id"]])
+    assert len(restored) == 1
+    assert len(p["cuts"]) == 1
+    assert abs(S.project_end(p) - (20.0 - 2.9)) < 0.01

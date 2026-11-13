@@ -7,7 +7,7 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "
 let api = null;
 
 const ST = {
-  p: null, path: "", sel: new Set(), t: 0, playing: false, px: 80, snap: true, ripple: false,
+  p: null, path: "", sel: new Set(), cutSel: new Set(), t: 0, playing: false, px: 80, snap: true, ripple: false,
   undo: [], redo: [], cat: { fx: {}, trans: {}, zoom: [], captions: {}, anims: {}, subscribe: {}, fonts: [] },
   rt: {}, media: {}, dirty: false, lastSave: 0, binSel: new Set(), pq: .75, clip: null,
 };
@@ -96,7 +96,10 @@ async function save(as = false) {
   if (r?.ok) { ST.path = r.path; ST.dirty = false; $("#saved").textContent = "✓ kaydedildi"; $("#saved").classList.remove("dirty"); }
 }
 function afterLoad(keepSel = false) {
-  if (!keepSel) ST.sel.clear(); else for (const id of [...ST.sel]) if (!ST.p.clips.some(c => c.id === id)) ST.sel.delete(id);
+  if (!keepSel) { ST.sel.clear(); ST.cutSel.clear(); } else {
+    for (const id of [...ST.sel]) if (!ST.p.clips.some(c => c.id === id)) ST.sel.delete(id);
+    for (const id of [...ST.cutSel]) if (!(ST.p.cuts || []).some(ct => ct.id === id)) ST.cutSel.delete(id);
+  }
   $("#pname").value = ST.p.name || "Proje";
   const r = `${ST.p.w}x${ST.p.h}`;
   if (![...$("#ratio").options].some(o => o.value === r)) $("#ratio").add(new Option(`${ST.p.w}×${ST.p.h}`, r));
@@ -196,23 +199,63 @@ function splitClip(c, t) {
   if (n.trans) delete n.trans;
   ST.p.clips.push(n); return n;
 }
-function rippleClose(track, t0, gap) { for (const c of ST.p.clips) if (c.track === track && c.start >= t0 - 1e-6) c.start = +(c.start - gap).toFixed(4); }
-function removeRanges(c, ranges, pad = .08) {
+function rippleClose(track, t0, gap) {
+  for (const c of ST.p.clips) if (c.track === track && c.start >= t0 - 1e-6) c.start = +(c.start - gap).toFixed(4);
+  for (const ct of ST.p.cuts || []) if (ct.track === track && ct.seamStart >= t0 - 1e-6) ct.seamStart = +(ct.seamStart - gap).toFixed(4);
+}
+function rippleOpen(track, t0, gap) {
+  for (const c of ST.p.clips) if (c.track === track && c.start >= t0 - 1e-6) c.start = +(c.start + gap).toFixed(4);
+  for (const ct of ST.p.cuts || []) if (ct.track === track && ct.seamStart >= t0 - 1e-6) ct.seamStart = +(ct.seamStart + gap).toFixed(4);
+}
+function removeRanges(c, ranges, padAfter = .08, padBefore = padAfter) {
   const sp = c.speed || 1; let n = 0;
+  ST.p.cuts ||= [];
   for (let [a, b] of [...ranges].sort((x, y) => y[0] - x[0])) {
-    a += pad; b -= pad; if (b - a < .15) continue;
+    a += padAfter; b -= padBefore; if (b - a < .08) continue;
     const same = ST.p.clips.filter(x => x.track === c.track && x.asset === c.asset);
     for (const x of same) {
       let t0 = x.start + (a - (x.in || 0)) / sp, t1 = x.start + (b - (x.in || 0)) / sp;
-      if (t1 <= x.start || t0 >= x.start + x.dur) continue;
+      if (t1 <= xsOr(x) || t0 >= x.start + x.dur) continue;
       t0 = Math.max(x.start, t0); t1 = Math.min(x.start + x.dur, t1);
       const mid = t0 > x.start + .02 ? splitClip(x, t0) : x; if (!mid) continue;
       if (t1 < mid.start + mid.dur - .02) splitClip(mid, t1);
+      const cutSnap = clone(mid);
       ST.p.clips.splice(ST.p.clips.indexOf(mid), 1); ST.sel.delete(mid.id);
-      rippleClose(c.track, t1, t1 - t0); n++; break;
+      rippleClose(c.track, t1, t1 - t0);
+      ST.p.cuts.push({ id: "cut_" + uid(), track: c.track, seamStart: +t0.toFixed(4), dur: +cutSnap.dur.toFixed(4), clip: cutSnap });
+      n++; break;
     }
   }
   return n;
+}
+function xsOr(x) { return x.start; }
+function restoreCuts(ids) {
+  const wanted = new Set(ids);
+  const cuts = ST.p.cuts || [];
+  const targets = cuts.filter(ct => wanted.has(ct.id)).sort((a, b) => b.seamStart - a.seamStart);
+  if (!targets.length) return 0;
+  snap(); ST.sel.clear();
+  for (const ct of targets) {
+    const seam = ct.seamStart;
+    const restored = clone(ct.clip);
+    rippleOpen(ct.track, seam, restored.dur);
+    restored.start = +seam.toFixed(4);
+    ST.p.clips.push(restored);
+    ST.sel.add(restored.id);
+    const idx = cuts.indexOf(ct);
+    if (idx >= 0) cuts.splice(idx, 1);
+  }
+  ST.cutSel.clear();
+  changed();
+  return targets.length;
+}
+function dropCuts(ids) {
+  const wanted = new Set(ids);
+  if (!wanted.size || !ST.p.cuts) return;
+  snap();
+  ST.p.cuts = ST.p.cuts.filter(ct => !wanted.has(ct.id));
+  ST.cutSel.clear();
+  changed();
 }
 function kfResolve(kf, dur) { return (kf || []).map(k => ({ ...k, t: Math.max(0, k.t < 0 ? dur + k.t : k.t) })).sort((a, b) => a.t - b.t); }
 const EASE = { out: u => 1 - (1 - u) * (1 - u), in: u => u * u, inout: u => u * u * (3 - 2 * u) };
@@ -675,13 +718,22 @@ function renderTimeline() {
   for (const t of ST.p.tracks) {
     const ln = document.createElement("div"); ln.className = "lane" + (t.lock ? " locked" : ""); ln.dataset.tid = t.id; ln.style.setProperty("--h", laneH(t) + "px");
     for (const c of ST.p.clips.filter(c => c.track === t.id)) ln.appendChild(clipEl(c, t));
+    for (const ct of (ST.p.cuts || []).filter(x => x.track === t.id)) {
+      const cm = document.createElement("div");
+      cm.className = "cut-mark" + (ST.cutSel.has(ct.id) ? " sel" : "");
+      cm.dataset.cutid = ct.id;
+      cm.style.left = (ct.seamStart * ST.px) + "px";
+      cm.title = `Kesilen bölge (${ct.dur.toFixed(2)} sn) — tıkla/çoklu seç ve eski haline getir`;
+      ln.appendChild(cm);
+    }
     frag.appendChild(ln);
   }
   lanes.innerHTML = ""; lanes.appendChild(frag);
   for (const m of $$(".mk", $("#tlInner"))) m.remove();
   for (const m of ST.p.markers || []) { const d = document.createElement("div"); d.className = "mk " + (m.kind || ""); d.style.left = (m.t * ST.px) + "px"; $("#tlInner").appendChild(d); }
   drawRuler(); updateTC();
-  const n = ST.sel.size; $("#selInfo").textContent = n ? `${n} klip seçili` : "";
+  const n = ST.sel.size, cn = ST.cutSel.size;
+  $("#selInfo").textContent = cn ? `${cn} kesim seçili` : n ? `${n} klip seçili` : "";
 }
 function clipEl(c, t) {
   const k = clipKind(c), a = assetOf(c), el = document.createElement("div");
@@ -764,9 +816,19 @@ function showSnap(t) { let l = $(".snapline"); if (t == null) { l?.remove(); ret
 const KIND_OK = { video: ["video"], image: ["video"], audio: ["audio"], text: ["text"], fx: ["fx"] };
 
 lanes.addEventListener("pointerdown", e => {
+  const cutEl = e.target.closest(".cut-mark");
+  if (cutEl) {
+    e.preventDefault();
+    const cid = cutEl.dataset.cutid;
+    ST.sel.clear();
+    if (e.shiftKey || e.ctrlKey) { ST.cutSel.has(cid) ? ST.cutSel.delete(cid) : ST.cutSel.add(cid); }
+    else { ST.cutSel = new Set([cid]); }
+    renderTimeline(); renderInsp(); renderHandles();
+    return;
+  }
   const ce = e.target.closest(".clip");
   if (!ce) {   // bos alan: oynatma kafasi + secimi temizle / dikdortgen secim
-    if (!e.shiftKey) ST.sel.clear();
+    if (!e.shiftKey) { ST.sel.clear(); ST.cutSel.clear(); }
     seek(tAt(e.clientX));
     const sx = e.clientX, sy = e.clientY, mq = document.createElement("div"); mq.id = "marquee";
     const ir = $("#tlInner").getBoundingClientRect();
@@ -777,10 +839,15 @@ lanes.addEventListener("pointerdown", e => {
       const x1 = Math.min(sx, ev.clientX), x2 = Math.max(sx, ev.clientX), y1 = Math.min(sy, ev.clientY), y2 = Math.max(sy, ev.clientY);
       mq.style.cssText = `left:${x1 - ir.left}px;top:${y1 - ir.top}px;width:${x2 - x1}px;height:${y2 - y1}px`;
       for (const el of $$(".clip", lanes)) { const r = el.getBoundingClientRect(); const hit = r.right > x1 && r.left < x2 && r.bottom > y1 && r.top < y2; el.classList.toggle("sel", hit || ST.sel.has(el.dataset.cid)); }
+      for (const el of $$(".cut-mark", lanes)) { const r = el.getBoundingClientRect(); const hit = r.right > x1 && r.left < x2 && r.bottom > y1 && r.top < y2; el.classList.toggle("sel", hit || ST.cutSel.has(el.dataset.cutid)); }
     };
     const up = () => {
       document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up);
-      if (on) { for (const el of $$(".clip.sel", lanes)) ST.sel.add(el.dataset.cid); mq.remove(); }
+      if (on) {
+        for (const el of $$(".clip.sel", lanes)) ST.sel.add(el.dataset.cid);
+        for (const el of $$(".cut-mark.sel", lanes)) ST.cutSel.add(el.dataset.cutid);
+        mq.remove();
+      }
       renderTimeline(); renderInsp(); renderHandles();
     };
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
@@ -788,6 +855,7 @@ lanes.addEventListener("pointerdown", e => {
   }
   const c = ST.p.clips.find(x => x.id === ce.dataset.cid); if (!c) return;
   if (trackOf(c).lock) return;
+  ST.cutSel.clear();
   e.preventDefault();
   if (e.shiftKey || e.ctrlKey) { ST.sel.has(c.id) ? ST.sel.delete(c.id) : ST.sel.add(c.id); }
   else if (!ST.sel.has(c.id)) { ST.sel = new Set([c.id]); }
@@ -962,6 +1030,16 @@ function getK(c, k) { return k.split(".").reduce((o, p) => o?.[p], c); }
 function setK(c, k, v) { const ps = k.split("."); let o = c; for (const p of ps.slice(0, -1)) o = (o[p] ||= {}); if (v === "" || v == null) delete o[ps.at(-1)]; else o[ps.at(-1)] = v; }
 function renderInsp() {
   const box = $("#insp"); if (!ST.p) return;
+  if (ST.cutSel.size) {
+    const selCuts = (ST.p.cuts || []).filter(ct => ST.cutSel.has(ct.id));
+    if (selCuts.length) {
+      const tot = selCuts.reduce((s, x) => s + x.dur, 0);
+      box.innerHTML = `<div class="ph"><b>${selCuts.length === 1 ? "Kesilen bölge" : `${selCuts.length} kesilen bölge`}</b><span class="sp"></span><span class="hint">${tot.toFixed(2)} sn</span></div>` +
+        `<div class="hint">Sadece seçtiğin bu kesim bölgeleri zaman çizelgesinde eski haline getirilir. Ctrl/Shift ile veya sürükleyerek çoklu seçebilirsin.</div>` +
+        `<div class="row"><button class="tb pri" data-a2="restoreCuts">Eski haline getir (${selCuts.length})</button><button class="tb" data-a2="dropCuts">İzi sil</button></div>`;
+      return;
+    }
+  }
   const cs = selClips();
   if (!cs.length) { box.innerHTML = projInsp(); return; }
   if (cs.length > 1) { box.innerHTML = `<div class="ph"><b>${cs.length} klip</b></div>${multiInsp(cs)}`; return; }
@@ -1173,6 +1251,8 @@ $("#insp").addEventListener("click", async e => {
   if (b.dataset.unfx) { snap(); c.fx = c.fx.filter(x => x !== b.dataset.unfx); if (!c.fx.length) delete c.fx; changed(); return; }
   if (b.dataset.kfdel != null) { snap(); const kf = kfResolve(c.zoom, c.dur); kf.splice(+b.dataset.kfdel, 1); c.zoom = kf.length ? kf : undefined; if (!c.zoom) delete c.zoom; changed(); return; }
   const a2 = b.dataset.a2;
+  if (a2 === "restoreCuts") { const n = restoreCuts([...ST.cutSel]); toast(`${n} kesilen bölge eski haline getirildi`); return; }
+  if (a2 === "dropCuts") { dropCuts([...ST.cutSel]); toast("Kesim izi temizlendi"); return; }
   if (a2 === "kfadd") {
     const l = clamp(ST.t - c.start, 0, c.dur); snap();
     const kf = kfResolve(c.zoom || [], c.dur).filter(k => Math.abs(k.t - l) > .02);

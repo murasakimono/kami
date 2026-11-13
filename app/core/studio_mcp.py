@@ -244,15 +244,15 @@ def t_zoom(clip: str, preset: str = "", kf: list | None = None, path: str = "") 
     return {"id": clip, "zoom": c["zoom"]}
 
 
-@tool("cut_silences", "Klipteki sessiz bölümleri kırpar (ripple). db: eşik (-35), min_len sn.",
-      {"clip": STR, "db": N, "min_len": N, "path": PATH}, ["clip"])
-def t_sil(clip: str, db: float = -35, min_len: float = 0.45, path: str = "") -> Any:
+@tool("cut_silences", "Klipteki sessiz bölümleri kırpar (ripple). db: eşik (-35), min_len sn, pad_after/pad_before: konuşma öncesi/sonrası pay sn.",
+      {"clip": STR, "db": N, "min_len": N, "pad_after": N, "pad_before": N, "path": PATH}, ["clip"])
+def t_sil(clip: str, db: float = -35, min_len: float = 0.45, pad_after: float = 0.08, pad_before: float = 0.08, path: str = "") -> Any:
     p, pr = load(path)
     c = S.find_clip(pr, clip)
     a = pr["assets"][c["asset"]]
     sp = float(c.get("speed", 1) or 1)
     rng = ST.silences(a["path"], float(c.get("in", 0)), c["dur"] * sp, float(db), float(min_len))
-    n = S.remove_ranges(pr, clip, rng)
+    n = S.remove_ranges(pr, clip, rng, pad=float(pad_after), pad_before=float(pad_before))
     save(p, pr)
     return {"removed": n, "silences": len(rng), "end": round(S.project_end(pr), 2)}
 

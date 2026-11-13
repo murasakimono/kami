@@ -415,15 +415,17 @@ async function aiAction(kind, c) {
   const a = assetOf(c), sp = c.speed || 1, src0 = c.in || 0, srcDur = c.dur * sp;
   try {
     if (kind === "silence") {
-      const o = await modal(`<h3>Sessizlikleri kırp</h3><div class="hint">Eşik: bu seviyenin altı sessiz sayılır. Gürültülü kayıtta yükselt (-30), temiz kayıtta düşür (-40).</div>
+      const o = await modal(`<h3>Sessizlikleri kırp</h3><div class="hint">Eşik: bu seviyenin altı sessiz sayılır. Pay: konuşma bitişi sonrası ve başlamadan önce bırakılacak saniye (örn. 0.5 veya 1).</div>
         <label class="fld"><span>Eşik (dB)</span><input type="range" id="sdb" min="-55" max="-20" value="-35" oninput="sdbn.value=this.value"><input class="num" id="sdbn" value="-35" readonly></label>
         <label class="fld"><span>En kısa (sn)</span><input type="range" id="sml" min="0.2" max="2" step="0.05" value="0.45" oninput="smln.value=this.value"><input class="num" id="smln" value="0.45" readonly></label>
-        <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Kırp</button></div>`, { collect: () => [+$("#sdb").value, +$("#sml").value] });
+        <label class="fld"><span>Konuşma sonrası pay (sn)</span><input type="range" id="spada" min="0" max="3" step="0.05" value="0.10" oninput="spadan.value=this.value"><input class="num" id="spadan" type="number" min="0" max="10" step="0.05" value="0.10" oninput="spada.value=this.value"></label>
+        <label class="fld"><span>Konuşma öncesi pay (sn)</span><input type="range" id="spadb" min="0" max="3" step="0.05" value="0.15" oninput="spadbn.value=this.value"><input class="num" id="spadbn" type="number" min="0" max="10" step="0.05" value="0.15" oninput="spadb.value=this.value"></label>
+        <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Kırp</button></div>`, { collect: () => [+$("#sdb").value, +$("#sml").value, Math.max(0, +$("#spadan").value || 0), Math.max(0, +$("#spadbn").value || 0)] });
       if (!o) return;
       busy("Sessizlikler aranıyor…");
       const rng = await job("studio_silences", [a.path, src0, srcDur, o[0], o[1]]); busy(null);
       if (!rng.length) { toast("Sessizlik bulunamadı"); return; }
-      snap(); const n = removeRanges(c, rng); changed(); toast(`${n} sessiz bölüm kırpıldı`);
+      snap(); const n = removeRanges(c, rng, o[2], o[3]); changed(); toast(`${n} sessiz bölüm kırpıldı (geri almak için kesim çizgisine tıkla)`);
     } else if (kind === "freeze") {
       busy("Donuk sahneler aranıyor (biraz sürebilir)…");
       const rng = await job("studio_freezes", [a.path, src0, srcDur, 1.0]); busy(null);

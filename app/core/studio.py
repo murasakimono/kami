@@ -1733,6 +1733,8 @@ def add_clip(project: dict, **kw: Any) -> dict:
 
 
 def split_clip(project: dict, cid: str, t: float) -> dict | None:
+    import copy
+    import uuid
     c = find_clip(project, cid)
     if not c["start"] + 0.02 < t < c["start"] + c["dur"] - 0.02:
         return None
@@ -1758,16 +1760,39 @@ def ripple_close(project: dict, track: str, t0: float, gap: float) -> None:
     for c in project["clips"]:
         if c["track"] == track and c["start"] >= t0 - 1e-6:
             c["start"] = round(c["start"] - gap, 4)
+    for ct in project.get("cuts") or []:
+        if ct.get("track") == track and ct.get("seamStart", 0) >= t0 - 1e-6:
+            ct["seamStart"] = round(ct["seamStart"] - gap, 4)
 
 
-def remove_ranges(project: dict, cid: str, ranges: list[list[float]], ripple: bool = True, pad: float = 0.08) -> int:
+def ripple_open(project: dict, track: str, t0: float, gap: float) -> None:
+    for c in project["clips"]:
+        if c["track"] == track and c["start"] >= t0 - 1e-6:
+            c["start"] = round(c["start"] + gap, 4)
+    for ct in project.get("cuts") or []:
+        if ct.get("track") == track and ct.get("seamStart", 0) >= t0 - 1e-6:
+            ct["seamStart"] = round(ct["seamStart"] + gap, 4)
+
+
+def remove_ranges(
+    project: dict,
+    cid: str,
+    ranges: list[list[float]],
+    ripple: bool = True,
+    pad: float = 0.08,
+    pad_before: float | None = None,
+) -> int:
     """Kaynak zamanindaki araliklari kliplerden cikar (sessizlik / donuk sahne kirpma). Kac parca silindigini doner."""
+    import copy
+    import uuid
     c = find_clip(project, cid)
     sp = float(c.get("speed", 1) or 1)
+    pb = pad if pad_before is None else pad_before
     removed = 0
+    cuts = project.setdefault("cuts", [])
     for a, b in sorted(ranges, key=lambda r: -r[0]):   # sondan basa: onceki zamanlar kaymaz
-        a, b = a + pad, b - pad
-        if b - a < 0.15:
+        a, b = a + pad, b - pb
+        if b - a < 0.08:
             continue
         clips = [x for x in project["clips"] if x["track"] == c["track"] and x.get("asset") == c.get("asset")]
         for x in clips:
@@ -1781,12 +1806,42 @@ def remove_ranges(project: dict, cid: str, ranges: list[list[float]], ripple: bo
                 continue
             if t1 < mid["start"] + mid["dur"] - 0.02:
                 split_clip(project, mid["id"], t1)
+            cut_snap = copy.deepcopy(mid)
             project["clips"].remove(mid)
             if ripple:
                 ripple_close(project, c["track"], t1, t1 - t0)
+            cuts.append({
+                "id": f"cut_{uuid.uuid4().hex[:8]}",
+                "track": c["track"],
+                "seamStart": round(t0, 4),
+                "dur": round(cut_snap["dur"], 4),
+                "clip": cut_snap,
+            })
             removed += 1
             break
     return removed
+
+
+def restore_cuts(project: dict, cut_ids: list[str]) -> list[str]:
+    """Secili kesilmis bolgeleri zaman cizelgesinde sadece o bolgeler icin eski haline getirir."""
+    import copy
+    wanted = set(cut_ids)
+    cuts = project.get("cuts") or []
+    targets = sorted(
+        [ct for ct in cuts if ct.get("id") in wanted],
+        key=lambda ct: -float(ct.get("seamStart", 0)),
+    )
+    restored_ids: list[str] = []
+    for ct in targets:
+        seam = float(ct.get("seamStart", 0))
+        clip = copy.deepcopy(ct["clip"])
+        dur = float(clip["dur"])
+        ripple_open(project, ct["track"], seam, dur)
+        clip["start"] = round(seam, 4)
+        project["clips"].append(clip)
+        cuts.remove(ct)
+        restored_ids.append(clip["id"])
+    return restored_ids
 
 
 def summary(project: dict) -> dict:
