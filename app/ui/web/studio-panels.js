@@ -269,7 +269,7 @@ function addFxClip(id, t, snapped) {
 
 // ---------------------------------------------------------------- gecisler
 P.trans = () => {
-  pb.innerHTML = `<div class="hint">Seçili klibin girişine uygulanır (önceki klipten bu klibe geçerken). Süreyi sağ panelden ayarla.</div><div class="grid2">${Object.entries(ST.cat.trans).map(([k, v]) => `<div class="card" data-tr="${k}"><b>${esc(v)}</b></div>`).join("")}</div>` +
+  pb.innerHTML = `<div class="hint">Seçili klibin girişine uygulanır (önceki klipten bu klibe geçerken). Süreyi sağ panelden ayarla.</div><div class="grid2">${Object.entries(ST.cat.trans).map(([k, v]) => `<div class="card" data-tr="${k}" title="${esc(v)}"><i class="trv tv-${esc(k)}"></i><b>${esc(v)}</b></div>`).join("")}</div>` +
     `<div class="row" style="margin-top:10px"><button class="tb" id="trAll">Seçili tüm kesimlere uygula</button></div>`;
   $("#trAll").onclick = () => toast("Önce klipleri seç (Shift+tık), sonra geçişe tıkla");
 };

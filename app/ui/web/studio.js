@@ -469,6 +469,7 @@ function drawClip(c, t) {
   src = clipBuf;
   for (const id of fxOn) for (const ov of ST.cat.fx[id]?.ov || []) SFX.overlay(cbx, ov, W, H, t, local);
   if (tr?.flash) SFX.tint(cbx, W, H, "#fff", "lighter", tr.flash);
+  if (tr?.leak) SFX.tint(cbx, W, H, "#ff9a3c", "lighter", tr.leak);
   if (tr?.rgb) SFX.overlay(cbx, "rgb-strong", W, H, t, local);
   // 3) donusum + saydamlik -> ana tuval
   let alpha = c.opacity ?? 1;
@@ -481,13 +482,15 @@ function drawClip(c, t) {
   vctx.globalAlpha = clamp(alpha, 0, 1);
   const bl = Math.max(tr?.blur || 0, A.b * .45);
   if (bl > .05) vctx.filter = `blur(${bl * PS}px)`;
-  const sc = c.scale ?? 1, rot = ((c.rot || 0) + A.r) * Math.PI / 180;
+  if (tr?.mask) SFX.transMask(vctx, tr.mask, W, H);
+  const sc = c.scale ?? 1, rot = ((c.rot || 0) + A.r + (tr?.rot || 0)) * Math.PI / 180;
   // contain'de bos kenarlar saydam: transform merkezi = cizilen goruntunun merkezi
-  vctx.translate(W / 2 + ((c.x || 0) + A.x) * W + shx + (tr?.dx || 0) * W, H / 2 + ((c.y || 0) + A.y) * H + shy);
+  vctx.translate(W / 2 + ((c.x || 0) + A.x) * W + shx + (tr?.dx || 0) * W, H / 2 + ((c.y || 0) + A.y) * H + shy + (tr?.dy || 0) * H);
   if (rot) vctx.rotate(rot);
   const ksx = sc * A.s * A.sx, ksy = sc * A.s * A.sy;
   if (ksx !== 1 || ksy !== 1) vctx.scale(Math.max(1e-4, ksx), Math.max(1e-4, ksy));
   vctx.drawImage(src, -W / 2, -H / 2);
+  if (tr?.pix > .01) { vctx.globalAlpha *= tr.pix; vctx.drawImage(SFX.pixelate(src, W, H, 1), -W / 2, -H / 2); }   // ffmpeg: pikselli kopya ile karisim
   vctx.restore();
 }
 const lutLoading = new Set();

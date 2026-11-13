@@ -372,3 +372,45 @@ pre.code { background: var(--bg); border: 1px solid var(--line); padding: 8px; f
 .keygrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; max-height: 70vh; overflow: auto; }
 .tb.pri.red { background: #B4235A; border-color: #FF4F8B; }
 body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
+
+/* ---- gecis kartlari: uzerine gelince canli mini onizleme (A klibi koyu, B klibi renkli gelir) ---- */
+@property --tva { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.card .trv { display: block; height: 38px; margin: -8px -8px 4px; border-radius: 10px 10px 0 0; overflow: hidden; position: relative;
+  background: repeating-linear-gradient(45deg, #1b1b24 0 6px, #22222d 6px 12px); }
+.card .trv::after { content: ""; position: absolute; inset: 0; background: linear-gradient(120deg, var(--violet), var(--em));
+  animation: 1.2s cubic-bezier(.33, 1, .68, 1) -1.19s infinite paused; }   /* durgunken son kare gorunur */
+.card:hover .trv::after { animation-play-state: running; animation-delay: 0s; }
+.tv-none::after { opacity: 0; }
+.tv-fade::after { animation-name: tvFade; } .tv-flash::after { animation-name: tvFlash; } .tv-lightleak::after { animation-name: tvLeak; }
+.tv-zoom::after { animation-name: tvZoom; } .tv-zoomblur::after { animation-name: tvZoomBlur; } .tv-blur::after, .tv-pixel::after { animation-name: tvBlur; }
+.tv-slide::after { animation-name: tvSlideL; } .tv-slide-r::after { animation-name: tvSlideR; } .tv-slide-u::after { animation-name: tvSlideU; }
+.tv-slide-d::after { animation-name: tvSlideD; } .tv-whip::after { animation-name: tvWhip; } .tv-spin::after { animation-name: tvSpin; }
+.tv-glitch::after, .tv-shake-in::after { animation-name: tvShake; animation-timing-function: steps(8); }
+.tv-wipe-r::after { animation-name: tvWipeR; } .tv-wipe-l::after { animation-name: tvWipeL; } .tv-wipe-d::after { animation-name: tvWipeD; }
+.tv-wipe-u::after { animation-name: tvWipeU; } .tv-iris::after { animation-name: tvIris; } .tv-barn-v::after { animation-name: tvBarnV; }
+.tv-barn-h::after { animation-name: tvBarnH; } .tv-eye::after { animation-name: tvEye; }
+.tv-clock::after { animation-name: tvClock; -webkit-mask: conic-gradient(#000 var(--tva), transparent 0); mask: conic-gradient(#000 var(--tva), transparent 0); }
+.tv-pixel::after { animation-timing-function: steps(5); }
+@keyframes tvFade { from { opacity: 0; } }
+@keyframes tvFlash { from { filter: brightness(4); } }
+@keyframes tvLeak { from { filter: sepia(1) saturate(4) brightness(2.2); } }
+@keyframes tvZoom { from { transform: scale(1.6); } }
+@keyframes tvZoomBlur { from { transform: scale(1.6); filter: blur(5px); } }
+@keyframes tvBlur { from { filter: blur(7px); } }
+@keyframes tvSlideL { from { transform: translateX(100%); } }
+@keyframes tvSlideR { from { transform: translateX(-100%); } }
+@keyframes tvSlideU { from { transform: translateY(100%); } }
+@keyframes tvSlideD { from { transform: translateY(-100%); } }
+@keyframes tvWhip { from { transform: translateX(100%); filter: blur(6px); } }
+@keyframes tvSpin { from { transform: rotate(-90deg) scale(.5); } }
+@keyframes tvShake { 0% { transform: translate(6%, 10%); } 25% { transform: translate(-5%, -8%); } 50% { transform: translate(3%, 5%); } 75% { transform: translate(-1%, -2%); } }
+@keyframes tvWipeR { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
+@keyframes tvWipeL { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0); } }
+@keyframes tvWipeD { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0); } }
+@keyframes tvWipeU { from { clip-path: inset(100% 0 0 0); } to { clip-path: inset(0); } }
+@keyframes tvIris { from { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(75% at 50% 50%); } }
+@keyframes tvBarnV { from { clip-path: inset(0 50%); } to { clip-path: inset(0); } }
+@keyframes tvBarnH { from { clip-path: inset(50% 0); } to { clip-path: inset(0); } }
+@keyframes tvEye { from { clip-path: ellipse(62% 0% at 50% 50%); } to { clip-path: ellipse(62% 120% at 50% 50%); } }
+@keyframes tvClock { from { --tva: 0deg; } to { --tva: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .card:hover .trv::after { animation-play-state: paused; } }

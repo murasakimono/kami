@@ -136,3 +136,25 @@ def test_lottie_resolve_direct():
     from app.core.lottie_conv import resolve
     assert resolve("https://lottie.host/a/b.json") == "https://lottie.host/a/b.json"
     assert resolve("https://assets-v2.lottiefiles.com/a/x/y.lottie?v=1").endswith("?v=1")
+
+
+def test_all_transitions_have_ffmpeg_chain():
+    for kind in S.TRANS_FF:
+        ch = S._trans_in(kind, 0.4, 1080, 1920, "tr0", 0.1, 30)
+        assert ch and ch != "null", kind
+
+
+def test_transitions_run_in_ffmpeg():
+    """Her gecis zinciri gercek ffmpeg'de calisir (ffmpeg yoksa atlanir)."""
+    import shutil
+    import subprocess
+    import pytest
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        pytest.skip("ffmpeg yok")
+    for kind in sorted(S.TRANS_FF):
+        ch = S._trans_in(kind, 0.3, 320, 180, "tr0", 0.05, 30)
+        g = f"[0:v]format=rgba,{ch},format=rgba[o]"
+        r = subprocess.run([ff, "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=0.5", "-filter_complex", g,
+                            "-map", "[o]", "-f", "null", "-"], capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, (kind, r.stderr[-300:])

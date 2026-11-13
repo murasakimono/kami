@@ -117,7 +117,13 @@ from app.core.studio_fx2 import FX2 as _FX2  # noqa: E402
 FX.update({k: v for k, v in _FX2.items() if k not in FX})
 
 # Gecis (klip girisi): ffmpeg + onizleme ayni adla
-TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom vuruşu", "slide": "Kaydırma", "blur": "Bulanık", "glitch": "Glitch"}
+TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom vuruşu", "slide": "Kaydırma (sağdan)", "blur": "Bulanık", "glitch": "Glitch",
+         # faz 5 paketi: maske / hareket / doku gecisleri (onizleme: studio-fx.js transIn)
+         "slide-r": "Kaydırma (soldan)", "slide-u": "Kaydırma (alttan)", "slide-d": "Kaydırma (üstten)", "whip": "Savurma (whip pan)",
+         "wipe-r": "Silme →", "wipe-l": "Silme ←", "wipe-d": "Silme ↓", "wipe-u": "Silme ↑", "iris": "Daire açılış",
+         "barn-v": "Perde (dikey)", "barn-h": "Perde (yatay)", "eye": "Göz açılışı", "clock": "Saat yönü",
+         "spin": "Dönerek", "pixel": "Pikselden netleş", "shake-in": "Sarsıntılı giriş", "lightleak": "Işık sızması", "zoomblur": "Bulanık zoom"}
+TRANS_FF = set(TRANS) - {"none", "fade"}
 
 # Hazir zoom sablonlari (klibe gore sn); kullanicininkiler CACHE/templates.json'a eklenir
 ZOOM_PRESETS = [
@@ -791,8 +797,8 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         if fo > 0:
             ch.append(f"fade=t=out:st={d - cut0 - fo:.3f}:d={fo:.3f}:alpha=1")
         tin = tr.get("in")
-        if tin in ("flash", "blur", "zoom", "glitch", "slide") and cut0 < tdur:
-            ch.append(_trans_in(tin, tdur, W, H, f"tr{k}"))
+        if tin in TRANS_FF and cut0 < tdur:
+            ch.append(_trans_in(tin, tdur, W, H, f"tr{k}", cut0, FPS))
         off = max(s, T0) - T0
         ch.append(f"setpts=PTS+{off:.4f}/TB")
         graph.append(f"[{ii}:v]" + ",".join(ch) + f"[c{k}]")
@@ -1099,20 +1105,58 @@ def _fx_chain(ff: str, W: int, H: int, start: float, tag: str) -> str:
     return s
 
 
-def _trans_in(kind: str, d: float, W: int, H: int, tag: str = "t") -> str:
+def _trans_in(kind: str, d: float, W: int, H: int, tag: str = "t", c0: float = 0.0, fps: int = 30) -> str:
+    """Klip girisi gecisi. Akisin t=0 ani klibin c0. saniyesi (bastan kirpilmissa); onizleme: studio-fx.js transIn.
+    u = 0..1 ilerleme, e = cubic ease-out (onizleme ile ayni egri)."""
+    def prog(v: str) -> tuple[str, str]:
+        u = f"min(1,max(0,({v}+{c0:.4f})/{d:.4f}))"
+        return u, f"(1-pow(1-{u},3))"
+    u, e = prog("t")                   # eq/crop/rotate ifadeleri
+    U, E = prog("T")                   # geq/blend ifadeleri
+    end = max(0.001, d - c0)
+    en = f"enable='lt(t,{end:.4f})'"
     if kind == "flash":
-        return f"eq=brightness='max(0,0.9*(1-t/{d:.3f}))':eval=frame"
-    if kind == "blur":
-        # gblur sigma ifade almaz: bulanik kopya ile zamanla karisim
-        a = f"min(1,T/{d:.3f})"
-        return (f"split[{tag}a][{tag}b];[{tag}b]gblur=sigma=24[{tag}c];"
-                f"[{tag}a][{tag}c]blend=all_expr='A*{a}+B*(1-{a})'")
+        return f"eq=brightness='0.9*(1-{u})':eval=frame"
+    if kind == "lightleak":            # sicak turuncu patlama, sonra normale don
+        return f"eq=brightness='0.3*(1-{u})':gamma_r='1+0.9*(1-{u})':gamma_b='1-0.35*(1-{u})':eval=frame"
+    if kind in ("blur", "pixel", "zoomblur"):
+        # gblur sigma ifade almaz: bulanik/pikselli kopya ile zamanla karisim
+        soft = f"scale=iw/32:-2,scale={W}:{H}:flags=neighbor" if kind == "pixel" else "gblur=sigma=24"
+        pre = ""
+        if kind == "zoomblur":
+            pre = (f"zoompan=z='max(1,1.35-0.35*(1-pow(1-min(1,max(0,(on/{fps}+{c0:.4f})/{d:.4f})),3)))':"
+                   f"x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={W}x{H}:fps={fps},format=rgba,")
+        return (f"{pre}split[{tag}a][{tag}b];[{tag}b]{soft},format=rgba[{tag}c];"
+                f"[{tag}a][{tag}c]blend=all_expr='A*{U}+B*(1-{U})'")
     if kind == "zoom":
-        return (f"zoompan=z='max(1,1.35-0.35*min(1,on/{d:.3f}/25))':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={W}x{H},format=rgba")
+        return (f"zoompan=z='max(1,1.35-0.35*(1-pow(1-min(1,max(0,(on/{fps}+{c0:.4f})/{d:.4f})),3)))':"
+                f"x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={W}x{H}:fps={fps},format=rgba")
     if kind == "glitch":
-        return f"rgbashift=rh=12:bh=-12:enable='lt(t,{d:.3f})'"
-    if kind == "slide":
-        return f"pad=iw*2:ih:0:0:color=black@0,crop={W}:{H}:x='max(0,iw/2*(1-t/{d:.3f}))':y=0"
+        return f"rgbashift=rh=12:bh=-12:{en}"
+    if kind in ("slide", "slide-r", "whip"):   # slide/whip: sagdan gelir; slide-r: soldan
+        x = f"iw/2*(1-{e})" if kind == "slide-r" else f"iw/2*{e}"
+        pad = "0:0" if kind == "slide-r" else "iw:0"
+        out = f"pad=iw*2:ih:{pad}:color=black@0,crop={W}:{H}:x='{x}':y=0"
+        return out + (f",gblur=sigma=36:sigmaV=0.5:{en}" if kind == "whip" else "")
+    if kind in ("slide-u", "slide-d"):
+        y = f"ih/2*{e}" if kind == "slide-u" else f"ih/2*(1-{e})"
+        pad = "0:ih" if kind == "slide-u" else "0:0"
+        return f"pad=iw:ih*2:{pad}:color=black@0,crop={W}:{H}:x=0:y='{y}'"
+    if kind == "spin":
+        return f"rotate=a='-(1-{e})*PI/2':c=black@0:{en}"
+    if kind == "shake-in":             # sonradan kalici zoom olmasin diye yalniz gecis suresince bindirilir
+        k = f"max(0,1-({e}))"
+        return (f"split[{tag}a][{tag}b];[{tag}b]crop=iw-48:ih-48:x='24+24*sin(t*73)*{k}':y='24+24*cos(t*61)*{k}',"
+                f"scale={W}:{H},format=rgba[{tag}c];[{tag}a][{tag}c]overlay={en}")
+    masks = {
+        "wipe-r": f"lt(X,W*{E})", "wipe-l": f"gt(X,W*(1-{E}))", "wipe-d": f"lt(Y,H*{E})", "wipe-u": f"gt(Y,H*(1-{E}))",
+        "iris": f"lt(hypot(X-W/2,Y-H/2),{E}*hypot(W,H)/2)",
+        "barn-v": f"lt(abs(X-W/2),{E}*W/2)", "barn-h": f"lt(abs(Y-H/2),{E}*H/2)",
+        "eye": f"lt(abs(Y-H/2),{E}*H*1.2*sqrt(max(0,1-pow((X-W/2)/(W*0.62),2))))",
+        "clock": f"lt(mod(atan2(X-W/2,H/2-Y)+2*PI,2*PI),{E}*2*PI)",
+    }
+    if kind in masks:
+        return f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if({masks[kind]},alpha(X,Y),0)':{en}"
     return "null"
 
 

@@ -82,17 +82,60 @@ const SFX = (() => {
     return [Math.sin(t * 61) * a, Math.cos(t * 53) * a];
   }
   // klip girisi gecisleri (studio.py _trans_in ile ayni sure mantigi)
+  // u: dogrusal ilerleme, e: cubic ease-out (ffmpeg tarafiyla ayni egri)
   function transIn(kind, local, d) {
-    const u = Math.min(1, Math.max(0, local / d));
-    const r = { alpha: 1, flash: 0, blur: 0, zoom: 1, dx: 0, rgb: false };
+    const u = Math.min(1, Math.max(0, local / d)), e = 1 - Math.pow(1 - u, 3);
+    const r = { alpha: 1, flash: 0, leak: 0, blur: 0, zoom: 1, dx: 0, dy: 0, rot: 0, pix: 0, mask: null, rgb: false };
     if (u >= 1) return r;
     if (kind === "fade") r.alpha = u;
     else if (kind === "flash") r.flash = .9 * (1 - u);
+    else if (kind === "lightleak") { r.leak = .65 * (1 - u); r.flash = .25 * (1 - u); }
     else if (kind === "blur") r.blur = 20 * (1 - u);
-    else if (kind === "zoom") r.zoom = 1.35 - .35 * u;
-    else if (kind === "slide") r.dx = 1 - u;
+    else if (kind === "pixel") r.pix = 1 - u;
+    else if (kind === "zoom") r.zoom = 1.35 - .35 * e;
+    else if (kind === "zoomblur") { r.zoom = 1.35 - .35 * e; r.blur = 20 * (1 - u); }
+    else if (kind === "slide") r.dx = 1 - e;
+    else if (kind === "slide-r") r.dx = -(1 - e);
+    else if (kind === "slide-u") r.dy = 1 - e;
+    else if (kind === "slide-d") r.dy = -(1 - e);
+    else if (kind === "whip") { r.dx = 1 - e; r.blur = 18 * (1 - u); }
+    else if (kind === "spin") r.rot = -90 * (1 - e);
+    else if (kind === "shake-in") { const k = 1 - e; r.dx = .0125 * Math.sin(local * 73) * k; r.dy = .022 * Math.cos(local * 61) * k; }
     else if (kind === "glitch") r.rgb = true;
+    else if (/^(wipe-|barn-|iris|eye|clock)/.test(kind)) r.mask = { kind, e };
     return r;
   }
-  return { overlay, shakeOffset, transIn, tint, copy };
+  // maske gecisleri: tuval koordinatinda klip yolu (studio.py _trans_in geq maskeleriyle ayni sekiller)
+  function transMask(ctx, m, W, H) {
+    const e = m.e, cx = W / 2, cy = H / 2;
+    ctx.beginPath();
+    switch (m.kind) {
+      case "wipe-r": ctx.rect(0, 0, W * e, H); break;
+      case "wipe-l": ctx.rect(W * (1 - e), 0, W * e, H); break;
+      case "wipe-d": ctx.rect(0, 0, W, H * e); break;
+      case "wipe-u": ctx.rect(0, H * (1 - e), W, H * e); break;
+      case "barn-v": ctx.rect(cx - e * cx, 0, W * e, H); break;
+      case "barn-h": ctx.rect(0, cy - e * cy, W, H * e); break;
+      case "iris": ctx.arc(cx, cy, Math.max(.5, e * Math.hypot(W, H) / 2), 0, Math.PI * 2); break;
+      case "eye": {   // |y-cy| < e*H*1.2*sqrt(1-((x-cx)/(0.62W))^2)
+        const rx = W * .62, steps = 48;
+        for (let i = 0; i <= steps; i++) { const x = cx - rx + 2 * rx * i / steps, q = (x - cx) / rx; ctx.lineTo(x, cy - e * H * 1.2 * Math.sqrt(Math.max(0, 1 - q * q))); }
+        for (let i = steps; i >= 0; i--) { const x = cx - rx + 2 * rx * i / steps, q = (x - cx) / rx; ctx.lineTo(x, cy + e * H * 1.2 * Math.sqrt(Math.max(0, 1 - q * q))); }
+        break;
+      }
+      case "clock": { const R = Math.hypot(W, H); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + e * Math.PI * 2); ctx.closePath(); break; }
+      default: ctx.rect(0, 0, W, H);
+    }
+    ctx.clip();
+  }
+  // pikselden netles: kucult + en yakin komsu ile buyut (ffmpeg: scale=iw/32 + blend)
+  const pixC = document.createElement("canvas"), pixG = pixC.getContext("2d"), pixO = document.createElement("canvas"), pixOG = pixO.getContext("2d");
+  function pixelate(src, W, H, amt) {
+    const f = 1 + 31 * amt, w = Math.max(1, Math.round(W / f)), h = Math.max(1, Math.round(H / f));
+    pixC.width = w; pixC.height = h; pixG.drawImage(src, 0, 0, w, h);
+    if (pixO.width !== W || pixO.height !== H) { pixO.width = W; pixO.height = H; }
+    pixOG.clearRect(0, 0, W, H); pixOG.imageSmoothingEnabled = false; pixOG.drawImage(pixC, 0, 0, W, H);
+    return pixO;
+  }
+  return { overlay, shakeOffset, transIn, transMask, pixelate, tint, copy };
 })();
