@@ -93,7 +93,8 @@ def t_catalog() -> Any:
     c = S.catalog()
     return {"fx": {k: f"{v['name']} [{v['pack']}]" for k, v in c["fx"].items()}, "trans": c["trans"],
             "zoom": [{"id": z["id"], "name": z["name"]} for z in c["zoom"]], "captions": c["captions"], "anims": c["anims"],
-            "subscribe": c["subscribe"], "graphics": c["graphics"], "templates": c["templates"], "afx": c["afx"], "deliver": c["deliver"]}
+            "subscribe": c["subscribe"], "graphics": c["graphics"], "templates": c["templates"], "afx": c["afx"], "deliver": c["deliver"],
+            "tanim": c["tanim"], "canim": {k: ({i: (v["name"] if isinstance(v, dict) else v) for i, v in d.items()}) for k, d in c["canim"].items()}}
 
 
 @tool("new_project", "Yeni proje oluşturur ve Studio'nun açık projesi yapar. Dikey video için w=1080,h=1920.",
@@ -154,7 +155,8 @@ def t_add_clip(asset: str, start: float, dur: float = 0, track: str = "", path: 
 
 
 @tool("update_clip", "Klip alanlarını değiştirir (start, dur, in, speed, vol, fadeIn, fadeOut, x, y, scale, rot, opacity, fit, adj{bri,con,sat,hue,temp,blur}, "
-      "fx[], trans{in,dur}, text, style{font,size,color,outline,outlineColor,glow,anim,pos,x,y,caption,highlight,...}, mode, zoom[]). "
+      "fx[], fxAt{<fx>:{at:in|out|all,d}}, anim{in,out,loop,inDur,outDur,inEase,outEase,loopAmt,loopSpeed} (video/görsel: catalog.canim), "
+      "trans{in,dur}, text, style{font,size,color,outline,outlineColor,glow,animIn,animOut,animLoop,inDur,outDur (catalog.tanim),pos,x,y,caption,highlight,...}, mode, zoom[]). "
       "null verilen alan silinir.", {"id": STR, "set": {"type": "object"}, "path": PATH}, ["id", "set"])
 def t_update(id: str, set: dict, path: str = "") -> Any:
     p, pr = load(path)
@@ -193,8 +195,8 @@ def t_delete(ids: list[str], ripple: bool = False, path: str = "") -> Any:
     return {"ok": True}
 
 
-@tool("add_text", "Metin klibi ekler. style: font, size (ekran yüksekliği %), color, outline, outlineColor, glow, glowColor, anim "
-      "(pop/fade/slide/type/bounce/shake/zoom/glitch), pos (top/center/bottom ya da x,y 0-1).",
+@tool("add_text", "Metin klibi ekler. style: font, size (ekran yüksekliği %), color, outline, outlineColor, glow, glowColor, "
+      "animIn / animOut / animLoop (giriş/çıkış/döngü; adlar catalog.tanim), inDur, outDur, pos (top/center/bottom ya da x,y 0-1).",
       {"text": STR, "start": N, "dur": N, "style": {"type": "object"}, "path": PATH}, ["text", "start"])
 def t_text(text: str, start: float, dur: float = 3, style: dict | None = None, path: str = "") -> Any:
     p, pr = load(path)
