@@ -125,11 +125,13 @@ async function stockGet(it, toTimeline) {
 // ---- yapay zeka
 async function brAI() {
   const m = $("#brmain");
-  const hasKey = ST.cat.keys?.gemini;
+  const liveKeys = (await api.studio_keys_status?.().catch(() => null)) || ST.cat.keys || {};
+  const hasKey = liveKeys.gemini;
+  const keyPills = Object.entries(liveKeys).map(([k, ok]) => `<span class="hint" style="padding:2px 6px;border-radius:6px;border:1px solid var(--line);color:${ok ? "var(--em)" : "var(--mute)"}">${esc(k)}: ${ok ? "hazır" : "yok"}</span>`).join(" ");
   const bank = BR.trBank || (BR.trBank = await api.studio_tr_meme_bank().catch(() => ({ aiPrompts: [] })));
   const prompts = bank?.aiPrompts || [];
   const promptChips = prompts.length ? `<div class="hint" style="margin-top:6px">🐛 Slow-Mo AI Böcek & TR Meme Promptları (tıkla ${hasKey ? "doldur + " : ""}kopyala):</div><div class="catpills" id="aiMemeChips">${prompts.map((p, i) => `<button data-aiprompt="${i}">${esc(p.title)}</button>`).join("")}</div>` : "";
-  m.innerHTML = `<div class="brhead"><h2>Yapay zeka ile üret</h2></div>
+  m.innerHTML = `<div class="brhead"><h2>Yapay zeka ile üret</h2><span class="sp"></span>${keyPills}</div>
     <div class="aigrid">
       <div class="aicard"><h3>Gemini (API)</h3>${hasKey ? `
         <div class="seg"><button data-aik="image" class="${BR.aiKind === "image" ? "on" : ""}">Görsel</button><button data-aik="video" class="${BR.aiKind === "video" ? "on" : ""}">Video</button></div>
@@ -256,17 +258,89 @@ function renderStrip() {
   }).join("") || '<div class="hint">Zaman çizelgesinde video yok.</div>';
 }
 $("#strip").addEventListener("click", e => { const s = e.target.closest("[data-sc]"); if (!s) return; const c = ST.p.clips.find(x => x.id === s.dataset.sc); ST.sel = new Set([c.id]); seek(c.start + Math.min(.5, c.dur / 2)); renderColor(); });
+let CURVE_CH = "luma";
+function evalCurvePts(pts, x) {
+  if (!pts || pts.length < 2) return x;
+  const s = [...pts].filter(p => p && p.length >= 2).map(p => [+p[0], +p[1]]).sort((a, b) => a[0] - b[0]);
+  if (s.length < 2) return x;
+  if (x <= s[0][0]) return clamp(s[0][1], 0, 1);
+  for (let i = 0; i < s.length - 1; i++) {
+    const [x0, y0] = s[i], [x1, y1] = s[i + 1];
+    if (x <= x1) return clamp(y0 + (y1 - y0) * ((x - x0) / Math.max(1e-6, x1 - x0)), 0, 1);
+  }
+  return clamp(s[s.length - 1][1], 0, 1);
+}
+function drawCurveCv(cv, c) {
+  if (!cv) return;
+  const g = cv.getContext("2d"), W = cv.width, H = cv.height, pad = 10, uw = W - 2 * pad, uh = H - 2 * pad;
+  const X = u => pad + u * uw, Y = v => H - pad - v * uh;
+  g.clearRect(0, 0, W, H); g.fillStyle = "#0B0912"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(255,255,255,.08)"; g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const t = i / 4; g.beginPath(); g.moveTo(X(t), Y(0)); g.lineTo(X(t), Y(1)); g.moveTo(X(0), Y(t)); g.lineTo(X(1), Y(t)); g.stroke(); }
+  const crv = c.grade?.curves || {};
+  const cols = { luma: "#EAE4FF", r: "#FB7185", g: "#34D399", b: "#60A5FA" };
+  for (const ch of ["luma", "r", "g", "b"]) {
+    const pts = crv[ch] || [[0, 0], [1, 1]];
+    g.strokeStyle = cols[ch]; g.globalAlpha = ch === CURVE_CH ? 1 : .3; g.lineWidth = ch === CURVE_CH ? 2.2 : 1.1;
+    g.beginPath();
+    for (let i = 0; i <= 64; i++) { const x = i / 64, y = evalCurvePts(pts, x); i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)); }
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  const apts = crv[CURVE_CH] || [[0, 0], [1, 1]];
+  g.fillStyle = cols[CURVE_CH];
+  for (const [px, py] of apts) { g.beginPath(); g.arc(X(px), Y(py), 4.5, 0, 7); g.fill(); }
+}
+function bindCurveCv(cv, c) {
+  if (!cv) return;
+  drawCurveCv(cv, c);
+  const W = cv.width, H = cv.height, pad = 10, uw = W - 2 * pad, uh = H - 2 * pad;
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height]; };
+  cv.oncontextmenu = e => {
+    e.preventDefault();
+    const [mx, my] = pos(e), crv = ((c.grade ||= {}).curves ||= {}), pts = [...(crv[CURVE_CH] || [[0, 0], [1, 1]])];
+    const i = pts.findIndex(([px, py], idx) => idx > 0 && idx < pts.length - 1 && Math.hypot(pad + px * uw - mx, H - pad - py * uh - my) < 10);
+    if (i > 0) { snap(); pts.splice(i, 1); crv[CURVE_CH] = pts; drawCurveCv(cv, c); changed(false); renderStrip(); }
+  };
+  cv.onpointerdown = e => {
+    const [mx, my] = pos(e), crv = ((c.grade ||= {}).curves ||= {});
+    let pts = (crv[CURVE_CH] || [[0, 0], [1, 1]]).map(p => [...p]);
+    let i = pts.findIndex(([px, py]) => Math.hypot(pad + px * uw - mx, H - pad - py * uh - my) < 11);
+    snap();
+    if (i < 0) {
+      const nx = +clamp((mx - pad) / uw, .02, .98).toFixed(3), ny = +clamp((H - pad - my) / uh, 0, 1).toFixed(3);
+      pts.push([nx, ny]); pts.sort((a, b) => a[0] - b[0]); i = pts.findIndex(p => p[0] === nx && p[1] === ny);
+    }
+    crv[CURVE_CH] = pts; drawCurveCv(cv, c); draw();
+    cv.setPointerCapture(e.pointerId);
+    cv.onpointermove = ev => {
+      const [x2, y2] = pos(ev);
+      const xmin = i === 0 ? 0 : i === pts.length - 1 ? 1 : pts[i - 1][0] + .02;
+      const xmax = i === 0 ? 0 : i === pts.length - 1 ? 1 : pts[i + 1][0] - .02;
+      pts[i][0] = +clamp((x2 - pad) / uw, xmin, xmax).toFixed(3);
+      pts[i][1] = +clamp((H - pad - y2) / uh, 0, 1).toFixed(3);
+      crv[CURVE_CH] = pts; drawCurveCv(cv, c); draw();
+    };
+    cv.onpointerup = () => { cv.onpointermove = null; changed(false); renderStrip(); };
+  };
+}
 async function renderColor() {
   renderStrip();
   const c = gradeClip(), box = $("#color");
   if (!c) { box.innerHTML = `<div class="ph"><b>Renk</b></div><div class="hint">Üstteki şeritten bir klip seç.</div>`; return; }
   const g = c.grade || {};
-  const luts = await api.studio_luts();
+  const _rawLuts = await api.studio_luts();
+  const luts = Array.isArray(_rawLuts) ? _rawLuts : [];
   box.innerHTML = `<div class="ph"><b>Renk</b><span class="sp"></span><span class="hint">${esc(assetOf(c)?.name || "")}</span></div>
     <div class="wheels">${WHEELS.map(([k, n]) => `<div class="wheel"><canvas data-wheel="${k}" width="112" height="112"></canvas><small>${n}</small>
       <input type="range" data-wm="${k}" min="-1" max="1" step="0.01" value="${(g._w?.[k]?.m ?? 0)}" title="Parlaklık"></div>`).join("")}</div>
     ${fld("Pozlama", "grade.exp", -2, 2, .01, g.exp || 0)}${fld("Kontrast", "grade.con", -.6, .8, .01, g.con || 0)}${fld("Doygunluk", "grade.sat", 0, 2, .01, g.sat ?? 1)}
     ${fld("Sıcaklık", "grade.temp", -1, 1, .01, g.temp || 0)}${fld("Ton (yeşil/mor)", "grade.tint", -1, 1, .01, g.tint || 0)}
+    <div class="sec">Film / Optik</div>
+    ${fld("Vinyet", "grade.vignette", 0, 1, .02, g.vignette || 0)}${fld("Film Greni", "grade.grain", 0, 1, .02, g.grain || 0)}${fld("Halation Glow", "grade.halation", 0, 1, .02, g.halation || 0)}
+    <div class="sec">Ton Eğrisi (Curves)</div>
+    <div class="catpills">${[["luma", "Tümü"], ["r", "Kırmızı"], ["g", "Yeşil"], ["b", "Mavi"]].map(([k, n]) => `<button type="button" class="${CURVE_CH === k ? "on" : ""}" data-cch="${k}">${n}</button>`).join("")}<button type="button" id="curveReset">Sıfırla</button></div>
+    <canvas id="curveCv" class="curve-cv" width="260" height="165" title="Tıkla/sürükle: nokta ekle/taşı · Sağ tık: sil"></canvas>
     <div class="sec">LUT</div>
     <label class="fld w2"><span>LUT</span><select class="in" data-k="grade.lut"><option value="">yok</option>${luts.map(l => `<option value="${esc(l.name)}"${l.name === g.lut ? " selected" : ""}>${esc(l.title)}</option>`).join("")}</select></label>
     ${fld("Yoğunluk", "grade.lutMix", 0, 1, .01, g.lutMix ?? 1)}
@@ -275,6 +349,7 @@ async function renderColor() {
     <div class="row" style="margin-top:10px"><button class="tb" id="grCopy">Tüm videolara uygula</button><button class="tb" id="grReset">Sıfırla</button></div>
     <div class="hint">Önizleme ekran kartında; dışa aktarımda aynı ayarlar tek bir 3D LUT'a pişirilir (birebir aynı sonuç).</div>`;
   for (const cv of $$("[data-wheel]", box)) drawWheel(cv, c);
+  bindCurveCv($("#curveCv", box), c);
   $("#lutImp").onclick = async () => { const got = await api.studio_lut_import(); if (got.length) { toast(`${got.length} LUT eklendi`); renderColor(); } };
 }
 function wheelState(c, k) { const w = ((c.grade ||= {})._w ||= {}); return (w[k] ||= { x: 0, y: 0, m: 0 }); }
@@ -314,6 +389,8 @@ $("#color").addEventListener("change", e => { inspSnapC = false; changed(false);
 function setKGrade(c, k, v) { const key = k.split(".")[1]; if (v === "" || v == null) delete c.grade[key]; else c.grade[key] = v; }
 $("#color").addEventListener("click", e => {
   const c = gradeClip(); if (!c) return;
+  const ch = e.target.closest("[data-cch]"); if (ch) { CURVE_CH = ch.dataset.cch; renderColor(); return; }
+  if (e.target.id === "curveReset") { snap(); if (c.grade?.curves) delete c.grade.curves[CURVE_CH]; changed(false); renderColor(); return; }
   const l = e.target.closest("[data-look]"); if (l) { snap(); c.grade = { ...clone(LOOKS[l.dataset.look]), lut: c.grade?.lut, lutMix: c.grade?.lutMix }; changed(false); renderColor(); return; }
   const d = e.target.closest("[data-open-dir2]"); if (d) { api.studio_open_folder(d.dataset.openDir2); return; }
   if (e.target.id === "grReset") { snap(); delete c.grade; changed(false); renderColor(); }
@@ -393,6 +470,7 @@ function renderMixer() {
       <div class="master"><h3>Ana çıkış</h3>
         <label class="fld w2"><span>Ses yüksekliği</span><select class="in" id="mxL">${[["", "Dokunma"], ["-14", "YouTube (-14 LUFS)"], ["-16", "Podcast (-16)"], ["-11", "TikTok/Reels (-11)"], ["-9", "Çok yüksek (-9)"]].map(([v, n]) => `<option value="${v}"${String(ms.lufs ?? "") === v ? " selected" : ""}>${n}</option>`).join("")}</select></label>
         <div class="fld"><span>Kısma miktarı</span><input type="range" id="mxD" min="0" max="1" step="0.05" value="${ms.duck ?? .6}"><input class="num" readonly value="${Math.round((ms.duck ?? .6) * 100)}%"></div>
+        <div class="row" style="margin:6px 0"><button class="tb" id="mxDuckFile" title="Müzik dosyasını konuşma klibine göre otomatik kıs ve içe aktar">🦆 Müzik Dosyasını Sesle Kıs</button></div>
         <div class="hint">“Kıs” açık izler (müzik), diğer izlerde konuşma varken otomatik kısılır (dışa aktarımda sidechain kompresör).</div>
         <div class="sec">Seçili klip · 10-Bant EQ & Pan</div><div id="mxClip" class="hint">Zaman çizelgesinde bir ses/video klibi seç.</div></div></div>`;
   const c = selClips()[0];
@@ -419,6 +497,17 @@ function scheduleSaveP() { changed(false); }
 $("#mixer").addEventListener("change", e => { if (e.target.id === "mxL") { snap(); (ST.p.master ||= {}).lufs = e.target.value ? +e.target.value : null; changed(false); } });
 $("#mixer").addEventListener("click", async e => {
   const mu = e.target.closest("[data-tm]"), so = e.target.closest("[data-ts]"), du = e.target.closest("[data-td]"), fx = e.target.closest("[data-tfix]"), ma = e.target.closest("[data-mafx]"), ep = e.target.closest("[data-meqp]");
+  if (e.target.id === "mxDuckFile") {
+    const duckC = ST.p.clips.find(x => trackOf(x).duck && assetOf(x)?.path);
+    const voiceC = ST.p.clips.find(x => !trackOf(x).duck && (trackOf(x).kind === "audio" || assetOf(x)?.audio) && assetOf(x)?.path);
+    if (!duckC || !voiceC) return toast("Bir izde 'Kıs' açıp diğer izde konuşma klibi seç");
+    busy("Müzik ses altına kısılıyor…");
+    const r = await api.studio_audio_duck(assetOf(duckC).path, assetOf(voiceC).path, "");
+    busy(null);
+    if (r?.ok && r.path) { await importPaths([r.path]); toast("Kısılmış müzik Medya'ya eklendi"); }
+    else toast(r?.error || "Sidechain duck başarısız");
+    return;
+  }
   if (mu) { snap(); const t = ST.p.tracks.find(x => x.id === mu.dataset.tm); t.mute = !t.mute; changed(); renderMixer(); }
   if (so) { snap(); const t = ST.p.tracks.find(x => x.id === so.dataset.ts); t.solo = !t.solo; changed(); renderMixer(); }
   if (du) { snap(); const t = ST.p.tracks.find(x => x.id === du.dataset.td); t.duck = !t.duck; changed(false); renderMixer(); }
@@ -441,13 +530,13 @@ function renderDeliver() {
     <div class="presets">${Object.entries(pre).map(([k, n]) => `<button class="preset${DV.preset === k ? " on" : ""}" data-pre="${k}"><i>${{ youtube: "▶", shorts: "▯", hevc: "H5", prores: "PR", gif: "GIF", webm: "W", mp3: "♪", wav: "≋" }[k] || "⬇"}</i><span>${esc(n)}</span></button>`).join("")}</div>
     <label class="fld w2"><span>Kalite</span><select class="in" id="dvQ"><option value="high"${DV.quality === "high" ? " selected" : ""}>Yüksek</option><option value="medium"${DV.quality === "medium" ? " selected" : ""}>Orta (küçük dosya)</option></select></label>
     <label class="fld w2"><span>Çözünürlük</span><select class="in" id="dvS">${Object.entries(SIZES).map(([k, n]) => `<option value="${k}"${DV.size === k ? " selected" : ""}>${n}</option>`).join("")}</select></label>
-    <label class="fld w2"><span>Aralık</span><select class="in" id="dvR"><option value="all">Tüm video</option><option value="sel">Seçili klipler</option><option value="mk">İlk–son işaret</option><option value="ph">Oynatma kafasından sona</option></select></label>
+    <label class="fld w2"><span>Aralık</span><select class="in" id="dvR"><option value="all">Tüm video</option><option value="loop">Döngü I–O</option><option value="sel">Seçili klipler</option><option value="mk">İlk–son işaret</option><option value="ph">Oynatma kafasından sona</option></select></label>
     <div class="row"><button class="tb pri" id="dvGo">⬇ Sıraya ekle ve başlat</button><button class="tb" id="dvThumb">Kapak karesi (PNG)</button></div>
     <div class="sec">Kuyruk</div><div id="dvQueue">${DV.queue.length ? "" : '<div class="hint">Boş.</div>'}</div>
     <div class="hint">Dışa aktarım her zaman asıl dosyalardan, ekran kartıyla (NVENC) yapılır. Stok kullandıysan atıflar: Videolar\\Kami Studio\\Stok\\atiflar.txt</div>`;
   $("#dvR").value = DV.range; renderQueue();
   $("#dvGo").onclick = enqueue;
-  $("#dvThumb").onclick = async () => { busy("Kare hazırlanıyor…"); const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url; const r = await api.studio_frame_png(p, ST.t, ""); busy(null); if (r.ok) { toast("Kaydedildi: " + r.path.split(/[\\/]/).pop()); api.open_path_folder(r.path); } else toast(r.error); };
+  $("#dvThumb").onclick = async () => { busy("Kare hazırlanıyor…"); const p = window.rootProjectClone ? window.rootProjectClone() : clone(ST.p); for (const a of Object.values(p.assets)) delete a.url; const r = await api.studio_frame_png(p, ST.t, ""); busy(null); if (r.ok) { toast("Kaydedildi: " + r.path.split(/[\\/]/).pop()); api.open_path_folder(r.path); } else toast(r.error); };
 }
 $("#deliver").addEventListener("click", e => { const p = e.target.closest("[data-pre]"); if (p) { DV.preset = p.dataset.pre; renderDeliver(); } });
 $("#deliver").addEventListener("change", e => { if (e.target.id === "dvQ") DV.quality = e.target.value; if (e.target.id === "dvS") DV.size = e.target.value; if (e.target.id === "dvR") DV.range = e.target.value; });
@@ -457,12 +546,13 @@ async function enqueue() {
   const out = await api.studio_pick_save_ext(ST.p.name, ext); if (!out) return;
   const o = { preset: DV.preset, quality: DV.quality };
   const sel = selClips();
+  if (DV.range === "loop" && ST.loopIn != null && ST.loopOut > ST.loopIn) o.range = [ST.loopIn, ST.loopOut];
   if (DV.range === "sel" && sel.length) o.range = [Math.min(...sel.map(c => c.start)), Math.max(...sel.map(c => c.start + c.dur))];
   if (DV.range === "mk" && ST.p.markers?.length > 1) { const ts = ST.p.markers.map(m => m.t).sort((a, b) => a - b); o.range = [ts[0], ts.at(-1)]; }
   if (DV.range === "ph") o.range = [ST.t, projEnd()];
   if (DV.size) o.size = DV.size.split("x").map(Number);
   await save();
-  const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
+  const p = window.rootProjectClone ? window.rootProjectClone() : clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
   const r = await api.studio_export(p, out, o);
   if (!r?.ok) { toast("Başlatılamadı: " + r?.error); return; }
   DV.queue.unshift({ job: r.job, out, state: "running", p: 0, t0: Date.now(), preset: DV.preset });

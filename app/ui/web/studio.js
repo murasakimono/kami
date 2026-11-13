@@ -8,7 +8,8 @@ let api = null;
 
 const ST = {
   p: null, path: "", sel: new Set(), cutSel: new Set(), t: 0, playing: false, px: 80, snap: true, ripple: false, linkTracks: true,
-  undo: [], redo: [], cat: { fx: {}, trans: {}, zoom: [], captions: {}, anims: {}, subscribe: {}, fonts: [] },
+  loopIn: null, loopOut: null, loopOn: false, scrubAudio: false, compoundStack: [],
+  undo: [], redo: [], cat: { fx: {}, trans: {}, zoom: [], captions: {}, anims: {}, subscribe: {}, fonts: [], stickers: {}, voiceChangers: {} },
   rt: {}, media: {}, dirty: false, lastSave: 0, binSel: new Set(), pq: .75, clip: null,
 };
 const TRACK_H = { video: 58, audio: 46, text: 34, fx: 30 };
@@ -83,6 +84,54 @@ function undo() { if (!ST.undo.length) return; ST.redo.push(JSON.stringify(ST.p)
 function redo() { if (!ST.redo.length) return; ST.undo.push(JSON.stringify(ST.p)); ST.p = JSON.parse(ST.redo.pop()); afterLoad(true); }
 let saveT = 0;
 function scheduleSave() { clearTimeout(saveT); saveT = setTimeout(save, 1500); }
+function rootProjectClone() {
+  const p = clone(ST.p);
+  if (ST.compoundStack?.length) {
+    let cur = p.clips;
+    for (let i = ST.compoundStack.length - 1; i >= 0; i--) {
+      const fr = ST.compoundStack[i];
+      const host = clone(fr.clips);
+      const target = host.find(x => x.id === fr.id);
+      if (target) {
+        target.children = cur;
+        target.dur = +Math.max(0.1, ...cur.map(x => (x.start || 0) + (x.dur || 0))).toFixed(4);
+      }
+      cur = host;
+    }
+    p.clips = cur;
+  }
+  return p;
+}
+function renderCompCrumb() {
+  const el = $("#compCrumb");
+  if (!el) return;
+  if (!ST.compoundStack?.length) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.innerHTML = `<button type="button" data-a="exitComp">‹ Ana Kurguya Dön</button><span>${esc(ST.compoundStack.map(x => x.name).join(" › "))}</span>`;
+}
+function enterCompound(c) {
+  if (!c || c.kind !== "compound") return;
+  snap();
+  ST.compoundStack.push({ id: c.id, name: c.name || "Bileşik Klip", clips: clone(ST.p.clips) });
+  ST.p.clips = clone(c.children || []);
+  ST.sel.clear(); ST.t = 0;
+  renderCompCrumb(); renderTimeline(); renderInsp(); draw();
+  toast("Bileşik klip içi açıldı");
+}
+function exitCompound() {
+  if (!ST.compoundStack?.length) return;
+  const fr = ST.compoundStack.pop();
+  const host = fr.clips;
+  const target = host.find(x => x.id === fr.id);
+  if (target) {
+    target.children = clone(ST.p.clips);
+    target.dur = +Math.max(0.1, ...target.children.map(x => (x.start || 0) + (x.dur || 0))).toFixed(4);
+  }
+  ST.p.clips = host;
+  ST.sel = target ? new Set([target.id]) : new Set();
+  renderCompCrumb(); changed();
+  toast("Üst zaman çizelgesine dönüldü");
+}
 async function save(as = false) {
   clearTimeout(saveT);
   ST.p.name = $("#pname").value.trim() || "Proje";
@@ -90,7 +139,7 @@ async function save(as = false) {
   if (as || !path) {
     if (as) { path = await api.studio_pick_save(ST.p.name, ".kstudio"); if (!path) return; }
   }
-  const p = clone(ST.p);
+  const p = rootProjectClone();
   for (const a of Object.values(p.assets)) { delete a.url; delete a.missing; }
   const r = await job("studio_save", [p, path || ""]);
   if (r?.ok) { ST.path = r.path; ST.dirty = false; $("#saved").textContent = "✓ kaydedildi"; $("#saved").classList.remove("dirty"); }
@@ -112,8 +161,8 @@ async function openProject(path) {
   try {
     const r = await job("studio_open", [path]);
     if (!r?.ok) throw new Error(r?.error || "açılamadı");
-    stopAll(); ST.p = r.project; ST.path = r.path; ST.undo = []; ST.redo = []; ST.t = 0; ST.dirty = false;
-    ST.p.markers ||= [];
+    stopAll(); ST.p = r.project; ST.path = r.path; ST.undo = []; ST.redo = []; ST.compoundStack = []; ST.t = 0; ST.dirty = false;
+    ST.p.markers ||= []; renderCompCrumb();
     afterLoad(); $("#saved").textContent = "✓ açık"; $("#saved").classList.remove("dirty");
     const miss = Object.values(ST.p.assets).filter(a => a.missing).length;
     if (miss) toast(`${miss} medya dosyası bulunamadı (taşınmış olabilir)`, 4000);
@@ -122,7 +171,7 @@ async function openProject(path) {
 }
 async function newProject() {
   if (ST.dirty) await save();
-  stopAll(); ST.p = await api.studio_new(); ST.path = ""; ST.undo = []; ST.redo = []; ST.t = 0;
+  stopAll(); ST.p = await api.studio_new(); ST.path = ""; ST.undo = []; ST.redo = []; ST.compoundStack = []; ST.t = 0; renderCompCrumb();
   afterLoad(); $("#saved").textContent = "";
 }
 
@@ -458,15 +507,22 @@ function ensureAudioNode(r, c) {
       return b;
     });
     const pan = ac.createStereoPanner ? ac.createStereoPanner() : null;
+    const vf = ac.createBiquadFilter();
+    vf.type = "allpass"; vf.frequency.value = 1000;
+    const vd = ac.createDelay(0.2); vd.delayTime.value = 0.025;
+    const vdg = ac.createGain(); vdg.gain.value = 0;
     const gain = ac.createGain();
     let prev = src;
     for (const b of eq) { prev.connect(b); prev = b; }
-    if (pan) { prev.connect(pan); prev = pan; }
+    prev.connect(vf);
+    vf.connect(vd); vd.connect(vdg);
+    if (pan) { vf.connect(pan); vdg.connect(pan); prev = pan; }
+    else { const mx = ac.createGain(); vf.connect(mx); vdg.connect(mx); prev = mx; }
     prev.connect(gain);
     const bus = studioTrackBus(c.track);
     if (bus) { gain.connect(bus.gain); r.track = c.track; }
     else gain.connect(ac.destination);
-    r.au = { src, eq, pan, gain };
+    r.au = { src, eq, vf, vd, vdg, pan, gain };
     return r.au;
   } catch { return null; }
 }
@@ -482,6 +538,15 @@ function updateAudioNode(r, c, vol, audible) {
   if (au.pan) au.pan.pan.value = clamp(c.pan || 0, -1, 1);
   const gArr = c.eq || [];
   au.eq.forEach((b, i) => { b.gain.value = clamp(+(gArr[i] || 0), -18, 18); });
+  if (au.vf) {
+    const vc = c.voice || "none";
+    if (vc === "megaphone") { au.vf.type = "bandpass"; au.vf.frequency.value = 1400; au.vf.Q.value = 1.6; au.vdg.gain.value = 0; }
+    else if (vc === "robot") { au.vf.type = "allpass"; au.vd.delayTime.value = 0.022; au.vdg.gain.value = 0.55; }
+    else if (vc === "demon") { au.vf.type = "lowpass"; au.vf.frequency.value = 650; au.vd.delayTime.value = 0.035; au.vdg.gain.value = 0.45; }
+    else if (vc === "deep") { au.vf.type = "lowpass"; au.vf.frequency.value = 1100; au.vdg.gain.value = 0; }
+    else if (vc === "chipmunk") { au.vf.type = "highpass"; au.vf.frequency.value = 280; au.vdg.gain.value = 0; }
+    else { au.vf.type = "allpass"; au.vdg.gain.value = 0; }
+  }
 }
 // gercek klip-klip gecis: sonraki bitisik klibin giris gecisi suresince bu klip altta devam eder (studio.py trans_tail)
 function transTail(c) {
@@ -528,6 +593,7 @@ function rampApply(c, pts) {
 function srcTime(c, t) {
   if (c.freeze) return c.in || 0;
   if (c.ramp?.length) return (c.in || 0) + rampAt(c, t - c.start)[0];
+  if (c.reverse && assetOf(c)?.kind === "video") return Math.max(0, (c.in || 0) + Math.max(0, c.dur - (t - c.start)) * (c.speed || 1));
   return (c.in || 0) + (t - c.start) * (c.speed || 1);
 }
 function curSpeed(c, t) { return c.freeze ? 0 : c.ramp?.length ? rampAt(c, t - c.start)[1] : (c.speed || 1); }
@@ -551,24 +617,29 @@ function syncMedia(t, hard = false) {
     const tk = trackOf(c).kind;
     if (!(a.kind === "audio" || (a.kind === "video" && !a.gif))) continue;
     if (tk !== "video" && tk !== "audio") continue;
-    const act = t >= c.start && t < c.start + c.dur && !trackOf(c).hide;
+    const aLead = a.audio ? Math.max(-c.dur * .8, +(c.audioLead || 0)) : 0;
+    const aTail = a.audio ? Math.max(-c.dur * .8, +(c.audioTail || 0)) : 0;
+    const vAct = t >= c.start && t < c.start + c.dur && !trackOf(c).hide;
+    const aAct = Boolean(a.audio || a.kind === "audio") && t >= c.start - aLead && t < c.start + c.dur + aTail && !trackOf(c).mute;
+    const act = vAct || aAct;
     const soon = !act && c.start > t && c.start - t < 1.5;
     if (!act && !soon && !(ST.rt[c.id] && Math.abs(c.start - t) < 10)) continue;
     keep.add(c.id);
     const r = mediaEl(c), el = r.el;
     if (act) {
-      const want = srcTime(c, t), vol = clipVol(c, t);
-      const audible = Boolean(a.audio || a.kind === "audio") && vol > 0 && !c.freeze;
+      const want = Math.max(0, srcTime(c, t)), vol = clipVol(c, t);
+      const audible = aAct && vol > 0 && !c.freeze && !c.reverse && (ST.playing || ST._scrubActive);
       el.muted = !audible;
       if (ST.playing || ST.ac) updateAudioNode(r, c, vol, audible);
       else el.volume = Math.min(1, vol);
       el.playbackRate = clamp(curSpeed(c, t) || 1, .0625, 16);
-      if (ST.playing && !c.freeze) {
+      if ((ST.playing || ST._scrubActive) && !c.freeze && !c.reverse) {
         if (el.paused) { el.currentTime = want; el.play().catch(() => {}); }
         else if (Math.abs(el.currentTime - want) > .25) el.currentTime = want;
       } else {
         if (!el.paused) el.pause();
-        if (hard || Math.abs(el.currentTime - want) > .5 / ST.p.fps) el.currentTime = want;
+        const tol = c.reverse && ST.playing ? .035 : .5 / ST.p.fps;
+        if (hard || Math.abs(el.currentTime - want) > tol) el.currentTime = want;
       }
     } else {
       if (!el.paused) el.pause();
@@ -646,22 +717,28 @@ function drawClip(c, t) {
   const W = PW, H = PH, local = t - c.start, fxOn = activeFx(c, local), A = clipAnim(c, local);
   // 1) kirp (dikey cerceve) + sigdir -> fitBuf
   let sx = 0, sy = 0, sw = s.w, sh = s.h;
+  if (c.crop && typeof c.crop === "object") {
+    const cl = clamp(c.crop.l || 0, 0, .9), cr_ = clamp(c.crop.r || 0, 0, .9 - cl);
+    const ct = clamp(c.crop.t || 0, 0, .9), cb = clamp(c.crop.b || 0, 0, .9 - ct);
+    sx += sw * cl; sy += sh * ct; sw = Math.max(4, sw * (1 - cl - cr_)); sh = Math.max(4, sh * (1 - ct - cb));
+  }
   if (c.reframe?.length) {
-    const cw = Math.min(s.w, s.h * ST.p.w / ST.p.h), ch = Math.min(s.h, s.w * ST.p.h / ST.p.w);
+    const cw = Math.min(sw, sh * ST.p.w / ST.p.h), ch = Math.min(sh, sw * ST.p.h / ST.p.w);
     const cx = kfAt(c.reframe.map(r => ({ t: r.t, cx: r.cx })), "cx", srcTime(c, t), .5);
-    sx = clamp(cx * s.w - cw / 2, 0, s.w - cw); sy = (s.h - ch) / 2; sw = cw; sh = ch;
+    sx = clamp(sx + cx * sw - cw / 2, 0, s.w - cw); sy = clamp(sy + (sh - ch) / 2, 0, s.h - ch); sw = cw; sh = ch;
   }
   const fit = defaultFit(c);
   fbx.setTransform(1, 0, 0, 1, 0, 0); fbx.clearRect(0, 0, W, H);
   fbx.filter = [adjCss(c.adj), fxCss(fxOn)].filter(Boolean).join(" ") || "none";
-  let dw = W, dh = H;
+  let dw = W, dh = H, pipW = W, pipH = H;
   if (c.crop === "half-w" || c.crop === "half-h") {   // yan yana: kutuya kapla, kutu disi saydam
     const bw = c.crop === "half-w" ? W / 2 : W, bh = c.crop === "half-h" ? H / 2 : H, k = Math.max(bw / sw, bh / sh);
     const cw = bw / k, chh = bh / k;
+    pipW = bw; pipH = bh;
     fbx.drawImage(s.src, sx + (sw - cw) / 2, sy + (sh - chh) / 2, cw, chh, (W - bw) / 2, (H - bh) / 2, bw, bh);
   } else {
     if (fit === "cover") { const k = Math.max(W / sw, H / sh); dw = sw * k; dh = sh * k; }
-    else if (fit === "contain") { const k = Math.min(W / sw, H / sh); dw = sw * k; dh = sh * k; }
+    else if (fit === "contain") { const k = Math.min(W / sw, H / sh); dw = sw * k; dh = sh * k; pipW = dw; pipH = dh; }
     fbx.drawImage(s.src, sx, sy, sw, sh, (W - dw) / 2, (H - dh) / 2, dw, dh);
   }
   fbx.filter = "none";
@@ -745,8 +822,29 @@ function drawClip(c, t) {
   if (ksx !== 1 || ksy !== 1 || c.flipH || c.flipV) {
     vctx.scale((c.flipH ? -1 : 1) * Math.max(1e-4, ksx), (c.flipV ? -1 : 1) * Math.max(1e-4, ksy));
   }
-  vctx.drawImage(src, -W / 2, -H / 2);
-  if (tr?.pix > .01) { vctx.globalAlpha *= tr.pix; vctx.drawImage(SFX.pixelate(src, W, H, 1), -W / 2, -H / 2); }
+  const pipRad = (c.radius || 0) * 0.5 * Math.min(pipW, pipH);
+  const pipBw = (c.borderW || 0) * PS;
+  const pipSh = (c.shadow || 0) * PS;
+  if (pipRad > .5 || pipBw > .25 || pipSh > .5) {
+    const rx = -pipW / 2, ry = -pipH / 2;
+    if (pipSh > .5 && alpha > .8) {
+      vctx.save(); vctx.shadowColor = "rgba(0,0,0,.65)"; vctx.shadowBlur = pipSh; vctx.shadowOffsetY = pipSh * .35;
+      vctx.fillStyle = "rgba(0,0,0,.9)"; vctx.beginPath(); vctx.roundRect(rx, ry, pipW, pipH, pipRad); vctx.fill();
+      vctx.restore();
+    }
+    vctx.save();
+    vctx.beginPath(); vctx.roundRect(rx, ry, pipW, pipH, pipRad); vctx.clip();
+    vctx.drawImage(src, -W / 2, -H / 2);
+    if (tr?.pix > .01) { vctx.globalAlpha *= tr.pix; vctx.drawImage(SFX.pixelate(src, W, H, 1), -W / 2, -H / 2); }
+    vctx.restore();
+    if (pipBw > .25) {
+      vctx.strokeStyle = c.borderColor || "#8B5CF6"; vctx.lineWidth = pipBw * 2;
+      vctx.beginPath(); vctx.roundRect(rx, ry, pipW, pipH, pipRad); vctx.stroke();
+    }
+  } else {
+    vctx.drawImage(src, -W / 2, -H / 2);
+    if (tr?.pix > .01) { vctx.globalAlpha *= tr.pix; vctx.drawImage(SFX.pixelate(src, W, H, 1), -W / 2, -H / 2); }
+  }
   vctx.restore();
 }
 const lutLoading = new Set();
@@ -864,6 +962,9 @@ function play(on = !ST.playing) {
 function tick(now) {
   if (!ST.playing) return;
   ST.t = t0 + (now - wall0) / 1000;
+  if (ST.loopOn && ST.loopIn != null && ST.loopOut != null && ST.loopOut > ST.loopIn + .05 && ST.t >= ST.loopOut) {
+    ST.t = ST.loopIn; wall0 = now; t0 = ST.t; syncMedia(ST.t, true);
+  }
   const end = projEnd();
   if (ST.t >= end) { ST.t = end; play(false); return; }
   syncMedia(ST.t); drawNow(); followPlayhead();
@@ -873,6 +974,11 @@ function tick(now) {
 function seek(t) {
   ST.t = clamp(t, 0, Math.max(projEnd(), 0));
   if (ST.playing) { wall0 = performance.now(); t0 = ST.t; }
+  else if (ST.scrubAudio) {
+    ST._scrubActive = true;
+    clearTimeout(ST._scrubT);
+    ST._scrubT = setTimeout(() => { ST._scrubActive = false; syncMedia(ST.t, false); }, 95);
+  }
   syncMedia(ST.t, true); assTime(); draw(); renderHandles();
 }
 function followPlayhead() {
@@ -1004,11 +1110,12 @@ function clipEl(c, t) {
   const w = Math.max(3, c.dur * ST.px);
   el.style.left = (c.start * ST.px) + "px"; el.style.width = w + "px";
   let label = "";
-  if (k === "text") label = c.subscribe ? `🔔 ${ST.cat.subscribe[c.subscribe] || c.subscribe}` : c.graphic ? `◆ ${ST.cat.graphics?.[c.graphic] || c.graphic}` : c.words ? `≡ Altyazı (${c.words.length} kelime)` : "T " + (c.text || "");
+  if (k === "text") label = c.subscribe ? `🔔 ${ST.cat.subscribe[c.subscribe] || c.subscribe}` : c.graphic ? `◆ ${ST.cat.graphics?.[c.graphic] || c.graphic}` : c.sticker ? `🎭 ${ST.cat.stickers?.[c.sticker]?.n || c.sticker}` : c.words ? `≡ Altyazı (${c.words.length} kelime)` : "T " + (c.text || "");
   else if (k === "fx") label = c.mode === "adjustment" ? "✨ Ayar Katmanı" : ("✦ " + (ST.cat.fx[c.mode]?.name || c.mode));
   else if (k === "compound") label = "⧉ " + (c.name || `Bileşik (${c.children?.length || 0} klip)`);
   else label = a?.name || "?";
   const tags = [];
+  if (c.reverse) tags.push("◀");
   if ((c.speed || 1) !== 1) tags.push(`${c.speed}×`);
   if (c.ramp?.length) tags.push("⤳"); if (c.freeze) tags.push("❄"); if (c.key?.on) tags.push("▣"); if (c.grade && SGL.active({ grade: c.grade })) tags.push("◐"); if (c.afx?.length) tags.push("♪" + c.afx.length);
   if (c.fx?.length) tags.push("✦" + c.fx.length);
@@ -1070,6 +1177,13 @@ function drawRuler() {
   }
   g.fillStyle = "rgba(255,181,71,.85)";
   for (const m of ST.p.markers || []) g.fillRect(Math.round(m.t * ST.px) - 1, 22, 3, 14);
+  if (ST.loopIn != null || ST.loopOut != null) {
+    const x1 = Math.round((ST.loopIn ?? 0) * ST.px), x2 = Math.round((ST.loopOut ?? ST.loopIn ?? 0) * ST.px);
+    if (x2 > x1) { g.fillStyle = ST.loopOn ? "rgba(46,230,166,.26)" : "rgba(46,230,166,.12)"; g.fillRect(x1, 0, x2 - x1, 8); }
+    g.fillStyle = "#2EE6A6";
+    if (ST.loopIn != null) g.fillRect(x1, 0, 2, 16);
+    if (ST.loopOut != null) g.fillRect(x2 - 1, 0, 2, 16);
+  }
 }
 function tAt(clientX) { const r = scroller.getBoundingClientRect(); return Math.max(0, (clientX - r.left + scroller.scrollLeft) / ST.px); }
 function laneAt(clientY) { return $$(".lane", lanes).find(l => { const r = l.getBoundingClientRect(); return clientY >= r.top && clientY < r.bottom; }); }
@@ -1191,32 +1305,28 @@ lanes.addEventListener("pointerdown", e => {
   const up = () => {
     document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); showSnap(null);
     if (moved) {
-      if (edge && ST.editMode === "ripple" && group.length === 1) {
-        const s0 = st0[0], diff = (c.dur - s0.dur);
-        if (Math.abs(diff) > 1e-4) {
-          for (const oc of ST.p.clips) {
-            if (oc !== c && oc.track === c.track && oc.start >= s0.start + s0.dur - 0.05) {
-              oc.start = Math.max(0, +(oc.start + diff).toFixed(4));
-            }
-          }
+      if (edge && (ST.editMode === "ripple" || ST.editMode === "roll") && group.length === 1 && api.studio_timeline_edit) {
+        const s0 = st0[0];
+        let targetId = c.id, targetEdge = edge === "l" ? "in" : "out", diff = edge === "r" ? (c.dur - s0.dur) : (c.start - s0.start);
+        if (ST.editMode === "roll" && edge === "l") {
+          const prev = ST.p.clips.filter(oc => oc !== c && oc.track === c.track && oc.start + oc.dur <= s0.start + 0.08).sort((a, b) => (b.start + b.dur) - (a.start + a.dur))[0];
+          if (prev) { targetId = prev.id; targetEdge = "out"; } else diff = 0;
         }
-      } else if (edge && ST.editMode === "roll" && group.length === 1 && edge === "r") {
-        const s0 = st0[0], diff = +(c.dur - s0.dur).toFixed(4);
-        const nxt = ST.p.clips.find(oc => oc !== c && oc.track === c.track && Math.abs(oc.start - (s0.start + s0.dur)) < 0.08);
-        if (nxt && Math.abs(diff) > 1e-4 && nxt.dur - diff >= 0.05) {
-          nxt.start = +(nxt.start + diff).toFixed(4);
-          nxt.in = Math.max(0, +((nxt.in || 0) + diff).toFixed(4));
-          nxt.dur = +(nxt.dur - diff).toFixed(4);
+        if (Math.abs(diff) > 1e-4) {
+          c.start = s0.start; c.dur = s0.dur; c.in = s0.in;
+          api.studio_timeline_edit(ST.p.clips, ST.editMode, targetId, diff, targetEdge).then(r => {
+            if (r?.ok) { ST.p.clips = r.clips; changed(); }
+          });
+          return;
         }
       } else if (!edge && ST.editMode === "slide" && group.length === 1) {
         const s0 = st0[0], diff = +(c.start - s0.start).toFixed(4);
-        const prev = ST.p.clips.find(oc => oc !== c && oc.track === c.track && Math.abs((oc.start + oc.dur) - s0.start) < 0.08);
-        const nxt = ST.p.clips.find(oc => oc !== c && oc.track === c.track && Math.abs(oc.start - (s0.start + s0.dur)) < 0.08);
-        if (prev && prev.dur + diff >= 0.05) prev.dur = +(prev.dur + diff).toFixed(4);
-        if (nxt && nxt.dur - diff >= 0.05) {
-          nxt.start = +(nxt.start + diff).toFixed(4);
-          nxt.in = Math.max(0, +((nxt.in || 0) + diff).toFixed(4));
-          nxt.dur = +(nxt.dur - diff).toFixed(4);
+        if (Math.abs(diff) > 1e-4 && api.studio_timeline_edit) {
+          c.start = s0.start;
+          api.studio_timeline_edit(ST.p.clips, "slide", c.id, diff, "out").then(r => {
+            if (r?.ok) { ST.p.clips = r.clips; changed(); }
+          });
+          return;
         }
       }
       if (ST.editMode !== "slip") { for (const s of st0) if (overlaps(s.c)) resolveOverlap(s.c); }
@@ -1228,7 +1338,12 @@ lanes.addEventListener("pointerdown", e => {
 });
 function st0Words(c, d) { return c.words; }   // altyazi kelimeleri klip basina gore: sol kirpmada kaydir
 function seekIfOutside(c, e) { seek(tAt(e.clientX)); }
-lanes.addEventListener("dblclick", e => { const ce = e.target.closest(".clip"); if (ce) { ST.sel = new Set([ce.dataset.cid]); window.focusInsp?.(); } });
+lanes.addEventListener("dblclick", e => {
+  const ce = e.target.closest(".clip"); if (!ce) return;
+  const c = ST.p.clips.find(x => x.id === ce.dataset.cid);
+  if (c?.kind === "compound") { enterCompound(c); return; }
+  ST.sel = new Set([ce.dataset.cid]); window.focusInsp?.();
+});
 $("#ruler").addEventListener("pointerdown", e => {
   seek(tAt(e.clientX));
   const mv = ev => seek(tAt(ev.clientX)), up = () => { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); };
@@ -1369,7 +1484,15 @@ function renderInsp() {
       `<div class="row tight" style="margin-bottom:6px"><button class="tb" data-a2="rot90" title="90° saat yönünde döndür">↻ 90°</button><button class="tb${c.flipH ? " on" : ""}" data-a2="flipH" title="Yatay ayna">⇄ Ayna</button><button class="tb${c.flipV ? " on" : ""}" data-a2="flipV" title="Dikey ters çevir">⇅ Ters çevir</button><button class="tb" data-a2="resetXform" title="Dönüşümü sıfırla">↺</button></div>` +
       fldkf(c, "Opaklık", "opacity", 0, 1, .01, c.opacity ?? 1) +
       sel("Karışım", "blend", blends, c.blend || "normal") +
-      fld("Hareket bulanıklığı", "shutterAngle", 0, 360, 15, c.shutterAngle || 0);
+      fld("Hareket bulanıklığı", "shutterAngle", 0, 360, 15, c.shutterAngle || 0) +
+      `<div class="sec">Kırpma (Crop)</div>`;
+    const cr = typeof c.crop === "object" && c.crop ? c.crop : { l: 0, r: 0, t: 0, b: 0 };
+    h += fld("Sol", "crop.l", 0, .45, .01, cr.l || 0) + fld("Sağ", "crop.r", 0, .45, .01, cr.r || 0) +
+      fld("Üst", "crop.t", 0, .45, .01, cr.t || 0) + fld("Alt", "crop.b", 0, .45, .01, cr.b || 0) +
+      `<div class="row tight" style="margin-bottom:6px"><button class="tb" data-a2="hudCrop" title="Üst HUD/panel kırpıp yaklaştır">🎯 HUD Yakın Kırp</button><button class="tb" data-a2="resetCrop">↺ Sıfırla</button></div>` +
+      `<div class="sec">PiP Köşe / Kenarlık</div>` +
+      fld("Yuvarlaklık", "radius", 0, 1, .02, c.radius || 0) + fld("Kenarlık px", "borderW", 0, 24, 1, c.borderW || 0) +
+      color("Kenar rengi", "borderColor", c.borderColor || "#8B5CF6") + fld("Gölge", "shadow", 0, 48, 1, c.shadow || 0);
     const leadsToSelf = x => { const s = new Set([c.id]); let cur = x; while (cur) { if (s.has(cur.id)) return true; s.add(cur.id); cur = cur.parent ? ST.p.clips.find(z => z.id === cur.parent) : null; } return false; };
     const pOpts = { "": "Yok", ...Object.fromEntries(ST.p.clips.filter(x => x !== c && ["video", "image"].includes(clipKind(x)) && !leadsToSelf(x)).map(x => [x.id, `${assetOf(x)?.name || x.id} (${fmt(x.start, false)})`])) };
     h += sel("Ebeveyn katman", "parent", pOpts, c.parent || "");
@@ -1385,7 +1508,8 @@ function renderInsp() {
     h += `<div class="sec">Hız</div>` + fld("Hız", "speed", .1, 8, .05, c.speed || 1) +
       `<div class="row tight">${[.25, .5, 1, 1.5, 2, 4].map(v => `<button class="tb" data-speed="${v}">${v}×</button>`).join("")}</div>`;
     if (k === "video") {
-      h += chk("Optik Akış (Yumuşak yavaşlatma)", "optFlow", c.optFlow) +
+      h += chk("◀ Ters Oynat (Reverse)", "reverse", c.reverse) +
+        chk("Optik Akış (Yumuşak yavaşlatma)", "optFlow", c.optFlow) +
         chk("Görüntü Sabitle (Deshake)", "stabilize", c.stabilize);
       h += `<div class="sec">Hız rampası</div><div class="grid3 ramps">${Object.entries(RAMPS).map(([id, r]) => `<button class="tb${(id === "none" && !c.ramp) ? " on" : ""}" data-ramp="${id}">${r.n}</button>`).join("")}</div>` +
         (c.ramp ? `<canvas id="rampCv" width="270" height="96" title="Noktayı sürükle · çift tık: nokta ekle · sağ tık: sil"></canvas><div class="hint">Yukarı = hızlı, aşağı = yavaş. Klip süresi kendiliğinden ayarlanır.</div>` : "");
@@ -1394,10 +1518,14 @@ function renderInsp() {
   if (k === "audio" || (k === "video" && a?.audio)) {
     const curves = ST.cat.audioCurves || { tri: "Doğrusal", qsin: "Yumuşak (S-Eğri)", log: "Logaritmik", exp: "Keskin (Üstel)" };
     const eqPre = ST.cat.eqPresets || { flat: ["Düz", [0,0,0,0,0,0,0,0,0,0]], podcast: ["Podcast", [-6,-4,-2,-1,1,2,4,5,3,1]], bass: ["Bas", [6,5,4,2,0,-1,0,1,1,0]], bright: ["Tiz", [-1,-1,0,0,1,2,3,5,6,5]], radio: ["Radyo", [-12,-10,-6,2,5,6,4,-4,-9,-12]], cinema: ["Sinema", [3,2,1,0,-1,1,2,2,3,2]] };
+    const vVoices = ST.cat.voiceChangers || { none: "Normal", chipmunk: "🐿️ Sincap (+7st)", deep: "🎙️ Kalın (-5st)", robot: "🤖 Robot", megaphone: "📢 Megafon", demon: "👹 Demon" };
     h += `<div class="sec">Ses</div>` + fldkf(c, "Ses düzeyi", "vol", 0, 2, .01, c.vol ?? 1) +
+      fld("Perde (Pitch st)", "pitch", -12, 12, .5, c.pitch || 0) +
+      sel("Ses Değiştirici", "voice", vVoices, c.voice || "none") +
       fld("Stereo Pan", "pan", -1, 1, .05, c.pan || 0) +
       fld("Açılış", "fadeIn", 0, 5, .05, c.fadeIn || 0) + fld("Kapanış", "fadeOut", 0, 5, .05, c.fadeOut || 0) +
       sel("Ses eğrisi", "fadeCurve", curves, c.fadeCurve || "tri") +
+      (k === "video" ? fld("J-Cut Önden (sn)", "audioLead", 0, 4, .1, c.audioLead || 0) + fld("L-Cut Sona (sn)", "audioTail", 0, 4, .1, c.audioTail || 0) + `<div class="row tight"><button class="tb" data-a2="jlcut">⇄ J/L Doğrula</button></div>` : "") +
       `<div class="catpills">${Object.entries(eqPre).map(([id, [nm]]) => `<button type="button" data-eqp="${id}" title="10-bant EQ ön ayarı">${esc(nm)}</button>`).join("")}</div>` +
       `<div class="row"><button class="tb" data-a2="toaudio">▥ Mikserde 10-Bant EQ aç</button></div>`;
   } else if (k === "video" || k === "image") h += `<div class="sec">Belir / kaybol</div>` + fld("Açılış", "fadeIn", 0, 5, .05, c.fadeIn || 0) + fld("Kapanış", "fadeOut", 0, 5, .05, c.fadeOut || 0);
@@ -1458,11 +1586,21 @@ function textInsp(c) {
   const allFonts = [...new Set([...(ST.cat.fonts || []), ...(st.font ? [st.font] : [])])];
   const fontIn = (key, val) => `<label class="fld w2"><span>Font</span><select class="in" data-k="${key}">${allFonts.map(f => `<option value="${esc(f)}"${f === val ? " selected" : ""} style="font-family:'${esc(f)}',sans-serif">${esc(f)}</option>`).join("")}</select></label>`;
   let h = "";
+  if (c.sticker) {
+    const sOpts = Object.fromEntries(Object.entries(ST.cat.stickers || {}).map(([k, v]) => [k, `${v.ico || "◆"} ${v.n || k}`]));
+    h += `<div class="sec">Çıkartma (Sticker)</div>` + sel("Sembol", "sticker", sOpts, c.sticker) +
+      color("Renk", "style.color", st.color || "#8B5CF6") + fld("Boyut", "style.size", 30, 300, 1, st.size ?? 100) +
+      fld("X", "style.x", 0, 1, .005, st.x ?? .5) + fld("Y", "style.y", 0, 1, .005, st.y ?? .5) + fontIn("style.font", st.font || "Chakra Petch");
+    return h;
+  }
   if (c.graphic) {
     const G = c.graphic;
     h += `<div class="sec">Grafik</div>` + sel("Tür", "graphic", ST.cat.graphics || {}, G) +
-      (["lower", "lower-min", "location", "chapter", "callout", "highlight", "quote"].includes(G) ? `<label class="fld w2"><span>Başlık</span><input class="in" data-k="style.title" value="${esc(st.title || "")}"></label>` : "") +
-      (["lower", "lower-min", "location", "quote"].includes(G) ? `<label class="fld w2"><span>Alt yazı</span><input class="in" data-k="style.sub" value="${esc(st.sub || "")}"></label>` : "") +
+      (["lower", "lower-min", "location", "chapter", "callout", "highlight", "quote", "news-card", "split-card", "stat-table", "birazdan"].includes(G) ? `<label class="fld w2"><span>Başlık</span><input class="in" data-k="style.title" value="${esc(st.title || "")}"></label>` : "") +
+      (["lower", "lower-min", "location", "quote", "news-card", "split-card", "birazdan"].includes(G) ? `<label class="fld w2"><span>Alt yazı</span><input class="in" data-k="style.sub" value="${esc(st.sub || "")}"></label>` : "") +
+      (G === "news-card" ? `<label class="fld w2"><span>Etiket</span><input class="in" data-k="style.badge" value="${esc(st.badge || "SON DAKİKA")}"></label>` : "") +
+      (G === "split-card" ? `<label class="fld w2"><span>Sol</span><input class="in" data-k="style.left" value="${esc(st.left || "ÖNCE")}"></label><label class="fld w2"><span>Sağ</span><input class="in" data-k="style.right" value="${esc(st.right || "SONRA")}"></label>` : "") +
+      (G === "stat-table" ? `<label class="fld w2"><span>Satırlar</span><input class="in" data-k="style.rows" value="${esc(st.rows || "Hız:98|Kalite:99|Güç:95")}" placeholder="Etiket:Değer|..."></label>` : "") +
       (G === "chapter" ? `<label class="fld w2"><span>Numara</span><input class="in" data-k="style.num" value="${esc(st.num || "01")}"></label>` : "") +
       (G === "counter" ? `<label class="fld w2"><span>Başla</span><input type="number" class="in" data-k="style.from" value="${st.from ?? 0}"></label><label class="fld w2"><span>Bitir</span><input type="number" class="in" data-k="style.to" value="${st.to ?? 1000}"></label><label class="fld w2"><span>Ön ek</span><input class="in" data-k="style.prefix" value="${esc(st.prefix || "")}"></label><label class="fld w2"><span>Son ek</span><input class="in" data-k="style.suffix" value="${esc(st.suffix || "")}"></label>` : "") +
       (G === "endscreen" ? `<label class="fld w2"><span>Kutu 1</span><input class="in" data-k="style.v1" value="${esc(st.v1 || "Önerilen video")}"></label><label class="fld w2"><span>Kutu 2</span><input class="in" data-k="style.v2" value="${esc(st.v2 || "Son video")}"></label><label class="fld w2"><span>Kanal adı</span><input class="in" data-k="style.channel" value="${esc(st.channel || "")}" placeholder="İsteğe bağlı"></label><div class="row"><button class="tb" data-a2="avatarPick">🖼 Kanal fotosu seç</button>${st.avatarImg ? '<button class="tb" data-a2="avatarClear">✕ Kaldır</button>' : ""}</div>` : "") +
@@ -1489,6 +1627,7 @@ function textInsp(c) {
     h += `<div class="sec">Metin</div><textarea class="in" data-k="text" spellcheck="false">${esc(c.text || "")}</textarea>` +
       `<div class="fld w2"><span>Konum</span><div class="seg" data-seg="style.pos">${[["top", "Üst"], ["center", "Orta"], ["bottom", "Alt"], ["custom", "Serbest"]].map(([v, l]) => `<button data-v="${v}" class="${(st.pos || "bottom") === v ? "on" : ""}">${l}</button>`).join("")}</div></div>` +
       ((st.pos || "bottom") === "custom" ? fld("X", "style.x", 0, 1, .005, st.x ?? .5) + fld("Y", "style.y", 0, 1, .005, st.y ?? .5) : "") +
+      `<div class="row tight"><button class="tb" data-a2="kineticPlan" title="Kelimelere kinetik tipografi zamanlaması planla">⚡ Kinetik Planla</button></div>` +
       (window.animBox ? animBox(c, "text") : "");
   }
   h += `<div class="sec">Yazı tipi</div>` + fontIn("style.font", st.font || "Chakra Petch") + fld("Boyut", "style.size", 2, 30, .1, st.size ?? (c.words ? 7.5 : 7)) +
@@ -1590,7 +1729,11 @@ function bezCanvas(c) {
       if (h === 0) { bz[0] = nx; bz[1] = ny; } else { bz[2] = nx; bz[3] = ny; }
       tgt.bez = [...bz]; drawBez(cv, bz); draw();
     };
-    cv.onpointerup = () => { cv.onpointermove = null; changed(); };
+    cv.onpointerup = () => {
+      cv.onpointermove = null;
+      api.studio_bezier_eval?.(bz[0], bz[1], bz[2], bz[3], .5).then(r => { if (r) toast(`Eğri t=0.5 → ${(+r.value).toFixed(2)}`); }).catch(() => {});
+      changed();
+    };
   };
 }
 let pipette = false;
@@ -1613,6 +1756,10 @@ function inspSet(k, v, live) {
     else if (k === "mask.type") {
       if (!v || v === "none") delete c.mask;
       else c.mask = { x: .5, y: .5, w: .55, h: .55, rot: 0, feather: 4, invert: false, ...(c.mask || {}), type: v };
+    } else if (k.startsWith("crop.")) {
+      if (typeof c.crop !== "object" || !c.crop) c.crop = {};
+      setK(c, k, v);
+      if (!Object.values(c.crop).some(x => +x > .001)) delete c.crop;
     } else if (k in UKF_DEFS && c.kf?.some(q => k in q)) {
       const lt = +clamp(ST.t - c.start, 0, c.dur).toFixed(3);
       let hit = c.kf.find(q => Math.abs((q.t < 0 ? c.dur + q.t : q.t) - lt) < .06);
@@ -1620,7 +1767,10 @@ function inspSet(k, v, live) {
       hit[k] = v;
     } else setK(c, k, v);
   }
-  const textual = k === "text" || k.startsWith("style.") || k === "subscribe" || k === "graphic" || k === "mode" || k === "date" || k === "cam";
+  if (k === "shutterAngle" && api.studio_shutter_blur) {
+    api.studio_shutter_blur(v, ST.p.fps || 30).then(r => { if (r) toast(`Hareket bulanıklığı: ${r.tmix_frames || 0} kare örnekleme`); }).catch(() => {});
+  }
+  const textual = k === "text" || k.startsWith("style.") || k === "subscribe" || k === "graphic" || k === "sticker" || k === "mode" || k === "date" || k === "cam";
   if (textual) assDirty();
   if (live) { draw(); if (k === "pan" || k === "vol") syncMedia(ST.t, false); if (k === "speed" || k === "start" || k === "dur" || k === "vol" || k.startsWith("fade")) renderTimeline(); renderHandles(); ST.dirty = true; scheduleSave(); }
   else changed();
@@ -1708,6 +1858,21 @@ $("#insp").addEventListener("click", async e => {
   if (a2 === "flipH" && c) { snap(); for (const x of selClips()) x.flipH = !x.flipH; changed(); return; }
   if (a2 === "flipV" && c) { snap(); for (const x of selClips()) x.flipV = !x.flipV; changed(); return; }
   if (a2 === "resetXform" && c) { snap(); for (const x of selClips()) { delete x.rot; delete x.flipH; delete x.flipV; } changed(); return; }
+  if (a2 === "hudCrop" && c) { snap(); c.crop = { l: .15, r: .15, t: .12, b: .12 }; c.scale = Math.max(c.scale ?? 1, 1.35); changed(); toast("HUD kenarları kırpılıp yakınlaştırıldı"); return; }
+  if (a2 === "resetCrop" && c) { snap(); delete c.crop; delete c.radius; delete c.borderW; delete c.shadow; changed(); return; }
+  if (a2 === "jlcut" && c && api.studio_jl_cut) {
+    const r = await api.studio_jl_cut(c, c.audioLead || 0, c.audioTail || 0);
+    if (r?.ok) { snap(); Object.assign(c, r.clip); changed(); toast("J/L Cut ses penceresi güncellendi"); }
+    return;
+  }
+  if (a2 === "kineticPlan" && c && api.studio_kinetic_text) {
+    const r = await api.studio_kinetic_text(c.text || "METİN", c.start, c.dur, "pop");
+    if (r?.events?.length) {
+      snap(); (c.style ||= {}); c.anim = { ...(c.anim || {}), in: "pop", inDur: .32 };
+      changed(); toast(`Kinetik plan: ${r.events.length} vurgu adımı`);
+    }
+    return;
+  }
   if (a2 === "avatarPick" && c) {
     const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
     inp.onchange = () => {
@@ -1750,19 +1915,21 @@ async function exportVideo() {
   if (play) play(false);
   const sel = selClips();
   const range = sel.length ? [Math.min(...sel.map(c => c.start)), Math.max(...sel.map(c => c.start + c.dur))] : null;
+  const hasLoop = ST.loopIn != null && ST.loopOut != null && ST.loopOut > ST.loopIn + .05;
   const opts = await modal(`<h3>Dışa aktar</h3>
     <div class="hint">${ST.p.w}×${ST.p.h} · ${ST.p.fps} fps · ${fmt(projEnd())} · H.264 MP4 (NVENC varsa ekran kartıyla). Her zaman asıl dosyalardan, tam kalitede işlenir.</div>
     <label class="fld w2"><span>Kalite</span><select class="in" id="xq"><option value="high">Yüksek (YouTube)</option><option value="medium">Orta (küçük dosya)</option></select></label>
-    <label class="fld w2"><span>Aralık</span><select class="in" id="xr"><option value="all">Tüm video</option>${range ? `<option value="sel">Seçili klipler (${fmt(range[0])}–${fmt(range[1])})</option>` : ""}<option value="mk">İşaretler arası (ilk–son)</option></select></label>
+    <label class="fld w2"><span>Aralık</span><select class="in" id="xr"><option value="all">Tüm video</option>${hasLoop ? `<option value="loop">Döngü I–O (${fmt(ST.loopIn)}–${fmt(ST.loopOut)})</option>` : ""}${range ? `<option value="sel">Seçili klipler (${fmt(range[0])}–${fmt(range[1])})</option>` : ""}<option value="mk">İşaretler arası (ilk–son)</option></select></label>
     <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Kaydet…</button></div>`,
     { collect: () => ({ quality: $("#xq").value, r: $("#xr").value }) });
   if (!opts) return;
   const o = { quality: opts.quality };
+  if (opts.r === "loop" && hasLoop) o.range = [ST.loopIn, ST.loopOut];
   if (opts.r === "sel" && range) o.range = range;
   if (opts.r === "mk" && ST.p.markers?.length > 1) { const ts = ST.p.markers.map(m => m.t).sort((a, b) => a - b); o.range = [ts[0], ts.at(-1)]; }
   const out = await api.studio_pick_save(ST.p.name, ".mp4"); if (!out) return;
   await save();
-  const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
+  const p = rootProjectClone(); for (const a of Object.values(p.assets)) delete a.url;
   const r = await api.studio_export(p, out, o);
   if (!r?.ok) { toast("Başlatılamadı: " + r?.error); return; }
   const t0 = Date.now();
@@ -1819,6 +1986,11 @@ document.addEventListener("click", e => {
     marker: () => { snap(); (ST.p.markers ||= []).push({ t: +ST.t.toFixed(3), kind: "note" }); changed(); },
     snap: () => { ST.snap = !ST.snap; b.classList.toggle("on", ST.snap); },
     ripple: () => { ST.ripple = !ST.ripple; b.classList.toggle("on", ST.ripple); },
+    loopIn: () => { ST.loopIn = +ST.t.toFixed(3); if (ST.loopOut != null && ST.loopOut <= ST.loopIn) ST.loopOut = null; drawRuler(); toast("Döngü girişi (I): " + fmt(ST.loopIn)); },
+    loopOut: () => { ST.loopOut = +ST.t.toFixed(3); if (ST.loopIn == null || ST.loopIn >= ST.loopOut) ST.loopIn = 0; ST.loopOn = true; $("#loopBtn")?.classList.add("on"); drawRuler(); toast("Döngü çıkışı (O): " + fmt(ST.loopOut)); },
+    loopToggle: () => { ST.loopOn = !ST.loopOn; $("#loopBtn")?.classList.toggle("on", ST.loopOn); drawRuler(); toast(ST.loopOn ? "I–O Döngüsü açık" : "Döngü kapalı"); },
+    scrub: () => { ST.scrubAudio = !ST.scrubAudio; $("#scrubBtn")?.classList.toggle("on", ST.scrubAudio); toast(ST.scrubAudio ? "Sesli tarama (Scrub) açık" : "Sesli tarama kapalı"); },
+    exitComp: exitCompound,
     smartcut: async () => {
       const id = [...ST.sel][0]; const c = ST.p?.clips.find(x => x.id === id);
       const asset = c && ST.p?.assets?.[c.asset];
@@ -1935,7 +2107,7 @@ document.addEventListener("click", e => {
     safe: () => document.body.classList.toggle("safe"),
     full: () => { const w = $("#viewArea"); document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen(); },
     snapshotOld: () => { const a2 = document.createElement("a"); const cv = document.createElement("canvas"); cv.width = PW; cv.height = PH; const g = cv.getContext("2d"); g.drawImage(view, 0, 0); g.drawImage($("#assView"), 0, 0, PW, PH); a2.href = cv.toDataURL("image/png"); a2.download = `${ST.p.name}-${fmt(ST.t).replace(/[:.]/g, "-")}.png`; a2.click(); },
-    keys: () => modal(`<h3>Kısayollar</h3><div class="keys">${[["Boşluk", "Oynat / durdur"], ["S", "Oynatma kafasında böl"], ["Del", "Sil (Shift: boşluğu kapat)"], ["Ctrl+Z / Y", "Geri al / yinele"], ["Ctrl+C / V / D", "Kopyala / yapıştır / çoğalt"], ["← →", "1 kare (Shift: 1 sn)"], ["Home / End", "Başa / sona"], ["M", "İşaret koy"], ["+ / −", "Zaman ölçeği (Ctrl+tekerlek)"], ["1-9", "Hızlı ses/meme (Ses panelinde ★ ile ata)"], ["F", "Tam ekran önizleme"], ["Ctrl+S / E / O", "Kaydet / dışa aktar / aç"]].map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join("")}</div><div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`),
+    keys: () => modal(`<h3>Kısayollar</h3><div class="keys">${[["Boşluk", "Oynat / durdur"], ["S", "Oynatma kafasında böl"], ["Q / W", "Solu / sağı sil"], ["I / O / L", "Döngü girişi / çıkışı / aç-kapat"], ["Del", "Sil (Shift: boşluğu kapat)"], ["Ctrl+Z / Y", "Geri al / yinele"], ["Ctrl+C / V / D", "Kopyala / yapıştır / çoğalt"], ["← →", "1 kare (Shift: 1 sn)"], ["Home / End", "Başa / sona"], ["M", "İşaret koy"], ["+ / −", "Zaman ölçeği (Ctrl+tekerlek)"], ["1-9", "Hızlı ses/meme (Ses panelinde ★ ile ata)"], ["F", "Tam ekran önizleme"], ["Ctrl+S / E / O", "Kaydet / dışa aktar / aç"]].map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join("")}</div><div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`),
   })[a]?.();
 });
 document.addEventListener("keydown", e => {
@@ -1959,6 +2131,9 @@ document.addEventListener("keydown", e => {
   else if (k.toLowerCase() === "w" && !ctrl) trimSide("r");
   else if (k.toLowerCase() === "s" && !ctrl) splitAtPlayhead();
   else if (k.toLowerCase() === "m") $('[data-a="marker"]').click();
+  else if (k.toLowerCase() === "i" && !ctrl) $('[data-a="loopIn"]')?.click();
+  else if (k.toLowerCase() === "o" && !ctrl) $('[data-a="loopOut"]')?.click();
+  else if (k.toLowerCase() === "l" && !ctrl) $('[data-a="loopToggle"]')?.click();
   else if (k.toLowerCase() === "f") $('[data-a="full"]').click();
   else if (k === "ArrowLeft") {
     e.preventDefault();
@@ -1974,7 +2149,7 @@ document.addEventListener("keydown", e => {
   else if (k === "End") seek(projEnd());
   else if (k === "+" || k === "=") setZoom(ST.px * 1.4);
   else if (k === "-") setZoom(ST.px / 1.4);
-  else if (k === "Escape") { ST.sel.clear(); renderTimeline(); renderInsp(); renderHandles(); }
+  else if (k === "Escape") { if (ST.compoundStack?.length) exitCompound(); else { ST.sel.clear(); renderTimeline(); renderInsp(); renderHandles(); } }
   else if (/^[1-9]$/.test(k)) window.quickSlot?.(+k);
 });
 $("#tlZoom").addEventListener("input", e => setZoom(+e.target.value));
@@ -2029,4 +2204,4 @@ async function boot() {
 window.addEventListener("pywebviewready", boot);
 window.addEventListener("beforeunload", () => { if (ST.dirty) save(); });
 Object.assign(window, { ST, toast, modal, ask, promptText, busy, job, waitStudioJob, snap, changed, importPaths, addClip, placeAt, addTrack, trackFor,
-  selClips, splitClip, removeRanges, kfResolve, fmt, esc, clone, clipKind, assetOf, trackOf, seek, draw, projEnd, openProject, dropAsset, resolveOverlap, renderTimeline, renderInsp, assDirty, layoutView, EQ_BANDS_HZ, syncMedia, clipVol });
+  selClips, splitClip, removeRanges, kfResolve, fmt, esc, clone, clipKind, assetOf, trackOf, seek, draw, projEnd, openProject, dropAsset, resolveOverlap, renderTimeline, renderInsp, assDirty, layoutView, EQ_BANDS_HZ, syncMedia, clipVol, rootProjectClone });

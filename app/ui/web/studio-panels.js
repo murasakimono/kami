@@ -1,10 +1,10 @@
 "use strict";
 // Kami Studio sol paneller: medya, ses/meme, metin, altyazi, efekt, gecis, zoom, abone, akilli araclar, eklentiler.
 const PANELS = {
-  media: "Proje", sound: "Ses & Meme", text: "Metin", graphics: "Grafik", captions: "Altyazı", fx: "Efektler", trans: "Geçişler",
+  media: "Proje", sound: "Ses & Meme", text: "Metin", graphics: "Grafik", stickers: "Çıkartma", captions: "Altyazı", fx: "Efektler", trans: "Geçişler",
   zoom: "Zoom", subscribe: "Abone ol", templates: "Şablonlar", ai: "Akıllı araçlar", plugins: "Eklentiler & Claude",
 };
-const PANEL_IC = { media: "▦", sound: "♪", text: "T", graphics: "◆", captions: "≡", fx: "✦", trans: "⇋", zoom: "⊕", subscribe: "🔔", templates: "❖", ai: "✧", plugins: "⧉" };
+const PANEL_IC = { media: "▦", sound: "♪", text: "T", graphics: "◆", stickers: "🎭", captions: "≡", fx: "✦", trans: "⇋", zoom: "⊕", subscribe: "🔔", templates: "❖", ai: "✧", plugins: "⧉" };
 $("#libtabs").innerHTML = Object.entries(PANELS).map(([k, v]) => `<button data-panel="${k}" title="${v}"><i>${PANEL_IC[k]}</i>${v.split(" ")[0]}</button>`).join("");
 let panel = "media";
 const pb = $("#panelBody");
@@ -66,7 +66,7 @@ const saveSlots = () => { try { localStorage.kstSlots = JSON.stringify(slots); }
 P.sound = async () => {
   $("#panelTools").innerHTML = `<button class="tb" id="sndDir" title="Klasörü aç">📁</button>`;
   $("#sndDir").onclick = () => api.studio_open_folder(sndTab === "Memeler" ? "Memeler" : "Sesler");
-  const tabs = [["kami", "Kami SFX"], ["trmeme", "TR Meme"], ["memevid", "Meme Video"], ["Sesler", "Seslerim"], ["Memeler", "Memelerim"], ["myinstants", "Myinstants"], ["freesound", "Freesound"], ["pack", "Paketler"]];
+  const tabs = [["kami", "Kami SFX"], ["trmeme", "TR Meme"], ["memevid", "Meme Video"], ["tts", "🗣️ Seslendir"], ["Sesler", "Seslerim"], ["Memeler", "Memelerim"], ["myinstants", "Myinstants"], ["freesound", "Freesound"], ["pack", "Paketler"]];
   let h = `<div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${sndTab === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
   const sl = Object.entries(slots);
   if (sl.length) h += sec("Hızlı (1-9 tuşu)") + `<div class="chips">${sl.sort().map(([k, s]) => `<span class="chip">${k} · ${esc(s.name.slice(0, 18))}<button data-unslot="${k}">✕</button></span>`).join("")}</div>`;
@@ -109,9 +109,9 @@ P.sound = async () => {
       sndCache.trLive = r; P.sound.trCat = "🔥 Canlı TR Trend"; renderTr();
     };
   } else if (sndTab === "memevid") {
-    const mvTags = ["slow motion ai hamam böceği", "türkçe yeşil ekran meme", "türkçe shitpost derleme", "dost kayaoğlu yeşil ekran", "toqtir yeşil ekran", "oiia cat green screen"];
-    pb.innerHTML = h + `<div class="hint">AI hamam böceği, Türkçe shitpost ve hazır yeşil ekran (Chroma Key) klipleri. Tek tıkla Memelerim'e iner ve çizelgeye yerleşir.</div>` +
-      `<div class="row"><input class="in" id="mvQ" placeholder="ör. hamam böceği, yeşil ekran, türkçe shitpost" value="${esc(P.sound.mvQ || "")}" style="flex:1"><button class="tb" id="mvGo" style="flex:none">Ara</button></div>` +
+    const mvTags = ["slow motion ai hamam böceği", "türkçe yeşil ekran meme", "türkçe shitpost derleme", "dost kayaoğlu yeşil ekran", "toqtir yeşil ekran", "oiia cat green screen", "kurtlar vadisi racon yeşil ekran"];
+    pb.innerHTML = h + `<div class="hint">Public meme, slow-mo AI böcek ve yeşil ekran klipleri. Kelime ara veya doğrudan TikTok/YouTube/Instagram linki yapıştır.</div>` +
+      `<div class="row"><input class="in" id="mvQ" placeholder="ör. hamam böceği veya https://tiktok.com/... yapıştır" value="${esc(P.sound.mvQ || "")}" style="flex:1"><button class="tb" id="mvGo" style="flex:none">Ara / Getir</button></div>` +
       `<div class="catpills" id="mvQuick">${mvTags.map(t => `<button data-mvquick="${esc(t)}">${esc(t)}</button>`).join("")}</div>` +
       `<div class="catpills" id="mvCats"></div><div id="sndList" class="hint">Yükleniyor…</div>`;
     const bank = sndCache.trBank || (sndCache.trBank = await api.studio_tr_meme_bank());
@@ -176,6 +176,25 @@ P.sound = async () => {
     };
     $("#mTrends").onclick = e => { const b = e.target.closest("[data-mquick]"); if (b) { $("#sndQ").value = b.dataset.mquick; go(); } };
     if (sndCache[sndTab]) sndRender(sndCache[sndTab].map(i => ({ ...i, kind: "audio" })));
+  } else if (sndTab === "tts") {
+    pb.innerHTML = h + `<div class="hint">Ücretsiz metin seslendirme (Edge-TTS veya yerel Windows sesi). Doğrudan Seslerim/TTS klasörüne iner ve oynatma kafasına yerleşir.</div>` +
+      `<textarea class="in" id="ttsTxt" placeholder="Seslendirilecek metni yaz…" style="min-height:84px;width:100%">${esc(P.sound.ttsTxt || "")}</textarea>` +
+      `<label class="fld w2" style="margin-top:6px"><span>Ses</span><select class="in" id="ttsVoice"><option value="tr-TR-EmelNeural">Türkçe Kadın (Emel)</option><option value="tr-TR-AhmetNeural">Türkçe Erkek (Ahmet)</option><option value="en-US-AriaNeural">English (Aria)</option><option value="en-US-GuyNeural">English (Guy)</option></select></label>` +
+      `<label class="fld"><span>Hız %</span><input type="range" id="ttsRate" min="-40" max="50" step="5" value="0"><input class="num" id="ttsRateN" readonly value="+0%"></label>` +
+      `<div class="row"><button class="tb pri" id="ttsGo">🗣️ Seslendir & Timeline'a Ekle</button></div>`;
+    $("#ttsTxt").oninput = e => { P.sound.ttsTxt = e.target.value; };
+    $("#ttsRate").oninput = e => { const v = +e.target.value; $("#ttsRateN").value = (v >= 0 ? "+" : "") + v + "%"; };
+    $("#ttsGo").onclick = async () => {
+      const txt = $("#ttsTxt").value.trim(); if (!txt) return toast("Metin boş");
+      const rate = $("#ttsRateN").value || "+0%";
+      busy("Ses sentezleniyor…");
+      const r = await job("studio_tts", [txt, $("#ttsVoice").value, rate]);
+      busy(null);
+      if (!r?.ok || !r.path) return toast("TTS başarısız: " + (r?.error || "?"));
+      sndCache.Sesler = null;
+      const ids = await importPaths([r.path]);
+      if (ids[0]) { const a = ST.p.assets[ids[0]]; snap(); const c = placeAt({ asset: ids[0], dur: a.dur || 2, in: 0 }, "audio", ST.t); ST.sel = new Set([c.id]); changed(); toast(`TTS eklendi (${r.engine || "wav"})`); }
+    };
   } else {
     const items = await api.studio_pack_sounds();
     pb.innerHTML = h + (items.length ? `<div id="sndList"></div>` : `<div class="hint">Eklenti paketlerinden gelen sesler burada. Eklenti panelinden paket ekle.</div>`);
@@ -253,6 +272,7 @@ async function dropItem(it, t, tid) {
   else if (it.type === "fx") addFxClip(it.id, t);
   else if (it.type === "sub") addSub(it.kind, t);
   else if (it.type === "gfx") addGfx(it.kind, t);
+  else if (it.type === "sticker") addSticker(it.kind, t);
 }
 window.dropItem = dropItem;
 window.quickSlot = n => { const s = slots[n]; if (s) dropItem(s, ST.t); else toast(`${n} tuşu boş — Ses panelinde ★ ile ata`); };
@@ -354,17 +374,48 @@ P.graphics = () => {
 pb.addEventListener("click", e => { const g = e.target.closest("[data-gfx]"); if (g && panel === "graphics") addGfx(g.dataset.gfx, ST.t); });
 const GFX_DEF = { lower: { title: "İsim Soyisim", sub: "Unvan", x: .07, y: .8 }, "lower-min": { title: "İsim", sub: "Unvan", x: .07, y: .82 }, location: { title: "İstanbul, Türkiye", x: .06, y: .1 },
   chapter: { num: "01", title: "BÖLÜM", x: .5, y: .5 }, endscreen: {}, callout: { title: "Burası!", x: .5, y: .45 }, progress: {}, highlight: { title: "ÖNEMLİ", x: .5, y: .5 },
-  counter: { from: 0, to: 1000, x: .5, y: .5 }, quote: { title: "Alıntı", sub: "Kişi", x: .5, y: .5 } };
+  counter: { from: 0, to: 1000, x: .5, y: .5 }, quote: { title: "Alıntı", sub: "Kişi", x: .5, y: .5 },
+  "news-card": { badge: "SON DAKİKA", title: "Başlık Buraya", sub: "Gelişme detayı", x: .5, y: .82 },
+  "split-card": { title: "KARŞILAŞTIRMA", left: "ÖNCE", right: "SONRA", x: .5, y: .5 },
+  "stat-table": { title: "İSTATİSTİK", rows: "Hız:98|Kalite:99|Güç:95", x: .5, y: .5 },
+  birazdan: { title: "birazdan...", sub: "bekle", x: .82, y: .14 } };
 function addGfx(kind, t) { snap(); const c = placeAt({ graphic: kind, dur: kind === "endscreen" ? 20 : kind === "progress" ? Math.max(5, projEnd() - t) : 4, style: { ...(GFX_DEF[kind] || {}) } }, "text", t); ST.sel = new Set([c.id]); changed(); }
+
+// ---------------------------------------------------------------- cikartmalar (stickers)
+P.stickers = () => {
+  const stMap = ST.cat.stickers || {};
+  const entries = Object.entries(stMap);
+  const cats = ["Tümü", ...new Set(entries.map(([, v]) => v.c || "Genel"))];
+  const cat = P.stickers.cat || "Tümü", q = (P.stickers.q || "").toLowerCase();
+  const list = entries.filter(([k, v]) => (cat === "Tümü" || v.c === cat) && (!q || v.n.toLowerCase().includes(q) || k.toLowerCase().includes(q)));
+  pb.innerHTML = `<div class="hint">${entries.length} vektör çıkartma (ok, sansür, klaket, sosyal, meme). Tıkla ekle, sağdan boyut ve renk seç.</div>` +
+    `<div class="catpills">${cats.map(c => `<button class="${c === cat ? "on" : ""}" data-stkcat="${esc(c)}">${esc(c)}</button>`).join("")}</div>` +
+    `<input class="in" id="stkQ" placeholder="Ok, sansür, kırmızı ok, ping ara…" value="${esc(P.stickers.q || "")}" style="width:100%;margin-bottom:6px">` +
+    `<div class="grid2">${list.map(([k, v]) => `<div class="card" data-stk="${esc(k)}" draggable="true" data-item='${esc(JSON.stringify({ type: "sticker", kind: k }))}' style="text-align:center"><b style="font-size:18px;display:block">${esc(v.ico || "◆")}</b><small>${esc(v.n)}</small></div>`).join("")}</div>`;
+  const qi = $("#stkQ"); qi.oninput = () => { P.stickers.q = qi.value; clearTimeout(P.stickers.t); P.stickers.t = setTimeout(() => { P.stickers(); const n = $("#stkQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 150); };
+};
+pb.addEventListener("click", e => {
+  if (panel !== "stickers") return;
+  const ct = e.target.closest("[data-stkcat]"); if (ct) { P.stickers.cat = ct.dataset.stkcat; P.stickers(); return; }
+  const st = e.target.closest("[data-stk]"); if (st) addSticker(st.dataset.stk, ST.t);
+});
+function addSticker(kind, t) {
+  snap(); const c = placeAt({ sticker: kind, dur: 3, style: { x: .5, y: .5, size: 110, color: "#FFE600" } }, "text", t);
+  ST.sel = new Set([c.id]); changed();
+}
 
 // ---------------------------------------------------------------- sablonlar
 P.templates = () => {
+  const q = (P.templates.q || "").toLowerCase();
+  const srcList = (ST.cat.templates || []).filter(t => !q || t.name.toLowerCase().includes(q) || t.group.toLowerCase().includes(q) || t.id.toLowerCase().includes(q));
   let groups = {};
-  for (const t of ST.cat.templates || []) (groups[t.group] ||= []).push(t);
-  const ft = (ST.cat.templates || []).filter(t => isFav("tpl", t.id));
+  for (const t of srcList) (groups[t.group] ||= []).push(t);
+  const ft = srcList.filter(t => isFav("tpl", t.id));
   if (ft.length) groups = { "★ Favoriler": ft, ...groups };
   pb.innerHTML = `<div class="hint">Tek tıkla hazır kurgu parçaları (yazı + efekt + ses). Oynatma kafasına eklenir, hepsi düzenlenebilir. ❄ olanlar seçili video klibe uygulanır.</div>` +
+    `<input class="in" id="tpQ" placeholder="${(ST.cat.templates || []).length} şablon içinde ara…" value="${esc(P.templates.q || "")}" style="width:100%;margin-bottom:6px">` +
     Object.entries(groups).map(([g, items]) => sec(g) + `<div class="grid2">${items.map(t => `<div class="card" data-tpl="${t.id}"><b>${t.needs ? "❄ " : ""}${esc(t.name)}</b>${favStar("tpl", t.id)}</div>`).join("")}</div>`).join("");
+  const qi = $("#tpQ"); qi.oninput = () => { P.templates.q = qi.value; clearTimeout(P.templates.t); P.templates.t = setTimeout(() => { P.templates(); const n = $("#tpQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 150); };
 };
 async function applyTemplate(id, t = ST.t) {
   const c = selClips()[0];
@@ -385,8 +436,18 @@ P.captions = () => {
     `<label class="fld w2"><span>Dil</span><select class="in" id="capLang"><option value="auto">Otomatik</option><option value="tr">Türkçe</option><option value="en">İngilizce</option></select></label>` +
     sec("Stil") + `<div class="grid2">${Object.entries(ST.cat.captions).map(([k, v]) => `<div class="card${k === (localStorage.kstCap || "hormozi") ? " on" : ""}" data-cap="${k}"><i class="capv cv-${esc(ST.cat.capb?.[k]?.b || k)}"${ST.cat.capb?.[k]?.font ? ` style="font-family:'${esc(ST.cat.capb[k].font)}'"` : ""}><span>bu</span><u>örnek</u><span>yazı</span></i><b>${esc(v)}</b></div>`).join("")}</div>` +
     `<div class="row" style="margin-top:12px"><button class="tb pri" id="capGo">≡ ${c ? "Seçili klibe altyazı" : "Altyazı oluştur"}</button></div>` +
+    `<div class="row" style="margin-top:6px"><button class="tb" id="capBi">🌐 Çift Dilli (.SRT/.ASS)</button><button class="tb" id="capConv">↺ .SRT↔.ASS Dönüştür</button></div>` +
     `<div class="hint">Yazım hatalarını sağ paneldeki “Kelimeler” kutusundan düzeltebilirsin.</div>`;
   $("#capGo").onclick = () => aiAction("captions", firstSel());
+  $("#capBi").onclick = () => aiAction("bilingual", firstSel());
+  $("#capConv").onclick = async () => {
+    const p = await promptText("Altyazı dosya yolu (.srt veya .ass)", "", "Seçtiğin dosyanın biçimini ASS ↔ SRT çevirir.");
+    if (!p) return;
+    const fmtOut = p.toLowerCase().endsWith(".srt") ? "ass" : "srt";
+    const r = await api.studio_subtitle_edit(p, fmtOut);
+    if (!r?.ok) return toast(r?.error || "Dönüştürülemedi");
+    modal(`<h3>Dönüştürüldü (${esc(fmtOut.toUpperCase())})</h3><pre class="code">${esc(r.content || "")}</pre><div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`);
+  };
 };
 pb.addEventListener("click", e => {
   const cp = e.target.closest("[data-cap]"); if (!cp) return;
@@ -511,12 +572,16 @@ function zoomCat(z) {
   return "Sinematik & Yaklaş";
 }
 P.zoom = () => {
-  const builtin = ST.cat.zoom.filter(z => !z.user), groups = {};
+  const q = (P.zoom.q || "").toLowerCase();
+  const builtin = ST.cat.zoom.filter(z => !z.user && (!q || z.name.toLowerCase().includes(q) || z.id.toLowerCase().includes(q))), groups = {};
   for (const z of builtin) (groups[zoomCat(z)] ||= []).push(z);
+  const myZ = ST.cat.zoom.filter(z => z.user && (!q || z.name.toLowerCase().includes(q)));
   pb.innerHTML = `<div class="hint">Seçili klibe uygular. Sağ panelden kare kare düzenleyip “Şablon kaydet” ile buraya ekleyebilirsin.</div>` +
+    `<input class="in" id="zmQ" placeholder="${ST.cat.zoom.length} zoom içinde ara…" value="${esc(P.zoom.q || "")}" style="width:100%;margin-bottom:6px">` +
     Object.entries(groups).map(([g, arr]) => sec(g) + `<div class="grid2">${arr.map(z => `<div class="card" data-zm="${z.id}"><b>${esc(z.name)}</b><small>${z.kf.length} kare</small></div>`).join("")}</div>`).join("") +
-    sec("Benim şablonlarım") + (ST.cat.zoom.some(z => z.user) ? `<div class="grid2">${ST.cat.zoom.filter(z => z.user).map(z => `<div class="card" data-zm="${z.id}"><b>${esc(z.name)}</b><small>${z.kf.length} kare · <a href="#" data-zdel="${z.id}" style="color:var(--red)">sil</a></small></div>`).join("")}</div>` : '<div class="hint">Henüz yok.</div>') +
+    sec("Benim şablonlarım") + (myZ.length ? `<div class="grid2">${myZ.map(z => `<div class="card" data-zm="${z.id}"><b>${esc(z.name)}</b><small>${z.kf.length} kare · <a href="#" data-zdel="${z.id}" style="color:var(--red)">sil</a></small></div>`).join("")}</div>` : '<div class="hint">Henüz yok.</div>') +
     sec("Vuruşa zoom") + `<div class="hint">İşaretli her vuruşta seçili klibe kısa “vuruş zoom” kareleri ekler.</div><div class="row"><button class="tb" id="zBeat">⊕ Vuruşlarda zoom</button></div>`;
+  const qi = $("#zmQ"); qi.oninput = () => { P.zoom.q = qi.value; clearTimeout(P.zoom.t); P.zoom.t = setTimeout(() => { P.zoom(); const n = $("#zmQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 150); };
   $("#zBeat").onclick = () => aiAction("beatzoom", firstSel());
 };
 pb.addEventListener("click", async e => {
@@ -556,6 +621,12 @@ const AI_TOOLS = [
   ["matte", "Arka planı sil (video)", "Yeşil perde olmadan kişiyi keser (kare kare BiRefNet, ekran kartı). Sonuç şeffaf yeni klip olur."],
   ["splitscreen", "Yan yana (podcast/tepki)", "Seçili iki video klibini ekranı bölerek yan yana (dikeyde üst-alt) dizer."],
   ["reframe", "Dikey çerçeve (yüz takibi)", "Videoyu 9:16 yapar, konuşan yüzü kadrajda tutar."],
+  ["transcriptCut", "📝 Metinden Kurgu (Transcript)", "Altyazı kelimelerinden silinecekleri seçip video kesim planı çıkarır."],
+  ["multicam", "🎥 Çoklu Kamera Eşitle", "Seçili 2+ kamera/ses klibini ses dalgasından otomatik hizalar."],
+  ["cursorZoom", "🖱 İmleç Oto-Zoom", "Ekran kaydında tıklama/odak bölgelerine akıllı yaklaşma ekler."],
+  ["parallax", "✨ Parallax 2.5D Ken Burns", "Klip/görsel için derinlikli 2.5D kaydırma hareketi uygular."],
+  ["brand", "🎨 Marka Kiti", "Kanal renk paleti, varsayılan yazı tipi ve kanal adını kaydeder."],
+  ["motionStatus", "🔧 Motion & Donanım Durumu", "Gyroflow, MuseTalk VRAM ve hareket eklentisi hazır olma durumunu gösterir."],
 ];
 P.ai = () => {
   pb.innerHTML = `<div class="hint">Önce zaman çizelgesinde klibi seç. Hepsi geri alınabilir (Ctrl+Z).</div>` +
@@ -605,6 +676,165 @@ async function aiAction(kind, c) {
   if (kind === "splitscreen") return splitScreen();
   if (kind === "matte") return selClips().filter(x => clipKind(x) === "video").length > 1 ? window.matteSel() : matte(c);
   if (kind === "beatzoom") return beatZoom(c);
+  if (kind === "motionStatus") {
+    const r = await api.studio_motion_tools_status();
+    const g = r?.gyroflow || {}, m = r?.musetalk_vram || {};
+    modal(`<h3>Motion & Donanım Durumu</h3>
+      <div class="hint"><b>Gyroflow CLI:</b> ${g.installed ? `Kurulu (${esc(g.path)})` : "Bulunamadı (PATH'te yok)"}</div>
+      <div class="hint"><b>MuseTalk VRAM (4.2 GB+):</b> ${m.ok ? `Uygun (${m.free_mb || "?"} MB boş)` : esc(m.reason || JSON.stringify(m))}</div>
+      <div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`);
+    return;
+  }
+  if (kind === "brand") {
+    const cur = await api.studio_brand_get() || {};
+    const out = await modal(`<h3>🎨 Marka Kiti</h3>
+      <label class="fld"><span>Kanal / Marka Adı</span><input class="in" id="bkName" value="${esc(cur.name || "")}"></label>
+      <label class="fld"><span>Ana Renk</span><input type="color" id="bkPri" value="${esc(cur.primary || "#7C3AED")}"></label>
+      <label class="fld"><span>Vurgu Rengi</span><input type="color" id="bkAcc" value="${esc(cur.accent || "#2EE6A6")}"></label>
+      <label class="fld"><span>Yazı Rengi</span><input type="color" id="bkTxt" value="${esc(cur.text_color || "#FFFFFF")}"></label>
+      <label class="fld"><span>Yazı Tipi</span><input class="in" id="bkFont" value="${esc(cur.font || "Chakra Petch")}"></label>
+      <label class="fld"><span>Logo Yolu</span><input class="in" id="bkLogo" value="${esc(cur.logo_path || "")}" placeholder="Opsiyonel PNG yolu"></label>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Kaydet</button></div>`,
+      { collect: () => ({ ...cur, name: $("#bkName").value.trim(), primary: $("#bkPri").value, accent: $("#bkAcc").value, text_color: $("#bkTxt").value, font: $("#bkFont").value.trim() || "Chakra Petch", logo_path: $("#bkLogo").value.trim() }) });
+    if (!out) return;
+    await api.studio_brand_save(out);
+    toast("Marka kiti kaydedildi");
+    return;
+  }
+  if (kind === "parallax") {
+    c = c && ["video", "image"].includes(clipKind(c)) ? c : needSel(["video", "image"]); if (!c) return;
+    const cur = c.parallax || {};
+    const cfg = await modal(`<h3>✨ Parallax 2.5D Ken Burns</h3>
+      <label class="fld"><span>Derinlik</span><input type="range" id="pxDep" min="0" max="0.15" step="0.005" value="${cur.depth_strength ?? 0.035}" oninput="pxDepN.value=this.value"><input class="num" id="pxDepN" value="${cur.depth_strength ?? 0.035}" readonly></label>
+      <label class="fld"><span>Yatay Kayma</span><input type="range" id="pxPanX" min="-0.4" max="0.4" step="0.02" value="${cur.pan_x ?? 0.08}" oninput="pxPanXN.value=this.value"><input class="num" id="pxPanXN" value="${cur.pan_x ?? 0.08}" readonly></label>
+      <label class="fld"><span>Dikey Kayma</span><input type="range" id="pxPanY" min="-0.4" max="0.4" step="0.02" value="${cur.pan_y ?? 0.03}" oninput="pxPanYN.value=this.value"><input class="num" id="pxPanYN" value="${cur.pan_y ?? 0.03}" readonly></label>
+      <label class="fld"><span>Zoom</span><input type="range" id="pxZm" min="1" max="1.6" step="0.02" value="${cur.zoom ?? 1.08}" oninput="pxZmN.value=this.value"><input class="num" id="pxZmN" value="${cur.zoom ?? 1.08}" readonly></label>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Uygula</button></div>`,
+      { collect: () => [+$("#pxDep").value, +$("#pxPanX").value, +$("#pxPanY").value, +$("#pxZm").value] });
+    if (!cfg) return;
+    const plan = await api.studio_parallax_plan(cfg[0], cfg[1], cfg[2], cfg[3]);
+    snap();
+    c.parallax = plan;
+    c.zoom = [
+      { t: 0, s: 1, x: +(-plan.pan_x / 2).toFixed(3), y: +(-plan.pan_y / 2).toFixed(3) },
+      { t: +c.dur.toFixed(3), s: plan.zoom, x: +(plan.pan_x / 2).toFixed(3), y: +(plan.pan_y / 2).toFixed(3) },
+    ];
+    changed(); toast("2.5D Parallax hareketi eklendi");
+    return;
+  }
+  if (kind === "cursorZoom") {
+    c = c && clipKind(c) === "video" ? c : needSel(["video"]); if (!c) return;
+    const sample = JSON.stringify([
+      { t: +(c.dur * 0.2).toFixed(2), x: Math.round(ST.p.w * 0.35), y: Math.round(ST.p.h * 0.4), click: true },
+      { t: +(c.dur * 0.6).toFixed(2), x: Math.round(ST.p.w * 0.68), y: Math.round(ST.p.h * 0.55), click: true },
+    ], null, 2);
+    const out = await modal(`<h3>🖱 İmleç Oto-Zoom</h3><div class="hint">.cursor.json tıklama olaylarını yapıştır ya da örnek zamanları düzenle.</div>
+      <label class="fld"><span>Zoom</span><input type="range" id="czScale" min="1.2" max="2.5" step="0.05" value="1.55" oninput="czScN.value=this.value"><input class="num" id="czScN" value="1.55" readonly></label>
+      <textarea class="in" id="czJson" rows="6" style="width:100%;font-family:monospace;font-size:11px">${esc(sample)}</textarea>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Uygula</button></div>`,
+      { collect: () => ({ scale: +$("#czScale").value, raw: $("#czJson").value }) });
+    if (!out) return;
+    let events = [];
+    try { events = JSON.parse(out.raw); } catch { toast("Geçersiz JSON", true); return; }
+    const r = await api.studio_cursor_zoom(events, ST.p.w, ST.p.h, out.scale);
+    const kf = (r?.kf || []).map(k => ({ t: k.t, s: k.scale ?? 1, x: +((k.x ?? 0.5) - 0.5).toFixed(3), y: +((k.y ?? 0.5) - 0.5).toFixed(3) }));
+    if (!kf.length) { toast("Geçerli tıklama olayı yok"); return; }
+    snap(); c.zoom = kf; changed(); toast(`${Math.round(kf.length / 3)} imleç zoom noktası eklendi`);
+    return;
+  }
+  if (kind === "multicam") {
+    const cs = selClips().filter(x => ["video", "audio"].includes(clipKind(x)));
+    const paths = [...new Set(cs.map(x => assetOf(x)?.path).filter(Boolean))];
+    if (cs.length < 2 || paths.length < 2) { toast("Farklı kaynaklardan en az 2 video/ses klibi seç (Shift+tık)"); return; }
+    busy("Çoklu kamera ses dalgası eşitleniyor…");
+    const r = await api.studio_multicam_sync(paths); busy(null);
+    if (!r?.ok) { toast(r?.error || "Eşitlenemedi", true); return; }
+    const offMap = Object.fromEntries((r.offsets || []).map(o => [o.path, Number(o.offset_sec || 0)]));
+    const baseStart = Math.min(...cs.map(x => x.start));
+    snap();
+    for (const x of cs) {
+      const p = assetOf(x)?.path;
+      if (p in offMap) x.start = Math.max(0, +(baseStart + offMap[p]).toFixed(3));
+    }
+    changed(); toast("Çoklu kamera klipleri sesle hizalandı");
+    return;
+  }
+  if (kind === "bilingual") {
+    const tc = (c?.words?.length ? c : null) || ST.p.clips.find(x => x.words?.length) || (clipKind(c) === "text" && c.text ? c : null);
+    if (!tc) { toast("Önce altyazı veya metin klibi oluştur"); return; }
+    const segs = [];
+    if (tc.words?.length) {
+      let grp = [];
+      for (const w of tc.words) {
+        grp.push(w);
+        if (grp.length >= 6 || /[.!?]$/.test(w.w || "")) {
+          segs.push({ start: +(tc.start + grp[0].s).toFixed(3), end: +(tc.start + grp.at(-1).e).toFixed(3), text: grp.map(x => x.w).join(" "), tr: "" });
+          grp = [];
+        }
+      }
+      if (grp.length) segs.push({ start: +(tc.start + grp[0].s).toFixed(3), end: +(tc.start + grp.at(-1).e).toFixed(3), text: grp.map(x => x.w).join(" "), tr: "" });
+    } else {
+      segs.push({ start: tc.start, end: +(tc.start + tc.dur).toFixed(3), text: tc.text || "", tr: "" });
+    }
+    const out = await modal(`<h3>🌐 Çift Dilli Altyazı</h3><div class="hint">${segs.length} satır bulundu. İsteğe bağlı alt dil satırlarını yaz (satır başına 1 çeviri):</div>
+      <label class="fld"><span>Biçim</span><select class="in" id="biFmt"><option value="ass">ASS (Konuşmacı renkli)</option><option value="srt">SRT</option></select></label>
+      <textarea class="in" id="biTr" rows="5" placeholder="${esc(segs.map(s => s.text).join("\n"))}" style="width:100%;font-size:12px"></textarea>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Oluştur</button></div>`,
+      { collect: () => ({ fmt: $("#biFmt").value, lines: $("#biTr").value.split(/\r?\n/) }) });
+    if (!out) return;
+    const payload = segs.map((s, i) => ({ ...s, tr: (out.lines[i] || "").trim() }));
+    const res = await api.studio_bilingual_subs(payload, out.fmt, ST.p.w, ST.p.h);
+    if (!res?.ok) { toast("Oluşturulamadı", true); return; }
+    const blob = new Blob([res.content || ""], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    modal(`<h3>Çift Dilli ${esc(out.fmt.toUpperCase())} Hazır</h3><pre class="code" style="max-height:240px;overflow:auto">${esc(res.content || "")}</pre>
+      <div class="row"><a class="tb" download="bilingual.${esc(out.fmt)}" href="${url}">İndir</a><button class="tb pri" data-v="ok">Tamam</button></div>`);
+    return;
+  }
+  if (kind === "transcriptCut") {
+    const tc = (c?.words?.length ? c : null) || ST.p.clips.find(x => x.words?.length);
+    if (!tc?.words?.length) { toast("Önce otomatik altyazı oluştur"); return; }
+    const vid = ST.p.clips.find(x => ["video", "audio"].includes(clipKind(x)) && x.start < tc.start + tc.dur && x.start + x.dur > tc.start);
+    const delSet = new Set();
+    const chips = tc.words.map((w, i) => `<button type="button" class="tb" data-tw="${i}" style="margin:2px;padding:3px 7px;font-size:12px">${esc(w.w)}</button>`).join("");
+    const picked = await modal(
+      `<h3>📝 Metinden Kurgu</h3><div class="hint">Silmek istediğin kelimelere tıkla (üzeri çizilir); video o anlardan kesilir.</div>` +
+      `<div id="twWrap" style="max-height:240px;overflow:auto;padding:6px;background:rgba(0,0,0,.2);border-radius:6px">${chips}</div>` +
+      `<div class="row" style="margin-top:10px"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Kesimleri Uygula</button></div>`,
+      {
+        init: m => {
+          $("#twWrap", m).onclick = e => {
+            const b = e.target.closest("[data-tw]"); if (!b) return;
+            const i = +b.dataset.tw;
+            if (delSet.has(i)) { delSet.delete(i); b.style.textDecoration = ""; b.style.opacity = ""; }
+            else { delSet.add(i); b.style.textDecoration = "line-through"; b.style.opacity = ".45"; }
+          };
+        },
+        collect: () => [...delSet],
+      }
+    );
+    if (!picked || !delSet.size) return;
+    const keepIdx = tc.words.map((_, i) => i).filter(i => !delSet.has(i));
+    const wordsPayload = tc.words.map(w => ({ start: w.s, end: w.e, word: w.w }));
+    const res = await api.studio_transcript_cuts(wordsPayload, keepIdx, tc.dur);
+    const cuts = res?.cuts || [];
+    const rm = []; let cur = 0;
+    for (const seg of cuts) { if (seg.in > cur + 0.05) rm.push([cur, seg.in]); cur = Math.max(cur, seg.out); }
+    if (tc.dur - cur > 0.05) rm.push([cur, tc.dur]);
+    if (!rm.length) { toast("Kesilecek aralık çıkmadı"); return; }
+    snap();
+    const sp = vid ? (vid.speed || 1) : 1, src0 = vid ? (vid.in || 0) : 0;
+    let totalCut = 0;
+    for (const [r0, r1] of rm.sort((a, b) => b[0] - a[0])) {
+      const d = r1 - r0; totalCut += d;
+      if (vid) removeRanges(vid, [[src0 + (tc.start + r0 - vid.start) * sp, src0 + (tc.start + r1 - vid.start) * sp]], 0);
+      tc.words = tc.words.filter(w => w.e <= r0 + 1e-4 || w.s >= r1 - 1e-4);
+      for (const w of tc.words) if (w.s >= r1 - 1e-4) { w.s = +(w.s - d).toFixed(3); w.e = +(w.e - d).toFixed(3); }
+      tc.dur = Math.max(.2, +(tc.dur - d).toFixed(3));
+    }
+    changed(); toast(`${rm.length} bölüm (${totalCut.toFixed(1)} sn) metinden kesildi`);
+    return;
+  }
   if (["silence", "freeze", "scenes", "beats", "captions", "reframe", "cutbeats"].includes(kind)) {
     const want = kind === "beats" || kind === "silence" || kind === "captions" ? ["video", "audio"] : ["video"];
     c = c && want.includes(clipKind(c)) ? c : needSel(want); if (!c) return;

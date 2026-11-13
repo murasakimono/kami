@@ -18,7 +18,7 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 
 STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "studio_silences", "studio_freezes", "studio_scenes",
                "studio_myinstants", "studio_myinstants_trending", "studio_tr_meme_bank", "studio_meme_video_search", "studio_meme_video_fetch",
-               "studio_fetch_sound", "studio_freesound", "studio_pack_add", "studio_save", "studio_open",
+               "studio_fetch_sound", "studio_freesound", "studio_tts", "studio_pack_add", "studio_save", "studio_open",
                "studio_stock", "studio_stock_get", "studio_fonts_download", "studio_template", "studio_sfx", "studio_lut_read",
                "studio_gemini_models", "studio_lottie", "studio_catalog_fonts",
                "studio_multicam_sync", "studio_smart_cut", "studio_audio_enhance", "studio_audio_duck"}
@@ -421,35 +421,40 @@ class StudioMixin:
         }
 
     def studio_meme_video_search(self, q: str) -> list[dict[str, Any]]:
-        """YouTube uzerinden guncel Turkce meme / yesil ekran / AI bocek klibi arar."""
-        query = str(q or "").strip()[:100]
+        """YouTube aramasi veya dogrudan TikTok/YouTube/Instagram linkinden meme klibi dondurur."""
+        query = str(q or "").strip()[:300]
         if not query:
             return []
+        is_url = query.startswith(("http://", "https://"))
         try:
             import yt_dlp
-            opts = {"quiet": True, "no_warnings": True, "skip_download": True, "extract_flat": True, "noplaylist": True}
+            opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True}
+            if not is_url:
+                opts["extract_flat"] = True
             with yt_dlp.YoutubeDL(opts) as ydl:
-                res = ydl.extract_info(f"ytsearch12:{query}", download=False)
+                res = ydl.extract_info(query if is_url else f"ytsearch12:{query}", download=False)
         except Exception as exc:
             return [{"error": str(exc)[:120]}]
+        entries = (res or {}).get("entries") if isinstance(res, dict) and "entries" in res else ([res] if res else [])
         out: list[dict[str, Any]] = []
-        for e in (res or {}).get("entries") or []:
-            vid = str(e.get("id") or "").strip()
-            if not vid:
+        for e in entries or []:
+            if not isinstance(e, dict):
                 continue
+            vid = str(e.get("id") or "").strip() or re.sub(r"\W+", "", query)[-16:]
             title = str(e.get("title") or vid).strip()
             low = (title + " " + query).lower()
             gs = any(k in low for k in ("green screen", "yeşil ekran", "yesil ekran", "yeşil perde", "chroma"))
-            u = str(e.get("url") or "")
-            if not u.startswith("http"):
+            u = str(e.get("webpage_url") or e.get("url") or (query if is_url else f"https://www.youtube.com/watch?v={vid}"))
+            if not u.startswith(("http://", "https://")):
                 u = f"https://www.youtube.com/watch?v={vid}"
+            thumb = str(e.get("thumbnail") or (f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if len(vid) == 11 else ""))
             out.append({
                 "id": vid,
                 "name": title[:90],
                 "dur": int(e.get("duration") or 0),
                 "greenscreen": gs,
                 "url": u,
-                "thumb": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+                "thumb": thumb,
             })
         return out
 
@@ -458,7 +463,7 @@ class StudioMixin:
         from app.core import studio
         from app.engines.ytdlp_engine import find_ffmpeg
         u = str(url or "").strip()
-        if not u.startswith("https://"):
+        if not u.startswith(("http://", "https://")):
             return {"ok": False, "error": "bad_url"}
         safe = re.sub(r'[<>:"/\\|?*]+', "_", str(name or "meme_klip")).strip(" .")[:80] or "meme_klip"
         sub = "Yeşil Ekran" if greenscreen else "TR Memeler"
@@ -1197,3 +1202,59 @@ class StudioMixin:
     def studio_motion_tools_status(self) -> dict[str, Any]:
         from app.core.studio_motion import gyroflow_status, musetalk_preflight
         return {"gyroflow": gyroflow_status(), "musetalk_vram": musetalk_preflight()}
+
+    def studio_tts(self, text: str, voice: str = "tr-TR-EmelNeural", rate: str = "+0%") -> dict[str, Any]:
+        """Metinden ucretsiz seslendirme uretir (edge-tts varsa MP3, yoksa Windows SAPI WAV)."""
+        import asyncio
+        import hashlib
+        import subprocess
+        from app.core import studio
+        txt = str(text or "").strip()[:1500]
+        if not txt:
+            return {"ok": False, "error": "empty_text"}
+        d = studio.home_dir() / "Sesler" / "TTS"
+        d.mkdir(parents=True, exist_ok=True)
+        tag = hashlib.sha1(f"{voice}|{rate}|{txt}".encode("utf-8")).hexdigest()[:10]
+        slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", txt[:24]).strip("_") or "tts"
+        try:
+            import edge_tts  # type: ignore
+            dst = d / f"{slug}_{tag}.mp3"
+            async def _run():
+                await edge_tts.Communicate(txt, str(voice or "tr-TR-EmelNeural"), rate=str(rate or "+0%")).save(str(dst))
+            asyncio.run(_run())
+            if dst.is_file() and dst.stat().st_size > 200:
+                return {"ok": True, "engine": "edge-tts", **self._st().info(str(dst))}
+        except Exception:
+            pass
+        # Yerel Windows System.Speech cevrimdisi sentez (ucretsiz, anahtar gerektirmez)
+        wav = d / f"{slug}_{tag}.wav"
+        tf = d / f"{slug}_{tag}.txt"
+        tf.write_text(txt, encoding="utf-8")
+        try:
+            m = re.search(r"([+-]?\d+)", str(rate or "0"))
+            pct = int(m.group(1)) if m else 0
+            sapi_rate = max(-10, min(10, int(round(pct / 10.0))))
+            hint = "male" if "ahmet" in str(voice).lower() or "male" in str(voice).lower() else "female"
+            ps = (
+                "Add-Type -AssemblyName System.Speech; "
+                "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                f"$s.Rate = {sapi_rate}; "
+                "$tr = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'tr*' } | Select-Object -First 1; "
+                "if ($tr) { $s.SelectVoice($tr.VoiceInfo.Name) } "
+                f"else {{ try {{ $s.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::{hint.title()}) }} catch {{}} }}; "
+                f"$s.SetOutputToWaveFile('{str(wav).replace(chr(39), chr(39)*2)}'); "
+                f"$s.Speak([System.IO.File]::ReadAllText('{str(tf).replace(chr(39), chr(39)*2)}', [System.Text.Encoding]::UTF8)); "
+                "$s.Dispose()"
+            )
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps],
+                capture_output=True, text=True, timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if r.returncode == 0 and wav.is_file() and wav.stat().st_size > 200:
+                return {"ok": True, "engine": "sapi-wav", **self._st().info(str(wav))}
+            return {"ok": False, "error": (r.stderr or "tts_failed")[:200]}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        finally:
+            tf.unlink(missing_ok=True)

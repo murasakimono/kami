@@ -209,6 +209,11 @@ def catalog() -> dict[str, Any]:
             "capb": {k: {"b": v["b"], "font": v["st"].get("font", "")} for k, v in CAPTIONS2.items()},
             "subscribe": {**studio_gfx.SUBSCRIBE_PRO, **SUBSCRIBE}, "graphics": studio_gfx.GRAPHICS, "fonts": FONTS,
             "deliver": {k: v["name"] for k, v in DELIVER.items()}, "afx": AUDIO_FIX_NAMES, "templates": TEMPLATE_NAMES,
+            "stickers": studio_gfx.STICKERS,
+            "voiceChangers": {
+                "none": "Doğal", "chipmunk": "Sincap (İnce)", "deep": "Kalın / Bas",
+                "robot": "Robot", "megaphone": "Megafon / Telsiz", "demon": "Şeytan / Derin",
+            },
             "tanim": studio_anim.text_catalog(), "canim": studio_anim.clip_catalog(),
             "blends": {k: v[0] for k, v in studio_fx_adv.BLEND_MODES.items()},
             "masks": studio_fx_adv.MASK_TYPES,
@@ -831,6 +836,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         if seg <= 0:
             continue
         ramp = ramp_table(c) if c.get("ramp") and a["kind"] == "video" and not a.get("gif") else None
+        rev = bool(c.get("reverse")) and a["kind"] == "video" and not a.get("gif") and not c.get("freeze") and not ramp
         vin = ["-c:v", "libvpx-vp9"] if a.get("alpha") else []          # seffaf WebM (arka plani silinmis / Lottie)
         if c.get("freeze"):
             ii = add_input(["-ss", f"{float(c.get('in', 0)):.3f}", "-t", "0.3", *vin, "-i", a["path"]])
@@ -852,6 +858,10 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             for t0_, t1_, a0, a1, sp in reversed(segs):
                 expr = f"if(lt(T,{a1 - base:.4f}),{t0_ - cut0:.4f}+(T-{a0 - base:.4f})/{sp:.4f},{expr})"
             ch = [f"setpts='({expr})/TB'"]
+        elif rev:
+            rev_in = max(0.0, float(c.get("in", 0)) + max(0.0, d - cut0 - seg) * speed)
+            ii = add_input(["-ss", f"{rev_in:.3f}", "-t", f"{seg * speed + 0.05:.3f}", *vin, "-i", a["path"]])
+            ch = ["reverse", f"setpts=(PTS-STARTPTS)/{speed:.4f}"]
         else:
             ii = add_input(["-ss", f"{src_in:.3f}", "-t", f"{seg * speed + 0.05:.3f}", *vin, "-i", a["path"]])
             ch = [f"setpts=(PTS-STARTPTS)/{speed:.4f}" if a["kind"] == "video" and not a.get("gif") else "setpts=PTS-STARTPTS"]
@@ -860,6 +870,14 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             cx = kf_expr(sorted([{"t": float(r["t"]), "cx": float(r["cx"])} for r in rf], key=lambda r: r["t"]), "cx",
                          f"(t*{speed:.4f}+{src_in:.4f})", 0.5)
             ch.append(f"crop=w='min(iw,ih*{W}/{H})':h='min(ih,iw*{H}/{W})':x={_q(f'max(0,min(iw-ow,({cx})*iw-ow/2))')}:y=(ih-oh)/2")
+        cr_box = c.get("crop")
+        if isinstance(cr_box, dict):
+            cl = max(0.0, min(0.9, float(cr_box.get("l", 0) or 0)))
+            cr_ = max(0.0, min(0.9 - cl, float(cr_box.get("r", 0) or 0)))
+            ct = max(0.0, min(0.9, float(cr_box.get("t", 0) or 0)))
+            cb = max(0.0, min(0.9 - ct, float(cr_box.get("b", 0) or 0)))
+            if cl + cr_ + ct + cb > 0.002:
+                ch.append(f"crop=w='max(4,iw*{1.0 - cl - cr_:.4f})':h='max(4,ih*{1.0 - ct - cb:.4f})':x='iw*{cl:.4f}':y='ih*{ct:.4f}'")
         key = c.get("key") or {}
         if key.get("on"):   # yesil/mavi perde
             kc = str(key.get("color", "#00ff00")).replace("#", "0x")
@@ -887,6 +905,15 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         if grade_active(gr):
             bake_grade(gr, work / f"g{k}.cube")
             ch.append(f"lut3d=file=g{k}.cube:interp=tetrahedral")
+        if float(gr.get("vignette") or 0) > 0.01:
+            vig_ang = math.pi / (5.5 - 3.0 * min(1.0, float(gr["vignette"])))
+            ch.append(f"vignette={vig_ang:.4f}")
+        if float(gr.get("grain") or 0) > 0.01:
+            gr_amt = max(1, min(35, int(round(float(gr["grain"]) * 28))))
+            ch.append(f"noise=alls={gr_amt}:allf=t")
+        if float(gr.get("halation") or 0) > 0.01:
+            h_op = min(0.85, float(gr["halation"]) * 0.72)
+            ch.append(f"split[ha{k}][hb{k}];[hb{k}]eq=brightness=0.06:contrast=1.45,gblur=sigma=12,colorbalance=rs=0.45:gs=0.10:bs=-0.22[hc{k}];[ha{k}][hc{k}]blend=all_mode=screen:all_opacity={h_op:.2f},format=rgba")
         shutter_ang = float(c.get("shutterAngle") or 0)
         if shutter_ang >= 45 and a["kind"] == "video" and not a.get("gif"):
             n_tm = 2 if shutter_ang < 135 else 3 if shutter_ang < 270 else 4
@@ -974,7 +1001,63 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             ch.append(_trans_in(tin, tdur, W, H, f"tr{k}", cut0, FPS))
         off = max(s, T0) - T0
         ch.append(f"setpts=PTS+{off:.4f}/TB")
-        if bg_blur_pct > 0 and order.get(c["track"], 0) == 0:
+        # PiP yuvarlatilmis kose ve kenarlik maskesi (Pillow RGBA PNG)
+        pip_rad = float(c.get("radius") or 0)
+        pip_bw = float(c.get("borderW") or 0)
+        need_bg_blur = bg_blur_pct > 0 and order.get(c["track"], 0) == 0
+        try:
+            from PIL import Image, ImageDraw
+            _has_pil = True
+        except Exception:
+            _has_pil = False
+        if (pip_rad > 0.005 or pip_bw > 0.5) and _has_pil:
+            try:
+                sw0, sh0 = float(a.get("w") or W), float(a.get("h") or H)
+                if isinstance(cr_box, dict):
+                    sw0 *= max(0.05, 1.0 - float(cr_box.get("l", 0) or 0) - float(cr_box.get("r", 0) or 0))
+                    sh0 *= max(0.05, 1.0 - float(cr_box.get("t", 0) or 0) - float(cr_box.get("b", 0) or 0))
+                if fit == "contain" and cr_box not in ("half-w", "half-h"):
+                    kk = min(W / max(1.0, sw0), H / max(1.0, sh0))
+                    rw, rh = max(4, int(round(sw0 * kk))), max(4, int(round(sh0 * kk)))
+                elif cr_box == "half-w":
+                    rw, rh = W // 2, H
+                elif cr_box == "half-h":
+                    rw, rh = W, H // 2
+                else:
+                    rw, rh = W, H
+                x0, y0 = (W - rw) // 2, (H - rh) // 2
+                rad_px = int(round(min(rw, rh) * 0.5 * min(1.0, max(0.0, pip_rad))))
+                m_im = Image.new("L", (W, H), 0)
+                ImageDraw.Draw(m_im).rounded_rectangle([x0, y0, x0 + rw - 1, y0 + rh - 1], radius=rad_px, fill=255)
+                mp = work / f"pipmask_{k}.png"
+                m_im.save(mp)
+                mi = add_input(["-loop", "1", "-t", f"{total:.3f}", "-i", str(mp)])
+                if need_bg_blur:
+                    sig = max(1.0, bg_blur_pct * 0.65)
+                    graph.append(f"[{ii}:v]" + ",".join(ch) + f",split[cm_{k}][bg{k}]")
+                    graph.append(f"[bg{k}]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},gblur=sigma={sig:.1f},eq=brightness=-0.10[bgo{k}]")
+                    graph.append(f"[{cur}][bgo{k}]overlay=eof_action=pass:enable='between(t,{off:.4f},{off + seg:.4f})'[bgc{k}]")
+                    cur = f"bgc{k}"
+                else:
+                    graph.append(f"[{ii}:v]" + ",".join(ch) + f"[cm_{k}]")
+                graph.append(f"[cm_{k}][{mi}:v]alphamerge[cp_{k}]")
+                if pip_bw > 0.5:
+                    bcol = str(c.get("borderColor") or "#8B5CF6").lstrip("#")
+                    rgb = tuple(int(bcol[i:i + 2], 16) for i in (0, 2, 4)) if len(bcol) == 6 else (139, 92, 246)
+                    b_im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                    ImageDraw.Draw(b_im).rounded_rectangle(
+                        [x0, y0, x0 + rw - 1, y0 + rh - 1],
+                        radius=rad_px, outline=(*rgb, 255), width=max(1, int(round(pip_bw * H / 1080.0)))
+                    )
+                    bp = work / f"pipbrd_{k}.png"
+                    b_im.save(bp)
+                    bi = add_input(["-loop", "1", "-t", f"{total:.3f}", "-i", str(bp)])
+                    graph.append(f"[cp_{k}][{bi}:v]overlay=0:0[c{k}]")
+                else:
+                    graph.append(f"[cp_{k}]null[c{k}]")
+            except Exception:
+                graph.append(f"[{ii}:v]" + ",".join(ch) + f"[c{k}]")
+        elif need_bg_blur:
             sig = max(1.0, bg_blur_pct * 0.65)
             graph.append(f"[{ii}:v]" + ",".join(ch) + f",split[c{k}][bg{k}]")
             graph.append(f"[bg{k}]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},gblur=sigma={sig:.1f},eq=brightness=-0.10[bgo{k}]")
@@ -1006,7 +1089,17 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
                 and (not has_solo or tracks[c["track"]].get("solo"))
                 and float(c.get("vol", 1) if c.get("vol") is not None else 1) > 0 and frame_t is None):
             cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(tracks[c["track"]].get("vol", 1) or 0)}
-            audio_parts.append((_audio_chain(ii, cv, cut0, seg, off, speed, ramp), bool(tracks[c["track"]].get("duck"))))
+            lead_req = max(-d * 0.8, float(c.get("audioLead") or 0))
+            tail_req = max(-d * 0.8, float(c.get("audioTail") or 0))
+            if abs(lead_req) > 0.005 or abs(tail_req) > 0.005:
+                a_off = max(0.0, off - lead_req)
+                lead_eff = off - a_off
+                a_src = max(0.0, src_in - lead_eff * speed)
+                a_seg = max(0.05, min(seg + lead_eff + tail_req, (float(a.get("dur") or 1e6) - a_src) / speed))
+                aii = add_input(["-ss", f"{a_src:.3f}", "-t", f"{a_seg * speed + 0.05:.3f}", "-i", a["path"]])
+                audio_parts.append((_audio_chain(aii, cv, cut0, a_seg, a_off, speed, None if rev else ramp), bool(tracks[c["track"]].get("duck"))))
+            else:
+                audio_parts.append((_audio_chain(ii, cv, cut0, seg, off, speed, None if rev else ramp), bool(tracks[c["track"]].get("duck"))))
         k += 1
     # efekt / ayar katmani izi: zaman araliginda tum goruntuye uygula
     for c in sorted([c for c in clips if tracks.get(c["track"], {}).get("kind") == "fx"], key=lambda c: (order.get(c["track"], 0), c["start"])):
@@ -1243,10 +1336,12 @@ def grade_active(g: dict) -> bool:
         return False
     if g.get("lut") and float(g.get("lutMix", 1)) > 0:
         return True
-    for k in ("exp", "con", "temp", "tint"):
+    for k in ("exp", "con", "temp", "tint", "vignette", "grain", "halation"):
         if abs(float(g.get(k, 0) or 0)) > 1e-4:
             return True
     if abs(float(g.get("sat", 1) if g.get("sat") is not None else 1) - 1) > 1e-4:
+        return True
+    if any((g.get("curves") or {}).get(ch) for ch in ("luma", "r", "g", "b")):
         return True
     return any(abs(float(v)) > 1e-4 for w in ("lift", "gamma", "gain") for v in (g.get(w) or [0, 0, 0]))
 
@@ -1299,6 +1394,21 @@ def _lut_sample(n: int, data: list, r: float, g: float, b: float) -> tuple[float
     return out[0], out[1], out[2]
 
 
+def _eval_curve(pts: list | None, x: float) -> float:
+    if not pts or len(pts) < 2:
+        return x
+    pts = sorted([(float(p[0]), float(p[1])) for p in pts if len(p) >= 2], key=lambda q: q[0])
+    if len(pts) < 2:
+        return x
+    if x <= pts[0][0]:
+        return max(0.0, min(1.0, pts[0][1]))
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if x <= x1:
+            t = (x - x0) / max(1e-6, x1 - x0)
+            return max(0.0, min(1.0, y0 + (y1 - y0) * t))
+    return max(0.0, min(1.0, pts[-1][1]))
+
+
 def grade_pixel(g: dict, r: float, gg: float, b: float, lut: tuple | None = None) -> tuple[float, float, float]:
     """studio.js glsl 'grade()' ile birebir ayni."""
     e = 2.0 ** float(g.get("exp", 0) or 0)
@@ -1317,6 +1427,14 @@ def grade_pixel(g: dict, r: float, gg: float, b: float, lut: tuple | None = None
     sat = float(g.get("sat", 1) if g.get("sat") is not None else 1)
     y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
     c = [min(1.0, max(0.0, y + (v - y) * sat)) for v in c]
+    crv = g.get("curves") or {}
+    if crv:
+        lu = crv.get("luma")
+        if lu:
+            c = [_eval_curve(lu, v) for v in c]
+        for idx, cname in ((0, "r"), (1, "g"), (2, "b")):
+            if crv.get(cname):
+                c[idx] = _eval_curve(crv[cname], c[idx])
     if lut:
         n, data, mix = lut
         lr = _lut_sample(n, data, *c)
@@ -1440,9 +1558,24 @@ def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: f
     else:
         head = f"[{ii}:a]"
         ch = ["asetpts=PTS-STARTPTS"]
+        if c.get("reverse"):
+            ch.append("areverse,asetpts=PTS-STARTPTS")
         if abs(speed - 1) > 1e-3:
             ch.append(_atempo(speed))
     ch.append(f"atrim=0:{seg:.3f}")
+    # Ses perdesi (Pitch) ve ses degistirici (Voice Changer)
+    vc = str(c.get("voice") or "none")
+    semi = float(c.get("pitch") or 0) + {"chipmunk": 7.0, "deep": -5.0, "demon": -6.0}.get(vc, 0.0)
+    semi = max(-12.0, min(12.0, semi))
+    if abs(semi) > 0.05:
+        pf_st = 2.0 ** (semi / 12.0)
+        ch.append(f"aresample=48000,asetrate=48000*{pf_st:.5f},aresample=48000,{_atempo(1.0 / pf_st)}")
+    if vc == "robot":
+        ch.append("aecho=0.8:0.88:12:0.6")
+    elif vc == "megaphone":
+        ch.append("highpass=f=450,lowpass=f=2800,acompressor=threshold=-18dB:ratio=6,volume=1.3")
+    elif vc == "demon":
+        ch.append("aecho=0.8:0.6:35:0.4")
     for fx in (c.get("afx") or []):
         if fx in AUDIO_FIX:
             ch.append(AUDIO_FIX[fx])
@@ -1591,6 +1724,8 @@ def build_ass(project: dict, t0: float = 0.0) -> str:
                 ev += _subscribe(c["subscribe"], s, e, W, H, c.get("style") or {})
             elif c.get("graphic"):
                 ev += studio_gfx.graphic(c["graphic"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
+            elif c.get("sticker"):
+                ev += studio_gfx.sticker(c["sticker"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
             elif c.get("words"):
                 ev += _captions(c, s, e, W, H)
             elif c.get("text"):

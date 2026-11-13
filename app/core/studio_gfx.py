@@ -17,6 +17,35 @@ GRAPHICS = {
     "lower": "İsim alt bandı", "lower-min": "Sade alt bant", "location": "Konum etiketi", "chapter": "Bölüm başlığı",
     "endscreen": "Bitiş ekranı (2 video + abone)", "callout": "İşaretçi (halka + ok)", "progress": "İlerleme çubuğu",
     "highlight": "Vurgulayıcı kalem", "counter": "Sayaç (0 → N)", "quote": "Alıntı kartı",
+    "news-card": "Haber / Kart (MKBHD)", "split-card": "50/50 Bölünmüş Kart", "stat-table": "İstatistik / Sıralama Kartı",
+    "birazdan": "Birazdan.. Köşe Rozeti",
+}
+
+STICKERS: dict[str, dict] = {
+    "arrow-red": {"name": "Kırmızı Ok", "cat": "İşaret", "vec": "arrow", "color": "#FF2E4C"},
+    "arrow-neon": {"name": "Neon Ok", "cat": "İşaret", "vec": "arrow", "color": "#2EE6A6"},
+    "circle-red": {"name": "Kırmızı Halka", "cat": "İşaret", "vec": "ring", "color": "#FF2E4C"},
+    "circle-gold": {"name": "Altın Halka", "cat": "İşaret", "vec": "ring", "color": "#FFE600"},
+    "censor-bar": {"name": "Sansür Bandı", "cat": "Sansür", "vec": "censor", "color": "#111111"},
+    "blur-pill": {"name": "Siyah Uyarı Hapı", "cat": "Sansür", "vec": "pill", "text": "18+ Sansür", "color": "#DC2626"},
+    "rec-dot": {"name": "REC ● Kayıt", "cat": "Sinema", "vec": "rec", "color": "#EF4444"},
+    "live-badge": {"name": "CANLI Yayın", "cat": "Sinema", "vec": "pill", "text": "● CANLI", "color": "#DC2626"},
+    "breaking": {"name": "SON DAKİKA", "cat": "Sinema", "vec": "pill", "text": "⚡ SON DAKİKA", "color": "#B91C1C"},
+    "verified": {"name": "Mavi Tik ✓", "cat": "Sosyal", "vec": "pill", "text": "✓ Onaylı", "color": "#2563EB"},
+    "sub-pill": {"name": "🔔 Abone Rozeti", "cat": "Sosyal", "vec": "pill", "text": "🔔 ABONE OL", "color": "#FF0033"},
+    "pinned": {"name": "📌 Sabitlendi", "cat": "Sosyal", "vec": "pill", "text": "📌 SABİTLENDİ", "color": "#6D28D9"},
+    "skull": {"name": "💀 Kurukafa", "cat": "Meme", "glyph": "💀", "color": "#FFFFFF"},
+    "fire": {"name": "🔥 Alev", "cat": "Meme", "glyph": "🔥", "color": "#FF7A00"},
+    "100": {"name": "💯 Tam Puan", "cat": "Meme", "glyph": "💯", "color": "#EF4444"},
+    "clown": {"name": "🤡 Palyaço", "cat": "Meme", "glyph": "🤡", "color": "#FFFFFF"},
+    "cockroach": {"name": "🪳 AI Böcek", "cat": "Meme", "glyph": "🪳", "color": "#FDE68A"},
+    "brain": {"name": "🧠 Beyin", "cat": "Meme", "glyph": "🧠", "color": "#F472B6"},
+    "eyes": {"name": "👀 Gözler", "cat": "Meme", "glyph": "👀", "color": "#FFFFFF"},
+    "moyai": {"name": "🗿 Sigma Taş", "cat": "Meme", "glyph": "🗿", "color": "#D1D5DB"},
+    "warning": {"name": "⚠️ Dikkat!", "cat": "İşaret", "glyph": "⚠️", "color": "#FACC15"},
+    "boom": {"name": "💥 BOOM!", "cat": "Meme", "glyph": "💥", "color": "#FF4D4D"},
+    "crown": {"name": "👑 Kral Tacı", "cat": "Oyun", "glyph": "👑", "color": "#FBBF24"},
+    "trophy": {"name": "🏆 Kupa #1", "cat": "Oyun", "glyph": "🏆", "color": "#F59E0B"},
 }
 
 # --- simgeler (0,0 sol ust; yaklasik 40x45 kutu)
@@ -395,4 +424,62 @@ def graphic(kind: str, ts, col, esc, rrect, s: float, e: float, W: int, H: int, 
         c.ev(4, 0.2, None, f"\\an5\\pos({x:.0f},{y - 10 * k:.0f})\\fn{c.font}\\fs{42 * k:.0f}\\i1\\bord0\\shad0\\q0\\fad(200,300)", title or "Alıntı metni")
         if sub:
             c.ev(4, 0.4, None, f"\\an6\\pos({x + W * 0.28:.0f},{y + 100 * k:.0f})\\fn{c.font}\\fs{28 * k:.0f}\\bord0\\shad0\\1c&H00AAAAAA&\\fad(200,300)", f"— {sub}")
+    elif kind == "news-card":
+        x, y = W * float(st.get("x", 0.5)), H * float(st.get("y", 0.48))
+        cw, ch = W * 0.64, 240 * k
+        c.ev(2, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c&H0012121A&\\1a&H18&\\3c{acc}\\bord{3 * k:.0f}\\shad{10 * k:.0f}\\4c&HA0000000&\\fscx88\\fscy88\\t(0,220,\\fscx100\\fscy100)\\fad(120,260)", rrect(cw, ch, 18 * k))
+        c.ev(3, 0.05, None, f"\\an7\\pos({x - cw / 2 + 22 * k:.0f},{y - ch / 2 + 22 * k:.0f})\\p1\\1c{acc}\\bord0\\shad0\\fad(120,260)", rrect(12 * k, ch - 44 * k, 6 * k))
+        c.ev(4, 0.12, None, f"\\an7\\pos({x - cw / 2 + 52 * k:.0f},{y - ch / 2 + 28 * k:.0f})\\fn{c.font}\\fs{44 * k:.0f}\\b1\\bord0\\shad0\\1c&H00FFFFFF&\\q0\\fad(150,260)", title or "HABER BAŞLIĞI")
+        c.ev(4, 0.22, None, f"\\an7\\pos({x - cw / 2 + 52 * k:.0f},{y - ch / 2 + 96 * k:.0f})\\fn{c.font}\\fs{28 * k:.0f}\\bord0\\shad0\\1c&H00CBD5E1&\\q0\\fad(200,260)", sub or "Kaynak · Öne çıkan açıklama satırı buraya gelir.")
+    elif kind == "split-card":
+        cx, cy = W * float(st.get("x", 0.5)), H * float(st.get("y", 0.5))
+        c.ev(2, 0, None, f"\\an5\\pos({cx:.0f},{cy:.0f})\\p1\\1c{acc}\\bord0\\shad{6 * k:.0f}\\fscy0\\t(0,220,\\fscy100)\\fad(0,260)", rrect(6 * k, H * 0.72, 3 * k))
+        c.ev(4, 0.1, None, f"\\an5\\pos({cx - W * 0.23:.0f},{cy:.0f})\\fn{c.font}\\fs{56 * k:.0f}\\b1\\bord{4 * k:.0f}\\shad0\\1c&H00FFFFFF&\\fscx80\\fscy80\\t(0,220,\\fscx100\\fscy100)\\fad(120,260)", title or "SEÇENEK A")
+        c.ev(4, 0.18, None, f"\\an5\\pos({cx + W * 0.23:.0f},{cy:.0f})\\fn{c.font}\\fs{56 * k:.0f}\\b1\\bord{4 * k:.0f}\\shad0\\1c{acc}\\fscx80\\fscy80\\t(0,220,\\fscx100\\fscy100)\\fad(120,260)", sub or "SEÇENEK B")
+    elif kind == "stat-table":
+        x, y = W * float(st.get("x", 0.5)), H * float(st.get("y", 0.5))
+        bw, bh = W * 0.56, 118 * k
+        c.ev(2, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c&H000E0C18&\\1a&H14&\\3c{acc}\\bord{2 * k:.0f}\\shad{6 * k:.0f}\\fscx85\\t(0,220,\\fscx100)\\fad(120,260)", rrect(bw, bh, 14 * k))
+        c.ev(4, 0.1, None, f"\\an4\\pos({x - bw / 2 + 28 * k:.0f},{y:.0f})\\fn{c.font}\\fs{36 * k:.0f}\\b1\\bord0\\shad0\\1c&H00FFFFFF&\\fad(150,260)", title or "01 · Metrik Adı")
+        c.ev(4, 0.18, None, f"\\an6\\pos({x + bw / 2 - 28 * k:.0f},{y:.0f})\\fn{c.font}\\fs{44 * k:.0f}\\b1\\bord0\\shad0\\1c{acc}\\fad(180,260)", sub or "%98.4")
+    elif kind == "birazdan":
+        x, y = W * float(st.get("x", 0.82)), H * float(st.get("y", 0.13))
+        t_txt = title or "BİRAZDAN.."
+        pw = max(210 * k, (len(t_txt) * 26 + 56) * k)
+        c.ev(3, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c{acc}\\bord{3 * k:.0f}\\3c&H00FFFFFF&\\shad{5 * k:.0f}\\fscx75\\fscy75\\t(0,180,\\fscx108\\fscy108)\\t(180,280,\\fscx100\\fscy100)\\fad(80,220)", rrect(pw, 72 * k, 14 * k))
+        c.ev(4, 0.05, None, f"\\an5\\pos({x:.0f},{y:.0f})\\fn{c.font}\\fs{34 * k:.0f}\\b1\\bord0\\shad0\\1c&H00FFFFFF&\\fad(80,220)", t_txt)
+    return c.out
+
+
+def sticker(kind: str, ts, col, esc, rrect, s: float, e: float, W: int, H: int, st: dict) -> list[str]:
+    info = STICKERS.get(kind)
+    if not info:
+        return []
+    c = _Ctx(ts, col, esc, rrect, s, e, W, H, st)
+    k = c.k
+    x = W * float(st.get("x", 0.5))
+    y = H * float(st.get("y", 0.5))
+    rot = float(st.get("rot", 0) or 0)
+    fill = col(st.get("color", info.get("color", "#FFFFFF")))
+    rtag = f"\\frz{rot:.1f}" if abs(rot) > 0.1 else ""
+    vec = info.get("vec")
+    if vec == "arrow":
+        sc = 150 * k
+        c.ev(6, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c{fill}\\3c&H00000000&\\bord{3 * k:.0f}\\shad{4 * k:.0f}{rtag}\\fscx0\\fscy0\\t(0,180,\\fscx{sc * 1.1:.0f}\\fscy{sc * 1.1:.0f})\\t(180,280,\\fscx{sc:.0f}\\fscy{sc:.0f})\\fad(0,200)", ARROW_DOWN)
+    elif vec == "ring":
+        sz = 140 * k
+        c.ev(6, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1a&HFF&\\3c{fill}\\bord{8 * k:.0f}\\shad0{rtag}\\fscx{sz * 0.7:.0f}\\fscy{sz * 0.7:.0f}\\t(0,220,\\fscx{sz:.0f}\\fscy{sz:.0f})\\fad(0,200)", CIRCLE)
+    elif vec == "censor":
+        c.ev(6, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c{fill}\\bord{2 * k:.0f}\\3c&H00000000&\\shad0{rtag}\\fad(80,150)", rrect(260 * k, 74 * k, 6 * k))
+    elif vec == "rec":
+        c.ev(6, 0, None, f"\\an5\\pos({x - 58 * k:.0f},{y:.0f})\\p1\\1c{fill}\\bord0\\shad0\\fad(100,150)", _ellipse(34 * k, 34 * k))
+        c.ev(6, 0, None, f"\\an4\\pos({x - 28 * k:.0f},{y:.0f})\\fn Arial Black\\fs{38 * k:.0f}\\b1\\1c&H00FFFFFF&\\3c&H00000000&\\bord{3 * k:.0f}\\shad0{rtag}\\fad(100,150)", "REC")
+    elif vec == "pill":
+        txt = esc(st.get("title") or info.get("text", ""))
+        pw = max(180 * k, (len(txt) * 22 + 52) * k)
+        c.ev(5, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c{fill}\\3c&H00FFFFFF&\\bord{2.5 * k:.0f}\\shad{5 * k:.0f}{rtag}\\fscx70\\fscy70\\t(0,180,\\fscx100\\fscy100)\\fad(80,200)", rrect(pw, 66 * k, 33 * k))
+        c.ev(6, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\fn{c.font}\\fs{30 * k:.0f}\\b1\\1c&H00FFFFFF&\\bord0\\shad0{rtag}\\fad(80,200)", txt)
+    else:
+        gl = info.get("glyph", "🔥")
+        c.ev(6, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\fn Segoe UI Emoji\\fs{130 * k:.0f}\\bord{4 * k:.0f}\\3c&H00000000&\\shad{5 * k:.0f}{rtag}\\fscx0\\fscy0\\t(0,160,\\fscx115\\fscy115)\\t(160,260,\\fscx100\\fscy100)\\fad(0,180)", gl)
     return c.out

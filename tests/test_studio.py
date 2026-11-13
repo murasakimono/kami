@@ -524,3 +524,60 @@ def test_dalga5_tr_memes_and_sfx_ffmpeg(tmp_path: Path, monkeypatch):
     r = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-400:]
     assert out.is_file() and out.stat().st_size > 1000
+
+
+def test_dalga6_features_and_api_wiring(tmp_path: Path):
+    import re
+    import shutil
+    import subprocess
+    import pytest
+    from app.core import studio_gfx as SG
+    from app.core import studio_tr_memes as TM
+
+    root = Path(__file__).resolve().parent.parent
+    apis = set(re.findall(r"def (studio_[a-zA-Z0-9_]+)\(", (root / "app/ui/api_studio.py").read_text(encoding="utf-8")))
+    web = "\n".join(p.read_text(encoding="utf-8") for p in (root / "app/ui/web").glob("*.js"))
+    missing = [a for a in sorted(apis) if a not in web]
+    assert not missing, f"UI'da baglanmamis studio_* API'leri: {missing}"
+
+    assert len(TM.TR_MEME_VIDEOS) >= 50
+    assert len(TM.TR_MEME_SOUNDS) >= 90
+    assert len(TM.TEMPLATES_TR_MEME) >= 7
+    assert len(SG.STICKERS) >= 20
+    for gk in ("news-card", "split-card", "stat-table", "birazdan"):
+        assert gk in SG.GRAPHICS
+
+    cat = S.catalog()
+    assert len(cat.get("stickers", {})) >= 20
+    assert len(cat.get("voiceChangers", {})) >= 5
+
+    p = S.new_project("dalga6", 640, 360, 24)
+    S.add_clip(p, track="tx", start=0.0, dur=1.2, graphic="news-card", style={"title": "SON DAKİKA", "sub": "Detay"})
+    S.add_clip(p, track="tx", start=1.2, dur=1.0, sticker="arrow-red", style={"x": 0.5, "y": 0.5, "size": 90, "color": "#FF2E54"})
+    ass = S.build_ass(p)
+    assert "SON DAK" in ass and "\\p1" in ass
+
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        pytest.skip("ffmpeg yok")
+
+    v1 = tmp_path / "src6.mp4"
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=24:d=2.5",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=2.5", "-shortest",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(v1)], check=True)
+    p["assets"]["a1"] = {"path": str(v1), "kind": "video", "dur": 2.5, "w": 320, "h": 180, "audio": True, "name": "src6"}
+    S.add_clip(
+        p, asset="a1", track="v1", start=0.0, dur=2.0, **{"in": 0.0},
+        reverse=True,
+        crop={"l": 0.1, "r": 0.1, "t": 0.05, "b": 0.05},
+        radius=0.18, borderW=4, borderColor="#8B5CF6",
+        grade={"vignette": 0.35, "grain": 0.2, "halation": 0.25, "curves": {"luma": [[0, 0], [0.5, 0.62], [1, 1]]}},
+        pitch=2, voice="megaphone", audioLead=0.1, audioTail=0.1,
+    )
+    out = tmp_path / "dalga6_out.mp4"
+    args, total = S.build_export(p, str(out), tmp_path, "libx264", {"quality": "medium"})
+    assert total >= 2.0
+    r = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-500:]
+    assert out.is_file() and out.stat().st_size > 1000
+
