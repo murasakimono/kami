@@ -3218,3 +3218,20 @@ class Api(StudioMixin):
         from app.core.audio_toolbox import synthesize_tts
         target = out_wav or str(Path(self._manager.settings.get("download_dir", "Downloads")) / f"tts_{int(time.time())}.wav")
         return synthesize_tts(text, target, lang=lang)
+
+    # ---------- Faz 13: Kami Kasa Semantik Arama & Oto-Bolumlendirme ----------
+    def kasa_index_media(self, video_path: str, tags: str = "", transcript_segments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        from app.core.semantic_vault import index_video_scenes
+        return index_video_scenes(video_path, tags=tags, transcript_segments=transcript_segments)
+
+    def kasa_search(self, query: str, limit: int = 30) -> dict[str, Any]:
+        from app.core.semantic_vault import search
+        return search(query, limit=limit)
+
+    def kasa_auto_chapters(self, transcript_segments: list[dict[str, Any]], chunk_seconds: float = 180.0, use_ollama: bool = True) -> dict[str, Any]:
+        from app.core.semantic_vault import auto_chapters
+        return auto_chapters(transcript_segments, chunk_seconds=chunk_seconds, use_ollama=use_ollama)
+
+    def kasa_stats(self) -> dict[str, Any]:
+        from app.core.semantic_vault import kasa_stats
+        return kasa_stats()

@@ -75,7 +75,7 @@
 
 ## Faz 13 — Kami Kasa: Semantik Medya Arşivi & Akıllı Özetleyici
 * **13.1 Semantik Arama:** `google/siglip-base-patch16-224` (<1 GB VRAM) + `PySceneDetect` + `sqlite-vec` + `SQLite FTS5` WAL (`"gece yağmurda neon sokak"` → doğrudan video saniyesine atla).
-* **13.2 50.000+ `VirtualGrid` & Akıllı Özet:** DOM geri dönüşümlü yüksek hızlı ızgara, uzun kayıt oto-bölümlendirme (`Whisper` + `Qwen2.5`), ve cihaz içi **"Kami Wrapped"** istatistik kartı.
+* **13.2 50.000+ `VirtualGrid` & Akıllı Özet:** DOM geri dönüşümlü yüksek hızlı ızgara ve uzun kayıt oto-bölümlendirme (`Whisper` + `Qwen2.5` / yerel özetleyici).
 
 ---
 
