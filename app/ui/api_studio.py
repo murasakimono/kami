@@ -875,6 +875,15 @@ class StudioMixin:
         out = outdir / f"{Path(path).stem}-{int(float(start))}-{int(float(dur))}s.webm"
 
         def run() -> None:
+            try:   # eski kurulumlar: onnxruntime-gpu CUDA 13 surumu GPU'yu kullanamiyor -> bir kez duzelt
+                env = Path(aitools.python_exe("iopaint")).resolve().parent.parent
+                mark = env / ".kami_ort_cuda12"
+                if not mark.exists():
+                    job.update(line="yapay zeka ortamı güncelleniyor (bir kez)")
+                    if aitools.install("iopaint", lambda s: job.update(line=str(s)[-120:])):
+                        mark.write_text("1")
+            except Exception:
+                log.exception("iopaint ortam duzeltme")
             args = ["app.tools.studio_matte_run", str(path), str(out), f"{float(start):.3f}", f"{float(dur):.3f}", str(model), self._media.ffmpeg()]
 
             def prog(m: dict) -> None:
