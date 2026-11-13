@@ -1,0 +1,95 @@
+"""Kami Studio faz 5b efekt paketi (studio.FX'e eklenir). CapCut kategorileri: Film stoklari, Mevsim/Duygu, Gece kulubu,
+Retro, Bozulma, Bulaniklik, Sanat, Cerceve, Bolunmus ekran. ff: ffmpeg (W/H/S yer tutucu), css/ov: onizleme."""
+from __future__ import annotations
+
+_SEP = "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"
+
+
+def _cb(rs=0, gs=0, bs=0, rm=0, gm=0, bm=0, rh=0, gh=0, bh=0):
+    return f"colorbalance=rs={rs}:gs={gs}:bs={bs}:rm={rm}:gm={gm}:bm={bm}:rh={rh}:gh={gh}:bh={bh}"
+
+
+FX4 = {
+    # ---- film stoklari (yaklasik)
+    "kodak-gold": {"name": "Kodak Gold 200", "pack": "Film", "ff": _cb(rs=.06, bs=-.08, rm=.08, bm=-.06, rh=.04) + ",curves=all='0/0.03 0.5/0.53 1/0.97',eq=saturation=1.12",
+                   "css": "sepia(.2) saturate(1.15) brightness(1.03)", "ov": ["warm-tint"]},
+    "ektar": {"name": "Ektar 100 (doygun)", "pack": "Film", "ff": "curves=preset=increase_contrast," + _cb(rs=.04, bh=-.04) + ",eq=saturation=1.35",
+              "css": "saturate(1.35) contrast(1.12)", "ov": []},
+    "portra800": {"name": "Portra 800 (gece sıcak)", "pack": "Film", "ff": _cb(rs=.04, bs=.05, rm=.06, bm=-.04) + ",curves=all='0/0.06 0.5/0.5 1/0.94',eq=saturation=0.95,noise=alls=6:allf=t",
+                  "css": "sepia(.12) contrast(.94)", "ov": ["grain"]},
+    "pro400h": {"name": "Fuji Pro 400H (pastel yeşil)", "pack": "Film", "ff": _cb(gs=.04, bs=.05, gm=.03, rh=-.02) + ",curves=all='0/0.08 0.5/0.55 1/0.98',eq=saturation=0.88",
+                "css": "saturate(.88) brightness(1.05) hue-rotate(-6deg)", "ov": []},
+    "superia": {"name": "Fuji Superia (yeşil gölge)", "pack": "Film", "ff": _cb(gs=.06, bs=.02, rh=.04) + ",eq=contrast=1.08:saturation=1.1",
+                "css": "hue-rotate(-10deg) contrast(1.08) saturate(1.1)", "ov": []},
+    "velvia": {"name": "Velvia (manzara)", "pack": "Film", "ff": "eq=saturation=1.6:contrast=1.15,curves=preset=medium_contrast", "css": "saturate(1.6) contrast(1.15)", "ov": []},
+    "cinestill50": {"name": "CineStill 50D (gün)", "pack": "Film", "ff": _cb(bs=.04, rh=.05, bh=-.03) + ",curves=all='0/0.02 0.5/0.52 1/1',eq=saturation=1.05",
+                    "css": "contrast(1.04) brightness(1.03)", "ov": []},
+    "agfa": {"name": "Agfa Vista (kırmızı)", "pack": "Film", "ff": _cb(rs=.08, rm=.06, gm=-.02, bh=-.04) + ",eq=saturation=1.18", "css": "saturate(1.18) sepia(.1)", "ov": []},
+    "polaroid": {"name": "Polaroid", "pack": "Film", "ff": "curves=all='0/0.12 0.5/0.55 1/0.92'," + _cb(bs=.08, rh=.06) + ",eq=saturation=0.85,vignette=PI/5",
+                 "css": "contrast(.85) saturate(.85) sepia(.2) brightness(1.05)", "ov": ["vignette"]},
+    "lomo": {"name": "Lomo (vinyetli)", "pack": "Film", "ff": "curves=preset=strong_contrast,eq=saturation=1.4,vignette=PI/3", "css": "contrast(1.3) saturate(1.4)", "ov": ["vignette-hard"]},
+    "crossproc": {"name": "Çapraz banyo", "pack": "Film", "ff": "curves=r='0/0 0.5/0.6 1/1':g='0/0 0.5/0.55 1/0.95':b='0/0.2 0.5/0.45 1/0.75',eq=saturation=1.2",
+                  "css": "hue-rotate(-15deg) saturate(1.3) contrast(1.1)", "ov": []},
+    "hp5": {"name": "Ilford HP5 (S/B gren)", "pack": "Film", "ff": "hue=s=0,curves=preset=medium_contrast,noise=alls=14:allf=t", "css": "grayscale(1) contrast(1.15)", "ov": ["grain"]},
+    "trix": {"name": "Tri-X (sert S/B)", "pack": "Film", "ff": "hue=s=0,curves=preset=strong_contrast,noise=alls=10:allf=t,vignette=PI/4.5", "css": "grayscale(1) contrast(1.45)", "ov": ["grain", "vignette"]},
+    # ---- mevsim / duygu
+    "summer": {"name": "Yaz (sıcak parlak)", "pack": "Mevsim", "ff": _cb(rs=.1, bs=-.1, rh=.06) + ",eq=saturation=1.25:brightness=0.03", "css": "saturate(1.25) sepia(.15) brightness(1.04)", "ov": ["warm-tint"]},
+    "winter": {"name": "Kış (soğuk soluk)", "pack": "Mevsim", "ff": _cb(rs=-.08, bs=.14, bh=.06) + ",eq=saturation=0.7:brightness=0.04", "css": "saturate(.7) hue-rotate(12deg) brightness(1.05)", "ov": ["blue-tint"]},
+    "autumn": {"name": "Sonbahar (turuncu)", "pack": "Mevsim", "ff": "hue=h=-8," + _cb(rs=.12, gs=.04, bs=-.12, rm=.08) + ",eq=saturation=1.15", "css": "sepia(.3) saturate(1.2) hue-rotate(-8deg)", "ov": []},
+    "spring": {"name": "İlkbahar (taze yeşil)", "pack": "Mevsim", "ff": _cb(gs=.06, gm=.05, bh=.03) + ",eq=saturation=1.2:brightness=0.03", "css": "saturate(1.2) hue-rotate(-12deg) brightness(1.03)", "ov": []},
+    "romance": {"name": "Romantik pembe", "pack": "Mevsim", "ff": _cb(rs=.06, bs=.08, rh=.08, bh=.04) + ",eq=saturation=0.95:brightness=0.03,split[p0][p1];[p1]gblur=sigma=10[p2];[p0][p2]blend=all_mode=screen:all_opacity=0.25",
+                "css": "sepia(.15) hue-rotate(-20deg) brightness(1.06)", "ov": ["bloom"]},
+    "horror-green": {"name": "Korku yeşili", "pack": "Mevsim", "ff": _cb(gs=.1, bs=.04, rh=-.06) + ",eq=saturation=0.6:contrast=1.2:brightness=-0.05,vignette=PI/3.5",
+                     "css": "saturate(.6) hue-rotate(40deg) contrast(1.2) brightness(.92)", "ov": ["vignette-hard"]},
+    "melancholy": {"name": "Hüzünlü mavi", "pack": "Mevsim", "ff": _cb(bs=.12, bm=.08) + ",eq=saturation=0.55:contrast=1.05", "css": "saturate(.55) hue-rotate(15deg)", "ov": ["blue-tint"]},
+    # ---- gece kulubu / parti
+    "disco": {"name": "Disko (renk döngüsü)", "pack": "Parti", "ff": "hue=h='t*120':s=1.4", "css": "saturate(1.4)", "ov": ["strobe"]},
+    "neon-night": {"name": "Neon gece", "pack": "Parti", "ff": _cb(rs=.2, bs=.3, gs=-.15) + ",eq=saturation=1.5:contrast=1.2,split[n0][n1];[n1]gblur=sigma=12[n2];[n0][n2]blend=all_mode=screen:all_opacity=0.4",
+                   "css": "saturate(1.6) contrast(1.2) hue-rotate(-20deg)", "ov": ["bloom"]},
+    "laser": {"name": "Lazer çizgiler", "pack": "Parti", "ff": "drawgrid=w=iw/12:h=ih:t=2:c=0xff2bd6@0.5,hue=h='t*60'", "css": "saturate(1.3)", "ov": []},
+    "pulse": {"name": "Nabız (parlaklık atışı)", "pack": "Parti", "ff": "eq=brightness='0.12*abs(sin(t*PI*2))':eval=frame", "css": "", "ov": []},
+    "uv": {"name": "UV ışığı", "pack": "Parti", "ff": "colorchannelmixer=rr=0.6:rb=0.5:gg=0.3:bb=1.2:br=0.3,eq=contrast=1.3", "css": "hue-rotate(240deg) saturate(1.8) contrast(1.3)", "ov": []},
+    # ---- retro
+    "vhs-soft": {"name": "VHS (yumuşak)", "pack": "Retro", "ff": "rgbashift=rh=-2:bh=2,gblur=sigma=0.6,eq=saturation=1.15,noise=alls=8:allf=t", "css": "saturate(1.15) blur(.3px)", "ov": ["rgb", "scan", "grain"]},
+    "camcorder": {"name": "90'lar kamera", "pack": "Retro", "ff": "scale=iw/2:-2,scale=W:H,eq=saturation=1.2:contrast=1.1,noise=alls=10:allf=t,vignette=PI/4", "css": "saturate(1.2) contrast(1.1) blur(.4px)", "ov": ["grain", "vignette"]},
+    "gameboy": {"name": "Game Boy (4 yeşil)", "pack": "Retro", "ff": "hue=s=0,scale=iw/6:-2,scale=W:H:flags=neighbor,colorchannelmixer=rr=0.55:gg=0.74:bb=0.06,curves=all='0/0.06 0.33/0.3 0.66/0.6 1/0.85'",
+                "css": "grayscale(1) sepia(1) hue-rotate(50deg) saturate(1.6)", "ov": ["pixel-strong"]},
+    "crt": {"name": "CRT ekran", "pack": "Retro", "ff": "lenscorrection=k1=0.12:k2=0.02,drawgrid=w=iw:h=3:t=1:c=black@0.3,eq=contrast=1.15,vignette=PI/3.5", "css": "contrast(1.15)", "ov": ["scan", "vignette-hard"]},
+    "silent-film": {"name": "Sessiz film", "pack": "Retro", "ff": "hue=s=0,eq=contrast=1.3:brightness='0.06*sin(t*25)':eval=frame,noise=alls=24:allf=t,vignette=PI/3",
+                    "css": "grayscale(1) contrast(1.3) sepia(.2)", "ov": ["grain", "flicker", "scratches", "vignette-hard"]},
+    "sepia-old": {"name": "Eski fotoğraf", "pack": "Retro", "ff": _SEP + ",curves=all='0/0.1 1/0.85',noise=alls=12,vignette=PI/3.5", "css": "sepia(1) contrast(.85)", "ov": ["grain", "vignette-hard"]},
+    # ---- bozulma
+    "rgb-wave": {"name": "RGB dalga", "pack": "Bozulma", "ff": "rgbashift=rh=6:rv=2:bh=-6:bv=-2,eq=saturation=1.2", "css": "saturate(1.2)", "ov": ["rgb-strong"]},
+    "datamosh": {"name": "Datamosh hissi", "pack": "Bozulma", "ff": "tmix=frames=4:weights='1 1 1 3',rgbashift=rh=4:bh=-4", "css": "", "ov": ["double", "rgb"]},
+    "scan-glitch": {"name": "Tarama kayması", "pack": "Bozulma", "ff": "noise=alls=30:allf=t+u,rgbashift=rh=10:bh=-10:enable='lt(mod(t,1.3),0.15)'", "css": "", "ov": ["glitch-bars"]},
+    "pixel-sort": {"name": "Piksel lekesi", "pack": "Bozulma", "ff": "scale=iw/40:ih,scale=W:H:flags=neighbor,eq=saturation=1.3", "css": "saturate(1.3)", "ov": []},
+    "wobble": {"name": "Sallantılı lens", "pack": "Bozulma", "ff": "lenscorrection=k1=-0.08:k2=0.02,crop=iw-24:ih-24:12+12*sin(t*3):12+12*cos(t*2.3),scale=W:H", "css": "", "ov": ["shake-soft"]},
+    "split-tone": {"name": "Bölünmüş ton (renk ayrımı)", "pack": "Bozulma", "ff": "rgbashift=rh=-14:bh=14:gv=4", "css": "", "ov": ["rgb-strong"]},
+    # ---- bulaniklik / isik
+    "lensblur": {"name": "Lens bulanıklığı", "pack": "Bulanık", "ff": "boxblur=6:2", "css": "blur(4px)", "ov": []},
+    "dreamy-edge": {"name": "Kenarı bulanık (odak orta)", "pack": "Bulanık", "ff": "split[e0][e1];[e1]gblur=sigma=14[e2];[e0][e2]blend=all_expr='A*max(0,1-hypot(X-W/2,Y-H/2)/(H*0.55))+B*min(1,hypot(X-W/2,Y-H/2)/(H*0.55))'",
+                    "css": "", "ov": ["vignette"]},
+    "radial-zoom": {"name": "Işınsal zoom", "pack": "Bulanık", "ff": "split[r0][r1];[r1]scale=iw*1.12:-2,crop=W:H,gblur=sigma=5[r2];[r0][r2]blend=all_mode=normal:all_opacity=0.45", "css": "blur(1px)", "ov": ["zoom"]},
+    "flare": {"name": "Lens parlaması", "pack": "Bulanık", "ff": "split[f0][f1];[f1]geq=r='255*exp(-(pow(X-W*0.78,2)+pow(Y-H*0.22,2))/(W*W*0.01))':g='200*exp(-(pow(X-W*0.78,2)+pow(Y-H*0.22,2))/(W*W*0.012))':b='120*exp(-(pow(X-W*0.78,2)+pow(Y-H*0.22,2))/(W*W*0.015))',format=rgba[f2];[f0][f2]blend=all_mode=screen",
+              "css": "brightness(1.05)", "ov": ["bloom"]},
+    "haze-glow": {"name": "Pus + parıltı", "pack": "Bulanık", "ff": "curves=all='0/0.12 1/1',split[h0][h1];[h1]gblur=sigma=16[h2];[h0][h2]blend=all_mode=screen:all_opacity=0.35", "css": "contrast(.88) brightness(1.08)", "ov": ["bloom"]},
+    # ---- sanat
+    "cartoon": {"name": "Çizgi film", "pack": "Sanat", "ff": "split[c0][c1];[c1]hue=s=0,edgedetect=low=0.1:high=0.3,negate,format=rgba[c2];[c0]bilateral=sigmaS=8:sigmaR=0.12,eq=saturation=1.4,format=rgba[c3];[c3][c2]blend=all_mode=multiply",
+                "css": "saturate(1.4) contrast(1.2)", "ov": []},
+    "comic": {"name": "Çizgi roman", "pack": "Sanat", "ff": "split[m0][m1];[m1]hue=s=0,edgedetect=low=0.08:high=0.25,negate,format=rgba[m2];[m0]eq=saturation=1.8:contrast=1.3,format=rgba,lutrgb=r='trunc(val/64)*64+32':g='trunc(val/64)*64+32':b='trunc(val/64)*64+32'[m3];[m3][m2]blend=all_mode=multiply",
+              "css": "saturate(1.8) contrast(1.3)", "ov": []},
+    "watercolor": {"name": "Suluboya", "pack": "Sanat", "ff": "bilateral=sigmaS=12:sigmaR=0.2,eq=saturation=1.2:brightness=0.05,curves=all='0/0.08 1/1'", "css": "saturate(1.2) blur(1px) brightness(1.05)", "ov": []},
+    "pencil-color": {"name": "Renkli kalem", "pack": "Sanat", "ff": "split[k0][k1];[k1]edgedetect=mode=colormix:high=0.2,negate,format=rgba[k2];[k0]format=rgba[k3];[k3][k2]blend=all_mode=multiply:all_opacity=0.7", "css": "contrast(1.1)", "ov": []},
+    "duotone-orange": {"name": "Çift ton turuncu-mor", "pack": "Sanat", "ff": "hue=s=0,lutrgb=r='val*0.95+40':g='val*0.55+10':b='val*0.35+60'", "css": "grayscale(1) sepia(1) hue-rotate(-20deg) saturate(2.5)", "ov": []},
+    "duotone-teal": {"name": "Çift ton camgöbeği", "pack": "Sanat", "ff": "hue=s=0,lutrgb=r='val*0.3+10':g='val*0.85+20':b='val*0.9+40'", "css": "grayscale(1) sepia(1) hue-rotate(140deg) saturate(2)", "ov": []},
+    "threshold": {"name": "Eşik (stencil)", "pack": "Sanat", "ff": "hue=s=0,lutrgb=r='if(gt(val,120),255,0)':g='if(gt(val,120),255,0)':b='if(gt(val,120),255,0)'", "css": "grayscale(1) contrast(5)", "ov": []},
+    # ---- cerceve / bolme
+    "frame-white": {"name": "Beyaz çerçeve", "pack": "Çerçeve", "ff": "scale=iw*0.9:ih*0.9,pad=W:H:(ow-iw)/2:(oh-ih)/2:color=white", "css": "", "ov": []},
+    "frame-polaroid": {"name": "Polaroid çerçeve", "pack": "Çerçeve", "ff": "scale=iw*0.84:ih*0.78,pad=W:H:(ow-iw)/2:oh*0.06:color=0xf4f1ea", "css": "", "ov": []},
+    "frame-film": {"name": "Film şeridi", "pack": "Çerçeve", "ff": "scale=iw*0.94:ih*0.8,pad=W:H:(ow-iw)/2:(oh-ih)/2:color=0x111111," + _SEP.replace(".393", ".45") + ",noise=alls=10:allf=t",
+                   "css": "", "ov": ["letterbox"]},
+    "split3-v": {"name": "Üçlü dikey bölme", "pack": "Düzen", "ff": "crop=iw/3:ih,split=3[s0][s1][s2];[s0][s1][s2]hstack=inputs=3,scale=W:H", "css": "", "ov": []},
+    "grid9": {"name": "Dokuzlu ızgara", "pack": "Düzen", "ff": "scale=iw/3:ih/3,split=3[g0][g1][g2];[g0][g1][g2]hstack=inputs=3,split=3[g3][g4][g5];[g3][g4][g5]vstack=inputs=3,scale=W:H", "css": "", "ov": []},
+    "kaleido": {"name": "Kaleydoskop (4 ayna)", "pack": "Düzen", "ff": "crop=iw/2:ih/2:0:0,split[q0][q1];[q1]hflip[q2];[q0][q2]hstack,split[q3][q4];[q4]vflip[q5];[q3][q5]vstack,scale=W:H", "css": "", "ov": []},
+    "zoom-crop": {"name": "Sabit yakın plan (1.3x)", "pack": "Düzen", "ff": "crop=iw/1.3:ih/1.3,scale=W:H", "css": "", "ov": []},
+}

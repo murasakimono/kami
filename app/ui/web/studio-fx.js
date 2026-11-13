@@ -102,13 +102,44 @@ const SFX = (() => {
     else if (kind === "spin") r.rot = -90 * (1 - e);
     else if (kind === "shake-in") { const k = 1 - e; r.dx = .0125 * Math.sin(local * 73) * k; r.dy = .022 * Math.cos(local * 61) * k; }
     else if (kind === "glitch") r.rgb = true;
-    else if (/^(wipe-|barn-|iris|eye|clock)/.test(kind)) r.mask = { kind, e };
+    // faz 5b (studio_trans2.py ile ayni egriler)
+    else if (kind === "pop-in") { r.sx = r.sy = .3 + .7 * e; }
+    else if (kind === "bounce-in") { const b = 1 + 2.70158 * Math.pow(u - 1, 3) + 1.70158 * Math.pow(u - 1, 2); r.sx = r.sy = Math.max(.05, b); }
+    else if (kind === "flip-h") r.sx = Math.max(.02, e);
+    else if (kind === "flip-v") r.sy = Math.max(.02, e);
+    else if (kind === "dip-black") r.dark = .9 * (1 - u);
+    else if (kind === "dip-pink") r.pink = .55 * (1 - u);
+    else if (kind === "whip-v") { r.dy = 1 - e; r.blur = 18 * (1 - u); }
+    else if (kind === "spin180") r.rot = -180 * (1 - e);
+    else if (kind === "vhs-roll") { r.roll = 1 - u; r.rgb = true; }
+    else if (/^(wipe-|barn-|iris|eye|clock|diag-|wave-wipe|corner|diamond|heart|cross|blinds-|checker|stripes|blocks|dissolve)/.test(kind)) r.mask = { kind, e };
     return r;
   }
+  const TRANS2_MASK = {
+    "diag-tl": (c, e, W, H) => { c.moveTo(0, 0); c.lineTo(2 * e * W, 0); c.lineTo(0, 2 * e * H); },
+    "diag-br": (c, e, W, H) => { c.moveTo(W, H); c.lineTo(W - 2 * e * W, H); c.lineTo(W, H - 2 * e * H); },
+    "diag-tr": (c, e, W, H) => { c.moveTo(W, 0); c.lineTo(W - 2 * e * W, 0); c.lineTo(W, 2 * e * H); },
+    "diag-bl": (c, e, W, H) => { c.moveTo(0, H); c.lineTo(2 * e * W, H); c.lineTo(0, H - 2 * e * H); },
+    "wipe-soft": (c, e, W, H) => { c.rect(0, 0, W * 1.25 * e - W * .125, H); },
+    "wave-wipe": (c, e, W, H) => { c.moveTo(0, 0); for (let y = 0; y <= H; y += H / 40) c.lineTo(W * 1.1 * e - W * .05 + Math.sin(y / H * 14) * W * .04 * (1 - e), y); c.lineTo(0, H); },
+    "corner": (c, e, W, H) => { c.moveTo(0, 0); c.arc(0, 0, Math.max(.5, e * Math.hypot(W, H)), 0, Math.PI / 2); },
+    "diamond": (c, e, W, H) => { c.moveTo(W / 2, H / 2 - e * H); c.lineTo(W / 2 + e * W, H / 2); c.lineTo(W / 2, H / 2 + e * H); c.lineTo(W / 2 - e * W, H / 2); },
+    "heart": (c, e, W, H) => { if (e > .999) { c.rect(0, 0, W, H); return; } const s = H * e * .9 + 1;
+      for (let i = 0; i <= 64; i++) { const t = i / 64 * Math.PI * 2, x = Math.pow(Math.sin(t), 3) * .3, y = (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) / 16 * .3;
+        c.lineTo(W / 2 + x * s, H * .45 - y * s); } },
+    "cross": (c, e, W, H) => { c.rect(W / 2 - e * W / 2, 0, e * W, H); c.rect(0, H / 2 - e * H / 2, W, e * H); },
+    "blinds-h": (c, e, W, H) => { for (let i = 0; i < 8; i++) c.rect(0, i * H / 8, W, e * H / 8 + 1); },
+    "blinds-v": (c, e, W, H) => { for (let i = 0; i < 10; i++) c.rect(i * W / 10, 0, e * W / 10 + 1, H); },
+    "checker": (c, e, W, H) => { const bw = W / 8, bh = H / 6; for (let i = 0; i < 8; i++) for (let j = 0; j < 6; j++) { const p = ((i + j) % 2) * .5, k = Math.max(0, Math.min(1, (e - p) * 2)); if (k > 0) c.rect(i * bw, j * bh, bw * k, bh); } },
+    "stripes": (c, e, W, H) => { const s = W / 6; for (let k = -H; k < W + H; k += s) { c.moveTo(k, 0); c.lineTo(k + e * s + 1, 0); c.lineTo(k + e * s + 1 - H, H); c.lineTo(k - H, H); c.closePath(); } },
+    "blocks": (c, e, W, H) => { const bw = W / 16, bh = H / 9; for (let i = 0; i < 16; i++) for (let j = 0; j < 9; j++) if (((i * 7 + j * 13) % 17) / 17 < e * 1.06) c.rect(i * bw, j * bh, bw + .5, bh + .5); },
+    "dissolve": (c, e, W, H) => { const b = Math.max(6, Math.round(W / 120)); for (let x = 0; x < W; x += b) for (let y = 0; y < H; y += b) { const h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; if (h - Math.floor(h) < e * 1.05) c.rect(x, y, b, b); } },
+  };
   // maske gecisleri: tuval koordinatinda klip yolu (studio.py _trans_in geq maskeleriyle ayni sekiller)
   function transMask(ctx, m, W, H) {
     const e = m.e, cx = W / 2, cy = H / 2;
     ctx.beginPath();
+    if (TRANS2_MASK[m.kind]) { TRANS2_MASK[m.kind](ctx, e, W, H); ctx.clip(); return; }
     switch (m.kind) {
       case "wipe-r": ctx.rect(0, 0, W * e, H); break;
       case "wipe-l": ctx.rect(W * (1 - e), 0, W * e, H); break;

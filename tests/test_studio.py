@@ -197,3 +197,68 @@ def test_all_fx_run_in_ffmpeg():
         if r.returncode != 0:
             bad.append((fid, r.stderr[-200:]))
     assert not bad, bad
+
+
+def test_caption_presets_map_to_behaviour_and_font():
+    words = [{"w": w, "s": i * 0.4, "e": i * 0.4 + 0.38} for i, w in enumerate("bir iki üç dört".split())]
+    for mode, p in S.CAPTIONS2.items():
+        assert mode in S.CAPTION_STYLES and p["b"] in S.CAPTION_STYLES
+        pr = S.new_project("t", 1080, 1920, 30)
+        S.add_clip(pr, words=words, start=0, dur=2, style={"caption": mode})
+        ass = S.build_ass(pr)
+        assert ass.count("Dialogue:") >= 1, mode
+        if p["st"].get("font"):
+            assert "\\fn" + p["st"]["font"] in ass, mode
+
+
+def test_bundled_fonts_cover_turkish_and_are_listed():
+    from app import paths
+    from PIL import ImageFont
+    fams = {}
+    for f in (paths.WEB_DIR / "fonts").glob("*.ttf"):
+        fams[ImageFont.truetype(str(f), 12).getname()[0]] = f
+    for name in S.FONTS[10:]:
+        assert name in fams, name
+    used = {p["st"]["font"] for p in S.CAPTIONS2.values() if p["st"].get("font")}
+    assert used <= set(fams), used - set(fams)
+
+
+def test_clip_anim_pack_runs_in_ffmpeg():
+    import shutil
+    import subprocess
+    import pytest
+    from app.core import studio_anim as A
+    from app.core.studio_anim_pack import CLIP_IN2, CLIP_LOOP2, CLIP_OUT2
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        pytest.skip("ffmpeg yok")
+    cases = [{"in": k} for k in CLIP_IN2] + [{"out": k} for k in CLIP_OUT2] + [{"loop": k} for k in CLIP_LOOP2]
+    for an in cases:
+        c = {"anim": an}
+        f, _ = A.clip_filters(c, 2.0, 0.0, 30, 320, 180, "an0")
+        ex = A.clip_exprs(c, 2.0, "t")
+        g = (f"[0:v]format=rgba,{','.join(f) or 'null'}[c];color=black:s=640x360:r=30[bg];"
+             f"[bg][c]overlay=x='(W-w)/2+({ex.get('x') or 0})*320':y='(H-h)/2+({ex.get('y') or 0})*180':shortest=1[o]")
+        r = subprocess.run([ff, "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=1", "-filter_complex", g, "-map", "[o]",
+                            "-f", "null", "-"], capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, (an, r.stderr[-200:])
+
+
+def test_real_transition_extends_previous_clip_under_next():
+    p = S.new_project("t", 1280, 720, 30)
+    p["assets"]["a1"] = {"path": "C:/v/a.mp4", "kind": "video", "dur": 20.0, "w": 1920, "h": 1080, "audio": False, "name": "a"}
+    S.add_clip(p, asset="a1", track="v1", start=0, dur=4, **{"in": 0})
+    S.add_clip(p, asset="a1", track="v1", start=4, dur=4, trans={"in": "diag-tl", "dur": 0.5}, **{"in": 10})
+    a = p["assets"]["a1"]
+    first, second = sorted([c for c in p["clips"] if c["track"] == "v1"], key=lambda c: c["start"])
+    assert abs(S.trans_tail(first, p["clips"], a) - 0.5) < 1e-6
+    assert S.trans_tail(second, p["clips"], a) == 0
+    second["trans"]["over"] = False
+    assert S.trans_tail(first, p["clips"], a) == 0
+    second["trans"]["over"] = True
+    first["in"] = 15.8          # kaynakta 0.2 sn kaldi -> o kadar uzar
+    assert abs(S.trans_tail(first, p["clips"], a) - 0.2) < 1e-6
+    from pathlib import Path
+    args, _ = S.build_export(p, "C:/o.mp4", Path("."), "libx264", {})
+    g = " ".join(args)
+    assert "between(t,0.0000,4.2000)" in g    # ilk klip gecis boyunca altta

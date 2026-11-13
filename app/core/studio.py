@@ -117,6 +117,10 @@ from app.core.studio_fx2 import FX2 as _FX2  # noqa: E402
 FX.update({k: v for k, v in _FX2.items() if k not in FX})
 from app.core.studio_fx3 import FX3 as _FX3  # noqa: E402
 FX.update({k: v for k, v in _FX3.items() if k not in FX})
+from app.core.studio_fx4 import FX4 as _FX4  # noqa: E402
+FX.update({k: v for k, v in _FX4.items() if k not in FX})
+from app.core.studio_trans2 import TRANS2, trans_in2  # noqa: E402
+from app.core.studio_packs import CAPTIONS2, ZOOM3  # noqa: E402
 
 # Gecis (klip girisi): ffmpeg + onizleme ayni adla
 TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom vuruşu", "slide": "Kaydırma (sağdan)", "blur": "Bulanık", "glitch": "Glitch",
@@ -125,6 +129,7 @@ TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom
          "wipe-r": "Silme →", "wipe-l": "Silme ←", "wipe-d": "Silme ↓", "wipe-u": "Silme ↑", "iris": "Daire açılış",
          "barn-v": "Perde (dikey)", "barn-h": "Perde (yatay)", "eye": "Göz açılışı", "clock": "Saat yönü",
          "spin": "Dönerek", "pixel": "Pikselden netleş", "shake-in": "Sarsıntılı giriş", "lightleak": "Işık sızması", "zoomblur": "Bulanık zoom"}
+TRANS.update(TRANS2)   # faz 5b: capraz/sekil/olcek gecisleri (studio_trans2.py)
 TRANS_FF = set(TRANS) - {"none", "fade"}
 
 # Hazir zoom sablonlari (klibe gore sn); kullanicininkiler CACHE/templates.json'a eklenir
@@ -149,20 +154,26 @@ ZOOM_PRESETS = [
     {"id": "dive-tl", "name": "Sol üste dal", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.5, "z": 1.6, "cx": 0.3, "cy": 0.3, "e": "inout"}]},
     {"id": "dive-br", "name": "Sağ alta dal", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.5, "z": 1.6, "cx": 0.7, "cy": 0.7, "e": "inout"}]},
     {"id": "drift", "name": "Hafif süzülme (vlog)", "kf": [{"t": 0, "z": 1.08, "cx": 0.46, "cy": 0.5}, {"t": -0.001, "z": 1.1, "cx": 0.54, "cy": 0.48}]},
-]
+] + ZOOM3
 
 CAPTION_STYLES = {
     "hormozi": "Kelime vurgulu (sarı)", "word": "Tek kelime büyük", "karaoke": "Karaoke dolgu", "plain": "Sade alt yazı",
     "neon": "Neon parlama", "boxed": "Kutulu (TikTok)",
     "mrbeast": "Renkli kelime (YouTube)", "highlight": "Kelime arkası renkli", "reveal": "Kelime kelime belir",
     "hollow": "Boş harf, konuşan dolu", "cinema": "Sinematik ince",
+    **{k: v["name"] for k, v in CAPTIONS2.items()},   # faz 5b: font + renk on ayarlari (davranis: CAPTIONS2[k]["b"])
 }
 TEXT_ANIMS = {"none": "Yok", "pop": "Pop", "fade": "Belir", "slide": "Aşağıdan kay", "type": "Daktilo", "bounce": "Zıpla",
               "shake": "Titreş", "zoom": "Büyüyerek", "glitch": "Glitch"}
 SUBSCRIBE = {"classic": "Klasik kırmızı + imleç", "neon": "Neon", "pill": "Hap (minimal)", "bounce": "Zıplayan", "glitch": "Glitch",
              "bell": "Zil + abone", "like": "Beğen + abone", "corner": "Köşe bildirimi"}
 
-FONTS = ["Chakra Petch", "Damnation", "Rubik Glitch", "Impact", "Arial Black", "Arial", "Segoe UI", "Comic Sans MS", "Georgia", "Consolas"]
+FONTS = ["Chakra Petch", "Damnation", "Rubik Glitch", "Impact", "Arial Black", "Arial", "Segoe UI", "Comic Sans MS", "Georgia", "Consolas",
+         # faz 5b: Kami ile gelen fontlar (web/fonts, Turkce glif dogrulandi; lisans: web/fonts/FONTS-LICENSE.txt)
+         "Montserrat Black", "Montserrat ExtraBold", "Poppins ExtraBold", "Poppins Bold", "Poppins SemiBold", "Inter SemiBold", "Anton",
+         "Bebas Neue", "Archivo Black", "Oswald Bold", "Rubik Black", "Luckiest Guy", "Bangers", "Lobster", "Pacifico", "Righteous",
+         "Russo One", "Bungee", "Black Ops One", "Audiowide", "Press Start 2P", "VT323", "Rubik Mono One", "Monoton", "Nosifer",
+         "Special Elite", "Kalam", "Caveat Bold", "Baloo 2 ExtraBold", "Kami Serif", "Kami Round", "Kami Script"]
 WIN_FONTS = {"Impact": "impact.ttf", "Arial Black": "ariblk.ttf", "Arial": "arial.ttf", "Segoe UI": "segoeui.ttf",
              "Comic Sans MS": "comic.ttf", "Georgia": "georgia.ttf", "Consolas": "consola.ttf"}
 
@@ -184,6 +195,7 @@ def catalog() -> dict[str, Any]:
     return {"fx": {k: {"name": v["name"], "pack": v["pack"], "css": v.get("css", ""), "ov": v.get("ov", []), "ass": v.get("ass", "")}
                    for k, v in FX.items()},
             "trans": TRANS, "zoom": ZOOM_PRESETS + load_templates(), "captions": CAPTION_STYLES, "anims": TEXT_ANIMS,
+            "capb": {k: {"b": v["b"], "font": v["st"].get("font", "")} for k, v in CAPTIONS2.items()},
             "subscribe": {**studio_gfx.SUBSCRIBE_PRO, **SUBSCRIBE}, "graphics": studio_gfx.GRAPHICS, "fonts": FONTS,
             "deliver": {k: v["name"] for k, v in DELIVER.items()}, "afx": AUDIO_FIX_NAMES, "templates": TEMPLATE_NAMES,
             "tanim": studio_anim.text_catalog(), "canim": studio_anim.clip_catalog()}
@@ -662,6 +674,25 @@ def _track_order(project: dict) -> dict[str, int]:
     return {t["id"]: len(tr) - i for i, t in enumerate(tr)}
 
 
+def trans_tail(c: dict, clips: list[dict], asset: dict) -> float:
+    """Gercek klip-klip gecis: ayni izde bitisik sonraki klibin giris gecisi varsa (trans.over kapali degilse) bu klip
+    gecis suresi kadar altta devam eder; yeni klip onun ustune maske/saydamlikla gelir (CapCut gibi A->B). Kaynakta
+    yeterli kare yoksa kalan kadar uzar; donuk kare / hiz rampasi kliplerinde uzatilmaz. Onizleme: studio.js transTail."""
+    if c.get("freeze") or c.get("ramp"):
+        return 0.0
+    end = float(c["start"]) + float(c["dur"])
+    nxt = next((n for n in clips if n is not c and n.get("track") == c.get("track") and abs(float(n["start"]) - end) < 0.05), None)
+    tr = (nxt or {}).get("trans") or {}
+    if not tr.get("in") or tr.get("in") == "none" or tr.get("over") is False:
+        return 0.0
+    want = float(tr.get("dur", 0.35) or 0.35)
+    if asset.get("kind") == "image" or asset.get("gif"):
+        return want
+    sp = max(0.1, float(c.get("speed", 1) or 1))
+    left = (float(asset.get("dur", 0) or 0) - float(c.get("in", 0)) - float(c["dur"]) * sp) / sp
+    return max(0.0, min(want, left))
+
+
 def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> tuple[list[str], float]:
     W, H, FPS = int(project.get("w", 1920)), int(project.get("h", 1080)), int(project.get("fps", 30))
     W -= W % 2
@@ -697,12 +728,13 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
     for c in vis:
         a = assets[c["asset"]]
         s, d = float(c["start"]), float(c["dur"])
-        if s + d <= T0 or s >= T1:
+        tail = trans_tail(c, vis, a)                 # gercek gecis: sonraki klip girerken bu klip altta devam eder
+        if s + d + tail <= T0 or s >= T1:
             continue
         speed = max(0.1, float(c.get("speed", 1) or 1))
         cut0 = max(0.0, T0 - s)                      # aralik basindan kirpilan kisim (zaman cizelgesi)
         src_in = float(c.get("in", 0)) + cut0 * speed
-        seg = min(d - cut0, T1 - max(s, T0))
+        seg = min(d + tail - cut0, T1 - max(s, T0))
         if seg <= 0:
             continue
         ramp = ramp_table(c) if c.get("ramp") and a["kind"] == "video" and not a.get("gif") else None
@@ -1175,7 +1207,7 @@ def _trans_in(kind: str, d: float, W: int, H: int, tag: str = "t", c0: float = 0
     }
     if kind in masks:
         return f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if({masks[kind]},alpha(X,Y),0)':{en}"
-    return "null"
+    return trans_in2(kind, d, W, H, tag, c0, fps)
 
 
 AUDIO_FIX = {
@@ -1456,6 +1488,9 @@ def _captions(c: dict, s: float, e: float, W: int, H: int) -> list[str]:
     """Kelime zamanli altyazi (Whisper). words: [{w, s, e}] klip basina gore sn."""
     st = c.get("style") or {}
     mode = st.get("caption", "hormozi")
+    if mode in CAPTIONS2:   # on ayar: varsayilan stil + mevcut bir davranis; kullanicinin ayarlari ustte
+        st = {**CAPTIONS2[mode]["st"], **{k: v for k, v in st.items() if k != "caption"}}
+        mode = CAPTIONS2[mode]["b"]
     words = [w for w in c.get("words") or [] if str(w.get("w", "")).strip()]
     an, x, y = _pos({**st, "pos": st.get("pos", "custom"), "y": st.get("y", 0.72)}, W, H)
     per_line = int(st.get("perLine", {"word": 1, "mrbeast": 2, "reveal": 4, "cinema": 6}.get(mode, 3)))

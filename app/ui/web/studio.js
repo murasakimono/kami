@@ -291,6 +291,15 @@ function mediaEl(c) {
 }
 function dropEl(id) { const r = ST.rt[id]; if (!r) return; try { r.el.pause(); r.el.removeAttribute("src"); r.el.load(); } catch { } delete ST.rt[id]; }
 function stopAll() { for (const id of Object.keys(ST.rt)) dropEl(id); }
+// gercek klip-klip gecis: sonraki bitisik klibin giris gecisi suresince bu klip altta devam eder (studio.py trans_tail)
+function transTail(c) {
+  if (c.freeze || c.ramp) return 0;
+  const end = c.start + c.dur, n = ST.p.clips.find(x => x !== c && x.track === c.track && Math.abs(x.start - end) < .05);
+  const tr = n?.trans; if (!tr?.in || tr.in === "none" || tr.over === false) return 0;
+  const want = tr.dur || .35, a = ST.p.assets[c.asset] || {};
+  if (a.kind === "image" || a.gif) return want;
+  const sp = c.speed || 1; return Math.max(0, Math.min(want, ((a.dur || 0) - (c.in || 0) - c.dur * sp) / sp));
+}
 function activeAt(t, kind) { return ST.p.clips.filter(c => t >= c.start - 1e-4 && t < c.start + c.dur && !trackOf(c).hide && (!kind || trackOf(c).kind === kind)); }
 function trackOrder(id) { const i = ST.p.tracks.findIndex(t => t.id === id); return ST.p.tracks.length - i; }
 // hiz rampasi: [tl0, tl1, src0, src1, hiz] dilimleri (studio.py ramp_table ile ayni)
@@ -470,6 +479,12 @@ function drawClip(c, t) {
   for (const id of fxOn) for (const ov of ST.cat.fx[id]?.ov || []) SFX.overlay(cbx, ov, W, H, t, local);
   if (tr?.flash) SFX.tint(cbx, W, H, "#fff", "lighter", tr.flash);
   if (tr?.leak) SFX.tint(cbx, W, H, "#ff9a3c", "lighter", tr.leak);
+  if (tr?.dark) SFX.tint(cbx, W, H, "#000", "source-atop", tr.dark);
+  if (tr?.pink) SFX.tint(cbx, W, H, "#ff4fa0", "lighter", tr.pink);
+  if (tr?.roll) {   // VHS sarma: goruntu dikeyde kayar (ffmpeg: crop y=mod(ih*4*(1-u),ih)) + gren
+    const oy = H * ((4 * tr.roll) % 1), cp = SFX.copy(cbx, W, H);
+    cbx.clearRect(0, 0, W, H); cbx.drawImage(cp, 0, -oy); cbx.drawImage(cp, 0, H - oy); SFX.overlay(cbx, "grain", W, H, t, local);
+  }
   if (tr?.rgb) SFX.overlay(cbx, "rgb-strong", W, H, t, local);
   // 3) donusum + saydamlik -> ana tuval
   let alpha = c.opacity ?? 1;
@@ -487,7 +502,7 @@ function drawClip(c, t) {
   // contain'de bos kenarlar saydam: transform merkezi = cizilen goruntunun merkezi
   vctx.translate(W / 2 + ((c.x || 0) + A.x) * W + shx + (tr?.dx || 0) * W, H / 2 + ((c.y || 0) + A.y) * H + shy + (tr?.dy || 0) * H);
   if (rot) vctx.rotate(rot);
-  const ksx = sc * A.s * A.sx, ksy = sc * A.s * A.sy;
+  const ksx = sc * A.s * A.sx * (tr?.sx || 1), ksy = sc * A.s * A.sy * (tr?.sy || 1);
   if (ksx !== 1 || ksy !== 1) vctx.scale(Math.max(1e-4, ksx), Math.max(1e-4, ksy));
   vctx.drawImage(src, -W / 2, -H / 2);
   if (tr?.pix > .01) { vctx.globalAlpha *= tr.pix; vctx.drawImage(SFX.pixelate(src, W, H, 1), -W / 2, -H / 2); }   // ffmpeg: pikselli kopya ile karisim
@@ -505,7 +520,8 @@ function drawNow() {
   const t = ST.t, W = PW, H = PH;
   vctx.setTransform(1, 0, 0, 1, 0, 0); vctx.filter = "none"; vctx.globalAlpha = 1; vctx.globalCompositeOperation = "source-over";
   vctx.fillStyle = ST.p.bg || "#000"; vctx.fillRect(0, 0, W, H);
-  const vis = activeAt(t, "video").sort((a, b) => trackOrder(a.track) - trackOrder(b.track) || a.start - b.start);
+  const vis = ST.p.clips.filter(c => trackOf(c).kind === "video" && !trackOf(c).hide && t >= c.start - 1e-4 && t < c.start + c.dur + transTail(c))
+    .sort((a, b) => trackOrder(a.track) - trackOrder(b.track) || a.start - b.start);
   for (const c of vis) { try { drawClip(c, t); } catch (e) { /* cerceve hazir degil */ } }
   for (const c of activeAt(t, "fx").sort((a, b) => trackOrder(a.track) - trackOrder(b.track))) {
     const fx = ST.cat.fx[c.mode]; if (!fx) continue;
@@ -925,7 +941,8 @@ function renderInsp() {
       fld("Doygunluk", "adj.sat", -100, 150, 1, ad.sat || 0) + fld("Ton", "adj.hue", -180, 180, 1, ad.hue || 0) + fld("Sıcaklık", "adj.temp", -100, 100, 1, ad.temp || 0) + fld("Bulanık", "adj.blur", 0, 20, .5, ad.blur || 0);
     h += window.animBox ? animBox(c, "clip") : "";
     h += `<div class="sec">Efektler</div>` + (window.fxRows ? fxRows(c) : "");
-    h += `<div class="sec">Giriş geçişi</div>` + sel("Geçiş", "trans.in", ST.cat.trans, c.trans?.in || "none") + fld("Süre", "trans.dur", .1, 2, .05, c.trans?.dur || .35);
+    h += `<div class="sec">Giriş geçişi</div>` + sel("Geçiş", "trans.in", ST.cat.trans, c.trans?.in || "none") + fld("Süre", "trans.dur", .1, 2, .05, c.trans?.dur || .35) +
+        chk("Önceki klip altta devam etsin (A→B)", "trans.over", c.trans?.over !== false);
     h += zoomInsp(c);
     h += `<div class="sec">Dikey çerçeve</div><div class="row"><button class="tb" data-a2="reframe">▯ Yüzü takip et</button>${c.reframe?.length ? '<button class="tb" data-a2="unreframe">Kaldır</button>' : ""}</div>`;
   }

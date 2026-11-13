@@ -1,3 +1,36 @@
+/* ---- faz 5b: Kami ile gelen fontlar (kart onizlemeleri; disa aktarim libass ayni dosyalari kullanir) ---- */
+@font-face { font-family: "Anton"; src: url("fonts/Anton.ttf"); font-display: swap; }
+@font-face { font-family: "Archivo Black"; src: url("fonts/ArchivoBlack.ttf"); font-display: swap; }
+@font-face { font-family: "Audiowide"; src: url("fonts/Audiowide.ttf"); font-display: swap; }
+@font-face { font-family: "Baloo 2 ExtraBold"; src: url("fonts/Baloo2ExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Bangers"; src: url("fonts/Bangers.ttf"); font-display: swap; }
+@font-face { font-family: "Bebas Neue"; src: url("fonts/BebasNeue.ttf"); font-display: swap; }
+@font-face { font-family: "Black Ops One"; src: url("fonts/BlackOpsOne.ttf"); font-display: swap; }
+@font-face { font-family: "Bungee"; src: url("fonts/Bungee.ttf"); font-display: swap; }
+@font-face { font-family: "Caveat Bold"; src: url("fonts/CaveatBold.ttf"); font-display: swap; }
+@font-face { font-family: "Inter SemiBold"; src: url("fonts/InterSemiBold.ttf"); font-display: swap; }
+@font-face { font-family: "Kalam"; src: url("fonts/Kalam.ttf"); font-display: swap; }
+@font-face { font-family: "Kami Round"; src: url("fonts/KamiRound.ttf"); font-display: swap; }
+@font-face { font-family: "Kami Script"; src: url("fonts/KamiScript.ttf"); font-display: swap; }
+@font-face { font-family: "Kami Serif"; src: url("fonts/KamiSerif.ttf"); font-display: swap; }
+@font-face { font-family: "Lobster"; src: url("fonts/Lobster.ttf"); font-display: swap; }
+@font-face { font-family: "Luckiest Guy"; src: url("fonts/LuckiestGuy.ttf"); font-display: swap; }
+@font-face { font-family: "Monoton"; src: url("fonts/Monoton.ttf"); font-display: swap; }
+@font-face { font-family: "Montserrat Black"; src: url("fonts/MontserratBlack.ttf"); font-display: swap; }
+@font-face { font-family: "Montserrat ExtraBold"; src: url("fonts/MontserratExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Nosifer"; src: url("fonts/Nosifer.ttf"); font-display: swap; }
+@font-face { font-family: "Oswald Bold"; src: url("fonts/OswaldBold.ttf"); font-display: swap; }
+@font-face { font-family: "Pacifico"; src: url("fonts/Pacifico.ttf"); font-display: swap; }
+@font-face { font-family: "Poppins Bold"; src: url("fonts/PoppinsBold.ttf"); font-display: swap; }
+@font-face { font-family: "Poppins ExtraBold"; src: url("fonts/PoppinsExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Poppins SemiBold"; src: url("fonts/PoppinsSemiBold.ttf"); font-display: swap; }
+@font-face { font-family: "Press Start 2P"; src: url("fonts/PressStart2P.ttf"); font-display: swap; }
+@font-face { font-family: "Righteous"; src: url("fonts/Righteous.ttf"); font-display: swap; }
+@font-face { font-family: "Rubik Black"; src: url("fonts/RubikBlack.ttf"); font-display: swap; }
+@font-face { font-family: "Rubik Mono One"; src: url("fonts/RubikMonoOne.ttf"); font-display: swap; }
+@font-face { font-family: "Russo One"; src: url("fonts/RussoOne.ttf"); font-display: swap; }
+@font-face { font-family: "Special Elite"; src: url("fonts/SpecialElite.ttf"); font-display: swap; }
+@font-face { font-family: "VT323"; src: url("fonts/VT323.ttf"); font-display: swap; }
 @font-face { font-family: "Chakra Petch"; src: url("fonts/ChakraPetch-Medium.ttf"); font-weight: 500; }
 @font-face { font-family: "Chakra Petch"; src: url("fonts/ChakraPetch-SemiBold.ttf"); font-weight: 600; }
 @font-face { font-family: "Chakra Petch"; src: url("fonts/ChakraPetch-Bold.ttf"); font-weight: 700; }
@@ -431,3 +464,28 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .cv-reveal u ~ span { opacity: 0; }
 .cv-hollow { color: transparent; -webkit-text-stroke: 1px #fff; text-shadow: none; } .cv-hollow u { color: #FFE600; -webkit-text-stroke: 0; }
 .cv-cinema { font: 400 13px Georgia, serif; letter-spacing: .08em; text-shadow: 0 1px 2px #000a; }
+
+/* ---- faz 5b gecis kartlari (studio.css sonuna) ---- */
+.tv-diag-tl::after { animation-name: tvDiagTL; } .tv-diag-br::after { animation-name: tvDiagBR; } .tv-diag-tr::after { animation-name: tvDiagTR; } .tv-diag-bl::after { animation-name: tvDiagBL; }
+.tv-wipe-soft::after { animation-name: tvWipeSoft; } .tv-wave-wipe::after { animation-name: tvWipeR; } .tv-corner::after { animation-name: tvCorner; }
+.tv-diamond::after { animation-name: tvDiamond; } .tv-heart::after { animation-name: tvIris; } .tv-cross::after { animation-name: tvCross; }
+.tv-blinds-h::after { animation-name: tvBlindsH; } .tv-blinds-v::after { animation-name: tvBlindsV; } .tv-checker::after, .tv-blocks::after, .tv-dissolve::after { animation-name: tvFade; animation-timing-function: steps(6); }
+.tv-stripes::after { animation-name: tvDiagTL; } .tv-pop-in::after { animation-name: tvPop; } .tv-bounce-in::after { animation-name: tvPop; animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }
+.tv-flip-h::after { animation-name: tvFlipH; } .tv-flip-v::after { animation-name: tvFlipV; } .tv-dip-black::after { animation-name: tvDipBlack; } .tv-dip-pink::after { animation-name: tvDipPink; }
+.tv-whip-v::after { animation-name: tvWhipV; } .tv-spin180::after { animation-name: tvSpin180; } .tv-vhs-roll::after { animation-name: tvRoll; animation-timing-function: steps(8); }
+@keyframes tvDiagTL { from { clip-path: polygon(0 0, 0 0, 0 0); } to { clip-path: polygon(0 0, 200% 0, 0 200%); } }
+@keyframes tvDiagBR { from { clip-path: polygon(100% 100%, 100% 100%, 100% 100%); } to { clip-path: polygon(100% 100%, -100% 100%, 100% -100%); } }
+@keyframes tvDiagTR { from { clip-path: polygon(100% 0, 100% 0, 100% 0); } to { clip-path: polygon(100% 0, -100% 0, 100% 200%); } }
+@keyframes tvDiagBL { from { clip-path: polygon(0 100%, 0 100%, 0 100%); } to { clip-path: polygon(0 100%, 200% 100%, 0 -100%); } }
+@keyframes tvWipeSoft { from { -webkit-mask: linear-gradient(90deg, #000 -25%, transparent 0%); } to { -webkit-mask: linear-gradient(90deg, #000 100%, transparent 125%); } }
+@keyframes tvCorner { from { clip-path: circle(0% at 0 0); } to { clip-path: circle(150% at 0 0); } }
+@keyframes tvDiamond { from { clip-path: polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%); } to { clip-path: polygon(50% -50%, 150% 50%, 50% 150%, -50% 50%); } }
+@keyframes tvCross { from { clip-path: polygon(50% 0, 50% 0, 50% 50%, 100% 50%, 100% 50%, 50% 50%, 50% 100%, 50% 100%, 50% 50%, 0 50%, 0 50%, 50% 50%); } to { clip-path: polygon(0 0, 100% 0, 100% 0, 100% 0, 100% 100%, 100% 100%, 100% 100%, 0 100%, 0 100%, 0 100%, 0 0, 0 0); } }
+@keyframes tvBlindsH { from { -webkit-mask: repeating-linear-gradient(180deg, #000 0 0%, transparent 0% 12.5%); } to { -webkit-mask: repeating-linear-gradient(180deg, #000 0 12.5%, transparent 12.5% 12.5%); } }
+@keyframes tvBlindsV { from { -webkit-mask: repeating-linear-gradient(90deg, #000 0 0%, transparent 0% 10%); } to { -webkit-mask: repeating-linear-gradient(90deg, #000 0 10%, transparent 10% 10%); } }
+@keyframes tvPop { from { transform: scale(.3); } }
+@keyframes tvFlipH { from { transform: scaleX(.02); } } @keyframes tvFlipV { from { transform: scaleY(.02); } }
+@keyframes tvDipBlack { from { filter: brightness(.1); } } @keyframes tvDipPink { from { filter: sepia(1) hue-rotate(-50deg) saturate(5) brightness(1.6); } }
+@keyframes tvWhipV { from { transform: translateY(100%); filter: blur(6px); } } @keyframes tvSpin180 { from { transform: rotate(-180deg); } }
+@keyframes tvRoll { 0% { transform: translateY(-100%); } 50% { transform: translateY(30%); } }
+/* ---- altyazi on ayar kartlari: davranis sinifi + font (JS: class="capv cv-<b>" style="font-family:'<font>'") ---- */

@@ -174,6 +174,40 @@ const TEXT_PRESETS = [
   { n: "Büyüyen", s: { font: "Chakra Petch", size: 10, anim: "zoom", pos: "center", outline: 6 } },
   { n: "Yorum", s: { font: "Comic Sans MS", size: 5.5, anim: "pop", pos: "custom", x: .72, y: .25, color: "#000000", box: true, boxColor: "#ffffff", outline: 0, rot: -6 } },
 ];
+// faz 5b: Kami fontlariyla yazi on ayarlari
+TEXT_PRESETS.push(...[
+  { n: "YouTube başlık", s: { font: "Luckiest Guy", size: 11, anim: "pop", pos: "center", color: "#FFE600", outline: 8 }, up: true },
+  { n: "Anton büyük", s: { font: "Anton", size: 13, anim: "zoom", pos: "center", outline: 6 }, up: true },
+  { n: "Bebas ince başlık", s: { font: "Bebas Neue", size: 10, anim: "fade", pos: "center", spacing: 10, outline: 0, shadow: 3 }, up: true },
+  { n: "Poppins alt yazı", s: { font: "Poppins SemiBold", size: 4.8, anim: "slide", pos: "bottom", outline: 3 } },
+  { n: "Montserrat vurgu", s: { font: "Montserrat Black", size: 9, anim: "pop", pos: "center", color: "#2EE66B", outline: 7 }, up: true },
+  { n: "Çizgi roman POW", s: { font: "Bangers", size: 14, anim: "bounce", pos: "center", color: "#FFD400", outline: 9, outlineColor: "#E00000", rot: -8 }, up: true },
+  { n: "Neon tabela", s: { font: "Monoton", size: 9, anim: "fade", pos: "center", color: "#FF2BD6", glow: true, glowColor: "#FF2BD6", outline: 1 } },
+  { n: "Retro oyun", s: { font: "Press Start 2P", size: 5, anim: "type", pos: "center", color: "#FFD400", outline: 4, outlineColor: "#3a0ca3" }, up: true },
+  { n: "Siber", s: { font: "Audiowide", size: 8, anim: "glitch", pos: "center", color: "#00E5FF", glow: true, glowColor: "#00E5FF", outline: 2 }, up: true },
+  { n: "Askeri", s: { font: "Black Ops One", size: 9, anim: "shake", pos: "center", color: "#C8D66B", outline: 5, outlineColor: "#1b1f0f" }, up: true },
+  { n: "El yazısı not", s: { font: "Caveat Bold", size: 7, anim: "type", pos: "custom", x: .3, y: .3, color: "#ffffff", outline: 3, rot: -4 } },
+  { n: "Kalem", s: { font: "Kalam", size: 6.5, anim: "fade", pos: "bottom", color: "#ffffff", outline: 3 } },
+  { n: "Düğün / zarif", s: { font: "Kami Script", size: 9, anim: "fade", pos: "center", color: "#fff5e6", outline: 0, shadow: 4 } },
+  { n: "Sinema serif", s: { font: "Kami Serif", size: 7, anim: "fade", pos: "center", spacing: 6, outline: 0, shadow: 3 } },
+  { n: "Retro şerit", s: { font: "Lobster", size: 9, anim: "slide", pos: "center", color: "#FFB000", outline: 6, outlineColor: "#5a189a" } },
+  { n: "Yaz tatili", s: { font: "Pacifico", size: 9, anim: "bounce", pos: "center", color: "#FF8FAB", outline: 6, outlineColor: "#ffffff" } },
+  { n: "Daktilo belge", s: { font: "Special Elite", size: 5, anim: "type", pos: "bottom", color: "#f1e7d0", outline: 2 } },
+  { n: "Terminal", s: { font: "VT323", size: 6, anim: "type", pos: "custom", x: .5, y: .2, color: "#39FF14", box: true, boxColor: "#000000", outline: 0 } },
+  { n: "Korku kanlı", s: { font: "Nosifer", size: 9, anim: "shake", pos: "center", color: "#B00000", glow: true, glowColor: "#ff0000", outline: 1 }, up: true },
+  { n: "Spor skor", s: { font: "Russo One", size: 8, anim: "slide", pos: "top", color: "#ffffff", box: true, boxColor: "#E00034", outline: 0 }, up: true },
+  { n: "Haber bandı", s: { font: "Oswald Bold", size: 5, anim: "slide", pos: "bottom", color: "#ffffff", box: true, boxColor: "#1d4ed8", outline: 0 }, up: true },
+  { n: "Etiket (hap)", s: { font: "Poppins Bold", size: 4.5, anim: "pop", pos: "custom", x: .5, y: .85, color: "#111111", box: true, boxColor: "#FFE600", outline: 0 } },
+  { n: "Alıntı", s: { font: "Kami Serif", size: 6, anim: "fade", pos: "center", italic: true, outline: 0, shadow: 2 } },
+  { n: "Sayaç / büyük rakam", s: { font: "Rubik Black", size: 16, anim: "zoom", pos: "center", outline: 8 } },
+  { n: "Bungee tabela", s: { font: "Bungee", size: 9, anim: "pop", pos: "center", color: "#FF6B00", outline: 5, outlineColor: "#1a1a1a" }, up: true },
+  { n: "Yuvarlak sevimli", s: { font: "Baloo 2 ExtraBold", size: 9, anim: "bounce", pos: "center", color: "#7CF5FF", outline: 7, outlineColor: "#5b2a86" } },
+  { n: "Minimal", s: { font: "Kami Round", size: 5, anim: "fade", pos: "bottom", spacing: 4, outline: 0, shadow: 2 } },
+  { n: "Mono kod", s: { font: "Rubik Mono One", size: 6, anim: "type", pos: "center", color: "#ffffff", outline: 4 }, up: true },
+  { n: "Spor kalın", s: { font: "Archivo Black", size: 10, anim: "slide", pos: "center", color: "#ffffff", outline: 6, rot: -5 }, up: true },
+  { n: "Righteous retro", s: { font: "Righteous", size: 9, anim: "pop", pos: "center", color: "#FFD166", outline: 6, outlineColor: "#EF476F" } },
+]);
+
 P.text = () => {
   pb.innerHTML = `<div class="hint">Tıkla: oynatma kafasına ekler. Sürükle: istediğin yere. Ayrıntılar sağdaki panelde.</div>` +
     `<div class="grid2">${TEXT_PRESETS.map((p, i) => `<div class="card" draggable="true" data-item='${esc(JSON.stringify({ type: "text", preset: i }))}' data-tp="${i}" style="font-family:'${p.s.font}';color:${p.s.color || "#fff"};${p.s.glow ? `text-shadow:0 0 8px ${p.s.glowColor}` : ""};${p.s.box ? `background:${p.s.boxColor};` : ""}font-size:15px;text-align:center">${esc(p.up ? p.n.toUpperCase() : p.n)}</div>`).join("")}</div>`;
@@ -222,7 +256,7 @@ P.captions = () => {
   const c = firstSel();
   pb.innerHTML = `<div class="hint">Konuşmayı Whisper ile kelime kelime yazıya döker; her kelime söylendiği anda belirir. Önce konuşmanın olduğu klibi seç.</div>` +
     `<label class="fld w2"><span>Dil</span><select class="in" id="capLang"><option value="auto">Otomatik</option><option value="tr">Türkçe</option><option value="en">İngilizce</option></select></label>` +
-    sec("Stil") + `<div class="grid2">${Object.entries(ST.cat.captions).map(([k, v]) => `<div class="card${k === (localStorage.kstCap || "hormozi") ? " on" : ""}" data-cap="${k}"><i class="capv cv-${esc(k)}"><span>bu</span><u>örnek</u><span>yazı</span></i><b>${esc(v)}</b></div>`).join("")}</div>` +
+    sec("Stil") + `<div class="grid2">${Object.entries(ST.cat.captions).map(([k, v]) => `<div class="card${k === (localStorage.kstCap || "hormozi") ? " on" : ""}" data-cap="${k}"><i class="capv cv-${esc(ST.cat.capb?.[k]?.b || k)}"${ST.cat.capb?.[k]?.font ? ` style="font-family:'${esc(ST.cat.capb[k].font)}'"` : ""}><span>bu</span><u>örnek</u><span>yazı</span></i><b>${esc(v)}</b></div>`).join("")}</div>` +
     `<div class="row" style="margin-top:12px"><button class="tb pri" id="capGo">≡ ${c ? "Seçili klibe altyazı" : "Altyazı oluştur"}</button></div>` +
     `<div class="hint">Yazım hatalarını sağ paneldeki “Kelimeler” kutusundan düzeltebilirsin.</div>`;
   $("#capGo").onclick = () => aiAction("captions", firstSel());

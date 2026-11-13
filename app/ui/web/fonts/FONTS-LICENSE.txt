@@ -1,0 +1,1 @@
+﻿Kami ile gelen fontlar SIL Open Font License 1.1 (OFL) veya Apache 2.0 lisanslidir (kaynak: github.com/google/fonts, lisans metinleri oradadir). Degisken fontlar fontTools ile sabit agirliga cevrildi. Reserved Font Name tasiyan degistirilmis surumler yeniden adlandirildi: Kami Serif (Playfair Display), Kami Round (Comfortaa), Kami Script (Dancing Script).

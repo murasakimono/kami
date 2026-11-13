@@ -80,6 +80,10 @@ CLIP_LOOP = {
 }
 EASE_NAMES = {"out": "Yumuşak", "linear": "Doğrusal", "back": "Geri yaylan", "elastic": "Elastik", "bounce": "Zıpla"}
 
+from app.core.studio_anim_pack import CLIP_IN2, CLIP_LOOP2, CLIP_OUT2  # noqa: E402  (faz 5b paketi)
+for _src, _dst in ((CLIP_IN2, CLIP_IN), (CLIP_OUT2, CLIP_OUT), (CLIP_LOOP2, CLIP_LOOP)):
+    _dst.update({k: v for k, v in _src.items() if k not in _dst})
+
 
 def clip_catalog() -> dict:
     return {"in": CLIP_IN, "out": CLIP_OUT, "loop": CLIP_LOOP, "ease": EASE_NAMES}
