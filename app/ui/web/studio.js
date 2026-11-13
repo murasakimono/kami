@@ -816,6 +816,13 @@ lanes.addEventListener("pointerdown", e => {
         c.dur = clamp(ne - s0.start, .05, maxDur);
       }
     } else {
+      if (ST.editMode === "slip" && group.length === 1) {
+        const s0 = st0[0], a = assetOf(c), sp = c.speed || 1;
+        const maxSrc = a && (a.kind !== "image" || a.gif) ? Math.max(0, a.dur - s0.dur * sp) : 1e6;
+        c.in = clamp(+(s0.in - dx * sp).toFixed(4), 0, maxSrc);
+        draw();
+        return;
+      }
       // tasima: grubun en solu yapisir
       let lead = st0.reduce((m, s) => s.start < m.start ? s : m, st0[0]);
       let ns = lead.start + dx, best = null;
@@ -838,7 +845,38 @@ lanes.addEventListener("pointerdown", e => {
   };
   const up = () => {
     document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); showSnap(null);
-    if (moved) { for (const s of st0) if (overlaps(s.c)) resolveOverlap(s.c); changed(); }
+    if (moved) {
+      if (edge && ST.editMode === "ripple" && group.length === 1) {
+        const s0 = st0[0], diff = (c.dur - s0.dur);
+        if (Math.abs(diff) > 1e-4) {
+          for (const oc of ST.p.clips) {
+            if (oc !== c && oc.track === c.track && oc.start >= s0.start + s0.dur - 0.05) {
+              oc.start = Math.max(0, +(oc.start + diff).toFixed(4));
+            }
+          }
+        }
+      } else if (edge && ST.editMode === "roll" && group.length === 1 && edge === "r") {
+        const s0 = st0[0], diff = +(c.dur - s0.dur).toFixed(4);
+        const nxt = ST.p.clips.find(oc => oc !== c && oc.track === c.track && Math.abs(oc.start - (s0.start + s0.dur)) < 0.08);
+        if (nxt && Math.abs(diff) > 1e-4 && nxt.dur - diff >= 0.05) {
+          nxt.start = +(nxt.start + diff).toFixed(4);
+          nxt.in = Math.max(0, +((nxt.in || 0) + diff).toFixed(4));
+          nxt.dur = +(nxt.dur - diff).toFixed(4);
+        }
+      } else if (!edge && ST.editMode === "slide" && group.length === 1) {
+        const s0 = st0[0], diff = +(c.start - s0.start).toFixed(4);
+        const prev = ST.p.clips.find(oc => oc !== c && oc.track === c.track && Math.abs((oc.start + oc.dur) - s0.start) < 0.08);
+        const nxt = ST.p.clips.find(oc => oc !== c && oc.track === c.track && Math.abs(oc.start - (s0.start + s0.dur)) < 0.08);
+        if (prev && prev.dur + diff >= 0.05) prev.dur = +(prev.dur + diff).toFixed(4);
+        if (nxt && nxt.dur - diff >= 0.05) {
+          nxt.start = +(nxt.start + diff).toFixed(4);
+          nxt.in = Math.max(0, +((nxt.in || 0) + diff).toFixed(4));
+          nxt.dur = +(nxt.dur - diff).toFixed(4);
+        }
+      }
+      if (ST.editMode !== "slip") { for (const s of st0) if (overlaps(s.c)) resolveOverlap(s.c); }
+      changed();
+    }
     else { renderTimeline(); renderHandles(); if (!edge && !e.shiftKey) seekIfOutside(c, e); }
   };
   document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
@@ -1221,10 +1259,10 @@ document.addEventListener("click", e => {
       const id = [...ST.sel][0]; const c = ST.p?.clips.find(x => x.id === id);
       const asset = c && ST.p?.assets?.[c.asset];
       if (!c || !asset?.path) return toast("Önce bir video/ses klibi seç");
-      busy("Kayıpsız Smart Cut…");
+      busy("Hızlı kesim (Keyframe Copy)…");
       const r = await api.studio_smart_cut(asset.path, c.in || 0, (c.in || 0) + c.dur * (c.speed || 1), "");
       busy(null);
-      toast(r?.ok ? "Smart Cut kaydedildi: " + r.path.split(/[\\/]/).pop() : (r?.error || "Smart Cut başarısız"));
+      toast(r?.ok ? "Kesim kaydedildi: " + r.path.split(/[\\/]/).pop() : (r?.error || "Kesim başarısız"));
     },
     enhance: async () => {
       const id = [...ST.sel][0]; const c = ST.p?.clips.find(x => x.id === id);

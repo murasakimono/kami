@@ -192,6 +192,13 @@ def _clip_dur(c: dict[str, Any]) -> float:
     return max(0.05, float(c.get("out", 0.0)) - float(c.get("in", 0.0)))
 
 
+def _set_clip_dur(c: dict[str, Any], dur: float) -> None:
+    d = round(max(0.05, float(dur)), 3)
+    c["dur"] = d
+    if "out" in c:
+        c["out"] = round(float(c.get("in", 0.0)) + d, 3)
+
+
 def apply_timeline_edit(
     clips: list[dict[str, Any]],
     mode: str,
@@ -215,48 +222,53 @@ def apply_timeline_edit(
     d = float(delta)
 
     if mode == "ripple":
-        if edge == "out":
-            old_dur = _clip_dur(target)
-            new_out = max(float(target.get("in", 0.0)) + 0.05, float(target.get("out", 0.0)) + d)
-            actual_d = new_out - float(target.get("out", 0.0))
-            target["out"] = round(new_out, 3)
+        old_dur = _clip_dur(target)
+        if edge in ("out", "r"):
+            new_dur = max(0.05, old_dur + d)
+            actual_d = new_dur - old_dur
+            _set_clip_dur(target, new_dur)
             for _, nxt in same_track[pos + 1:]:
                 nxt["start"] = round(max(0.0, float(nxt.get("start", 0.0)) + actual_d), 3)
         else:
             old_in = float(target.get("in", 0.0))
-            new_in = max(0.0, min(float(target.get("out", 0.0)) - 0.05, old_in + d))
+            new_in = max(0.0, min(old_in + old_dur - 0.05, old_in + d))
             actual_d = new_in - old_in
             target["in"] = round(new_in, 3)
+            _set_clip_dur(target, old_dur - actual_d)
             for _, nxt in same_track[pos + 1:]:
                 nxt["start"] = round(max(0.0, float(nxt.get("start", 0.0)) - actual_d), 3)
 
     elif mode == "roll":
         if pos + 1 < len(same_track):
             _, nxt = same_track[pos + 1]
-            min_d = -(float(target.get("out", 0.0)) - float(target.get("in", 0.0)) - 0.05)
-            max_d = float(nxt.get("out", 0.0)) - float(nxt.get("in", 0.0)) - 0.05
-            clamped = max(min_d, min(max_d, d))
-            target["out"] = round(float(target.get("out", 0.0)) + clamped, 3)
-            nxt["in"] = round(float(nxt.get("in", 0.0)) + clamped, 3)
+            t_dur = _clip_dur(target)
+            n_dur = _clip_dur(nxt)
+            clamped = max(-(t_dur - 0.05), min(n_dur - 0.05, d))
+            _set_clip_dur(target, t_dur + clamped)
+            nxt["in"] = round(max(0.0, float(nxt.get("in", 0.0)) + clamped), 3)
             nxt["start"] = round(float(nxt.get("start", 0.0)) + clamped, 3)
+            _set_clip_dur(nxt, n_dur - clamped)
 
     elif mode == "slip":
         dur = _clip_dur(target)
         new_in = max(0.0, float(target.get("in", 0.0)) + d)
         target["in"] = round(new_in, 3)
-        target["out"] = round(new_in + dur, 3)
+        _set_clip_dur(target, dur)
 
     elif mode == "slide":
-        new_start = max(0.0, float(target.get("start", 0.0)) + d)
-        actual_d = new_start - float(target.get("start", 0.0))
+        old_start = float(target.get("start", 0.0))
+        new_start = max(0.0, old_start + d)
+        actual_d = new_start - old_start
         target["start"] = round(new_start, 3)
         if pos > 0:
             _, prev = same_track[pos - 1]
-            prev["out"] = round(max(float(prev.get("in", 0.0)) + 0.05, float(prev.get("out", 0.0)) + actual_d), 3)
+            _set_clip_dur(prev, _clip_dur(prev) + actual_d)
         if pos + 1 < len(same_track):
             _, nxt = same_track[pos + 1]
+            n_dur = _clip_dur(nxt)
             nxt["in"] = round(max(0.0, float(nxt.get("in", 0.0)) + actual_d), 3)
             nxt["start"] = round(max(0.0, float(nxt.get("start", 0.0)) + actual_d), 3)
+            _set_clip_dur(nxt, max(0.05, n_dur - actual_d))
 
     return items
 
@@ -311,13 +323,21 @@ def expand_compound_clip(clips: list[dict[str, Any]], compound_id: str) -> list[
 
 
 # ---------------------------------------------------------------------------
-# 4. LosslessCut Tarzi Kayipsiz Smart Cut
+# 4. Hizli Kesim (Keyframe Copy) / Kare-Dogru Smart Cut
 # ---------------------------------------------------------------------------
 
-def build_smart_cut_cmd(ffmpeg: str, src: str, start: float, end: float, out_path: str) -> list[str]:
-    """Yeniden kodlamadan (`-c copy`) hizli kesim ffmpeg komutunu uretir."""
+def build_smart_cut_cmd(ffmpeg: str, src: str, start: float, end: float, out_path: str, exact: bool = False) -> list[str]:
+    """`exact=False`: anahtar kareden stream-copy hizli kesim; `exact=True`: kare-dogru yeniden kodlama."""
     s = max(0.0, float(start))
     dur = max(0.05, float(end) - s)
+    if exact:
+        return [
+            ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+            "-ss", f"{s:.3f}", "-i", src, "-t", f"{dur:.3f}",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            "-c:a", "aac", "-b:a", "192k",
+            out_path,
+        ]
     return [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
         "-ss", f"{s:.3f}",
@@ -329,16 +349,16 @@ def build_smart_cut_cmd(ffmpeg: str, src: str, start: float, end: float, out_pat
     ]
 
 
-def smart_cut(ffmpeg: str, src: str, start: float, end: float, out_path: str = "") -> dict[str, Any]:
-    """Kayipsiz Smart Cut uygular; out_path bos ise kaynak yaninda `_cut` dosyasi olusturur."""
+def smart_cut(ffmpeg: str, src: str, start: float, end: float, out_path: str = "", exact: bool = False) -> dict[str, Any]:
+    """Kesim uygular; `exact=False` anahtar-kare stream-copy, `exact=True` kare-dogru yeniden kodlama."""
     if not ffmpeg:
         return {"ok": False, "error": "ffmpeg bulunamadi"}
     p = Path(src)
     if not p.is_file():
         return {"ok": False, "error": "Kaynak dosya bulunamadi"}
-    dst = Path(out_path) if out_path else p.with_name(f"{p.stem}_smartcut{p.suffix}")
-    cmd = build_smart_cut_cmd(ffmpeg, str(p), start, end, str(dst))
+    dst = Path(out_path) if out_path else p.with_name(f"{p.stem}_cut{p.suffix}")
+    cmd = build_smart_cut_cmd(ffmpeg, str(p), start, end, str(dst), exact=exact)
     res = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, creationflags=NO_WINDOW)
     if res.returncode != 0 or not dst.exists():
-        return {"ok": False, "error": (res.stderr or "Smart Cut basarisiz")[:300]}
-    return {"ok": True, "path": str(dst), "size": dst.stat().st_size}
+        return {"ok": False, "error": (res.stderr or "Kesim basarisiz")[:300]}
+    return {"ok": True, "path": str(dst), "size": dst.stat().st_size, "exact": bool(exact)}

@@ -126,8 +126,28 @@ def snapshot() -> dict[str, Any]:
     return {**gpu, **host, "level": level}
 
 
-def flush_memory(flush_cb: Callable[[], None] | None = None) -> None:
-    """Python GC + yuklu ise torch CUDA cache + ozel temizleyiciyi calistirir."""
+def active_gpu_processes() -> list[dict[str, Any]]:
+    """Ayri surecte kosan AI/GPU alt sureclerini (Whisper/UVR/IOPaint) tespit eder."""
+    if psutil is None:
+        return []
+    import os
+    my_pid = os.getpid()
+    keywords = ("whisper", "uvr", "iopaint", "studio_matte", "media-env")
+    found: list[dict[str, Any]] = []
+    try:
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            if proc.info.get("pid") == my_pid:
+                continue
+            cmd = " ".join(proc.info.get("cmdline") or []).lower()
+            if any(k in cmd for k in keywords):
+                found.append({"pid": proc.info["pid"], "name": proc.info.get("name") or ""})
+    except Exception:
+        pass
+    return found
+
+
+def flush_memory(flush_cb: Callable[[], None] | None = None) -> list[dict[str, Any]]:
+    """Ana surecte GC + torch CUDA cache temizler; harici AI alt sureclerini raporlar."""
     gc.collect()
     if flush_cb is not None:
         try:
@@ -141,16 +161,19 @@ def flush_memory(flush_cb: Callable[[], None] | None = None) -> None:
                 torch.cuda.empty_cache()
         except Exception:
             pass
+    return active_gpu_processes()
 
 
 def preflight(required_mb: int = 1024, flush_cb: Callable[[], None] | None = None) -> dict[str, Any]:
     """GPU/AI gorevi baslamadan once yeterli bos VRAM var mi kontrol eder.
 
     6 GB RTX 4050 gibi kartlarda OOM onlemek icin gerekirse once bellek temizler;
-    hala yetmiyorsa `fallback="cpu"` onerir.
+    hala yetmiyorsa `fallback="cpu"` onerir. Whisper/UVR ayri surecte kosuyorsa
+    bunu `external_gpu_procs` ile acikca bildirir.
     """
     req = max(0, int(required_mb or 0))
     snap = snapshot()
+    ext_procs = active_gpu_processes()
     if not snap["gpu_available"]:
         return {
             "ok": True,
@@ -158,6 +181,7 @@ def preflight(required_mb: int = 1024, flush_cb: Callable[[], None] | None = Non
             "fallback": "cpu",
             "reason": "no_nvidia_gpu",
             "required_mb": req,
+            "external_gpu_procs": ext_procs,
             "snapshot": snap,
         }
     if snap["vram_free_mb"] >= req:
@@ -167,9 +191,10 @@ def preflight(required_mb: int = 1024, flush_cb: Callable[[], None] | None = Non
             "fallback": None,
             "reason": "ok",
             "required_mb": req,
+            "external_gpu_procs": ext_procs,
             "snapshot": snap,
         }
-    flush_memory(flush_cb)
+    ext_procs = flush_memory(flush_cb)
     after = snapshot()
     if after["vram_free_mb"] >= req:
         return {
@@ -178,6 +203,7 @@ def preflight(required_mb: int = 1024, flush_cb: Callable[[], None] | None = Non
             "fallback": None,
             "reason": "flushed_ok",
             "required_mb": req,
+            "external_gpu_procs": ext_procs,
             "snapshot": after,
         }
     return {
@@ -185,6 +211,8 @@ def preflight(required_mb: int = 1024, flush_cb: Callable[[], None] | None = Non
         "flushed": True,
         "fallback": "cpu",
         "reason": "vram_low",
+        "note": "Harici AI alt surecleri (Whisper/UVR) kendi VRAM'ini tutuyor olabilir." if ext_procs else "",
         "required_mb": req,
+        "external_gpu_procs": ext_procs,
         "snapshot": after,
     }

@@ -27,9 +27,9 @@ VIRAL_RECIPES: dict[str, dict[str, Any]] = {
     "iman_gadzhi": {
         "id": "iman_gadzhi",
         "name": "Iman Gadzhi (Hızlı Kanca & Punch-In)",
-        "desc": "Keskin kontrast, her 3.5 sn'de ritmik zoom itmesi ve yüksek okunaklı kelime altyazısı.",
+        "desc": "Keskin kontrast, hızlı punch-in zoom (push-fast) ve yüksek okunaklı kelime altyazısı.",
         "grade": {"con": 0.16, "sat": 0.92, "exp": -0.05},
-        "zoom_preset": "snap-in",
+        "zoom_preset": "push-fast",
         "sub_style": "word_pop",
         "shutter_angle": 180,
         "lufs": -14.0,
@@ -37,9 +37,9 @@ VIRAL_RECIPES: dict[str, dict[str, Any]] = {
     "magnates_media": {
         "id": "magnates_media",
         "name": "MagnatesMedia (Belgesel 2.5D & Film)",
-        "desc": "Teal-turuncu sinematik ton, 2.5D paralaks push-in ve yumuşak dramatik geçişler.",
+        "desc": "Teal-turuncu sinematik ton, Ken Burns (kb-zoom-lr) ve dramatik hareket bulanıklığı.",
         "grade": {"con": 0.12, "sat": 1.08, "temp": -0.08},
-        "zoom_preset": "ken-burns",
+        "zoom_preset": "kb-zoom-lr",
         "sub_style": "cinematic",
         "shutter_angle": 180,
         "lufs": -14.0,
@@ -47,9 +47,9 @@ VIRAL_RECIPES: dict[str, dict[str, Any]] = {
     "ali_abdaal": {
         "id": "ali_abdaal",
         "name": "Ali Abdaal (Temiz Eğitici & Pop)",
-        "desc": "Sıcak aydınlık tonlar, pop-up vurgu kartları ve yumuşak yakınlaşma.",
+        "desc": "Sıcak aydınlık tonlar ve yumuşak yaklaşma (dolly-in).",
         "grade": {"exp": 0.08, "temp": 0.06, "sat": 1.05},
-        "zoom_preset": "gentle-push",
+        "zoom_preset": "dolly-in",
         "sub_style": "clean_box",
         "shutter_angle": 144,
         "lufs": -14.0,
@@ -57,9 +57,9 @@ VIRAL_RECIPES: dict[str, dict[str, Any]] = {
     "fps_frag": {
         "id": "fps_frag",
         "name": "Valorant / CS2 Frag (Hız + Shutter Blur)",
-        "desc": "Yüksek shutter motion blur, vuruş anı hız rampası ve neon parıltı.",
+        "desc": "Yüksek shutter motion blur, çarpma zoom (crash) ve yüksek doygunluk.",
         "grade": {"con": 0.2, "sat": 1.22},
-        "zoom_preset": "impact",
+        "zoom_preset": "crash",
         "sub_style": "none",
         "shutter_angle": 270,
         "lufs": -13.0,
@@ -67,9 +67,9 @@ VIRAL_RECIPES: dict[str, dict[str, Any]] = {
     "minimal_shorts": {
         "id": "minimal_shorts",
         "name": "Minimal Shorts / Reels (9:16 Odak)",
-        "desc": "Dikey güvenli alan uyumlu merkez tipografi ve temiz yayın sesi.",
+        "desc": "Dikey güvenli alan uyumlu merkez tipografi ve nefes zoom (breath).",
         "grade": {"con": 0.08, "sat": 1.04},
-        "zoom_preset": "subtle",
+        "zoom_preset": "breath",
         "sub_style": "classic",
         "shutter_angle": 180,
         "lufs": -14.0,
@@ -132,6 +132,9 @@ def apply_viral_recipe(project: dict[str, Any], recipe_id: str, brand_kit: dict[
     pr["shutterAngle"] = rec["shutter_angle"]
     if brand_kit:
         pr["brandKit"] = copy.deepcopy(brand_kit)
+    from app.core.studio_packs import ZOOM3
+    zoom_map = {z["id"]: copy.deepcopy(z["kf"]) for z in ZOOM3 if "id" in z and "kf" in z}
+    zoom_kf = zoom_map.get(rec["zoom_preset"], [])
     applied_clips = 0
     for c in pr.get("clips") or []:
         if c.get("kind") in (None, "video", "image"):
@@ -140,6 +143,8 @@ def apply_viral_recipe(project: dict[str, Any], recipe_id: str, brand_kit: dict[
                 g[k] = v
             c["grade"] = g
             c["shutterAngle"] = rec["shutter_angle"]
+            if zoom_kf:
+                c["zoom"] = copy.deepcopy(zoom_kf)
             applied_clips += 1
     pr.setdefault("markers", []).append({
         "id": f"m_{uuid.uuid4().hex[:6]}",

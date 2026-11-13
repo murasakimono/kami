@@ -817,6 +817,8 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         if grade_active(gr):
             bake_grade(gr, work / f"g{k}.cube")
             ch.append(f"lut3d=file=g{k}.cube:interp=tetrahedral")
+        if float(c.get("shutterAngle") or 0) >= 90 and a["kind"] == "video" and not a.get("gif"):
+            ch.append("tmix=frames=2:weights='1 1'")
         zk = kf_resolve(c.get("zoom") or [], d)
         if zk:
             tv = f"(on/{FPS}+{cut0:.4f})"

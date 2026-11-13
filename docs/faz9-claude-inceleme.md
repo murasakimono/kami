@@ -25,6 +25,11 @@
 cd C:\Users\fluvoksamine\Projeler\kami
 node --check app/ui/web/studio.js
 node --check app/ui/web/studio-scopes.js
-uv run pytest tests/test_faz9.py -v
-uv run pytest -q
+uv run pytest tests/test_faz7.py tests/test_faz8.py tests/test_faz9.py -v
 ```
+
+### Claude'un İncelemesinde Bildirdiği 4 Maddenin Düzeltmesi (13.11.2026)
+1. **Viral reçeteler:** `studio_brand.py` zoom şablonları `studio_packs.ZOOM3` ID'leriyle (`push-fast`, `kb-zoom-lr`, `dolly-in`, `crash`, `breath`) eşlendi ve `apply_viral_recipe` klip `zoom` keyframe'lerini yazıyor; `studio.py` `build_export` içinde `shutterAngle >= 90` ise `tmix=frames=2:weights='1 1'` uygulanıyor.
+2. **Ripple / Roll / Slip / Slide:** `studio_edit.py` (`start`/`dur`/`in`) ve `studio.js` (`#editModeSel` + `lanes` `pointerdown/pointermove/pointerup`) doğrudan zaman çizelgesi fare etkileşimine bağlandı.
+3. **Smart Cut:** `build_smart_cut_cmd` / `smart_cut` içine `exact: bool = False` (anahtar-kare `-c copy` vs. kare-doğru `libx264`) eklendi; UI etiketi dürüstçe `⚡ Hızlı Kes (Keyframe Copy)` yapıldı.
+4. **VRAM temizleme:** `vram_guard.py` içine `active_gpu_processes()` eklendi; `preflight()` ayrı süreçte çalışan Whisper/UVR/IOPaint süreçlerini `external_gpu_procs` ve `note` ile açıkça bildiriyor.
