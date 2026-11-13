@@ -56,7 +56,7 @@ def start_mirror(kind: str = "scrcpy", *, record_path: str = "", window_title: s
         cmd = [exe, "-n", window_title]
 
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=NO_WINDOW)
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
         _PROCS[k] = proc
         return {"ok": True, "kind": k, "pid": proc.pid, "record_path": record_path}
     except Exception as exc:
@@ -74,5 +74,6 @@ def stop_mirror(kind: str = "") -> dict[str, Any]:
                 p.wait(timeout=3)
             except Exception:
                 p.kill()
+                p.wait(timeout=3)
             stopped.append(k)
     return {"ok": True, "stopped": stopped}

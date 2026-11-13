@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 def _default_db() -> Path:
-    from app.core import paths
+    from app import paths
     return paths.DATA_DIR / "kami_kasa.db"
 
 

@@ -135,7 +135,7 @@ def score_highlight_segments(
     """Transkriptten kanca kelimeleri ve yogunluga gore en vurucu klip araliklarini secer."""
     if not transcript_segments:
         return []
-    hook_words = re.compile(r"\b(neden|nasil|sakın|asla|dikkat|gizli|hata|mutlaka|en iyi|inanilmaz|why|how|secret|never|mistake|best)\b|[!?]", re.I)
+    hook_words = re.compile(r"\b(neden|nas[ıi]l|sak[ıi]n|asla|dikkat|gizli|hata|mutlaka|en iyi|inan[ıi]lmaz|why|how|secret|never|mistake|best)\b|[!?]", re.I)
     scored: list[dict[str, Any]] = []
     for seg in transcript_segments:
         st = float(seg.get("start", 0.0))

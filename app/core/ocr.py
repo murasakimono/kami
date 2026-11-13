@@ -122,3 +122,15 @@ def recognize(png_b64: str, lang: str = "") -> dict:
             os.rmdir(tmp)
         except OSError:
             pass
+
+
+def read_text(image_path, lang: str = "") -> dict:
+    """Dosyadan OCR (klip/vurgu/pano/manga modulleri icin): {ok, text, lines, lang}. lang: "en,tr" gibi."""
+    try:
+        with open(image_path, "rb") as f:
+            raw = f.read()
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)[:200], "text": "", "lines": []}
+    res = recognize(base64.b64encode(raw).decode("ascii"), lang)
+    text = str(res.get("text") or "")
+    return {**res, "text": text, "lines": [ln for ln in text.splitlines() if ln.strip()]}

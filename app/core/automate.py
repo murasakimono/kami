@@ -201,7 +201,7 @@ class AfterActions:
             pws = []
             try:
                 import json as _json
-                from app.core import paths as _paths
+                from app import paths as _paths
                 from app.core.debrid import TokenStore
                 raw = TokenStore(_paths.DATA_DIR / "archive_passwords.bin").load()
                 if raw:

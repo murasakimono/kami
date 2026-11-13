@@ -6,7 +6,9 @@ import ipaddress
 import logging
 import secrets
 import socket
+import shutil
 import threading
+from urllib.parse import quote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -97,13 +99,19 @@ class LanShareServer:
                     if not fp or not fp.is_file():
                         self.send_error(404, "Dosya yok")
                         return
-                    data = fp.read_bytes()
+                    # Dosya parca parca akar (GB'lik dosyayi RAM'e okumaz); basliklar latin-1 oldugu icin
+                    # Turkce/Japonca ad RFC 5987 filename* ile gider (yoksa UnicodeEncodeError)
+                    ascii_name = fp.name.encode("ascii", "replace").decode().replace('"', "_")
                     self.send_response(200)
                     self.send_header("Content-Type", "application/octet-stream")
-                    self.send_header("Content-Length", str(len(data)))
-                    self.send_header("Content-Disposition", f'attachment; filename="{fp.name}"')
+                    self.send_header("Content-Length", str(fp.stat().st_size))
+                    self.send_header("Content-Disposition", f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(fp.name)}")
                     self.end_headers()
-                    self.wfile.write(data)
+                    try:
+                        with fp.open("rb") as fh:
+                            shutil.copyfileobj(fh, self.wfile, 1024 * 1024)
+                    except (ConnectionError, OSError):
+                        pass
                     return
                 self.send_error(404)
 

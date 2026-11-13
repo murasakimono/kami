@@ -20,7 +20,11 @@
         const r = await api.pano_shelf_list();
         PANO.items = r?.items || [];
         const list = document.getElementById("kpList");
-        if (list) list.innerHTML = PANO.items.map((x) => `<div style="padding:4px;background:#1E1630">${x.label || x.value}</div>`).join("") || "<i>Raf bos</i>";
+        if (list) {
+          list.replaceChildren();
+          for (const x of PANO.items) { const d = document.createElement("div"); d.style.cssText = "padding:4px;background:#1E1630"; d.textContent = x.label || x.value || ""; list.appendChild(d); }
+          if (!PANO.items.length) list.innerHTML = "<i>Raf bos</i>";
+        }
       }
     };
     document.body.appendChild(dock);

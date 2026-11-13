@@ -15,7 +15,7 @@ from typing import Any
 def _shelf_path(data_dir: Path | None = None) -> Path:
     if data_dir:
         return Path(data_dir) / "pano_shelf.json"
-    from app.core import paths
+    from app import paths
     return paths.DATA_DIR / "pano_shelf.json"
 
 
@@ -36,7 +36,7 @@ def add_shelf_item(kind: str, value: str, label: str = "", data_dir: Path | None
         "id": f"p_{int(time.time() * 1000)}_{len(items)}",
         "kind": kind,
         "value": value,
-        "label": label or Path(value).name if kind == "file" else value[:48],
+        "label": label or (Path(value).name if kind == "file" else value[:48]),
         "ts": int(time.time()),
     }
     items.insert(0, entry)

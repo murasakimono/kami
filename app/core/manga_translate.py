@@ -119,22 +119,17 @@ def translate_manga_page(
 
     work_regions = list(regions or [])
     if not work_regions:
-        # Windows OCR ile metin varsa merkez ust bolgeyi varsayilan balon olarak al
+        # Yerlesik balon tespiti yok: sayfanin tum metnini rastgele bir kutuya basmak cizimi kapatir.
+        # Metni yalnizca okuyup dondur; sayfa ancak balon kutulari (regions) verilince ya da
+        # manga-image-translator kuruluyken degistirilir.
+        text = ""
         try:
             from app.core import ocr
-            res = ocr.read_text(str(p), lang="ja,en")
-            lines = [ln.strip() for ln in (res.get("lines") or []) if ln.strip()]
-            if lines:
-                work_regions.append({
-                    "bbox": [int(w * 0.12), int(h * 0.08), int(w * 0.88), int(h * 0.30)],
-                    "text": " ".join(lines),
-                })
+            text = str(ocr.read_text(str(p), lang="ja").get("text") or "")
         except Exception:
             pass
-
-    if not work_regions:
-        im.save(dst)
-        return {"ok": True, "path": str(dst), "engine": "builtin", "bubbles": 0}
+        return {"ok": False, "engine": "builtin", "bubbles": 0, "ocr_text": text,
+                "error": "Balon tespiti icin manga-image-translator gerekli ya da balon kutulari secilmeli"}
 
     ollama_ready = False
     if translate_fn is None:

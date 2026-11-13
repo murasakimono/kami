@@ -75,7 +75,7 @@ def is_safe_public_url(url: str, *, resolve_dns: bool = False) -> bool:
 def _rules_path(data_dir: Path | None = None) -> Path:
     if data_dir:
         return Path(data_dir) / "crawler_rules.json"
-    from app.core import paths
+    from app import paths
     return paths.DATA_DIR / "crawler_rules.json"
 
 

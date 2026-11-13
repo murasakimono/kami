@@ -152,7 +152,7 @@ def synthesize_tts(text: str, out_wav: str | Path, *, lang: str = "tr") -> dict[
     piper = shutil.which("piper") or shutil.which("piper.exe")
     if piper:
         try:
-            from app.core import paths
+            from app import paths
             piper_dir = paths.DATA_DIR / "tools" / "piper"
             models = sorted(piper_dir.glob("*.onnx")) if piper_dir.is_dir() else []
             if models:

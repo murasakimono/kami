@@ -56,8 +56,9 @@ def detect_roi_highlight(image_path: str | Path, keywords: tuple[str, ...] | lis
         res = ocr.read_text(str(p), lang="en,tr")
         text = " ".join(res.get("lines") or [])
         low = text.lower()
+        import re as _re
         for kw in keywords:
-            if kw.lower() in low:
+            if _re.search(r"(?<!\w)" + _re.escape(kw.lower()) + r"(?!\w)", low):
                 return {"hit": True, "keyword": kw, "text": text}
         return {"hit": False, "keyword": "", "text": text}
     except Exception:
