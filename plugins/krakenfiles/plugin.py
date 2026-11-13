@@ -27,18 +27,25 @@ class KrakenFiles(CloudProvider):
             name_m = re.search(r"<h1[^>]*>(.*?)</h1>", page, flags=re.S | re.I)
         name = html.unescape(re.sub(r"<[^>]+>", "", name_m.group(1))).strip() if name_m else ident
         form_m = re.search(r'action=["\'](/download/[^"\']+)["\']', page)
-        tok_m = re.search(r'name=["\']token["\'][^>]*value=["\']([^"\']+)["\']', page)
-        if not form_m or not tok_m:
+        token = ""
+        for tag in re.findall(r"<input\b[^>]*>", page, flags=re.I):
+            if re.search(r'name=["\']token["\']', tag, flags=re.I):
+                vm = re.search(r'value=["\']([^"\']+)["\']', tag, flags=re.I)
+                if vm:
+                    token = vm.group(1)
+                    break
+        if not form_m or not token:
             raise RuntimeError("KrakenFiles indirme formu bulunamadı")
         post_url = urljoin(url, form_m.group(1))
-        res = s.post(post_url, data={"token": tok_m.group(1)}, headers={"Referer": url, "hash": ident}, timeout=20).json()
+        hdrs = {"Referer": url}
+        res = s.post(post_url, data={"token": token}, headers={**hdrs, "hash": ident}, timeout=20).json()
         dl = res.get("url") or ""
         if not dl:
             raise RuntimeError("KrakenFiles indirme bağlantısı döndürmedi")
         if dl.startswith("//"):
             dl = "https:" + dl
         return CloudListing(self.name, name or ident, is_folder=False, files=[
-            CloudFile(name or ident, 0, url=dl, headers={"Referer": url}),
+            CloudFile(name or ident, 0, url=dl, headers=hdrs),
         ])
 
 

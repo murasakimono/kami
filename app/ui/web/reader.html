@@ -37,6 +37,7 @@
       <button data-a="night" id="rdNight" title="N" data-tr="Gece" data-en="Night"></button>
       <button data-a="mark" id="rdMarkBtn" title="B">☆</button>
       <button data-a="tts" id="rdTtsBtn" class="pdf-only" title="Sesli oku (T)">🔊</button>
+      <button data-a="ocrpage" id="rdOcrBtn" title="Sayfayı OCR Çevir (O)">🔍</button>
       <button data-a="drawer" title="Çalışma paneli">☰</button>
     </header>
     <main class="rd-main">
@@ -70,9 +71,11 @@
     <div class="rd-pop" id="rdPop" hidden>
       <button data-hl="y" class="c-y"></button><button data-hl="g" class="c-g"></button><button data-hl="b" class="c-b"></button><button data-hl="p" class="c-p"></button>
       <button data-a="popnote" data-tr="Not" data-en="Note"></button>
+      <button data-a="popdict" data-tr="Sözlük" data-en="Dict"></button>
       <button data-a="popsay" data-tr="Sesli oku" data-en="Read aloud"></button>
       <button data-a="popcopy" data-tr="Kopyala" data-en="Copy"></button>
     </div>
+    <div id="rdDictBox" hidden style="position:fixed;right:18px;bottom:18px;z-index:80;max-width:380px;max-height:260px;overflow:auto;background:#14101f;border:1px solid #4c3575;padding:12px 14px;color:#f2ecff;font-size:13px;line-height:1.45;box-shadow:0 12px 36px rgba(0,0,0,.6)"></div>
   </section>
   <div class="rd-drop" id="rdDrop" hidden><span data-tr="Bırak, açayım" data-en="Drop to open"></span></div>
   <script src="reader.js"></script>

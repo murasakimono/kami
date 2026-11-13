@@ -926,13 +926,44 @@ def _deliver_args(graph: list[str], opts: dict, enc: str, W: int, H: int, FPS: i
         a = ["-c:a", "aac", "-b:a", "320k"]
     else:
         if enc == "h264_nvenc":
-            v = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "17" if q == "high" else "23", "-b:v", "0", "-profile:v", "high"]
+            v = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "17" if q == "high" else "23",
+                 "-b:v", "0", "-profile:v", "high", "-spatial-aq", "1", "-temporal-aq", "1", "-bf", "2"]
         else:
             v = ["-c:v", "libx264", "-preset", "medium" if q == "high" else "veryfast", "-crf", "17" if q == "high" else "22"]
         v += ["-pix_fmt", "yuv420p"]
         a = ["-c:a", "aac", "-b:a", "320k"]
     mov = ["-movflags", "+faststart"] if fmt in ("mp4", "hevc") else []
     return ["-filter_complex", ";".join(graph), "-map", vmap, "-map", "[aout]", *v, "-r", str(FPS), *a, "-ar", "48000", *mov, *t, out]
+
+
+def make_proxy(src: str, proxy_dir: str = "") -> dict[str, Any]:
+    """4K/agir videolar icin hizli 720p onizleme vekili (proxy) uretir."""
+    from app.engines.ytdlp_engine import find_ffmpeg
+    p = Path(src)
+    if not p.is_file():
+        return {"ok": False, "error": "Dosya bulunamadı"}
+    ffmpeg = find_ffmpeg() or ""
+    if not ffmpeg:
+        return {"ok": False, "error": "ffmpeg bulunamadı"}
+    out_d = Path(proxy_dir) if proxy_dir else p.parent / ".kami_proxy"
+    out_d.mkdir(parents=True, exist_ok=True)
+    out = out_d / f"{p.stem}_proxy720.mp4"
+    if out.is_file() and out.stat().st_mtime >= p.stat().st_mtime and out.stat().st_size > 1024:
+        return {"ok": True, "proxy": str(out), "cached": True}
+    from app.core.converter import has_nvenc
+    vcodec = (["-c:v", "h264_nvenc", "-preset", "p1", "-rc", "vbr", "-cq", "26", "-b:v", "0"]
+              if has_nvenc(ffmpeg) else ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "26"])
+    r = subprocess.run(
+        [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(p),
+         "-vf", "scale=-2:min(720\\,ih)", *vcodec, "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=300, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if r.returncode != 0:
+        out.unlink(missing_ok=True)
+        return {"ok": False, "error": (r.stderr or "Proxy üretilemedi")[:200]}
+    return {"ok": True, "proxy": str(out), "cached": False}
 
 
 # ---------------------------------------------------------------------------------------------------------------

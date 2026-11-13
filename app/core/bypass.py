@@ -5,7 +5,7 @@ import base64
 import html
 import re
 from typing import Any
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import requests
 
@@ -14,8 +14,24 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 BYPASS_HOSTS = (
     "ouo.io", "ouo.press", "tr.link", "ay.link", "linkvertise.com",
     "link-hub.net", "link-target.net", "direct-link.net", "cuty.io", "bc.vc",
-    "bit.ly", "tinyurl.com", "t.co", "rentry.co", "pastebin.com", "justpaste.it",
+    "rentry.co", "pastebin.com", "justpaste.it",
 )
+_PREFER_LINK_RE = re.compile(
+    r"(mega\.nz|mediafire\.com|drive\.google\.com|gofile\.io|pixeldrain\.com|qiwi\.gg|"
+    r"bunkr|krakenfiles\.com|send\.cm|send\.now|yandex|disk\.yandex|1fichier|rapidgator|nitroflare|"
+    r"\.(?:zip|rar|7z|mp4|mkv|avi|mp3|flac|exe|apk|pdf)(?:$|[?#]))",
+    flags=re.I,
+)
+
+
+def _pick_paste_link(text: str) -> tuple[str, list[str]]:
+    urls = list(dict.fromkeys(re.findall(r"https?://[^\s<>\"')]+", text)))
+    if not urls:
+        return "", []
+    for u in urls:
+        if _PREFER_LINK_RE.search(u):
+            return u, urls
+    return urls[0], urls
 
 
 def is_bypassable(url: str) -> bool:
@@ -61,9 +77,13 @@ def resolve(url: str, session: requests.Session | None = None, max_hops: int = 5
     s = session or requests.Session()
     cur = url.strip()
     hops = 0
+    candidates: list[str] = []
     for _ in range(max_hops):
         if not cur or not is_bypassable(cur):
-            return {"ok": True, "url": cur, "hops": hops}
+            out: dict[str, Any] = {"ok": True, "url": cur, "hops": hops}
+            if candidates:
+                out["candidates"] = candidates[:20]
+            return out
         p = urlparse(cur)
         host = (p.hostname or "").lower()
 
@@ -72,7 +92,9 @@ def resolve(url: str, session: requests.Session | None = None, max_hops: int = 5
             qs = parse_qs(p.query)
             if "r" in qs and qs["r"]:
                 try:
-                    dec = base64.b64decode(qs["r"][0]).decode("utf-8", errors="ignore").strip()
+                    raw_r = unquote(qs["r"][0]).strip()
+                    pad = "=" * (-len(raw_r) % 4)
+                    dec = base64.urlsafe_b64decode(raw_r + pad).decode("utf-8", errors="ignore").strip()
                     if dec.startswith("http"):
                         cur = dec
                         hops += 1
@@ -85,18 +107,21 @@ def resolve(url: str, session: requests.Session | None = None, max_hops: int = 5
             raw_url = f"https://pastebin.com/raw{p.path}"
             r = s.get(raw_url, headers={"User-Agent": UA}, timeout=15)
             if r.status_code == 200:
-                m = re.search(r"https?://[^\s<>\"']+", r.text)
-                if m:
-                    cur = m.group(0)
+                chosen, found = _pick_paste_link(r.text)
+                if chosen:
+                    candidates = found
+                    cur = chosen
                     hops += 1
                     continue
 
-        if host.endswith("rentry.co") and not p.path.endswith("/raw"):
-            r = s.get(cur.rstrip("/") + "/raw", headers={"User-Agent": UA}, timeout=15)
+        if host.endswith("rentry.co") and not p.path.rstrip("/").endswith("/raw"):
+            raw_url = f"https://{p.netloc}{p.path.rstrip('/')}/raw"
+            r = s.get(raw_url, headers={"User-Agent": UA}, timeout=15)
             if r.status_code == 200:
-                m = re.search(r"https?://[^\s<>\"']+", r.text)
-                if m:
-                    cur = m.group(0)
+                chosen, found = _pick_paste_link(r.text)
+                if chosen:
+                    candidates = found
+                    cur = chosen
                     hops += 1
                     continue
 

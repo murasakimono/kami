@@ -1,17 +1,17 @@
 /* Sunak Ekosistem Cekmecesi + Recorder + Bypass + Sezon Kaziyici + Grab-All */
 .eco-ov { position: fixed; inset: 0; z-index: 950; background: rgba(7, 5, 12, .72); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; }
 .eco-ov[hidden] { display: none; }
-.eco-box { width: min(760px, 94vw); max-height: 86vh; background: #13101B; border: 1px solid #352754; color: #F2ECFF; display: flex; flex-direction: column; box-shadow: 0 24px 70px rgba(0, 0, 0, .65); font-family: "Chakra Petch", sans-serif; }
+.eco-box { width: min(760px, 94vw); max-height: 86vh; background: #13101B; border: 1px solid #352754; color: #F2ECFF; display: flex; flex-direction: column; box-shadow: 0 24px 70px rgba(0, 0, 0, .65); font-family: "Chakra Petch", sans-serif; clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%); }
 .eco-hd { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #261D3D; background: #0E0B15; }
 .eco-hd h3 { margin: 0; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; color: #D8B4FE; flex: 1; }
-.eco-tabs { display: flex; gap: 6px; padding: 8px 16px; border-bottom: 1px solid #231A38; background: #100D18; flex-wrap: wrap; }
-.eco-tab { background: #1B152B; border: 1px solid #2F234A; color: #BBAEE0; padding: 6px 12px; font: inherit; font-size: 12px; cursor: pointer; }
-.eco-tab.on { background: #7C4DFF; border-color: #9D6BFF; color: #fff; }
+.eco-tabs { display: flex; gap: 6px; padding: 8px 16px 0; border-bottom: 1px solid #231A38; background: #100D18; flex-wrap: wrap; }
+.eco-tab { background: #1B152B; border: 1px solid #2F234A; border-bottom: 2px solid transparent; color: #BBAEE0; padding: 7px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+.eco-tab.on { background: #261B44; border-color: #49337A; border-bottom-color: #2EE6A6; color: #fff; }
 .eco-bd { padding: 16px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
-.eco-card { background: #181326; border: 1px solid #2B2142; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.eco-card { background: #181326; border: 1px solid #2B2142; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; clip-path: polygon(0 8px, 8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%); }
 .eco-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .eco-in { flex: 1; min-width: 200px; background: #0D0A14; border: 1px solid #332650; color: #F5F0FF; padding: 8px 10px; font: inherit; font-size: 13px; }
-.eco-btn { background: #7C4DFF; border: 1px solid #9D6BFF; color: #fff; padding: 8px 14px; font: inherit; font-size: 12px; cursor: pointer; }
+.eco-btn { background: #7C4DFF; border: 1px solid #9D6BFF; color: #fff; padding: 8px 14px; font: inherit; font-size: 12px; cursor: pointer; clip-path: polygon(0 5px, 5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%); }
 .eco-btn.sec { background: #221A36; border-color: #3D2E60; color: #E2D9FF; }
 .eco-btn:disabled { opacity: .5; cursor: default; }
 .eco-list { max-height: 260px; overflow: auto; border: 1px solid #261D3D; background: #0E0B15; }
@@ -21,3 +21,4 @@
 .eco-ok { color: #2EE6A6; }
 .eco-err { color: #F0626F; }
 .eco-hint { font-size: 12px; color: #9D8EC7; line-height: 1.45; }
+.eco-tail { margin-top: 6px; padding: 6px 8px; background: #0B0812; border: 1px solid #261D3D; font-family: monospace; font-size: 11px; color: #C4B5FD; max-height: 110px; overflow: auto; }

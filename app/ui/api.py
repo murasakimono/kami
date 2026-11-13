@@ -2709,7 +2709,13 @@ class Api(StudioMixin):
     def grab_all_status(self) -> dict[str, Any]:
         from app.core import grab_all
         exe = grab_all.find_gallery_dl()
-        return {"installed": bool(exe), "exe": exe or "", "dest": grab_all.default_dest(self._manager.base_dir())}
+        st = dict(getattr(self, "_grab_state", None) or {})
+        return {
+            "installed": bool(exe),
+            "exe": exe or "",
+            "dest": grab_all.default_dest(self._manager.base_dir()),
+            **st,
+        }
 
     def grab_all_start(self, url: str, limit: int = 0) -> dict[str, Any]:
         import threading
@@ -2720,18 +2726,48 @@ class Api(StudioMixin):
         if not res.get("ok"):
             return res
         proc = res.pop("proc")
+        cookie_file = str(res.pop("cookie_file", "") or "")
+        state: dict[str, Any] = {"running": True, "rc": None, "files_count": 0, "tail": [], "last_url": u}
+        self._grab_state = state
 
         def _wait():
-            out_lines = []
+            out_lines: list[str] = []
             try:
                 if proc.stdout:
-                    for line in proc.stdout:
-                        out_lines.append(line.strip())
+                    for raw in proc.stdout:
+                        ln = raw.strip()
+                        if not ln:
+                            continue
+                        out_lines.append(ln)
+                        if not ln.startswith(("[", "#")):
+                            state["files_count"] = int(state.get("files_count") or 0) + 1
+                        state["tail"] = out_lines[-6:]
                 rc = proc.wait()
+                state["running"] = False
+                state["rc"] = rc
                 self._manager.events.emit("ui.warn" if rc else "ui.toast", kind="grab_all",
-                                          name=f"Grab-All {'hata' if rc else 'tamamlandı'}: {dest}")
+                                          name=f"Grab-All {'hata' if rc else 'tamamlandı'} ({state['files_count']} dosya): {dest}")
             except Exception:
-                pass
+                state["running"] = False
+            finally:
+                if cookie_file:
+                    try:
+                        os.remove(cookie_file)
+                    except OSError:
+                        pass
 
         threading.Thread(target=_wait, daemon=True).start()
         return res
+
+    # ---------- Faz 3: Studio Proxy, Kami Hardsub, Kami Ghost ----------
+    def studio_proxy(self, path: str) -> dict[str, Any]:
+        from app.core import studio
+        return studio.make_proxy(str(path or "").strip())
+
+    def hardsub_extract(self, path: str, lang: str = "", burn: bool = False) -> dict[str, Any]:
+        from app.core import hardsub
+        return hardsub.extract_and_translate(str(path or "").strip(), lang=str(lang or ""), burn=bool(burn))
+
+    def ghost_process(self, path: str, shield: bool = False) -> dict[str, Any]:
+        from app.core import ghost
+        return ghost.process(str(path or "").strip(), shield=bool(shield))

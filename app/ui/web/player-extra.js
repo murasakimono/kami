@@ -415,17 +415,100 @@ document.addEventListener("fullscreenchange", () => setTimeout(a4kPlace, 120));
 setInterval(() => { if (A4.on) a4kPlace(); }, 1000);   // pencere boyutu / tam ekran / mini gecisleri
 PL_ACTIONS.a4k = ["Anime4K aç / kapat", "Anime4K on / off", () => a4kToggle()];
 if (!PL_KEYS_DEFAULT.u) PL_KEYS_DEFAULT.u = "a4k";
+
+// ---------- Kami Cinema Shader (WebGL2 Live-Action: CAS + Deband + Denoise) ----------
+const CIN = { on: false, canvas: null, gl: null, prog: null, tex: null, raf: 0, uSize: null, uStr: null };
+const CIN_VS = `attribute vec2 p; varying vec2 v; void main(){ v = vec2(p.x*0.5+0.5, 0.5-p.y*0.5); gl_Position = vec4(p,0.0,1.0); }`;
+const CIN_FS = `precision mediump float;
+uniform sampler2D uTex; uniform vec2 uSize; uniform float uStr; varying vec2 v;
+vec3 samplePx(vec2 off){ return texture2D(uTex, clamp(v + off / uSize, 0.0, 1.0)).rgb; }
+void main(){
+  vec3 c = samplePx(vec2(0.0));
+  vec3 n = samplePx(vec2(0.0,-1.0)), s = samplePx(vec2(0.0,1.0)), w = samplePx(vec2(-1.0,0.0)), e = samplePx(vec2(1.0,0.0));
+  vec3 blur = (n + s + w + e + c) * 0.2;
+  float diff = length(c - blur);
+  // Hafif deband + denoise: cok kucuk farklari yumusat, detaylari CAS ile keskinlestir
+  vec3 clean = mix(blur, c, smoothstep(0.015, 0.08, diff));
+  vec3 mn = min(min(n, s), min(w, e)), mx = max(max(n, s), max(w, e));
+  float amp = clamp(min(mn.g, 1.0 - mx.g) / max(mx.g, 1e-4), 0.0, 1.0);
+  float k = -uStr * mix(0.10, 0.22, sqrt(amp));
+  vec3 sharp = clamp((clean + (n + s + w + e) * k) / (1.0 + 4.0 * k), 0.0, 1.0);
+  gl_FragColor = vec4(sharp, 1.0);
+}`;
+function cinPlace() {
+  if (!CIN.canvas) return;
+  const b = a4kRect();
+  Object.assign(CIN.canvas.style, { left: b.x + "px", top: b.y + "px", width: b.w + "px", height: b.h + "px" });
+}
+function cinStop() {
+  if (CIN.raf) cancelAnimationFrame(CIN.raf);
+  CIN.raf = 0; CIN.on = false;
+  CIN.canvas?.remove(); CIN.canvas = null; CIN.gl = null;
+}
+function cinStart() {
+  const v = $("#plVideo");
+  if (!PL.open || PL.info?.kind !== "video") return;
+  if (!v.videoWidth) { v.addEventListener("loadeddata", cinStart, { once: true }); return; }
+  if (A4.on) a4kStop();
+  cinStop();
+  const c = document.createElement("canvas");
+  c.id = "plCinema"; c.className = "pl-a4k";
+  v.after(c); CIN.canvas = c;
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  cinPlace();
+  const gl = c.getContext("webgl2") || c.getContext("webgl");
+  if (!gl) { cinStop(); toast(plL("WebGL desteklenmiyor", "WebGL not supported"), true); return; }
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  const pr = gl.createProgram();
+  gl.attachShader(pr, sh(gl.VERTEX_SHADER, CIN_VS));
+  gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, CIN_FS));
+  gl.linkProgram(pr); gl.useProgram(pr);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(pr, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  CIN.gl = gl; CIN.prog = pr; CIN.tex = tex;
+  CIN.uSize = gl.getUniformLocation(pr, "uSize");
+  CIN.uStr = gl.getUniformLocation(pr, "uStr");
+  CIN.on = true;
+  const draw = () => {
+    if (!CIN.on || !CIN.gl) return;
+    const mode = peCfg().cinema || "balanced";
+    const str = mode === "strong" ? 1.35 : (mode === "light" ? 0.55 : 0.95);
+    gl.viewport(0, 0, c.width, c.height);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v);
+    gl.uniform2f(CIN.uSize, c.width, c.height);
+    gl.uniform1f(CIN.uStr, str);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    CIN.raf = requestAnimationFrame(draw);
+  };
+  draw();
+  toast(plL("Sinema HD (Live-Action) açık", "Cinema HD (Live-Action) on"));
+}
+function cinToggle() { if (CIN.on) { cinStop(); toast(plL("Sinema HD kapalı", "Cinema HD off")); } else cinStart(); }
+PL_ACTIONS.cinema = ["Sinema HD aç / kapat", "Cinema HD on / off", () => cinToggle()];
+window.addEventListener("resize", cinPlace);
+document.addEventListener("fullscreenchange", () => setTimeout(cinPlace, 120));
+
 const _peVid2 = window.pxExtraVideoHtml;
 window.pxExtraVideoHtml = () => _peVid2() + `<div class="px-shift"><span>Anime4K (${plL("netleştirme, U tuşu", "sharpen, U key")})</span></div>
   ${peSeg("a4k", [["auto", plL("Otomatik (≤720p anime)", "Auto (≤720p anime)")], ["on", plL("Hep açık", "Always")], ["off", plL("Kapalı", "Off")]], peCfg().a4k || "auto")}
   ${peSeg("a4kQ", [["light", plL("Hafif", "Light")], ["balanced", plL("Dengeli", "Balanced")], ["strong", plL("Güçlü", "Strong")]], peCfg().a4kQ || "light")}
+  <div class="px-shift"><span>${plL("Sinema HD (Live-Action CAS + Deband)", "Cinema HD (Live-Action CAS + Deband)")}</span></div>
+  ${peSeg("cinema", [["off", plL("Kapalı", "Off")], ["light", plL("Hafif", "Light")], ["balanced", plL("Dengeli", "Balanced")], ["strong", plL("Güçlü", "Strong")]], peCfg().cinema || "off")}
   <p class="px-hint">${plL("Ekran kartında çalışır. Güçlü mod laptopu ısıtabilir.", "Runs on the GPU. Strong mode can heat up laptops.")}</p>`;
 document.addEventListener("click", (e) => {
-  const seg = e.target.closest?.('#plPanel .px-xseg[data-x="a4k"], #plPanel .px-xseg[data-x="a4kQ"]'); const b = e.target.closest?.("button");
+  const seg = e.target.closest?.('#plPanel .px-xseg[data-x="a4k"], #plPanel .px-xseg[data-x="a4kQ"], #plPanel .px-xseg[data-x="cinema"]'); const b = e.target.closest?.("button");
   if (!seg || !b) return;
   PX.cfg[seg.dataset.x] = b.dataset.v; pxSave();
   if (seg.dataset.x === "a4kQ" && A4.on) { a4kStop(); a4kStart(false); }
   if (seg.dataset.x === "a4k" && PL.info) { if (a4kWanted(PL.info)) a4kStart(false); else a4kStop(); }
+  if (seg.dataset.x === "cinema") { if (b.dataset.v === "off") cinStop(); else cinStart(); }
 }, true);
 
 // ---------- OpenSubtitles: Turkce altyazi yoksa bul ----------

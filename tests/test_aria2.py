@@ -201,12 +201,14 @@ def test_no_range_server_single_connection(env, http_server):
 def test_no_range_pause_resume_restarts_cleanly(env, http_server):
     """Range yoksa duraklat/devam: aria2 hata vermeden bastan indirir, dosya bozulmaz."""
     mgr, settings, seen, tmp = env
+    mgr.engine.set_global(max_overall_download_limit="2M")
     [d] = mgr.add(DownloadRequest(url=http_server.base + "/norange.bin"))
     assert d.max_conn == 1
     _wait(mgr, d.id, Status.ACTIVE)
-    time.sleep(0.3)
+    time.sleep(0.4)
     mgr.pause(d.id)
     _wait(mgr, d.id, Status.PAUSED)
+    mgr.engine.set_global(max_overall_download_limit="0")
     mgr.resume(d.id)
     d = _wait(mgr, d.id, Status.COMPLETE, timeout=60)
     assert _sha(d.path) == hashlib.sha256(http_server.handler.files["norange.bin"]).hexdigest()

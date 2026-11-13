@@ -663,6 +663,8 @@ document.addEventListener("keydown", (e) => {
   else if (e.ctrlKey && k === "j") { e.preventDefault(); ED.sel ? edSelToLayer(false) : edLayerDup(); }
   else if (e.ctrlKey && k === "a") { e.preventDefault(); edSelRect(0, 0, ED.W, ED.H); edRender(); }
   else if (e.ctrlKey && k === "d") { e.preventDefault(); ED.sel = null; edRender(); }
+  else if (e.ctrlKey && k === "t") { e.preventDefault(); edTransformOpen(); }
+  else if (e.ctrlKey && k === "v") { edPasteFromClipboard(); }
   else if (k === " " && !e.repeat) { e.preventDefault(); ED.space = true; if (ED.hover) { const v = $("#edView").getBoundingClientRect(); edWheel(v.left + ED.hover[0] * ED.z + ED.ox, v.top + ED.hover[1] * ED.z + ED.oy); } }
   else if (k === "tab") { e.preventDefault(); $("#edLayers").classList.toggle("open"); }
   else if (k === "[") { ED.size = Math.max(1, Math.round(ED.size / 1.2)); edOpt(); edRender(); }
@@ -688,6 +690,104 @@ async function edOpen(path) {
   edCurveHook();
 }
 function edCurveHook() { new MutationObserver(() => { const cv = document.querySelector("#edCard .ed-curve"); if (cv && !cv._h) { cv._h = 1; edCurveEvents(cv); } }).observe($("#edCard"), { childList: true }); }
+
+function edTransformLayer(scalePct, deg, flipX, flipY) {
+  const l = cl();
+  if (!l || !l.c) return;
+  edSnap(edL("Dönüştür", "Transform"));
+  const sc = Math.max(0.05, Math.min(8, Number(scalePct || 100) / 100));
+  const rad = (Number(deg || 0) * Math.PI) / 180;
+  const nw = Math.max(1, Math.round(l.c.width * sc));
+  const nh = Math.max(1, Math.round(l.c.height * sc));
+  const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+  const rw = Math.max(1, Math.round(nw * cos + nh * sin));
+  const rh = Math.max(1, Math.round(nw * sin + nh * cos));
+  const out = document.createElement("canvas");
+  out.width = rw; out.height = rh;
+  const ctx = out.getContext("2d");
+  ctx.translate(rw / 2, rh / 2);
+  ctx.rotate(rad);
+  ctx.scale((flipX ? -1 : 1) * sc, (flipY ? -1 : 1) * sc);
+  ctx.drawImage(l.c, -l.c.width / 2, -l.c.height / 2);
+  l.x = Math.round(l.x + (l.c.width - rw) / 2);
+  l.y = Math.round(l.y + (l.c.height - rh) / 2);
+  l.c = out;
+  edLayersUi();
+  edRender();
+}
+
+function edTransformOpen() {
+  const l = cl();
+  if (!l) return;
+  const card = $("#edCard");
+  card.innerHTML = `<div class="ed-tr-box" style="display:flex;flex-direction:column;gap:8px;padding:10px">
+    <strong>${edL("Serbest Dönüştürme (Ctrl+T)", "Free Transform (Ctrl+T)")}</strong>
+    <label style="font-size:12px">${edL("Ölçek (%)", "Scale (%)")}: <input id="edTrSc" type="number" min="5" max="800" value="100" style="width:74px"></label>
+    <label style="font-size:12px">${edL("Döndür (°)", "Rotate (°)")}: <input id="edTrDeg" type="number" min="-360" max="360" value="0" style="width:74px"></label>
+    <div style="display:flex;gap:10px;font-size:12px">
+      <label><input id="edTrFx" type="checkbox"> ${edL("Yatay çevir", "Flip H")}</label>
+      <label><input id="edTrFy" type="checkbox"> ${edL("Dikey çevir", "Flip V")}</label>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button id="edTrOk">${edL("Uygula", "Apply")}</button>
+      <button id="edTrNo">${edL("İptal", "Cancel")}</button>
+    </div>
+  </div>`;
+  card.classList.add("on");
+  card.querySelector("#edTrOk").onclick = () => {
+    edTransformLayer(card.querySelector("#edTrSc").value, card.querySelector("#edTrDeg").value,
+      card.querySelector("#edTrFx").checked, card.querySelector("#edTrFy").checked);
+    card.classList.remove("on");
+  };
+  card.querySelector("#edTrNo").onclick = () => card.classList.remove("on");
+}
+
+function edPasteImageBlob(blob) {
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const im = new Image();
+  im.onload = () => {
+    URL.revokeObjectURL(url);
+    edSnapAll(edL("Yapıştır", "Paste"));
+    edLayerAdd(edL("Pano", "Clipboard"));
+    const l = cl();
+    l.c.width = im.naturalWidth;
+    l.c.height = im.naturalHeight;
+    l.c.getContext("2d").drawImage(im, 0, 0);
+    l.x = Math.max(0, Math.round((ED.W - l.c.width) / 2));
+    l.y = Math.max(0, Math.round((ED.H - l.c.height) / 2));
+    edLayersUi();
+    edRender();
+    toast(edL("Panodan katman eklendi", "Pasted as layer"));
+  };
+  im.src = url;
+}
+
+async function edPasteFromClipboard() {
+  if (!ED.on || !navigator.clipboard?.read) return;
+  try {
+    const items = await navigator.clipboard.read();
+    for (const it of items) {
+      const imgType = it.types.find((t) => t.startsWith("image/"));
+      if (imgType) {
+        edPasteImageBlob(await it.getType(imgType));
+        return;
+      }
+    }
+  } catch { /* paste event yedek olarak yakalar */ }
+}
+
+window.addEventListener("paste", (e) => {
+  if (!ED.on || e.target.matches?.("input, textarea, [contenteditable]")) return;
+  const items = e.clipboardData?.items || [];
+  for (const it of items) {
+    if (it.type && it.type.startsWith("image/")) {
+      e.preventDefault();
+      edPasteImageBlob(it.getAsFile());
+      return;
+    }
+  }
+});
 async function edClose() {
   if (ED.dirty && !await kAsk(edL("Kaydedilmemiş değişiklikler var. Kapatılsın mı?", "Unsaved changes. Close anyway?"), edL("Kapat", "Close"), edL("Vazgeç", "Cancel"), true)) return;
   ED.on = false; $("#ed").classList.remove("on");

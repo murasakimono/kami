@@ -249,6 +249,8 @@ class DownloadManager:
                     out = resolver.resolve(req)
                     if out:
                         return out
+            except CaptureRejected:
+                raise
             except Exception:
                 log.exception("Resolver hata verdi: %s", resolver.name)
         return [req]

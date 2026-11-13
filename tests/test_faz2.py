@@ -90,3 +90,46 @@ def test_grab_all_supported_hosts():
     assert grab_all.is_supported("https://tr.pinterest.com/board/") is True
     assert grab_all.is_supported("https://www.reddit.com/r/wallpapers/") is True
     assert grab_all.is_supported("https://example.com/file.zip") is False
+
+
+def test_bypass_rejects_on_failure_and_skips_plain_shorteners(monkeypatch):
+    import pytest
+    from app.core.manager import CaptureRejected
+    from app.core.models import DownloadRequest
+    from plugins.bypass.plugin import BypassResolver
+
+    assert bypass.is_bypassable("https://bit.ly/abc") is False
+    assert bypass.is_bypassable("https://t.co/xyz") is False
+    assert bypass.is_bypassable("https://tinyurl.com/123") is False
+
+    monkeypatch.setattr(bypass, "resolve", lambda u: {"ok": False, "url": u, "hops": 0, "error": "captcha_required"})
+    with pytest.raises(CaptureRejected):
+        BypassResolver().resolve(DownloadRequest(url="https://ouo.io/abc"))
+
+
+def test_bypass_rentry_query_and_pastebin_prefer_cloud():
+    sess = MagicMock()
+    sess.get.return_value = MagicMock(
+        status_code=200,
+        text="Bilgi: https://example.com/info\nDosya: https://gofile.io/d/Test12\n",
+    )
+    res = bypass.resolve("https://rentry.co/abc?foo=1", session=sess)
+    assert res["ok"] is True
+    assert res["url"] == "https://gofile.io/d/Test12"
+    assert sess.get.call_args[0][0] == "https://rentry.co/abc/raw"
+
+
+def test_bunkr_wildcard_and_qiwi_no_guess(monkeypatch):
+    import pytest
+    from plugins.bunkr.plugin import Bunkr
+    from plugins.qiwi.plugin import Qiwi
+
+    b = Bunkr()
+    assert b.can_handle("https://bunkrr.su/a/AbCd") is True
+    assert b.can_handle("https://bunkr.cr/f/file123") is True
+    assert b.can_handle("https://example.com/a/AbCd") is False
+
+    fake_s = MagicMock()
+    fake_s.get.return_value = MagicMock(status_code=200, text="<html><h1>No link here</h1></html>")
+    with pytest.raises(RuntimeError):
+        Qiwi._parse_file(fake_s, "https://qiwi.gg/file/AbC123", "AbC123")

@@ -100,6 +100,18 @@ def session() -> requests.Session:
     return s
 
 
+def head_size(s: requests.Session, url: str, headers: dict[str, str] | None = None) -> int:
+    """Hizli HEAD istegiyle Content-Length okur; alinamazsa 0 doner."""
+    try:
+        r = s.head(url, headers=headers or {}, allow_redirects=True, timeout=6)
+        if r.ok:
+            cl = int(r.headers.get("Content-Length") or 0)
+            return cl if cl > 0 else 0
+    except Exception:
+        pass
+    return 0
+
+
 def get_json(s: requests.Session, url: str, *, method: str = "GET", **kw: Any) -> Any:
     kw.setdefault("timeout", 20)
     r = s.request(method, url, **kw)

@@ -390,9 +390,56 @@ document.addEventListener("click", async (e) => {
   else if (a === "ttsnext") { TTS.audio.pause(); TTS.k++; TTS.next = null; playK(); }
   else if (a === "ttsprev") { TTS.audio.pause(); TTS.k = Math.max(0, TTS.k - 1); TTS.next = null; playK(); }
   else if (a === "popnote") { const h = addHl("p"); if (h) editNote(h); }
+  else if (a === "popdict") { const t = RD.sel?.text; $("#rdPop").hidden = true; if (t) rdLookupOrTranslate(t); }
+  else if (a === "ocrpage") { rdOcrCurrentPage(); }
   else if (a === "popsay") { const t = RD.sel?.text; $("#rdPop").hidden = true; if (t) startTts(t); }
   else if (a === "popcopy") { navigator.clipboard?.writeText(RD.sel?.text || ""); $("#rdPop").hidden = true; toast(L("Kopyalandı", "Copied")); }
 });
+
+function rdShowBox(title, body) {
+  const b = $("#rdDictBox");
+  if (!b) return;
+  b.hidden = false;
+  b.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><strong style="color:#c4b5fd">${esc(title)}</strong><button id="rdDictClose" style="background:none;border:0;color:#bbaee0;cursor:pointer">✕</button></div><div style="white-space:pre-wrap">${esc(body)}</div>`;
+  b.querySelector("#rdDictClose").onclick = () => { b.hidden = true; };
+}
+
+async function rdLookupOrTranslate(text) {
+  const clean = String(text || "").trim();
+  if (!clean) return;
+  rdShowBox(clean, L("Aranıyor...", "Looking up..."));
+  const single = !/\s/.test(clean) && clean.length <= 40;
+  if (single) {
+    const d = await api.dict_lookup(clean, "", "", -1).catch(() => null);
+    if (d && d.ok && Array.isArray(d.senses) && d.senses.length) {
+      const lines = d.senses.slice(0, 5).map((s, i) => `${i + 1}. (${s.pos || ""}) ${s.gloss || ""}`);
+      rdShowBox(`${d.word || clean}${d.ipa ? " /" + d.ipa + "/" : ""}`, lines.join("\n"));
+      return;
+    }
+  }
+  const tr = await api.ocr_translate(clean, "", "google").catch(() => null);
+  if (tr && tr.ok && tr.text) rdShowBox(L("Çeviri", "Translation"), tr.text);
+  else rdShowBox(clean, L("Sonuç bulunamadı", "No result"));
+}
+
+async function rdOcrCurrentPage() {
+  const pg = document.querySelector(`.rd-page[data-i="${RD.page}"]`);
+  const srcEl = pg?.querySelector("canvas, img");
+  if (!srcEl) { toast(L("OCR için sayfa görseli bulunamadı", "No page image for OCR")); return; }
+  rdShowBox("OCR", L("Sayfa okunuyor...", "Scanning page..."));
+  const cv = document.createElement("canvas");
+  cv.width = srcEl.naturalWidth || srcEl.width;
+  cv.height = srcEl.naturalHeight || srcEl.height;
+  cv.getContext("2d").drawImage(srcEl, 0, 0, cv.width, cv.height);
+  const res = await api.ocr_image(cv.toDataURL("image/png"), "").catch(() => null);
+  if (!res || !res.ok || !res.text) {
+    rdShowBox("OCR", (res && res.error) || L("Metin bulunamadı", "No text found"));
+    return;
+  }
+  const tr = await api.ocr_translate(res.text, res.lang || "", "google").catch(() => null);
+  const out = (tr && tr.ok && tr.text) ? `${tr.text}\n\n---\n${res.text}` : res.text;
+  rdShowBox(`OCR (${res.lang || "auto"})`, out);
+}
 function toggleMark() {
   const i = RD.page, m = RD.st.marks;
   RD.st.marks = m.includes(i) ? m.filter((x) => x !== i) : [...m, i];

@@ -25,10 +25,19 @@ class SendCm(CloudProvider):
         name_m = re.search(r'<h6[^>]*>(.*?)</h6>', page, flags=re.S | re.I) or re.search(r"<title>(.*?)</title>", page, flags=re.S | re.I)
         name = html.unescape(re.sub(r"<[^>]+>", "", name_m.group(1))).strip() if name_m else ident
         name = re.sub(r"^\s*Download\s+", "", name, flags=re.I).strip() or ident
-        fields = dict(re.findall(r'<input[^>]+type=["\']hidden["\'][^>]+name=["\']([^"\']+)["\'][^>]+value=["\']([^"\']*)["\']', page, flags=re.I))
+        fields: dict[str, str] = {}
+        for tag in re.findall(r"<input\b[^>]*>", page, flags=re.I):
+            if not re.search(r'type=["\']hidden["\']', tag, flags=re.I):
+                continue
+            nm = re.search(r'name=["\']([^"\']+)["\']', tag, flags=re.I)
+            if not nm:
+                continue
+            vm = re.search(r'value=["\']([^"\']*)["\']', tag, flags=re.I)
+            fields[nm.group(1)] = html.unescape(vm.group(1)) if vm else ""
         if not fields:
             fields = {"op": "download2", "id": ident, "rand": "", "referer": url, "method_free": "", "method_premium": ""}
-        post_r = s.post(url, data=fields, headers={"Referer": url}, allow_redirects=False, timeout=20)
+        hdrs = {"Referer": url}
+        post_r = s.post(url, data=fields, headers=hdrs, allow_redirects=False, timeout=20)
         dl = post_r.headers.get("Location") or ""
         if not dl:
             dl_m = re.search(r'href=["\'](https?://[^"\']+/d/[^"\']+)["\']', post_r.text, flags=re.I)
@@ -36,7 +45,7 @@ class SendCm(CloudProvider):
         if not dl:
             raise RuntimeError("Send.cm indirme bağlantısı alınamadı")
         return CloudListing(self.name, name, is_folder=False, files=[
-            CloudFile(name, 0, url=dl, headers={"Referer": url}),
+            CloudFile(name, 0, url=dl, headers=hdrs),
         ])
 
 

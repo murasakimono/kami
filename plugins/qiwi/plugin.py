@@ -5,7 +5,7 @@ import html
 import re
 from urllib.parse import urljoin, urlparse
 
-from app.core.cloud import CloudFile, CloudListing, CloudProvider, session
+from app.core.cloud import CloudFile, CloudListing, CloudProvider, head_size, session
 
 
 class Qiwi(CloudProvider):
@@ -48,13 +48,16 @@ class Qiwi(CloudProvider):
         dl_m = re.search(r'href=["\'](https?://[^"\']*spyderrock\.com/[^"\']+)["\']', page, flags=re.I)
         if not dl_m:
             dl_m = re.search(r'<a[^>]+download[^>]+href=["\'](https?://[^"\']+)["\']', page, flags=re.I)
-        dl_url = html.unescape(dl_m.group(1)) if dl_m else f"https://spyderrock.com/{ident}"
+        if not dl_m:
+            raise RuntimeError(f"Qiwi indirme bağlantısı bulunamadı: {url}")
+        dl_url = html.unescape(dl_m.group(1))
         name_m = re.search(r'<h1[^>]*class="[^"]*page_TextHeading[^"]*"[^>]*>(.*?)</h1>', page, flags=re.S | re.I)
         if not name_m:
             name_m = re.search(r"<title>(.*?)</title>", page, flags=re.S | re.I)
         name = html.unescape(re.sub(r"<[^>]+>", "", name_m.group(1))).strip() if name_m else ident
         name = re.sub(r"\s*[-|]\s*qiwi\.gg.*$", "", name, flags=re.I).strip() or ident
-        return CloudFile(name, 0, url=dl_url, headers={"Referer": url})
+        hdrs = {"Referer": url}
+        return CloudFile(name, head_size(s, dl_url, hdrs), url=dl_url, headers=hdrs)
 
 
 def register(ctx) -> None:

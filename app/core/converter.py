@@ -115,6 +115,22 @@ AUDIO_ARGS = {
     "ogg": ["-c:a", "libvorbis", "-q:a", "6"],
 }
 CRF = {"high": 18, "normal": 23, "small": 28}
+_NVENC_OK: dict[str, bool] = {}
+
+
+def has_nvenc(ffmpeg: str) -> bool:
+    """h264_nvenc donanim kodlayicisi calisiyor mu (bir kez olculur)."""
+    if ffmpeg not in _NVENC_OK:
+        try:
+            r = subprocess.run(
+                [ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=s=256x256:d=0.1",
+                 "-frames:v", "2", "-c:v", "h264_nvenc", "-f", "null", "-"],
+                capture_output=True, timeout=10, creationflags=NO_WINDOW,
+            )
+            _NVENC_OK[ffmpeg] = r.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            _NVENC_OK[ffmpeg] = False
+    return _NVENC_OK[ffmpeg]
 
 
 def _media(src: str, ext: str, opts: dict, tools: dict, on_p, cancel) -> Path:
@@ -136,9 +152,12 @@ def _media(src: str, ext: str, opts: dict, tools: dict, on_p, cancel) -> Path:
     elif ext == "webm":
         args = ["-i", src, *(["-vf", ",".join(vf)] if vf else []), "-c:v", "libvpx-vp9", "-b:v", "0",
                 "-crf", str(CRF[q] + 12), "-row-mt", "1", "-deadline", "good", "-cpu-used", "4", "-c:a", "libopus", "-b:a", "128k", str(out)]
-    else:   # mp4 / mkv / mov: H.264 + AAC
-        args = ["-i", src, *(["-vf", ",".join(vf)] if vf else []), "-c:v", "libx264", "-preset", "medium",
-                "-crf", str(CRF[q]), "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"]
+    else:   # mp4 / mkv / mov: H.264 (varsa NVENC) + AAC
+        use_nvenc = bool(opts.get("hw", True)) and has_nvenc(tools["ffmpeg"])
+        vcodec = (["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", str(CRF[q]), "-b:v", "0"]
+                  if use_nvenc else ["-c:v", "libx264", "-preset", "medium", "-crf", str(CRF[q])])
+        args = ["-i", src, *(["-vf", ",".join(vf)] if vf else []), *vcodec,
+                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"]
         if ext in ("mp4", "mov"):
             args += ["-movflags", "+faststart"]
         args += [str(out)]
