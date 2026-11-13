@@ -73,7 +73,7 @@ def enhance_audio_file(
         "-af", flt,
         str(dst),
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=3600, creationflags=NO_WINDOW)
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600, creationflags=NO_WINDOW)
     if res.returncode != 0 or not dst.exists():
         return {"ok": False, "error": (res.stderr or "Ses iyilestirme basarisiz")[:300]}
     return {"ok": True, "path": str(dst), "filter": flt}
@@ -96,7 +96,7 @@ def duck_music_with_voice(
         "-map", "[aout]",
         out_path,
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=3600, creationflags=NO_WINDOW)
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600, creationflags=NO_WINDOW)
     if res.returncode != 0 or not Path(out_path).exists():
         return {"ok": False, "error": (res.stderr or "Oto-ducking basarisiz")[:300]}
     return {"ok": True, "path": out_path}
@@ -227,7 +227,7 @@ def subtitle_edit_convert(src: str, fmt: str = "ass") -> dict[str, Any]:
     if not p.is_file():
         return {"ok": False, "error": "Altyazi dosyasi bulunamadi", "installed": True}
     cmd = [cli, "/convert", str(p), fmt]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, creationflags=NO_WINDOW)
     if res.returncode != 0:
         return {"ok": False, "error": (res.stderr or "SubtitleEdit hatasi")[:200], "installed": True}
     return {"ok": True, "path": str(p.with_suffix(f".{fmt.lstrip('.')}")), "installed": True}

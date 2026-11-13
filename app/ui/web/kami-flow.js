@@ -223,6 +223,8 @@
       ov.innerHTML = `
         <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#16101F;border-bottom:1px solid #3A2E52;">
           <strong style="color:#C4B5FD;letter-spacing:.5px;">KAMI AKIŞ & YEREL COPILOT</strong>
+          <button id="kfTabFlow" class="btn primary">Akış & Copilot</button>
+          <button id="kfTabTools" class="btn">Araçlar (Faz 14–16)</button>
           <span id="kfCopilotBadge" style="font-size:12px;color:#A39BB5;">Ollama kontrol ediliyor…</span>
           <div style="flex:1"></div>
           <button id="kfAddIn" class="btn">+ Dosya</button>
@@ -232,11 +234,47 @@
           <button id="kfRun" class="btn primary">Çalıştır</button>
           <button id="kfClose" class="btn">Kapat</button>
         </div>
-        <div style="display:flex;gap:8px;padding:8px 14px;background:#110E17;border-bottom:1px solid #2A1F3B;">
-          <input id="kfPrompt" type="text" placeholder="Yerel Qwen2.5 Copilot'a Studio komutu yaz…" style="flex:1;background:#08070C;color:#EDE9F6;border:1px solid #4A3D63;padding:6px 10px;font:inherit;">
-          <button id="kfAsk" class="btn">Copilot</button>
+        <div id="kfFlowPane" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+          <div style="display:flex;gap:8px;padding:8px 14px;background:#110E17;border-bottom:1px solid #2A1F3B;">
+            <input id="kfPrompt" type="text" placeholder="Yerel Qwen2.5 Copilot'a Studio komutu yaz…" style="flex:1;background:#08070C;color:#EDE9F6;border:1px solid #4A3D63;padding:6px 10px;font:inherit;">
+            <button id="kfAsk" class="btn">Copilot</button>
+          </div>
+          <canvas id="kfCanvas" width="960" height="460" style="flex:1;width:100%;height:100%;display:block;"></canvas>
         </div>
-        <canvas id="kfCanvas" width="960" height="460" style="flex:1;width:100%;height:100%;display:block;"></canvas>
+        <div id="kfToolsPane" hidden style="flex:1;overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;background:#0B0910;">
+          <div style="border:1px solid #3A2E52;padding:10px;background:#110E17;display:grid;gap:6px;">
+            <strong style="color:#C4B5FD;">Faz 14 — Klip & Oyun Vurgu</strong>
+            <input id="ktClipSrc" type="text" placeholder="Video yolu" style="background:#08070C;color:#EDE9F6;border:1px solid #4A3D63;padding:5px 8px;font:inherit;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button id="ktReframe" class="btn">9:16 Dikey</button>
+              <button id="ktUgc" class="btn">UGC Matris</button>
+              <button id="ktHlStart" class="btn">Vurgu Başlat</button>
+              <button id="ktHlStop" class="btn">Durdur</button>
+              <button id="ktVcam" class="btn">Sanal Cam</button>
+            </div>
+          </div>
+          <div style="border:1px solid #3A2E52;padding:10px;background:#110E17;display:grid;gap:6px;">
+            <strong style="color:#C4B5FD;">Faz 15 — Belge & Manga Çeviri</strong>
+            <input id="ktDocSrc" type="text" placeholder="PDF / Belge / Manga görsel yolu" style="background:#08070C;color:#EDE9F6;border:1px solid #4A3D63;padding:5px 8px;font:inherit;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button id="ktPdfMd" class="btn">PDF → MD</button>
+              <button id="ktDocConv" class="btn">HTML Çevir</button>
+              <button id="ktManga" class="btn">Manga Çevir</button>
+            </div>
+          </div>
+          <div style="border:1px solid #3A2E52;padding:10px;background:#110E17;display:grid;gap:6px;">
+            <strong style="color:#C4B5FD;">Faz 16 — Köprü, LAN & Ses</strong>
+            <input id="ktSharePath" type="text" placeholder="LAN paylaşım dosyası veya ses komutu" style="background:#08070C;color:#EDE9F6;border:1px solid #4A3D63;padding:5px 8px;font:inherit;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button id="ktBridgeSt" class="btn">Köprü Durumu</button>
+              <button id="ktScrcpy" class="btn">Android</button>
+              <button id="ktUxplay" class="btn">AirPlay</button>
+              <button id="ktLanShare" class="btn">LAN Paylaş</button>
+              <button id="ktVoiceSt" class="btn">Ses Durum</button>
+              <button id="ktVoiceCmd" class="btn">Komut Test</button>
+            </div>
+          </div>
+        </div>
         <div id="kfLog" style="height:82px;overflow:auto;padding:8px 14px;background:#08070C;border-top:1px solid #2A1F3B;font-size:12px;color:#2EE6A6;white-space:pre-wrap;"></div>
       `;
       document.body.appendChild(ov);
@@ -251,6 +289,10 @@
       const log = (txt) => {
         ov.querySelector("#kfLog").textContent = typeof txt === "string" ? txt : JSON.stringify(txt, null, 2);
       };
+      const flowPane = ov.querySelector("#kfFlowPane");
+      const toolsPane = ov.querySelector("#kfToolsPane");
+      ov.querySelector("#kfTabFlow").onclick = () => { flowPane.hidden = false; toolsPane.hidden = true; };
+      ov.querySelector("#kfTabTools").onclick = () => { flowPane.hidden = true; toolsPane.hidden = false; };
       ov.querySelector("#kfClose").onclick = () => { ov.hidden = true; };
       ov.querySelector("#kfAddIn").onclick = () => this.graph.addNode("input/file", "Kaynak Dosya", 60, 140, [], ["path"], { path: "" });
       ov.querySelector("#kfAddReframe").onclick = () => this.graph.addNode("clip/vertical_reframe", "9:16 Dikey Kırp", 260, 140, ["path"], ["path"], { platform: "tiktok" });
@@ -270,6 +312,24 @@
         log("Yerel Copilot düşünüyor…");
         log(await global.api.copilot_run(p));
       };
+      const callApi = async (fn, ...args) => {
+        if (!global.api?.[fn]) return log(`API yok: ${fn}`);
+        log(await global.api[fn](...args));
+      };
+      ov.querySelector("#ktReframe").onclick = () => { const p = ov.querySelector("#ktClipSrc").value.trim(); if (p) callApi("clip_vertical_reframe", p, p.replace(/\.[^.]+$/, "_9x16.mp4")); };
+      ov.querySelector("#ktUgc").onclick = () => { const p = ov.querySelector("#ktClipSrc").value.trim(); if (p) callApi("clip_ugc_matrix", [p], p, [p], p.replace(/[^\\/]+$/, "ugc_out")); };
+      ov.querySelector("#ktHlStart").onclick = () => callApi("highlight_watcher_start");
+      ov.querySelector("#ktHlStop").onclick = () => callApi("highlight_watcher_stop");
+      ov.querySelector("#ktVcam").onclick = () => callApi("vcam_status");
+      ov.querySelector("#ktPdfMd").onclick = () => { const p = ov.querySelector("#ktDocSrc").value.trim(); if (p) callApi("doc_pdf_to_markdown", p); };
+      ov.querySelector("#ktDocConv").onclick = () => { const p = ov.querySelector("#ktDocSrc").value.trim(); if (p) callApi("doc_convert", p, "html"); };
+      ov.querySelector("#ktManga").onclick = () => { const p = ov.querySelector("#ktDocSrc").value.trim(); if (p) callApi("manga_translate_page", p); };
+      ov.querySelector("#ktBridgeSt").onclick = () => callApi("screen_bridge_status");
+      ov.querySelector("#ktScrcpy").onclick = () => callApi("scrcpy_start");
+      ov.querySelector("#ktUxplay").onclick = () => callApi("uxplay_start");
+      ov.querySelector("#ktLanShare").onclick = () => { const p = ov.querySelector("#ktSharePath").value.trim(); if (p) callApi("lan_share_file", p); };
+      ov.querySelector("#ktVoiceSt").onclick = () => callApi("voice_status");
+      ov.querySelector("#ktVoiceCmd").onclick = () => callApi("voice_parse_command", ov.querySelector("#ktSharePath").value.trim() || "Hey Kami klip al");
       this.refreshStatus();
     },
     async refreshStatus() {

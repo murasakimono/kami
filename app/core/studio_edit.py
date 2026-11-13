@@ -358,7 +358,7 @@ def smart_cut(ffmpeg: str, src: str, start: float, end: float, out_path: str = "
         return {"ok": False, "error": "Kaynak dosya bulunamadi"}
     dst = Path(out_path) if out_path else p.with_name(f"{p.stem}_cut{p.suffix}")
     cmd = build_smart_cut_cmd(ffmpeg, str(p), start, end, str(dst), exact=exact)
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, creationflags=NO_WINDOW)
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800, creationflags=NO_WINDOW)
     if res.returncode != 0 or not dst.exists():
         return {"ok": False, "error": (res.stderr or "Kesim basarisiz")[:300]}
     return {"ok": True, "path": str(dst), "size": dst.stat().st_size, "exact": bool(exact)}

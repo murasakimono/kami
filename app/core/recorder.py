@@ -412,7 +412,7 @@ class Recorder:
                 args += [f"-metadata:s:a:{i}", f"title={title}"]
             args += ["-disposition:a:0", "default", "-shortest"]
         args += ["-movflags", "+faststart", str(out)]
-        r = subprocess.run(args, capture_output=True, text=True, creationflags=NOWIN, timeout=600)
+        r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", creationflags=NOWIN, timeout=600)
         if r.returncode != 0:
             raise RuntimeError(r.stderr.strip()[-200:] or "birlestirilemedi")
 

@@ -115,7 +115,7 @@ def _running_game_exe(gdir: Path) -> str:
     try:
         import subprocess
         nowin = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=5, creationflags=nowin)
+        r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5, creationflags=nowin)
         for ln in (r.stdout or "").splitlines():
             name = ln.split(",", 1)[0].strip('" ').lower()
             if name in exes:

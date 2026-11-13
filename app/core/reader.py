@@ -71,7 +71,7 @@ class Doc:
             out = Path(tempfile.gettempdir()) / "kami_reader" / self.key
             if not out.exists() or not any(out.rglob("*")):
                 out.mkdir(parents=True, exist_ok=True)
-                r = subprocess.run(["tar", "-xf", self.path, "-C", str(out)], capture_output=True, text=True,
+                r = subprocess.run(["tar", "-xf", self.path, "-C", str(out)], capture_output=True, text=True, encoding="utf-8", errors="replace",
                                    creationflags=NOWIN, timeout=300)
                 if r.returncode != 0 and not any(out.rglob("*")):
                     raise RuntimeError("arsiv acilamadi: " + (r.stderr.strip()[-120:] or "?"))

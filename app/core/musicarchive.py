@@ -140,7 +140,7 @@ def acoustid_lookup(path: str, key: str, session: requests.Session | None = None
     if not key or not fp:
         return ""
     try:
-        r = subprocess.run([fp, "-json", path], capture_output=True, text=True, timeout=120,
+        r = subprocess.run([fp, "-json", path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
                            creationflags=0x08000000)
         data = json.loads(r.stdout or "{}")
         if not data.get("fingerprint"):

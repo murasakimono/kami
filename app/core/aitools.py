@@ -347,7 +347,7 @@ def _probe() -> dict:
     out = {"home": home}
     for k, (cmd, cwd, env) in cases.items():
         try:
-            r = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+            r = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL,
                                creationflags=0 if k == "venv_flags0" else NO_WINDOW, timeout=60)
             out[k] = f"rc={r.returncode} {(r.stdout or r.stderr).strip()[:120]}"
         except Exception as exc:   # noqa: BLE001

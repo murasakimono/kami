@@ -169,7 +169,7 @@ def _gh_latest(repo: str) -> dict | None:
     if not gh:
         return None
     try:
-        r = subprocess.run([gh, "api", f"repos/{repo}/releases/latest"], capture_output=True, text=True,
+        r = subprocess.run([gh, "api", f"repos/{repo}/releases/latest"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                            timeout=20, creationflags=0x08000000)
         return _json.loads(r.stdout) if r.returncode == 0 else None
     except (OSError, ValueError, subprocess.SubprocessError):
