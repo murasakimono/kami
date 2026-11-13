@@ -2017,9 +2017,15 @@ class Api(StudioMixin):
             return ""
         norm = os.path.normcase(os.path.abspath(path))
         base = os.path.basename(path)
-        for d in self.manager.store.list():
+        items = self.manager.store.list()
+        for d in items:
             full = os.path.join(d.directory, d.filename) if d.directory and d.filename else ""
-            if (full and os.path.normcase(os.path.abspath(full)) == norm) or (d.filename and d.filename == base):
+            if full and os.path.normcase(os.path.abspath(full)) == norm:
+                t = str((d.extra or {}).get("page_title") or "").strip()
+                if t:
+                    return t
+        for d in items:
+            if d.filename and d.filename == base:
                 t = str((d.extra or {}).get("page_title") or "").strip()
                 if t:
                     return t

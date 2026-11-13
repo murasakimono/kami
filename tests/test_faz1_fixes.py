@@ -34,6 +34,8 @@ def test_smart_filename_renames_random_hash_and_generic():
     assert _smart_filename("screenshot.png", "Google Chrome - İndir", "") == "screenshot.png"
     assert _smart_filename("installation.zip", "Google Chrome - İndir", "") == "installation.zip"
     assert _smart_filename("report2024.pdf", "Google Chrome - İndir", "") == "report2024.pdf"
+    assert _smart_filename("index.ts", "microsoft/vscode: Visual Studio Code", "video/mp2t") == "index.ts"
+    assert _smart_filename("component1.ts", "microsoft/vscode: Visual Studio Code", "video/mp2t") == "component1.ts"
 
 
 def test_lyrics_genius_and_azlyrics_fallback(tmp_path):

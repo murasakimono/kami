@@ -209,7 +209,13 @@ async function sendPage(url) {
 }
 
 let mediaChain = Promise.resolve();   // ayni sekmeye esz amanli yazimlar karismasin
+const reqTab = new Map();             // url -> { tabId, at } (indirme basladiginda sekme eslestirme)
+const hlsProbeCache = new Map();      // url -> boolean (ayni manifesti tekrar yoklama)
 chrome.webRequest.onHeadersReceived.addListener((d) => {
+  if (d.tabId >= 0 && (d.type === "main_frame" || d.type === "sub_frame" || d.type === "other")) {
+    reqTab.set(d.url.split("#")[0], { tabId: d.tabId, at: Date.now() });
+    if (reqTab.size > 250) reqTab.delete(reqTab.keys().next().value);
+  }
   if (d.tabId < 0 || (d.statusCode !== 200 && d.statusCode !== 206)) return;
   const ct = hdr(d.responseHeaders, "content-type");
   const range = hdr(d.responseHeaders, "content-range");
@@ -222,12 +228,36 @@ chrome.webRequest.onHeadersReceived.addListener((d) => {
     if (list.some((m) => m.url === base)) return;
     let finalKind = kind;
     if (kind === "hls-probe") {
-      try {
-        const r = await fetch(d.url, { credentials: "include", headers: { Range: "bytes=0-511" } });
-        const head = (await r.text()).trimStart();
-        if (!head.startsWith("#EXTM3U")) return;
+      if (hlsProbeCache.has(base)) {
+        if (!hlsProbeCache.get(base)) return;
         finalKind = "hls";
-      } catch (_) { return; }
+      } else {
+        let isHls = false;
+        let ok = false;
+        const ac = new AbortController();
+        try {
+          const r = await fetch(d.url, { credentials: "include", headers: { Range: "bytes=0-511" }, signal: ac.signal });
+          if (r.ok || r.status === 206) {
+            ok = true;
+            let head = "";
+            if (r.body && r.body.getReader) {
+              const reader = r.body.getReader();
+              const { value } = await reader.read();
+              head = value ? new TextDecoder().decode(value.slice(0, 512)) : "";
+              ac.abort();
+            } else {
+              head = (await r.text()).slice(0, 512);
+            }
+            isHls = head.trimStart().startsWith("#EXTM3U");
+          }
+        } catch (_) { isHls = false; ok = false; }
+        if (ok) {
+          hlsProbeCache.set(base, isHls);
+          if (hlsProbeCache.size > 200) hlsProbeCache.delete(hlsProbeCache.keys().next().value);
+        }
+        if (!isHls) return;
+        finalKind = "hls";
+      }
     }
     let pageUrl = "";
     try { pageUrl = (await chrome.tabs.get(d.tabId)).url || ""; } catch (_) { return; }
@@ -236,7 +266,7 @@ chrome.webRequest.onHeadersReceived.addListener((d) => {
     await chrome.storage.session.set({ [mediaKey(d.tabId)]: list });
     setBadgeCount(d.tabId, list.length);
   }).catch(() => {});
-}, { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other", "object"] }, ["responseHeaders"]);
+}, { urls: ["<all_urls>"], types: ["main_frame", "sub_frame", "media", "xmlhttprequest", "other", "object"] }, ["responseHeaders"]);
 
 const pageOf = (u) => { try { const x = new URL(u); return x.origin + x.pathname + (/youtube\.com$/.test(x.hostname) ? x.search : ""); } catch (_) { return u; } };
 chrome.tabs.onUpdated.addListener((tabId, info) => {
@@ -309,7 +339,7 @@ async function onVideoButton(msg, sender) {
   const pageUrl = msg.pageUrl || (sender.tab && sender.tab.url) || "";
   const tabTitle = (sender.tab && sender.tab.title) || msg.title || "";
   const src = msg.src || "";
-  let url = pageUrl, title = tabTitle;
+  let url = pageUrl, title = "";
   let host = "";
   try { host = new URL(pageUrl).hostname; } catch (_) {}
   if (/^https?:/i.test(src) && !SKIP_HOST.test(new URL(src).hostname) && !KNOWN_SITE.test(host)) {
@@ -343,8 +373,9 @@ async function handleDownload(item) {
   }
   let pageTitle = "";
   try {
-    if (typeof item.tabId === "number" && item.tabId >= 0) {
-      const t = await chrome.tabs.get(item.tabId);
+    const rec = reqTab.get(url.split("#")[0]) || reqTab.get((item.url || "").split("#")[0]);
+    if (rec && Date.now() - rec.at < 120000) {
+      const t = await chrome.tabs.get(rec.tabId);
       if (t && t.title) pageTitle = t.title;
     } else if (item.referrer) {
       const tabs = await chrome.tabs.query({});

@@ -98,11 +98,20 @@ def main(argv: list[str]) -> int:
     enc = attach(subprocess.Popen([ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{w}x{h}",
                             "-r", f"{fps:.5f}", "-i", "pipe:0", "-ss", start, "-t", dur, "-i", src, "-map", "0:v", "-map", "1:a?",
                             "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", "28", "-row-mt", "1",
-                            "-deadline", "good", "-cpu-used", "4", "-c:a", "libopus", "-b:a", "160k", "-shortest", out],
+                            "-deadline", "good", "-cpu-used", "6", "-tile-columns", "2", "-c:a", "libopus", "-b:a", "160k", "-shortest", out],
                            stdin=subprocess.PIPE, creationflags=NOWIN))
     size = w * h * 3
     n, t0 = 0, time.time()
-    batch_sz = 4 if predict_batch else 1
+    batch_sz = 1
+    if predict_batch:
+        batch_sz = 4
+        try:
+            import torch
+            if torch.cuda.is_available():
+                free_gb = torch.cuda.mem_get_info()[0] / (1024 ** 3)
+                batch_sz = 4 if free_gb >= 3.2 else (2 if free_gb >= 1.8 else 1)
+        except Exception:
+            pass
     while True:
         frames = []
         for _ in range(batch_sz):

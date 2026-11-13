@@ -14,6 +14,8 @@ import html
 import logging
 import os
 import re
+import threading
+import time
 from typing import Any, Callable
 from urllib.parse import quote_plus
 
@@ -244,11 +246,26 @@ def _az_slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (text or "").translate(_TR_ASCII).lower())
 
 
+_SESSION: requests.Session | None = None
+_LAST_AZ_TS = 0.0
+_AZ_LOCK = threading.Lock()
+_MISS_CACHE: dict[tuple[str, str], float] = {}
+_MISS_TTL = 86400.0
+
+
+def _shared_session() -> requests.Session:
+    global _SESSION
+    if _SESSION is None:
+        _SESSION = requests.Session()
+    return _SESSION
+
+
 def azlyrics_fetch_lyrics(artist: str, title: str, session: requests.Session | None = None) -> str:
-    """AZLyrics uzerinden sarki sozu ceker (dogrudan URL + arama yedegi)."""
+    """AZLyrics uzerinden sarki sozu ceker (dogrudan URL + kilitli hiz siniri)."""
+    global _LAST_AZ_TS
     if not artist or not title:
         return ""
-    s = session or requests.Session()
+    s = session or _shared_session()
     a_clean = re.sub(r"^\s*the\s+", "", artist, flags=re.I)
     urls = [
         f"https://www.azlyrics.com/lyrics/{_az_slug(a_clean)}/{_az_slug(title)}.html",
@@ -257,6 +274,12 @@ def azlyrics_fetch_lyrics(artist: str, title: str, session: requests.Session | N
         urls.append(f"https://www.azlyrics.com/lyrics/{_az_slug(artist)}/{_az_slug(title)}.html")
     for u in urls:
         try:
+            if session is None:
+                with _AZ_LOCK:
+                    wait = 1.2 - (time.monotonic() - _LAST_AZ_TS)
+                    if wait > 0:
+                        time.sleep(wait)
+                    _LAST_AZ_TS = time.monotonic()
             r = s.get(u, headers={"User-Agent": _web_ua()}, timeout=15)
             if r.status_code == 200:
                 text = _extract_azlyrics_html(r.text)
@@ -348,6 +371,11 @@ def fetch_for_file(path: str, title_hint: str = "", embed: bool = True,
                            "links": search_links(artist, title)}
     if not title:
         return out
+    miss_key = (artist.strip().lower(), title.strip().lower())
+    if session is None:
+        ts = _MISS_CACHE.get(miss_key)
+        if ts and (time.time() - ts) < _MISS_TTL:
+            return out
     found = lrclib_find(artist, title, g.get("album", ""), g.get("duration", 0), session)
     if found and found["instrumental"]:
         out["lyrics"] = "instrumental"
@@ -370,4 +398,6 @@ def fetch_for_file(path: str, title_hint: str = "", embed: bool = True,
         out.update(write_lyrics(path, az_text, artist, title, embed))
         out["source"] = "azlyrics"
         return out
+    if session is None:
+        _MISS_CACHE[miss_key] = time.time()
     return out

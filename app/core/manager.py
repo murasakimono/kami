@@ -84,10 +84,10 @@ def _smart_filename(filename: str, page_title: str, mime: str = "", url: str = "
             ext = ".mp3"
     ext_low = ext.lower()
     is_media_file = (
-        ext_low in (".mp4", ".m4v", ".webm", ".mkv", ".mov", ".flv", ".avi", ".ts",
+        ext_low in (".mp4", ".m4v", ".webm", ".mkv", ".mov", ".flv", ".avi",
                     ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".wav", ".flac",
                     ".m3u8", ".mpd")
-        or (mime or "").lower().startswith(("video/", "audio/"))
+        or ((mime or "").lower().startswith(("video/", "audio/")) and ext_low != ".ts")
         or "mpegurl" in (mime or "").lower()
     )
     if filename and not is_media_file:
