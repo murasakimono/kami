@@ -1008,7 +1008,7 @@ function projInsp() {
     `<label class="fld w2"><span>FPS</span><select class="in" data-pk="fps">${[24, 25, 30, 50, 60].map(f => `<option${f === ST.p.fps ? " selected" : ""}>${f}</option>`).join("")}</select></label>` +
     `<label class="fld w2"><span>Arka plan</span><input type="color" data-pk="bg" value="${ST.p.bg || "#000000"}"></label>` +
     `<div class="sec">Özet</div><div class="hint">${ST.p.clips.length} klip · ${Object.keys(ST.p.assets).length} medya · ${fmt(projEnd())}<br>${(ST.p.markers || []).length} işaret ${(ST.p.markers || []).length ? '· <a href="#" data-a2="clearmk" style="color:var(--em)">temizle</a>' : ""}</div>` +
-    `<div class="sec">İpucu</div><div class="hint">Klibe tıkla: ayarları burada. Çift tıkla: odaklan.<br>Boşluk oynat · S böl · Del sil · Ctrl+Z geri · 1-9 hızlı ses.<br>Claude bağlıysa ona “şu videoyu kes, altyazı ekle” diyebilirsin; değişiklikler burada anında görünür.</div>` +
+    `<div class="sec">İpucu</div><div class="hint">Klibe tıkla: ayarları burada. Çift tıkla: odaklan.<br>Boşluk oynat · S böl · Del sil · Ctrl+Z geri · 1-9 hızlı ses.<br>Kami AI (MCP) bağlıysa ona “şu videoyu kes, altyazı ekle” diyebilirsin; değişiklikler burada anında görünür.</div>` +
     (ST.path ? `<div class="sec">Dosya</div><div class="hint" style="word-break:break-all">${esc(ST.path)}</div>` : "");
 }
 function multiInsp(cs) {
@@ -1254,10 +1254,10 @@ async function inbox() {
       }
     }
     const mcp = await api.studio_current();
-    if (mcp && mcp !== ST.path) { if (ST.dirty) await save(); await openProject(mcp); toast("Claude yeni bir proje açtı"); }
-    else if (ST.path && await api.studio_changed(ST.path)) {   // Claude (MCP) ya da baska yerden duzenlendi
+    if (mcp && mcp !== ST.path) { if (ST.dirty) await save(); await openProject(mcp); toast("Kami AI yeni bir proje açtı"); }
+    else if (ST.path && await api.studio_changed(ST.path)) {   // Kami AI (MCP) ya da baska yerden duzenlendi
       const r = await job("studio_open", [ST.path]);
-      if (r?.ok) { ST.undo.push(JSON.stringify(ST.p)); ST.p = r.project; ST.p.markers ||= []; afterLoad(true); ST.dirty = false; $("#saved").textContent = "↻ Claude düzenledi"; }
+      if (r?.ok) { ST.undo.push(JSON.stringify(ST.p)); ST.p = r.project; ST.p.markers ||= []; afterLoad(true); ST.dirty = false; $("#saved").textContent = "↻ Kami AI düzenledi"; }
     }
   } catch (e) { console.warn(e); }
   setTimeout(inbox, 900);

@@ -18,12 +18,12 @@ def emit(**kw) -> None:
 
 
 def _torch_birefnet(model: str):
-    """BiRefNet (resmi agirliklar, transformers) - ekran kartinda fp16: kare basina ~0.2-0.4 sn. Olmazsa None."""
+    """BiRefNet (resmi agirliklar, transformers) - ekran kartinda fp16 + GPU resize + batch: kare basina ~0.15-0.25 sn."""
     try:
         import torch
+        import torch.nn.functional as F
         if not torch.cuda.is_available():
             return None
-        from PIL import Image
         from transformers import AutoModelForImageSegmentation
         repo = {"birefnet-general-lite": "ZhengPeng7/BiRefNet_lite"}.get(model, "ZhengPeng7/BiRefNet")
         net = AutoModelForImageSegmentation.from_pretrained(repo, trust_remote_code=True)
@@ -31,15 +31,25 @@ def _torch_birefnet(model: str):
         torch.backends.cudnn.benchmark = True
         mean = torch.tensor([0.485, 0.456, 0.406], device="cuda").view(1, 3, 1, 1).half()
         std = torch.tensor([0.229, 0.224, 0.225], device="cuda").view(1, 3, 1, 1).half()
-        emit(p=0.02, line="aygıt: CUDA (torch fp16)")
+        emit(p=0.02, line="aygıt: CUDA (torch fp16 batch)")
 
-        def predict(im):
+        def predict_batch(frames_rgb: list[bytes], w: int, h: int) -> list[bytes]:
             import numpy as np
-            x = torch.from_numpy(np.asarray(im.resize((1024, 1024), Image.BILINEAR))).to("cuda").permute(2, 0, 1)[None].half() / 255
+            arr = np.stack([np.frombuffer(b, dtype=np.uint8).reshape(h, w, 3) for b in frames_rgb], axis=0)
+            x = torch.from_numpy(arr).to("cuda", non_blocking=True).permute(0, 3, 1, 2).half() / 255.0
+            x = F.interpolate(x, size=(1024, 1024), mode="bilinear", align_corners=False)
             with torch.no_grad():
-                y = net((x - mean) / std)[-1].sigmoid()[0, 0].float().clamp(0, 1).mul(255).byte().cpu().numpy()
-            return Image.fromarray(y).resize(im.size, Image.BILINEAR)
-        return predict
+                y = net((x - mean) / std)[-1].sigmoid()
+                y = F.interpolate(y, size=(h, w), mode="bilinear", align_corners=False)
+                masks = y[:, 0].float().clamp(0, 1).mul(255).byte().cpu().numpy()
+            out_rgba = []
+            for i in range(len(frames_rgb)):
+                rgba = np.empty((h, w, 4), dtype=np.uint8)
+                rgba[..., :3] = arr[i]
+                rgba[..., 3] = masks[i]
+                out_rgba.append(rgba.tobytes())
+            return out_rgba
+        return predict_batch
     except Exception as exc:
         emit(p=0.02, line=f"torch yolu olmadı ({type(exc).__name__}), rembg deneniyor")
         return None
@@ -76,30 +86,45 @@ def main(argv: list[str]) -> int:
     fps = float(num) / float(den or 1)
     total = max(1, int(dur_f * fps))
     emit(p=0.01, line="model yükleniyor")
+    try:
+        from app.core.procjob import attach
+    except Exception:
+        attach = lambda p: p  # noqa: E731
     from PIL import Image
-    predict = _torch_birefnet(model) or _rembg(model)
-    dec = subprocess.Popen([ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-ss", start, "-t", dur, "-i", src,
-                            "-vf", f"scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], stdout=subprocess.PIPE, creationflags=NOWIN)
-    enc = subprocess.Popen([ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{w}x{h}",
+    predict_batch = _torch_birefnet(model)
+    predict = None if predict_batch else _rembg(model)
+    dec = attach(subprocess.Popen([ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-ss", start, "-t", dur, "-i", src,
+                            "-vf", f"scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], stdout=subprocess.PIPE, creationflags=NOWIN))
+    enc = attach(subprocess.Popen([ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{w}x{h}",
                             "-r", f"{fps:.5f}", "-i", "pipe:0", "-ss", start, "-t", dur, "-i", src, "-map", "0:v", "-map", "1:a?",
                             "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", "28", "-row-mt", "1",
                             "-deadline", "good", "-cpu-used", "4", "-c:a", "libopus", "-b:a", "160k", "-shortest", out],
-                           stdin=subprocess.PIPE, creationflags=NOWIN)
+                           stdin=subprocess.PIPE, creationflags=NOWIN))
     size = w * h * 3
     n, t0 = 0, time.time()
+    batch_sz = 4 if predict_batch else 1
     while True:
-        buf = dec.stdout.read(size)
-        if len(buf) < size:
+        frames = []
+        for _ in range(batch_sz):
+            buf = dec.stdout.read(size)
+            if len(buf) < size:
+                break
+            frames.append(buf)
+        if not frames:
             break
-        im = Image.frombytes("RGB", (w, h), buf)
-        mask = predict(im)
-        rgba = im.convert("RGBA")
-        rgba.putalpha(mask.convert("L").resize((w, h)))
-        enc.stdin.write(rgba.tobytes())
-        n += 1
-        if n % 5 == 0:
+        if predict_batch:
+            for rgba_bytes in predict_batch(frames, w, h):
+                enc.stdin.write(rgba_bytes)
+        else:
+            im = Image.frombytes("RGB", (w, h), frames[0])
+            mask = predict(im)
+            rgba = im.convert("RGBA")
+            rgba.putalpha(mask.convert("L").resize((w, h)))
+            enc.stdin.write(rgba.tobytes())
+        n += len(frames)
+        if n % 5 == 0 or len(frames) < batch_sz:
             el = time.time() - t0
-            emit(p=round(min(0.99, n / total), 3), line=f"{n}/{total} kare · kalan ~{int(el / n * (total - n))} sn")
+            emit(p=round(min(0.99, n / total), 3), line=f"{n}/{total} kare · kalan ~{int(el / max(1, n) * max(0, total - n))} sn")
     enc.stdin.close()
     enc.wait()
     dec.wait()

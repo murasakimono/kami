@@ -198,6 +198,11 @@ class BridgeServer:
             headers = body.get("headers") or {}
             if not isinstance(headers, dict):
                 headers = {}
+            extra: dict[str, Any] = {}
+            if body.get("checksum"):
+                extra["checksum"] = str(body.get("checksum") or "")[:80]
+            if body.get("page_title"):
+                extra["page_title"] = str(body.get("page_title") or "")[:200]
             req = DownloadRequest(
                 url=url,
                 filename=str(body.get("filename") or ""),
@@ -207,7 +212,7 @@ class BridgeServer:
                 mime=str(body.get("mime") or ""),
                 source=str(body.get("source") or "browser"),
                 page_url=str(body.get("page_url") or ""),
-                extra={"checksum": str(body.get("checksum") or "")[:80]} if body.get("checksum") else {},
+                extra=extra,
             )
             if req.source not in ("browser", "context_menu", "ui"):
                 req.source = "browser"

@@ -91,12 +91,12 @@ chrome.cookies.onChanged.addListener(({ cookie }) => {
 });
 chrome.runtime.onStartup.addListener(() => { syncCookies(true); native({ type: "ping" }); });
 
-async function sendToKami({ url, filename = "", referrer = "", pageUrl = "", size = 0, mime = "", source }) {
+async function sendToKami({ url, filename = "", referrer = "", pageUrl = "", size = 0, mime = "", source, pageTitle = "" }) {
   { const g = cookieGroupOf(url) || cookieGroupOf(pageUrl); if (g) await syncCookies(true, g); }
   const headers = await requestHeaders(url);
   return native({
     type: "add", url, filename, referer: referrer, page_url: pageUrl || referrer,
-    size: size > 0 ? size : 0, mime, headers, source,
+    size: size > 0 ? size : 0, mime, headers, source, page_title: pageTitle,
   });
 }
 
@@ -149,6 +149,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // ---------- medya trafigi izleme (her sitede MP4 / HLS / DASH / ses) ----------
 const MEDIA_EXT = /\.(mp4|m4v|webm|mkv|mov|flv|mp3|m4a|aac|ogg|oga|opus|wav|flac)$/i;
 const MANIFEST_EXT = /\.(m3u8|mpd)$/i;
+const HIDDEN_HLS = /\/(master|playlist|index[-_a-z0-9]*)\.(txt|m3u8)$/i;
 const SEGMENT = /\.(ts|m4s|aac\.ts|cmfv|cmfa)$|[?&](range|bytes)=|\/range\/|\/seg(ment)?[-_]?\d+|[-_]frag(ment)?\d+/i;
 // YouTube akis parcalari googlevideo'dan gelir: orada sayfa linki (yt-dlp) kullanilir
 const SKIP_HOST = /(^|\.)(googlevideo\.com|ytimg\.com|doubleclick\.net|googlesyndication\.com|googleadservices\.com)$/i;
@@ -167,7 +168,8 @@ function classify(url, ct, size) {
   if (SKIP_HOST.test(u.hostname)) return null;
   const path = u.pathname.toLowerCase();
   ct = (ct || "").toLowerCase().split(";")[0].trim();
-  if (/mpegurl/.test(ct) || path.endsWith(".m3u8")) return "hls";
+  if (/mpegurl/.test(ct) || path.endsWith(".m3u8") || HIDDEN_HLS.test(path) ||
+      (ct === "text/plain" && /master|playlist|hls|m3u8|stream/i.test(url))) return "hls";
   if (/dash\+xml/.test(ct) || path.endsWith(".mpd")) return "dash";
   if (SEGMENT.test(path + u.search) || /mp2t|iso\.segment/.test(ct)) return null;
   const isMedia = /^(video|audio)\//.test(ct) || (MEDIA_EXT.test(path) && !/^(text|image)\//.test(ct));
@@ -296,15 +298,16 @@ async function sendMedia({ url, pageUrl = "", mode = "choose", title = "" }) {
 
 async function onVideoButton(msg, sender) {
   const pageUrl = msg.pageUrl || (sender.tab && sender.tab.url) || "";
+  const tabTitle = msg.title || (sender.tab && sender.tab.title) || "";
   const src = msg.src || "";
-  let url = pageUrl, title = "";
+  let url = pageUrl, title = tabTitle;
   let host = "";
   try { host = new URL(pageUrl).hostname; } catch (_) {}
   if (/^https?:/i.test(src) && !SKIP_HOST.test(new URL(src).hostname) && !KNOWN_SITE.test(host)) {
-    url = src; title = msg.title || "";              // dogrudan dosya (generic)
+    url = src; title = tabTitle;                      // dogrudan dosya (generic)
   } else if (!KNOWN_SITE.test(host) && sender.tab) {
     const streams = (await getTabMedia(sender.tab.id)).filter((m) => m.kind === "hls" || m.kind === "dash");
-    if (streams.length) { url = streams[0].url; title = msg.title || ""; }   // en son yakalanan akis
+    if (streams.length) { url = streams[0].url; title = tabTitle; }   // en son yakalanan akis
   }
   const res = await sendMedia({ url, pageUrl, mode: msg.mode, title });
   if (res.ok && res.accepted) flashBadge("✓", "#7C4DFF");
@@ -329,6 +332,11 @@ async function handleDownload(item) {
     await chrome.storage.session.set({ altUntil: 0 });
     return false;
   }
+  let pageTitle = "";
+  try {
+    const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (active && active.title) pageTitle = active.title;
+  } catch (_) {}
   const res = await sendToKami({
     url,
     filename: (item.filename || "").split(/[\\/]/).pop(),
@@ -336,6 +344,7 @@ async function handleDownload(item) {
     size: item.totalBytes || item.fileSize || 0,
     mime: item.mime || "",
     source: "browser",
+    pageTitle,
   });
   if (!res.ok || !res.accepted) return false;                        // Kami kapali ya da kurala takildi
 
@@ -372,15 +381,16 @@ async function onMenuClicked(info, tab) {
   }
   if (info.menuItemId !== "kami-download") return;
   const pageUrl = info.frameUrl || info.pageUrl || (tab && tab.url) || "";
+  const pageTitle = (tab && tab.title) || "";
   const url = info.linkUrl || info.srcUrl;
   if (!info.linkUrl && (info.mediaType === "video" || info.mediaType === "audio") && (!url || /^blob:/i.test(url))) {
     // MSE oynatici (YouTube vb.): sayfa linki yt-dlp ile cozulsun, Kami'de secim penceresi acilir
-    const res = await sendMedia({ url: pageUrl, pageUrl, mode: "choose" });
+    const res = await sendMedia({ url: pageUrl, pageUrl, mode: "choose", title: pageTitle });
     flashBadge(res.ok && res.accepted ? "✓" : "!", res.ok && res.accepted ? "#7C4DFF" : "#F0626F");
     return;
   }
   if (!url || SKIP_SCHEMES.test(url)) return;
-  const res = await sendToKami({ url, referrer: pageUrl, pageUrl, source: "context_menu" });
+  const res = await sendToKami({ url, referrer: pageUrl, pageUrl, source: "context_menu", pageTitle });
   if (res.ok && res.accepted) {
     flashBadge(res.confirm ? "?" : "✓", res.confirm ? "#E8B86A" : "#7C4DFF");
   } else if (res.ok) {

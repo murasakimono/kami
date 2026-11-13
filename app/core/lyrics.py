@@ -10,6 +10,7 @@ Ek: "Sozu yapistir" - kullanicinin elle kopyaladigi soz gomulur + .lrc/.txt yazi
 """
 from __future__ import annotations
 
+import html
 import logging
 import os
 import re
@@ -82,13 +83,30 @@ def _pick(d: dict[str, Any]) -> dict[str, Any] | None:
             "instrumental": False, "id": d.get("id")}
 
 
+def _web_ua() -> str:
+    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+
+def _html_to_lyrics(fragment: str) -> str:
+    """HTML parcasindan <br> -> satir sonu cevirerek temiz sarki sozu cikarir."""
+    s = re.sub(r"<br\s*/?>\r?\n?", "\n", fragment, flags=re.I)
+    s = re.sub(r"</?(?:p|div|li|span)[^>]*>", lambda m: "\n" if m.group(0).startswith("</p") or m.group(0).startswith("</div") else "", s, flags=re.I)
+    s = re.sub(r"<[^>]+>", "", s)
+    s = html.unescape(s)
+    lines = [line.rstrip() for line in s.splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 def genius_search(artist: str, title: str, token: str, session: requests.Session | None = None) -> str:
-    """Genius resmi API: en iyi eslesen sarki sayfasinin URL'si (metin cekilmez). Yoksa ''."""
+    """Genius resmi API: en iyi eslesen sarki sayfasinin URL'si. Token yoksa ''."""
     if not token:
+        return ""
+    q = f"{artist} {title}".strip()
+    if not q:
         return ""
     s = session or requests.Session()
     try:
-        r = s.get(GENIUS_API, params={"q": f"{artist} {title}".strip()},
+        r = s.get(GENIUS_API, params={"q": q},
                   headers={"Authorization": f"Bearer {token}", "User-Agent": _ua()}, timeout=15)
         if r.status_code != 200:
             log.info("Genius arama: HTTP %s", r.status_code)
@@ -97,17 +115,101 @@ def genius_search(artist: str, title: str, token: str, session: requests.Session
     except (requests.RequestException, ValueError, AttributeError):
         log.warning("Genius arama hatasi", exc_info=True)
         return ""
+    return _pick_genius_hit(hits, title)
+
+
+def genius_web_search(artist: str, title: str, session: requests.Session | None = None) -> str:
+    """Genius herkese acik web aramasi (token gerektirmez)."""
+    q = f"{artist} {title}".strip()
+    if not q:
+        return ""
+    s = session or requests.Session()
+    hits: list[dict[str, Any]] = []
+    try:
+        r = s.get("https://genius.com/api/search/multi", params={"q": q},
+                  headers={"User-Agent": _web_ua()}, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            sections = ((data.get("response") if isinstance(data, dict) else {}) or {}).get("sections") or []
+            for sec in sections:
+                if isinstance(sec, dict) and sec.get("type") in ("top_hit", "song"):
+                    hits.extend(sec.get("hits") or [])
+    except (requests.RequestException, ValueError, AttributeError):
+        log.warning("Genius web arama hatasi", exc_info=True)
+    return _pick_genius_hit(hits, title)
+
+
+def _pick_genius_hit(hits: list[dict[str, Any]], title: str) -> str:
     t = title.lower()
     for h in hits:
         res = h.get("result") or {}
-        if h.get("type") == "song" and res.get("url", "").startswith("https://genius.com/"):
+        if h.get("type") == "song" and str(res.get("url", "")).startswith("https://genius.com/"):
             if t and t[:12] in (res.get("title") or "").lower():
                 return res["url"]
     for h in hits:
         res = h.get("result") or {}
-        if h.get("type") == "song" and res.get("url", "").startswith("https://genius.com/"):
+        if h.get("type") == "song" and str(res.get("url", "")).startswith("https://genius.com/"):
             return res["url"]
     return ""
+
+
+def genius_fetch_lyrics(url: str, session: requests.Session | None = None) -> str:
+    """Genius sarki sayfasindan data-lyrics-container bloklarini ceker."""
+    if not url or not url.startswith("https://genius.com/"):
+        return ""
+    s = session or requests.Session()
+    try:
+        r = s.get(url, headers={"User-Agent": _web_ua()}, timeout=15)
+        if r.status_code != 200:
+            return ""
+        raw_html = r.text
+    except requests.RequestException:
+        log.warning("Genius sayfa cekme hatasi", exc_info=True)
+        return ""
+    blocks = re.findall(
+        r'<div[^>]*data-lyrics-container="true"[^>]*>(.*?)</div>(?=\s*(?:<div[^>]*data-lyrics-container|<div class="LyricsFooter|$))',
+        raw_html, flags=re.S | re.I,
+    )
+    if not blocks:
+        blocks = re.findall(r'<div[^>]*data-lyrics-container="true"[^>]*>(.*?)</div>', raw_html, flags=re.S | re.I)
+    parts = [_html_to_lyrics(b) for b in blocks]
+    return "\n\n".join(p for p in parts if p).strip()
+
+
+def _az_slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+def azlyrics_fetch_lyrics(artist: str, title: str, session: requests.Session | None = None) -> str:
+    """AZLyrics uzerinden sarki sozu ceker (dogrudan URL + arama yedegi)."""
+    if not artist or not title:
+        return ""
+    s = session or requests.Session()
+    a_clean = re.sub(r"^\s*the\s+", "", artist, flags=re.I)
+    urls = [
+        f"https://www.azlyrics.com/lyrics/{_az_slug(a_clean)}/{_az_slug(title)}.html",
+    ]
+    if _az_slug(artist) != _az_slug(a_clean):
+        urls.append(f"https://www.azlyrics.com/lyrics/{_az_slug(artist)}/{_az_slug(title)}.html")
+    for u in urls:
+        try:
+            r = s.get(u, headers={"User-Agent": _web_ua()}, timeout=15)
+            if r.status_code == 200:
+                text = _extract_azlyrics_html(r.text)
+                if text:
+                    return text
+        except requests.RequestException:
+            continue
+    return ""
+
+
+def _extract_azlyrics_html(raw_html: str) -> str:
+    m = re.search(r"<!-- Usage of azlyrics\.com content.*?-->\s*(.*?)</div>", raw_html, flags=re.S | re.I)
+    if not m:
+        m = re.search(r'<div class="ringtone">.*?</div>\s*<b>.*?</b>\s*<br>\s*<div>(.*?)</div>', raw_html, flags=re.S | re.I)
+    if not m:
+        return ""
+    return _html_to_lyrics(m.group(1))
 
 
 LRC_LINE = re.compile(r"^\s*\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]")
@@ -190,6 +292,18 @@ def fetch_for_file(path: str, title_hint: str = "", embed: bool = True,
         out.update(write_lyrics(path, found["synced"] or found["plain"], artist, title, embed))
         return out
     url = genius_search(artist, title, genius_token(), session)
+    if not url and session is None:
+        url = genius_web_search(artist, title)
     if url:
         out["links"]["genius_song"] = url
+        g_text = genius_fetch_lyrics(url, session)
+        if g_text:
+            out.update(write_lyrics(path, g_text, artist, title, embed))
+            out["source"] = "genius"
+            return out
+    az_text = azlyrics_fetch_lyrics(artist, title, session)
+    if az_text:
+        out.update(write_lyrics(path, az_text, artist, title, embed))
+        out["source"] = "azlyrics"
+        return out
     return out

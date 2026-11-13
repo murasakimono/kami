@@ -64,12 +64,20 @@ def _norm(s: str) -> str:
 
 
 def _similar(a: str, b: str) -> float:
+    """Kelime siniri duyarli benzerlik: kisa dizi adlarinin ('see', 'it') rastgele metin icinde substring eslesmesini onler."""
     from difflib import SequenceMatcher
     a, b = _norm(a), _norm(b)
     if not a or not b:
         return 0.0
-    if a in b or b in a:
+    if a == b:
         return 1.0
+    ta, tb = a.split(), b.split()
+    if len(ta) >= 1 and len(tb) >= 1:
+        # Sadece tam kelime dizisi (word-boundary) geciyorsa yuksek puan ver; aksi halde SequenceMatcher
+        sa, sb = f" {a} ", f" {b} "
+        if (len(a) >= 4 and sa in sb) or (len(b) >= 4 and sb in sa):
+            shorter, longer = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+            return max(0.72, len(shorter) / len(longer))
     return SequenceMatcher(None, a, b).ratio()
 
 
@@ -84,9 +92,9 @@ def _judge(item: dict, info: dict) -> tuple[bool, float]:
             return False, 0.0
         if fd.get("season_number") is None and not re.search(rf"[Ss]0?{info['season']}[Ee]0?{info['episode']}\b", at.get("release") or ""):
             return False, 0.0
-    if sim < 0.6:
+    if sim < 0.65:
         return False, 0.0
-    score = sim * 2 + (3 if at.get("moviehash_match") else 0) + min(2.0, (at.get("download_count") or 0) / 5000)
+    score = sim * 3 + (2 if at.get("moviehash_match") else 0) + min(2.0, (at.get("download_count") or 0) / 5000)
     return True, score
 
 

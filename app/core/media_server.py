@@ -434,8 +434,9 @@ class MediaServer:
         return data
 
     def spawn(self, cmd: list[str]) -> subprocess.Popen:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
-                             creationflags=NO_WINDOW, bufsize=0)
+        from app.core.procjob import attach
+        p = attach(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                                    creationflags=NO_WINDOW, bufsize=0))
         self._procs.add(p)
         return p
 

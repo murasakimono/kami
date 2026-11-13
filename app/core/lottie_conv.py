@@ -94,9 +94,11 @@ def to_webm(src: Path, ffmpeg: str, height: int = 1080) -> Path:
     n = anim.lottie_animation_get_totalframe()
     k = min(2.0, height / max(1, h0)) if h0 < height else 1.0
     w, h = int(w0 * k) // 2 * 2, int(h0 * k) // 2 * 2
-    enc = subprocess.Popen([ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra",
+    from app.core.procjob import attach
+    enc = attach(subprocess.Popen([ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra",
                             "-s", f"{w}x{h}", "-r", f"{fps:.4f}", "-i", "pipe:0", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
-                            "-auto-alt-ref", "0", "-b:v", "0", "-crf", "24", "-row-mt", "1", str(out)], stdin=subprocess.PIPE, creationflags=NOWIN)
+                            "-auto-alt-ref", "0", "-b:v", "0", "-crf", "24", "-row-mt", "1", "-deadline", "good", "-cpu-used", "5", str(out)],
+                           stdin=subprocess.PIPE, creationflags=NOWIN))
     for i in range(n):
         buf = anim.lottie_animation_render(frame_num=i, width=w, height=h)
         enc.stdin.write(bytes(buf))

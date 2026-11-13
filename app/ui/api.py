@@ -2012,6 +2012,19 @@ class Api(StudioMixin):
         self._osub.save(key) if key else self._osub.clear()
         return {"ok": True, "has_key": bool(key)}
 
+    def _page_title_for(self, path: str) -> str:
+        if not self.manager:
+            return ""
+        norm = os.path.normcase(os.path.abspath(path))
+        base = os.path.basename(path)
+        for d in self.manager.store.list():
+            full = os.path.join(d.directory, d.filename) if d.directory and d.filename else ""
+            if (full and os.path.normcase(os.path.abspath(full)) == norm) or (d.filename and d.filename == base):
+                t = str((d.extra or {}).get("page_title") or "").strip()
+                if t:
+                    return t
+        return ""
+
     def subtitle_fetch(self, path: str, lang: str = "tr", title: str = "", file_id: int = 0) -> dict[str, Any]:
         """OpenSubtitles: videonun yanina <ad>.<dil>.srt indirir, oynatici VTT'yi alir. file_id verilirse o aday."""
         from app.core import opensubs
@@ -2022,10 +2035,11 @@ class Api(StudioMixin):
         if not os.path.isfile(str(path or "")):
             return {"ok": False, "error": "bad_input"}
         lang = str(lang or "tr")[:5]
+        hint = str(title or "") or self._page_title_for(str(path))
         if file_id:
             res = opensubs.download(str(path), key, int(file_id), lang)
         else:
-            res = opensubs.find_and_download(str(path), key, lang, str(title or ""))
+            res = opensubs.find_and_download(str(path), key, lang, hint)
         if not res.get("ok"):
             return res
         return {"ok": True, "path": res["path"], "release": res.get("release", ""), "vtt": srt_to_vtt(res.pop("srt"))}
@@ -2038,7 +2052,8 @@ class Api(StudioMixin):
             return {"ok": False, "error": "no_key"}
         if not os.path.isfile(str(path or "")):
             return {"ok": False, "error": "bad_input"}
-        return opensubs.search(str(path), key, str(lang or "tr")[:5], str(title or ""))
+        hint = str(title or "") or self._page_title_for(str(path))
+        return opensubs.search(str(path), key, str(lang or "tr")[:5], hint)
 
     def library_organize(self, paths: list | None = None, apply: bool = False) -> dict[str, Any]:
         """Dizi bolumlerini 'Dizi / Sezon 01 / bolum' duzenine tasi (once onizleme, apply=True ile tasir; yan altyazilar da gider)."""

@@ -57,6 +57,49 @@ class PageLinkRejected(CaptureRejected):
         super().__init__("page_link")
 
 
+_GENERIC_NAMES = frozenset({
+    "video", "playback", "stream", "media", "master", "playlist", "index",
+    "download", "file", "watch", "player", "embed", "chunklist", "output",
+})
+
+
+def _smart_filename(filename: str, page_title: str, mime: str = "", url: str = "") -> str:
+    """Rastgele hash / jenerik dosya adini (orn. basdasdwisad.mp4) sayfa basligiyla okunur hale getirir."""
+    import re
+    clean_title = re.sub(
+        r"\s*[-|•]\s*(?:YouTube|Dailymotion|Vimeo|Twitch|Watch Online|İzle|Full HD).*$",
+        "", (page_title or "").strip(), flags=re.I,
+    ).strip()
+    clean_title = sanitize_filename(clean_title)[:140].strip(" .-_")
+    if not clean_title or len(clean_title) < 3:
+        return filename
+    stem, ext = os.path.splitext(filename) if filename else ("", "")
+    if not ext:
+        url_ext = os.path.splitext(urlparse(url).path)[1] if url else ""
+        if url_ext and len(url_ext) <= 6 and url_ext.lower() != ".txt":
+            ext = url_ext
+        elif "video/" in (mime or "").lower():
+            ext = ".mp4"
+        elif "audio/" in (mime or "").lower():
+            ext = ".mp3"
+    if not filename:
+        return sanitize_filename(f"{clean_title}{ext}")
+    low = stem.lower()
+    is_generic = low in _GENERIC_NAMES
+    is_hash = (
+        len(stem) >= 8
+        and re.fullmatch(r"[a-z0-9]+", low) is not None
+        and (
+            re.fullmatch(r"[0-9a-f]{8,}", low) is not None
+            or re.fullmatch(r"\d{6,}", low) is not None
+            or len(stem) >= 10
+        )
+    )
+    if is_generic or is_hash:
+        return sanitize_filename(f"{clean_title}{ext}")
+    return filename
+
+
 class DownloadManager:
     def __init__(self, store: DownloadStore, engine: Engine, events: EventBus, settings: Settings,
                  registry: PluginRegistry | None = None, poll_interval: float = 0.5,
@@ -150,6 +193,9 @@ class DownloadManager:
                 if not r.mime and info.content_type:
                     r = replace(r, mime=info.content_type)
             filename = sanitize_filename(r.filename) if r.filename else ""
+            page_title = str((r.extra or {}).get("page_title") or "").strip()
+            if page_title:
+                filename = _smart_filename(filename, page_title, r.mime, r.url)
             category = category_for(filename, r.url, r.mime)
             directory = r.directory or self._rule_dir(r, filename) or folder_for(
                 self.base_dir(), category, bool(self.settings.get("use_category_folders")))
@@ -164,6 +210,7 @@ class DownloadManager:
                 size=r.size or 0, referer=r.referer, headers=r.headers, source=r.source,
                 page_url=r.page_url, max_conn=max_conn, options=r.options,
                 extra={**({"checksum": checksum} if checksum else {}),
+                       **({"page_title": page_title} if page_title else {}),
                        **({"refresh": r.extra["refresh"]} if (r.extra or {}).get("refresh") else {})},
             )
             self.events.emit("download.added", download=d)
@@ -321,7 +368,8 @@ class DownloadManager:
         if title and source == "extension":
             opts["out_title"] = title   # eklenti sadece yakalanan akis/dogrudan dosyada baslik yollar
         return self.add(DownloadRequest(url=url, filename=title, source=source, page_url=page_url,
-                                        kind="media", options=opts, directory=directory))[0]
+                                        kind="media", options=opts, directory=directory,
+                                        extra={"page_title": title[:200]} if title else {}))[0]
 
     # ---------- Asama 6c: site kurali klasoru, disk + tekrar indirme uyarisi ----------
     history: Any = None   # automate.History (main baglar)
@@ -356,10 +404,12 @@ class DownloadManager:
         directory = r.directory or folder_for(
             self.base_dir(), category, bool(self.settings.get("use_category_folders")))
         self._precheck(r, directory)
+        page_title = str((r.extra or {}).get("page_title") or "").strip()
         d = self.store.add(
             url=r.url, filename=sanitize_filename(r.filename) if r.filename else "", directory=directory,
             category=category, status=Status.QUEUED, referer=r.referer, headers={}, source=r.source,
             page_url=r.page_url, kind="media", options=opts,
+            extra={"page_title": page_title} if page_title else {},
         )
         self.events.emit("download.added", download=d)
         return self._start_engine(d)
