@@ -3146,3 +3146,45 @@ class Api(StudioMixin):
             self._island_shown = False
         self._manager.settings.set("mini_island", self._island_shown)
         return {"ok": True, "visible": self._island_shown}
+
+    # ---------- Faz 11: LinkCrawler, Canli DVR, Web Arsivi, Medya Sagligi ----------
+    def crawler_rules_list(self) -> dict[str, Any]:
+        from app.core.link_crawler import load_rules
+        return {"ok": True, "rules": load_rules()}
+
+    def crawler_rule_save(self, rule: dict[str, Any]) -> dict[str, Any]:
+        from app.core.link_crawler import save_rule
+        return save_rule(rule)
+
+    def crawler_rule_delete(self, name: str) -> dict[str, Any]:
+        from app.core.link_crawler import delete_rule
+        return delete_rule(name)
+
+    def crawler_crawl(self, url: str) -> dict[str, Any]:
+        from app.core.link_crawler import crawl
+        return crawl(url)
+
+    def dvr_start(self, url: str, out_dir: str = "", from_start: bool = True) -> dict[str, Any]:
+        from app.core.web_archive import start_live_dvr
+        target = out_dir or str(self._manager.settings.get("download_dir", "Downloads"))
+        return start_live_dvr(url, target, from_start=from_start)
+
+    def web_archive_save(self, url: str, out_path: str = "") -> dict[str, Any]:
+        from app.core.web_archive import archive_webpage
+        if not out_path:
+            base = Path(self._manager.settings.get("download_dir", "Downloads")) / "WebArsiv"
+            out_path = str(base / f"arsiv_{int(time.time())}.html")
+        return archive_webpage(url, out_path)
+
+    def library_find_duplicates(self, folder: str, max_hamming: int = 6) -> dict[str, Any]:
+        from app.core.library_health import find_duplicates
+        return find_duplicates(folder, max_hamming=max_hamming)
+
+    def library_smart_compress(self, src: str, dst: str = "", codec: str = "", min_vmaf: float = 95.0) -> dict[str, Any]:
+        from app.core.library_health import smart_compress
+        return smart_compress(src, dst, codec=codec, min_vmaf=min_vmaf)
+
+    def library_scan_health(self, folder: str, manifest_path: str = "", deep_decode: bool = False) -> dict[str, Any]:
+        from app.core.library_health import scan_health
+        man = manifest_path or str(Path(folder) / ".kami_health.json")
+        return scan_health(folder, man, deep_decode=deep_decode)

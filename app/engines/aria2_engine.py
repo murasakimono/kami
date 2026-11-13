@@ -111,6 +111,7 @@ class Aria2Engine(Engine):
             # dht.dat ilk calistirmada bos: giris noktasi olmadan magnet metadata'si bulunamiyor (04.11 olculdu)
             args += [f"--dht-file-path={self.dht_file}", "--enable-dht=true", "--bt-enable-lpd=true",
                      "--enable-peer-exchange=true", "--dht-entry-point=router.bittorrent.com:6881",
+                     "--bt-save-metadata=true",
                      # cevapsiz izleyicide 60 sn beklemesin (meta veri daha cabuk)
                      "--bt-tracker-connect-timeout=10", "--bt-tracker-timeout=15", "--bt-max-peers=80"]
         # addTorrent ile verilen .torrent'i indirme klasorune <sha1>.torrent olarak kopyalamasin (biz data/'da tutuyoruz)
@@ -250,6 +251,9 @@ class Aria2Engine(Engine):
             opts["seed-time"] = "0"
         else:
             opts["seed-ratio"] = "1.0"
+        prio = o.get("prioritize_piece", "head=20M")
+        if prio and str(prio).lower() != "none":
+            opts["bt-prioritize-piece"] = str(prio)
         return opts
 
     auto_mirror = True   # main ayardan baglar (auto_mirror)
