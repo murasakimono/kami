@@ -22,7 +22,7 @@ def test_compound_keeps_duration_and_renders():
     flat = S.flatten_clips(p["clips"])
     assert sorted(round(c["start"], 3) for c in flat) == [2.0, 3.0]
     from pathlib import Path
-    args, total = S.build_export(p, "C:/o.mp4", Path("."), "libx264", {})
+    args, total = S.build_export(p, "C:/o.mp4", Path(__import__("tempfile").mkdtemp()), "libx264", {})
     assert total > 0 and args
     assert "Merhaba" in S.build_ass(p)
     back = E.expand_compound_clip(p["clips"], r["compound"]["id"])

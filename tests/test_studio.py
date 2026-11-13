@@ -259,6 +259,6 @@ def test_real_transition_extends_previous_clip_under_next():
     first["in"] = 15.8          # kaynakta 0.2 sn kaldi -> o kadar uzar
     assert abs(S.trans_tail(first, p["clips"], a) - 0.2) < 1e-6
     from pathlib import Path
-    args, _ = S.build_export(p, "C:/o.mp4", Path("."), "libx264", {})
+    args, _ = S.build_export(p, "C:/o.mp4", Path(__import__("tempfile").mkdtemp()), "libx264", {})
     g = " ".join(args)
     assert "between(t,0.0000,4.2000)" in g    # ilk klip gecis boyunca altta
