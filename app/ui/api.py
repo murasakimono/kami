@@ -3243,3 +3243,39 @@ class Api(StudioMixin):
     def kasa_stats(self) -> dict[str, Any]:
         from app.core.semantic_vault import kasa_stats
         return kasa_stats()
+
+    # ---------- Faz 14: Klip Fabrikasi, Oto Oyun Vurgu & Sanal Kamera ----------
+    def clip_factory_vertical(self, video_path: str, out_path: str = "", x_ratio: float | None = None) -> dict[str, Any]:
+        from app.core.clip_factory import auto_vertical_reframe
+        return auto_vertical_reframe(video_path, out_path, x_ratio=x_ratio)
+
+    def clip_factory_highlights(self, video_path: str, out_dir: str = "", max_clips: int = 3) -> dict[str, Any]:
+        from app.core.clip_factory import extract_viral_clips
+        dst = out_dir or str(Path(self._manager.settings.get("download_dir", "Downloads")) / "Klipler")
+        return extract_viral_clips(video_path, dst, max_clips=max_clips)
+
+    def clip_factory_ugc_matrix(self, hooks: list[str], body: str, ctas: list[str], out_dir: str = "", platform: str = "tiktok") -> dict[str, Any]:
+        from app.core.clip_factory import render_ugc_matrix
+        dst = out_dir or str(Path(self._manager.settings.get("download_dir", "Downloads")) / "UGC")
+        return render_ugc_matrix(hooks, body, ctas, dst, platform=platform)
+
+    def _hw(self):
+        if getattr(self, "_highlight_watcher", None) is None:
+            from app.core.game_highlight import HighlightWatcher
+            self._highlight_watcher = HighlightWatcher(self.recorder)
+        return self._highlight_watcher
+
+    def highlight_watcher_start(self, games: list[str] | None = None, keywords: list[str] | None = None) -> dict[str, Any]:
+        if not self.recorder:
+            return {"ok": False, "error": "Recorder hazir degil"}
+        return self._hw().start(games=games, keywords=keywords)
+
+    def highlight_watcher_stop(self) -> dict[str, Any]:
+        return self._hw().stop()
+
+    def highlight_watcher_status(self) -> dict[str, Any]:
+        return self._hw().status()
+
+    def virtual_cam_status(self) -> dict[str, Any]:
+        from app.core.game_highlight import virtual_camera_status
+        return virtual_camera_status()
