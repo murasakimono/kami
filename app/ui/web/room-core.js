@@ -79,6 +79,18 @@
       const pc = new RTCPeerConnection({ iceServers: this.ice, bundlePolicy: "max-bundle" });
       const P = { pc, polite: this.id > id, making: false, ignore: false, meta: {}, q: "src", senders: new Map() };
       this.peers.set(id, P);
+      // dogrudan veri kanali (sunucusuz): cizim, dosya. Iki taraf da ayni id ile acar, muzakere yarisi olmaz.
+      try {
+        const dc = pc.createDataChannel("kami", { negotiated: true, id: 0, ordered: true });
+        dc.binaryType = "arraybuffer";
+        dc.onmessage = (e) => {
+          if (typeof e.data !== "string") { this.on.bin?.(id, e.data); return; }
+          let m; try { m = JSON.parse(e.data); } catch { return; }
+          this.on.msg?.(id, m);
+        };
+        dc.onopen = () => this.on.dcopen?.(id);
+        P.dc = dc;
+      } catch { /* veri kanali yok: uygulama mesajlari sinyal uzerinden gider */ }
       pc.onicecandidate = (e) => e.candidate && this.post("sig", { to: id, data: { t: "ice", c: e.candidate } });
       pc.onnegotiationneeded = async () => {
         try {
@@ -198,6 +210,21 @@
     // uygulama mesaji (oynatici durumu, kontrol komutlari)
     send(to, m) { this.post("sig", { to, data: { t: "app", m } }); }
     broadcast(m) { for (const id of this.peers.keys()) this.send(id, m); }
+    direct(to) { const dc = this.peers.get(to)?.dc; return dc && dc.readyState === "open" ? dc : null; }
+    // yalnizca veri kanali (sik/akisli mesajlar sunucuya yuk olmasin); kanal yoksa false
+    sendDirect(to, m) { const dc = this.direct(to); if (!dc) return false; try { dc.send(JSON.stringify(m)); return true; } catch { return false; } }
+    async sendBin(to, buf) {   // ikili parca, tampon dolunca bekler (dosya aktarimi)
+      const dc = this.direct(to); if (!dc) throw new Error("dogrudan baglanti yok");
+      if (dc.bufferedAmount > 4 * 1024 * 1024) {
+        dc.bufferedAmountLowThreshold = 1024 * 1024;
+        await new Promise((ok, no) => {
+          const done = () => { dc.removeEventListener("bufferedamountlow", done); dc.removeEventListener("close", fail); ok(); };
+          const fail = () => { dc.removeEventListener("bufferedamountlow", done); no(new Error("kanal kapandi")); };
+          dc.addEventListener("bufferedamountlow", done); dc.addEventListener("close", fail);
+        });
+      }
+      dc.send(buf);
+    }
     // izleyici: belli bir yayincidan (ya da hepsinden) istedigim kalite
     requestQuality(q, to) {
       this.myQ = q;
