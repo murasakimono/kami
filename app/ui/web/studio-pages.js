@@ -337,7 +337,7 @@ async function renderColor() {
     ${fld("Pozlama", "grade.exp", -2, 2, .01, g.exp || 0)}${fld("Kontrast", "grade.con", -.6, .8, .01, g.con || 0)}${fld("Doygunluk", "grade.sat", 0, 2, .01, g.sat ?? 1)}
     ${fld("Sıcaklık", "grade.temp", -1, 1, .01, g.temp || 0)}${fld("Ton (yeşil/mor)", "grade.tint", -1, 1, .01, g.tint || 0)}
     <div class="sec">Film / Optik</div>
-    ${fld("Vinyet", "grade.vignette", 0, 1, .02, g.vignette || 0)}${fld("Film Greni", "grade.grain", 0, 1, .02, g.grain || 0)}${fld("Halation Glow", "grade.halation", 0, 1, .02, g.halation || 0)}
+    ${fld("Vinyet", "grade.vignette", 0, 1, .02, g.vignette || 0)}${fld("Film Greni", "grade.grain", 0, 1, .02, g.grain || 0)}${fld("Halation Glow", "grade.halation", 0, 1, .02, g.halation || 0)}${fld("Prizma (Chromatic)", "grade.prism", 0, 1, .02, g.prism || 0)}
     <div class="sec">Ton Eğrisi (Curves)</div>
     <div class="catpills">${[["luma", "Tümü"], ["r", "Kırmızı"], ["g", "Yeşil"], ["b", "Mavi"]].map(([k, n]) => `<button type="button" class="${CURVE_CH === k ? "on" : ""}" data-cch="${k}">${n}</button>`).join("")}<button type="button" id="curveReset">Sıfırla</button></div>
     <canvas id="curveCv" class="curve-cv" width="260" height="165" title="Tıkla/sürükle: nokta ekle/taşı · Sağ tık: sil"></canvas>

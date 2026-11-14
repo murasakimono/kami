@@ -1269,14 +1269,18 @@ lanes.addEventListener("pointerdown", e => {
         d = clamp(d, -(maxSrc === Infinity || trackOf(c).kind === "text" || trackOf(c).kind === "fx" ? s0.start : Math.min(s0.start, s0.in / sp)), s0.dur - .05);
         c.start = s0.start + d; c.dur = s0.dur - d; if (a) c.in = s0.in + d * sp;
         if (c.words) c.words = st0Words(c, d);
+        if (c.adaptive?.keepEnds && s0.zoom?.length) {
+          const inD = Math.min(c.dur * 0.45, c.adaptive.inDur ?? .45);
+          c.zoom = s0.zoom.map(k => ({ ...k, t: +clamp(k.t - d, 0, c.dur).toFixed(3) }));
+        }
       } else {
         let ne = s0.start + s0.dur + dx; const [sn, hit] = snapT(ne, tg); ne = sn; showSnap(hit);
         const maxDur = maxSrc === Infinity ? 1e6 : (maxSrc - s0.in) / sp;
         c.dur = clamp(ne - s0.start, .05, maxDur);
         if (c.adaptive?.keepEnds && s0.zoom?.length) {
-          const delta = c.dur - s0.dur, inD = c.adaptive.inDur ?? .45, outD = c.adaptive.outDur ?? .45;
+          const delta = c.dur - s0.dur, inD = Math.min(c.dur * 0.45, c.adaptive.inDur ?? .45), outD = Math.min(c.dur * 0.45, c.adaptive.outDur ?? .45);
           const thr = Math.max(inD, s0.dur - outD - .05);
-          c.zoom = s0.zoom.map(k => (k.t >= thr ? { ...k, t: +Math.max(inD, k.t + delta).toFixed(3) } : { ...k }));
+          c.zoom = s0.zoom.map(k => (k.t >= thr ? { ...k, t: +clamp(k.t + delta, inD, c.dur).toFixed(3) } : { ...k, t: +Math.min(c.dur, k.t).toFixed(3) }));
         }
       }
     } else {

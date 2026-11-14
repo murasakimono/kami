@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -43,6 +43,15 @@ PRO_AUDIO_DSP: dict[str, tuple[str, str]] = {
     "place_stadium": ("Mekan: Stadyum Anonsu", "highpass=f=240,lowpass=f=5200,acompressor=threshold=-16dB:ratio=5,aecho=0.7:0.88:110|230:0.45|0.32"),
     "place_old_tv": ("Mekan: Eski CRT Televizyon", "highpass=f=320,lowpass=f=3400,equalizer=f=1400:t=q:w=1.4:g=5,acompressor=threshold=-18dB:ratio=4"),
 }
+
+
+def _safe_color(col: Any, default: str = "#7C3AED") -> str:
+    s = str(col or default).strip()
+    try:
+        ImageColor.getrgb(s)
+        return s
+    except Exception:
+        return default
 
 
 def _find_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -81,7 +90,10 @@ def detect_audio_beats(ffmpeg_bin: str, media_path: str, min_gap_s: float = 0.24
         ffmpeg_bin, "-v", "error", "-i", str(src),
         "-vn", "-ac", "1", "-ar", str(sr), "-f", "f32le", "-",
     ]
-    proc = subprocess.run(cmd, capture_output=True, timeout=60, creationflags=NO_WINDOW)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=60, creationflags=NO_WINDOW)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "beatshift_timeout"}
     if proc.returncode != 0 or len(proc.stdout) < hop * 4:
         return {"ok": False, "error": "no_audio_or_decode_failed"}
 
@@ -138,40 +150,50 @@ def apply_beat_sync(project: dict[str, Any], beats: list[float], clip_id: str = 
                     mode: str = "markers", step: int = 1, zoom_amt: float = 1.14) -> dict[str, Any]:
     """Synchronize timeline markers, rhythmic zoom kicks, flash FX overlays, or cuts to detected beats."""
     clean_beats = sorted({round(float(b), 3) for b in beats if float(b) >= 0.0})[:: max(1, int(step))]
+    target = next((c for c in (project.get("clips") or []) if c.get("id") == clip_id), None) if clip_id else None
+
+    if target and clean_beats:
+        c0 = float(target.get("start", 0))
+        c_dur = float(target.get("dur", 0))
+        src_in = float(target.get("in") or 0.0)
+        sp = max(0.1, float(target.get("speed") or 1.0))
+        local_beats = [round((b - src_in) / sp, 3) for b in clean_beats]
+        local_beats = [lb for lb in local_beats if 0.0 <= lb < c_dur]
+        tl_beats = [round(c0 + lb, 3) for lb in local_beats]
+    else:
+        c0, c_dur, local_beats = 0.0, 0.0, []
+        tl_beats = clean_beats
+
     markers = [m for m in (project.get("markers") or []) if m.get("kind") != "beat"]
-    for b in clean_beats:
+    for b in tl_beats:
         markers.append({"t": b, "kind": "beat", "label": "♪"})
     markers.sort(key=lambda m: float(m.get("t", 0)))
     project["markers"] = markers
 
-    target = next((c for c in (project.get("clips") or []) if c.get("id") == clip_id), None) if clip_id else None
     applied = 0
-    if target and clean_beats:
-        c0 = float(target.get("start", 0))
-        c_dur = float(target.get("dur", 0))
-        local_beats = [round(b - c0, 3) for b in clean_beats if c0 <= b < c0 + c_dur]
-        if mode == "zoom" and local_beats:
-            kf = [{"t": 0.0, "s": 1.0, "x": 0.0, "y": 0.0}]
+    if target and local_beats:
+        if mode == "zoom":
+            kf = [{"t": 0.0, "z": 1.0, "cx": 0.5, "cy": 0.5}]
             for lb in local_beats:
-                kf.append({"t": lb, "s": 1.0, "x": 0.0, "y": 0.0})
-                kf.append({"t": round(min(c_dur, lb + 0.06), 3), "s": round(float(zoom_amt), 3), "x": 0.0, "y": 0.0})
-                kf.append({"t": round(min(c_dur, lb + 0.26), 3), "s": 1.0, "x": 0.0, "y": 0.0})
+                kf.append({"t": lb, "z": 1.0, "cx": 0.5, "cy": 0.5})
+                kf.append({"t": round(min(c_dur, lb + 0.06), 3), "z": round(float(zoom_amt), 3), "cx": 0.5, "cy": 0.5})
+                kf.append({"t": round(min(c_dur, lb + 0.26), 3), "z": 1.0, "cx": 0.5, "cy": 0.5})
             dedup: list[dict[str, Any]] = []
             for k in sorted(kf, key=lambda x: x["t"]):
                 if not dedup or k["t"] > dedup[-1]["t"] + 0.005:
                     dedup.append(k)
             target["zoom"] = dedup
             applied = len(local_beats)
-        elif mode == "flash" and local_beats:
+        elif mode == "flash":
             fx_list = list(target.get("fx") or [])
             if "flash" not in fx_list:
                 fx_list.append("flash")
             target["fx"] = fx_list
             applied = len(local_beats)
-        elif mode == "cut" and local_beats:
+        elif mode == "cut":
             clips = [c for c in (project.get("clips") or []) if c.get("id") != clip_id]
             pts = [0.0] + [lb for lb in local_beats if 0.08 < lb < c_dur - 0.08] + [c_dur]
-            sp = float(target.get("speed") or 1.0)
+            sp = max(0.1, float(target.get("speed") or 1.0))
             src_in = float(target.get("in") or 0.0)
             for idx in range(len(pts) - 1):
                 seg_d = round(pts[idx + 1] - pts[idx], 3)
@@ -186,7 +208,7 @@ def apply_beat_sync(project: dict[str, Any], beats: list[float], clip_id: str = 
                 applied += 1
             project["clips"] = clips
 
-    return {"ok": True, "marker_count": len(clean_beats), "mode": mode, "applied": applied, "project": project}
+    return {"ok": True, "marker_count": len(tl_beats), "mode": mode, "applied": applied, "project": project}
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +268,7 @@ def pixel_sort_video(ffmpeg_bin: str, src_path: str, out_path: str = "",
     out = Path(out_path) if out_path else src.with_name(f"{src.stem}_pixelsort.mp4")
     out.parent.mkdir(parents=True, exist_ok=True)
 
+    max_frames = max(1, min(600, int(max_frames or 180)))
     with tempfile.TemporaryDirectory(prefix="kpix_") as td:
         frames_dir = Path(td) / "in"
         sorted_dir = Path(td) / "out"
@@ -254,11 +277,14 @@ def pixel_sort_video(ffmpeg_bin: str, src_path: str, out_path: str = "",
 
         ext_cmd = [
             ffmpeg_bin, "-v", "error", "-y", "-i", str(src),
-            "-vf", "scale='min(960,iw)':-2:flags=lanczos",
-            "-frames:v", str(int(max_frames)),
+            "-vf", "fps=30,scale='min(960,iw)':-2:flags=lanczos",
+            "-frames:v", str(max_frames),
             str(frames_dir / "f_%05d.png"),
         ]
-        r1 = subprocess.run(ext_cmd, capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+        try:
+            r1 = subprocess.run(ext_cmd, capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "extract_timeout"}
         in_frames = sorted(frames_dir.glob("f_*.png"))
         if r1.returncode != 0 or not in_frames:
             return {"ok": False, "error": f"extract_failed:{r1.stderr[-200:]}"}
@@ -277,7 +303,10 @@ def pixel_sort_video(ffmpeg_bin: str, src_path: str, out_path: str = "",
             "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", str(out),
         ]
-        r2 = subprocess.run(enc_cmd, capture_output=True, text=True, timeout=90, creationflags=NO_WINDOW)
+        try:
+            r2 = subprocess.run(enc_cmd, capture_output=True, text=True, timeout=120, creationflags=NO_WINDOW)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "encode_timeout"}
         if r2.returncode != 0 or not out.is_file():
             return {"ok": False, "error": f"encode_failed:{r2.stderr[-200:]}"}
 
@@ -301,51 +330,61 @@ def datamosh_video(ffmpeg_bin: str, src_path: str, out_path: str = "",
         if mode == "i_frame_drop":
             raw_avi = Path(td) / "src_m4.avi"
             mosh_avi = Path(td) / "mosh.avi"
-            r1 = subprocess.run([
-                ffmpeg_bin, "-v", "error", "-y", "-i", str(src),
-                "-c:v", "mpeg4", "-q:v", "4", "-g", "9999", "-bf", "0", "-an", str(raw_avi),
-            ], capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+            try:
+                r1 = subprocess.run([
+                    ffmpeg_bin, "-v", "error", "-y", "-i", str(src),
+                    "-c:v", "mpeg4", "-q:v", "4", "-g", "12", "-bf", "0", "-an", str(raw_avi),
+                ], capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+            except subprocess.TimeoutExpired:
+                return {"ok": False, "error": "avi_encode_timeout"}
             if r1.returncode != 0 or not raw_avi.is_file():
                 return {"ok": False, "error": f"avi_encode_failed:{r1.stderr[-180:]}"}
             blob = bytearray(raw_avi.read_bytes())
-            # Find '00dc' AVI video chunk headers and corrupt/zero interior I-frame markers after first keyframe
-            marker = b"\x00\x01\xb0"  # MPEG-4 visual object sequence / VOP keyframe marker
+            # MPEG-4 VOP start code: 00 00 01 B6; next byte (pos+3) top 2 bits == 00 -> I-VOP
             alt_vop = b"\x00\x01\xb6"
             hits = [m.start() for m in re.finditer(re.escape(alt_vop), blob)]
+            glitched = 0
             if len(hits) > 3:
-                skip_first = max(2, int(len(hits) * 0.12))
+                skip_first = max(1, int(len(hits) * 0.08))
                 for pos in hits[skip_first:]:
-                    if pos + 5 < len(blob):
-                        vop_type = (blob[pos + 4] >> 6) & 0x03
-                        # Type 0 == I-VOP -> flip prediction type + slight motion byte perturbation
-                        if vop_type == 0 or (amt > 0.55 and pos % 3 == 0):
-                            blob[pos + 4] = (blob[pos + 4] & 0x3F) | 0x40  # coerce to P-VOP so previous macroblocks bleed
+                    if pos + 3 < len(blob):
+                        vop_type = (blob[pos + 3] >> 6) & 0x03
+                        if vop_type == 0 or (amt > 0.65 and pos % 5 == 0):
+                            blob[pos + 3] = (blob[pos + 3] & 0x3F) | 0x40  # coerce I-VOP -> P-VOP
+                            glitched += 1
             mosh_avi.write_bytes(bytes(blob))
-            r2 = subprocess.run([
-                ffmpeg_bin, "-v", "error", "-y", "-err_detect", "ignore_err",
-                "-i", str(mosh_avi), "-i", str(src),
-                "-map", "0:v:0", "-map", "1:a?", "-shortest",
-                "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-b:a", "192k", str(out),
-            ], capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+            try:
+                r2 = subprocess.run([
+                    ffmpeg_bin, "-v", "error", "-y", "-err_detect", "ignore_err",
+                    "-i", str(mosh_avi), "-i", str(src),
+                    "-map", "0:v:0", "-map", "1:a?", "-shortest",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "192k", str(out),
+                ], capture_output=True, text=True, timeout=90, creationflags=NO_WINDOW)
+            except subprocess.TimeoutExpired:
+                return {"ok": False, "error": "datamosh_encode_timeout"}
             if r2.returncode == 0 and out.is_file():
-                return {"ok": True, "path": str(out), "mode": mode, "frames_glitched": len(hits)}
+                return {"ok": True, "path": str(out), "mode": mode, "frames_glitched": glitched or len(hits)}
 
         # Fallback or explicit temporal bloom / pixel repeat
         decay = round(min(0.97, 0.80 + amt * 0.17), 3)
+        used_mode = mode if mode != "i_frame_drop" else "pixel_repeat_fallback"
         vf = (
             f"lagfun=decay={decay},rgbashift=rh=9:bh=-9:edge=smear,eq=contrast=1.18:saturation=1.25"
             if mode == "echo_bloom"
             else f"tmix=frames={max(3, min(10, int(round(3 + amt * 6))))},rgbashift=rh=14:bh=-14:edge=smear,eq=contrast=1.2"
         )
-        r3 = subprocess.run([
-            ffmpeg_bin, "-v", "error", "-y", "-i", str(src),
-            "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
-            "-c:a", "copy", str(out),
-        ], capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+        try:
+            r3 = subprocess.run([
+                ffmpeg_bin, "-v", "error", "-y", "-i", str(src),
+                "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "192k", str(out),
+            ], capture_output=True, text=True, timeout=90, creationflags=NO_WINDOW)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "datamosh_timeout"}
         if r3.returncode != 0 or not out.is_file():
             return {"ok": False, "error": f"datamosh_failed:{r3.stderr[-180:]}"}
-    return {"ok": True, "path": str(out), "mode": mode}
+    return {"ok": True, "path": str(out), "mode": used_mode}
 
 
 # ---------------------------------------------------------------------------
@@ -364,8 +403,10 @@ def generate_data_graphic(ffmpeg_bin: str, kind: str = "bar", data: dict[str, An
     d = dict(data or {})
     out = Path(out_path) if out_path else (studio.home_dir() / "Grafikler" / f"kami_{kind}_{uuid.uuid4().hex[:6]}.webm")
     out.parent.mkdir(parents=True, exist_ok=True)
-    fps = max(12, min(30, int(fps)))
-    dur = max(1.0, min(30.0, float(dur)))
+    w = max(320, min(3840, int(w or 1280)))
+    h = max(240, min(2160, int(h or 720)))
+    fps = max(12, min(30, int(fps or 24)))
+    dur = max(1.0, min(30.0, float(dur or 4.0)))
     n_frames = max(2, int(round(dur * fps)))
 
     font_title = _find_font(max(24, int(h * 0.055)), bold=True)
@@ -379,7 +420,7 @@ def generate_data_graphic(ffmpeg_bin: str, kind: str = "bar", data: dict[str, An
         "parliament": "Meclis Dağılımı",
         "multistage_timer": "Geri Sayım",
     }.get(kind, "Grafik"))
-    bg_alpha = int(d.get("bg_alpha", 190))
+    bg_alpha = max(0, min(255, int(d.get("bg_alpha", 190))))
 
     with tempfile.TemporaryDirectory(prefix="kchart_") as td:
         for fi in range(n_frames):
@@ -416,7 +457,7 @@ def generate_data_graphic(ffmpeg_bin: str, kind: str = "bar", data: dict[str, An
                     val = float(it.get("value", 0))
                     bh = int((cy1 - cy0) * (val / vmax) * prog)
                     by0 = cy1 - bh
-                    col = str(it.get("color") or "#7C3AED")
+                    col = _safe_color(it.get("color"), "#7C3AED")
                     dr.rounded_rectangle([bx0, by0, bx0 + bar_w, cy1], radius=10, fill=col)
                     dr.text((bx0 + bar_w // 2, cy1 + 10), str(it.get("label", "")), font=font_sm, fill=(220, 220, 235, 240), anchor="mt")
                     dr.text((bx0 + bar_w // 2, max(cy0, by0 - 8)), f"{int(round(val * prog))}", font=font_lbl, fill=(255, 255, 255, 255), anchor="mb")
@@ -451,39 +492,42 @@ def generate_data_graphic(ffmpeg_bin: str, kind: str = "bar", data: dict[str, An
                     {"label": "C Grubu", "seats": 65, "color": "#F59E0B"},
                     {"label": "Diğer", "seats": 30, "color": "#EC4899"},
                 ]
-                total_seats = max(1, sum(int(p.get("seats", 0)) for p in parties))
+                total_seats = sum(max(0, int(p.get("seats", 0))) for p in parties)
                 seat_colors: list[str] = []
                 for pt in parties:
-                    seat_colors.extend([str(pt.get("color") or "#7C3AED")] * max(0, int(pt.get("seats", 0))))
-                # Arrange in 5 concentric half-arcs
-                rows = 5
-                pcx, pcy = w // 2, h - pad - 110
-                r_min = min(w, h) * 0.22
-                r_step = (min(w, h) * 0.34) / rows
-                dots: list[tuple[float, float, str]] = []
-                row_counts = [max(4, int(round(total_seats * (0.12 + 0.04 * ri)))) for ri in range(rows)]
-                diff_s = total_seats - sum(row_counts)
-                row_counts[-1] = max(4, row_counts[-1] + diff_s)
-                c_idx = 0
-                for ri, cnt in enumerate(row_counts):
-                    rad = r_min + ri * r_step
-                    for si in range(cnt):
-                        ang = math.pi - (si / max(1, cnt - 1)) * math.pi
-                        sx = pcx + math.cos(ang) * rad
-                        sy = pcy - math.sin(ang) * rad
-                        col = seat_colors[min(c_idx, len(seat_colors) - 1)]
-                        dots.append((sx, sy, col))
-                        c_idx += 1
-                dots.sort(key=lambda z: math.atan2(pcy - z[1], z[0] - pcx), reverse=True)
-                draw_n = int(round(len(dots) * prog))
-                dot_r = max(4, int(min(w, h) * 0.011))
-                for sx, sy, col in dots[:draw_n]:
-                    dr.ellipse([sx - dot_r, sy - dot_r, sx + dot_r, sy + dot_r], fill=col)
+                    seat_colors.extend([_safe_color(pt.get("color"), "#7C3AED")] * max(0, int(pt.get("seats", 0))))
+                if seat_colors:
+                    rows = min(5, max(1, total_seats))
+                    pcx, pcy = w // 2, h - pad - 110
+                    r_min = min(w, h) * 0.22
+                    r_step = (min(w, h) * 0.34) / rows
+                    dots: list[tuple[float, float, str]] = []
+                    row_counts = [max(1, int(round(total_seats * (0.12 + 0.04 * ri)))) for ri in range(rows)]
+                    diff_s = total_seats - sum(row_counts)
+                    row_counts[-1] = max(0, row_counts[-1] + diff_s)
+                    c_idx = 0
+                    for ri, cnt in enumerate(row_counts):
+                        rad = r_min + ri * r_step
+                        for si in range(cnt):
+                            if c_idx >= len(seat_colors):
+                                break
+                            ang = math.pi - (si / max(1, cnt - 1)) * math.pi if cnt > 1 else math.pi / 2
+                            sx = pcx + math.cos(ang) * rad
+                            sy = pcy - math.sin(ang) * rad
+                            dots.append((sx, sy, seat_colors[c_idx]))
+                            c_idx += 1
+                    dots.sort(key=lambda z: math.atan2(pcy - z[1], z[0] - pcx), reverse=True)
+                    draw_n = int(round(len(dots) * prog))
+                    dot_r = max(4, int(min(w, h) * 0.011))
+                    for sx, sy, col in dots[:draw_n]:
+                        dr.ellipse([sx - dot_r, sy - dot_r, sx + dot_r, sy + dot_r], fill=col)
+                else:
+                    pcx, pcy = w // 2, h - pad - 110
                 dr.text((pcx, pcy - 20), f"{total_seats}", font=font_big, fill=(255, 255, 255, 255), anchor="mb")
                 # Legend
                 lx = cx0
                 for pt in parties:
-                    dr.rectangle([lx, h - pad - 42, lx + 16, h - pad - 26], fill=str(pt.get("color") or "#7C3AED"))
+                    dr.rectangle([lx, h - pad - 42, lx + 16, h - pad - 26], fill=_safe_color(pt.get("color"), "#7C3AED"))
                     txt = f"{pt.get('label', '')} ({pt.get('seats', 0)})"
                     dr.text((lx + 24, h - pad - 34), txt, font=font_sm, fill=(240, 240, 250, 245), anchor="lm")
                     lx += max(150, len(txt) * 10 + 42)
@@ -492,8 +536,11 @@ def generate_data_graphic(ffmpeg_bin: str, kind: str = "bar", data: dict[str, An
                 start_sec = float(d.get("seconds", dur))
                 direction_up = bool(d.get("count_up", False))
                 cur_val = min(start_sec, t_sec) if direction_up else max(0.0, start_sec - t_sec)
-                frac = (cur_val / max(0.1, start_sec)) if direction_up else (cur_val / max(0.1, start_sec))
-                ring_col = (46, 230, 166, 255) if frac > 0.5 else ((245, 158, 11, 255) if frac > 0.2 else (239, 68, 68, 255))
+                frac = min(1.0, max(0.0, cur_val / max(0.1, start_sec)))
+                if direction_up:
+                    ring_col = (56, 189, 248, 255) if frac < 0.5 else ((139, 92, 246, 255) if frac < 0.85 else (46, 230, 166, 255))
+                else:
+                    ring_col = (46, 230, 166, 255) if frac > 0.5 else ((245, 158, 11, 255) if frac > 0.2 else (239, 68, 68, 255))
                 rcx, rcy = w // 2, h // 2 + 16
                 rr = int(min(w, h) * 0.26)
                 dr.arc([rcx - rr, rcy - rr, rcx + rr, rcy + rr], start=0, end=360, fill=(255, 255, 255, 35), width=16)
@@ -505,12 +552,16 @@ def generate_data_graphic(ffmpeg_bin: str, kind: str = "bar", data: dict[str, An
 
             img.save(Path(td) / f"f_{fi:05d}.png", format="PNG")
 
-        enc = subprocess.run([
-            ffmpeg_bin, "-v", "error", "-y",
-            "-framerate", str(fps), "-i", str(Path(td) / "f_%05d.png"),
-            "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "1800k", "-auto-alt-ref", "0",
-            str(out),
-        ], capture_output=True, text=True, timeout=90, creationflags=NO_WINDOW)
+        try:
+            enc = subprocess.run([
+                ffmpeg_bin, "-v", "error", "-y",
+                "-framerate", str(fps), "-i", str(Path(td) / "f_%05d.png"),
+                "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "1800k",
+                "-deadline", "realtime", "-cpu-used", "6", "-row-mt", "1", "-auto-alt-ref", "0",
+                str(out),
+            ], capture_output=True, text=True, timeout=90, creationflags=NO_WINDOW)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "vp9_alpha_timeout"}
         if enc.returncode != 0 or not out.is_file():
             return {"ok": False, "error": f"vp9_alpha_failed:{enc.stderr[-220:]}"}
 
@@ -615,9 +666,9 @@ def apply_power_loop(project: dict[str, Any], clip_id: str, mode: str = "pingpon
     base_kf = list(cl.get("zoom") or [])
     if len(base_kf) < 2:
         base_kf = [
-            {"t": 0.0, "s": 1.0, "x": 0.0, "y": 0.0},
-            {"t": round(period * 0.5, 3), "s": 1.12, "x": 0.0, "y": 0.0},
-            {"t": round(period, 3), "s": 1.0, "x": 0.0, "y": 0.0},
+            {"t": 0.0, "z": 1.0, "cx": 0.5, "cy": 0.5},
+            {"t": round(period * 0.5, 3), "z": 1.12, "cx": 0.5, "cy": 0.5},
+            {"t": round(period, 3), "z": 1.0, "cx": 0.5, "cy": 0.5},
         ]
     # Normalize base cycle over [0, cycle_len]
     t0 = float(base_kf[0].get("t", 0.0))
@@ -683,6 +734,12 @@ def _presets_file() -> Path:
     return d / "presets.json"
 
 
+def _write_presets_atomic(f: Path, items: list[dict[str, Any]]) -> None:
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), "utf-8")
+    os.replace(tmp, f)
+
+
 def list_user_presets(pack: str = "") -> dict[str, Any]:
     """List saved reusable user presets across AEJuice My Pack / Mister Horse library."""
     f = _presets_file()
@@ -691,6 +748,10 @@ def list_user_presets(pack: str = "") -> dict[str, Any]:
         try:
             items = json.loads(f.read_text("utf-8"))
         except Exception:
+            try:
+                os.replace(f, f.with_suffix(".corrupt.bak"))
+            except Exception:
+                pass
             items = []
     if pack:
         items = [x for x in items if str(x.get("pack") or "") == pack]
@@ -714,7 +775,7 @@ def save_user_preset(name: str, payload: dict[str, Any], pack: str = "Benim Pake
     }
     cur = [x for x in cur if x.get("id") != pid]
     cur.insert(0, entry)
-    f.write_text(json.dumps(cur, ensure_ascii=False, indent=2), "utf-8")
+    _write_presets_atomic(f, cur)
     return {"ok": True, "preset": entry, "total": len(cur)}
 
 
@@ -722,7 +783,7 @@ def delete_user_preset(preset_id: str) -> dict[str, Any]:
     f = _presets_file()
     cur = list_user_presets().get("presets") or []
     nxt = [x for x in cur if x.get("id") != preset_id]
-    f.write_text(json.dumps(nxt, ensure_ascii=False, indent=2), "utf-8")
+    _write_presets_atomic(f, nxt)
     return {"ok": True, "removed": len(cur) - len(nxt), "total": len(nxt)}
 
 
@@ -754,8 +815,8 @@ def build_pro_audio_af(preset: str = "denoise_voice", pitch_semitones: float = 0
     if abs(float(pitch_semitones or 0.0)) > 0.05:
         st = max(-12.0, min(12.0, float(pitch_semitones)))
         ratio = 2.0 ** (st / 12.0)
-        # asetrate shifts pitch+tempo, aresample restores 48k, atempo restores exact original duration
-        parts.append(f"asetrate=48000*{ratio:.6f},aresample=48000,atempo={1.0 / ratio:.6f}")
+        # aresample=48000 first ensures non-48kHz sources (e.g. 44.1kHz) pitch/tempo shift accurately
+        parts.append(f"aresample=48000,asetrate=48000*{ratio:.6f},aresample=48000,atempo={1.0 / ratio:.6f}")
     if target_lufs is not None:
         lufs = max(-32.0, min(-5.0, float(target_lufs)))
         parts.append(f"loudnorm=I={lufs:.1f}:TP=-1.5:LRA=8")
@@ -772,10 +833,13 @@ def process_audio_clip_pro(ffmpeg_bin: str, src_path: str, out_path: str = "",
     out = Path(out_path) if out_path else src.with_name(f"{src.stem}_{preset or 'pro'}.wav")
     out.parent.mkdir(parents=True, exist_ok=True)
     af = build_pro_audio_af(preset=preset, pitch_semitones=pitch_semitones, target_lufs=target_lufs)
-    r = subprocess.run([
-        ffmpeg_bin, "-v", "error", "-y", "-i", str(src), "-vn",
-        "-af", af, "-ar", "48000", "-ac", "2", str(out),
-    ], capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+    try:
+        r = subprocess.run([
+            ffmpeg_bin, "-v", "error", "-y", "-i", str(src), "-vn",
+            "-af", af, "-ar", "48000", "-ac", "2", str(out),
+        ], capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "audio_pro_timeout"}
     if r.returncode != 0 or not out.is_file():
         return {"ok": False, "error": f"audio_pro_failed:{r.stderr[-200:]}"}
     return {"ok": True, "path": str(out), "af": af, "preset": preset}

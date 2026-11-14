@@ -692,7 +692,10 @@ pb.addEventListener("click", async e => {
     const s = await api.studio_sfx(sfxId);
     if (s?.ok) {
       const aid = addAsset(s), sfxDur = Math.min(1.5, s.dur || .7);
-      placeAt({ asset: aid, start: Math.max(0, +(cs[0].start - sfxDur * 0.45).toFixed(3)), dur: sfxDur, vol: .8 }, "audio", Math.max(0, cs[0].start - sfxDur * 0.45));
+      for (const tc of cs) {
+        const st = Math.max(0, +(tc.start - sfxDur * 0.45).toFixed(3));
+        placeAt({ asset: aid, start: st, dur: sfxDur, vol: .8 }, "audio", st);
+      }
     }
   }
   changed();
@@ -986,8 +989,10 @@ async function aiAction(kind, c) {
       <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Oluştur</button></div>`,
       { collect: () => ({ dir: $("#psDir").value, lo: +$("#psLo").value, hi: +$("#psHi").value }) });
     if (!cfg) return;
+    let r;
     busy("Pikseller sıralanıyor (NumPy + FFmpeg)…");
-    const r = await job("studio_pixel_sort", [a0.path, cfg.lo, cfg.hi, cfg.dir, false, 180]); busy(null);
+    try { r = await job("studio_pixel_sort", [a0.path, cfg.lo, cfg.hi, cfg.dir, false, 180]); }
+    finally { busy(null); }
     if (!r?.ok) { toast(r?.error || "Oluşturulamadı", true); return; }
     snap(); const aid = addAsset(r); c.asset = aid; c.in = 0; changed(); toast("Pixel Sorting klibi hazır");
     return;
@@ -1001,8 +1006,10 @@ async function aiAction(kind, c) {
       <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Oluştur</button></div>`,
       { collect: () => ({ mode: $("#dmMode").value, intensity: +$("#dmInt").value }) });
     if (!cfg) return;
+    let r;
     busy("Datamosh işleniyor…");
-    const r = await job("studio_datamosh", [a0.path, cfg.mode, cfg.intensity]); busy(null);
+    try { r = await job("studio_datamosh", [a0.path, cfg.mode, cfg.intensity]); }
+    finally { busy(null); }
     if (!r?.ok) { toast(r?.error || "Oluşturulamadı", true); return; }
     snap(); const aid = addAsset(r); c.asset = aid; c.in = 0; changed(); toast(`Datamosh uygulandı (${cfg.mode})`);
     return;
@@ -1016,8 +1023,10 @@ async function aiAction(kind, c) {
       <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Algıla & Uygula</button></div>`,
       { collect: () => ({ mode: $("#bsMode").value, sens: +$("#bsSens").value }) });
     if (!cfg) return;
+    let det;
     busy("Beatshift spektral vuruş analizi…");
-    const det = await job("studio_beatshift", [a0.path, 0.24, cfg.sens]); busy(null);
+    try { det = await job("studio_beatshift", [a0.path, 0.24, cfg.sens]); }
+    finally { busy(null); }
     if (!det?.ok) { toast(det?.error || "Vuruş bulunamadı", true); return; }
     const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
     const r = await api.studio_beat_sync(p, det.beats || [], c.id, cfg.mode, 1, 1.14);
@@ -1052,8 +1061,10 @@ async function aiAction(kind, c) {
     if (!cfg) return;
     let payload = {};
     try { payload = JSON.parse(cfg.raw); } catch { toast("Geçersiz JSON", true); return; }
+    let r;
     busy("Şeffaf animasyonlu grafik render ediliyor…");
-    const r = await job("studio_data_graphic", [cfg.kind, payload, ST.p.w || 1280, ST.p.h || 720, cfg.dur]); busy(null);
+    try { r = await job("studio_data_graphic", [cfg.kind, payload, ST.p.w || 1280, ST.p.h || 720, cfg.dur]); }
+    finally { busy(null); }
     if (!r?.ok) { toast(r?.error || "Üretilemedi", true); return; }
     snap(); const aid = addAsset(r); placeAt({ asset: aid, dur: r.dur || cfg.dur }, trackFor("video"), ST.t); changed(); toast("Şeffaf grafik katmanı eklendi");
     return;
@@ -1137,8 +1148,10 @@ async function aiAction(kind, c) {
       <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">İşle & Ekle</button></div>`,
       { collect: () => ({ preset: $("#spPre").value, pitch: +$("#spPt").value }) });
     if (!cfg) return;
+    let r;
     busy("Ses işleniyor (Soundly DSP)…");
-    const r = await job("studio_audio_pro_process", [a0.path, cfg.preset, cfg.pitch, null]); busy(null);
+    try { r = await job("studio_audio_pro_process", [a0.path, cfg.preset, cfg.pitch, null]); }
+    finally { busy(null); }
     if (!r?.ok) { toast(r?.error || "İşlenemedi", true); return; }
     snap(); const aid = addAsset(r); placeAt({ asset: aid, start: c.start, dur: r.dur || c.dur }, trackFor("audio"), c.start); changed(); toast("Soundly Pro ses eklendi");
     return;

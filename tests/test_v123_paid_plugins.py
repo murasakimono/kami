@@ -170,3 +170,70 @@ def test_mcp_wave8_tools_registered():
     }
     missing = expected - names
     assert not missing, f"Missing Studio MCP tools: {missing}"
+
+
+def test_v1231_regressions_zoom_pitch_fps_pads_sfx(tmp_path: Path, sample_media):
+    import shutil
+    import subprocess
+    import wave
+    import numpy as np
+    from app.core import studio, studio_pro_plugins as pl
+
+    ff = shutil.which("ffmpeg")
+    assert ff
+    # 1. Beat zoom & Power Loop write 'z' (not 's') and shift by clip 'in'/'speed', exporting non-1.0 zoompan
+    pr = studio.new_project("zoom_reg", 320, 180, 24)
+    pr["assets"]["v1"] = {"path": str(sample_media["vid"]), "kind": "video", "dur": 4.0, "w": 320, "h": 180, "audio": True, "name": "v"}
+    c = studio.add_clip(pr, asset="v1", track="v1", start=1.0, dur=2.0, **{"in": 0.5})
+    pl.apply_beat_sync(pr, [1.0, 1.5], clip_id=c["id"], mode="zoom", zoom_amt=1.2)
+    assert any(k.get("z", 1.0) > 1.15 for k in c["zoom"])
+    args, _ = studio.build_export(pr, str(tmp_path / "z.mp4"), tmp_path, "libx264", {"quality": "medium"})
+    fg = args[args.index("-filter_complex") + 1]
+    assert "1.2000" in fg and "zoompan=" in fg
+
+    # 2. Perfect Pitch on 44.1kHz source preserves exact frequency & duration
+    s44 = tmp_path / "s44.wav"
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1:sample_rate=44100", str(s44)], check=True)
+    pr_p = pl.process_audio_clip_pro(ff, str(s44), str(tmp_path / "p44.wav"), preset="", pitch_semitones=2.0)
+    assert pr_p["ok"]
+    with wave.open(pr_p["path"]) as w:
+        sr, n = w.getframerate(), w.getnframes()
+        x = np.frombuffer(w.readframes(n), dtype=np.int16)[0::2].astype(float)
+    freq = np.fft.rfftfreq(len(x), 1.0 / sr)[np.argmax(np.abs(np.fft.rfft(x)))]
+    assert abs(freq - 493.88) < 15.0 and abs((n / sr) - 1.0) < 0.05
+
+    # 3. Pixel Sort on 24fps 2.5s video keeps duration ~2.5s
+    v24 = tmp_path / "v24.mp4"
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=24:d=2.5",
+                    "-f", "lavfi", "-i", "sine=frequency=330:duration=2.5", "-shortest",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(v24)], check=True)
+    ps = pl.pixel_sort_video(ff, str(v24), str(tmp_path / "ps24.mp4"), max_frames=120)
+    fp = shutil.which("ffprobe")
+    ps_dur = float(subprocess.check_output([fp, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "csv=p=0", ps["path"]], text=True).strip())
+    assert ps["ok"] and ps_dur > 2.3
+
+    # 4. Parliament 0 seats & invalid color do not crash
+    par0 = pl.generate_data_graphic(ff, "parliament", {"parties": [{"label": "X", "seats": 0, "color": "kirmizi"}]},
+                                    str(tmp_path / "p0.webm"), w=320, h=240, dur=1.0, fps=12)
+    assert par0["ok"]
+
+    # 5. Multiple clips with Pack 3 effects + grade.prism render cleanly without duplicate pad errors
+    pr_m = studio.new_project("pads", 320, 180, 24)
+    pr_m["assets"]["v1"] = {"path": str(v24), "kind": "video", "dur": 2.5, "w": 320, "h": 180, "audio": True, "name": "v24"}
+    studio.add_clip(pr_m, asset="v1", track="v1", start=0.0, dur=0.5, fx=["broken-prism"], grade={"prism": 0.4})
+    studio.add_clip(pr_m, asset="v1", track="v1", start=0.5, dur=0.5, fx=["broken-prism", "white-stroke-edge"])
+    args_m, _ = studio.build_export(pr_m, str(tmp_path / "pads.mp4"), tmp_path, "libx264", {"quality": "medium"})
+    fg_m = args_m[args_m.index("-filter_complex") + 1]
+    assert "rgbashift=" in fg_m
+    rm = subprocess.run([ff, "-y", "-v", "error", *args_m], cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert rm.returncode == 0, rm.stderr[-300:]
+
+    # 6. New Pack 3 template SFX keys exist and synthesize cleanly
+    orig_home = studio.home_dir
+    try:
+        studio.home_dir = lambda: tmp_path
+        sfx_map = studio.ensure_sfx(ff)
+        for k in ("kalem-cizim", "haber-flas", "gerilim-vurdu"):
+            assert k in sfx_map and Path(sfx_map[k]).stat().st_size > 1000
+    finally:
+        studio.home_dir = orig_home

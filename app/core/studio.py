@@ -927,6 +927,9 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         if float(gr.get("halation") or 0) > 0.01:
             h_op = min(0.85, float(gr["halation"]) * 0.72)
             ch.append(f"split[ha{k}][hb{k}];[hb{k}]eq=brightness=0.06:contrast=1.45,gblur=sigma=12,colorbalance=rs=0.45:gs=0.10:bs=-0.22[hc{k}];[ha{k}][hc{k}]blend=all_mode=screen:all_opacity={h_op:.2f},format=rgba")
+        if float(gr.get("prism") or 0) > 0.01:
+            pr_px = max(1, min(18, int(round(float(gr["prism"]) * 12))))
+            ch.append(f"rgbashift=rh={pr_px}:bh={-pr_px}:edge=smear")
         shutter_ang = float(c.get("shutterAngle") or 0)
         if shutter_ang >= 45 and a["kind"] == "video" and not a.get("gif"):
             n_tm = 2 if shutter_ang < 135 else 3 if shutter_ang < 270 else 4
@@ -1236,8 +1239,6 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
                     graph.append("".join(grp) + f"amix=inputs={len(grp)}:normalize=0:dropout_transition=0{lbl}")
                     nxt.append(lbl)
             cur = nxt
-        if len(cur) == 1 and step > 0:
-            return f"{cur[0]}{tail_expr}"
         return "".join(cur) + f"amix=inputs={len(cur)}:normalize=0:dropout_transition=0,{tail_expr}"
 
     if audio_parts:
@@ -1376,7 +1377,7 @@ def grade_active(g: dict) -> bool:
         return False
     if g.get("lut") and float(g.get("lutMix", 1)) > 0:
         return True
-    for k in ("exp", "con", "temp", "tint", "vignette", "grain", "halation"):
+    for k in ("exp", "con", "temp", "tint", "vignette", "grain", "halation", "prism"):
         if abs(float(g.get(k, 0) or 0)) > 1e-4:
             return True
     if abs(float(g.get("sat", 1) if g.get("sat") is not None else 1) - 1) > 1e-4:
@@ -1505,7 +1506,7 @@ def _fx_chain(ff: str, W: int, H: int, start: float, tag: str) -> str:
     s = re.sub(r"\bW\b", str(W), ff)
     s = re.sub(r"\bH\b", str(H), s)
     s = re.sub(r"\bS\b", f"{start:.4f}", s)
-    s = re.sub(r"\[([a-z]\d)\]", lambda m: f"[{tag}{m.group(1)}]", s)
+    s = re.sub(r"\[([a-z]{1,2}\d)\]", lambda m: f"[{tag}{m.group(1)}]", s)
     return s
 
 
@@ -2294,6 +2295,9 @@ SFX = {
     "whip-crack": ("anoisesrc=d=0.28:c=white:a=0.95,highpass=f=900,lowpass=f=5500,volume='exp(-t*10)*2.2':eval=frame,asoftclip=type=tanh", "Kamçı / Hızlı Geçiş"),
     "cash-register": ("aevalsrc='0.5*(random(0)-0.5)*exp(-t*45)*lt(t,0.09)+0.65*sin(2*PI*2637*(t-0.1))*exp(-(t-0.1)*4)*gte(t,0.1)+0.45*sin(2*PI*3951*(t-0.1))*exp(-(t-0.1)*5)*gte(t,0.1)':d=0.9", "Kasa Sesi (Cha-Ching)"),
     "record-scratch": ("aevalsrc='0.65*sin(2*PI*(420+260*sin(2*PI*11*t))*t)*exp(-t*5)+0.35*(random(0)-0.5)*exp(-t*6)':d=0.45,bandpass=f=1500:w=2200,volume=22,alimiter=limit=0.92", "Plak Durma (Scratch)"),
+    "kalem-cizim": ("anoisesrc=d=0.65:c=white:a=0.45,bandpass=f=2400:w=1800,volume='2.0*sin(PI*t/0.65)^2':eval=frame,alimiter=limit=0.9", "Kalem Çizim (Doodle)"),
+    "haber-flas": ("aevalsrc='0.65*(sin(2*PI*880*t)+0.5*sin(2*PI*1320*t))*lt(mod(t,0.22),0.1)*exp(-t*1.2)':d=0.9,highpass=f=350", "Haber Flaş Sinyali"),
+    "gerilim-vurdu": ("aevalsrc='0.95*sin(2*PI*(58-16*t)*t)*exp(-t*1.4)+0.35*(random(0)-0.5)*exp(-t*8)':d=1.6,lowpass=f=850,asoftclip=type=tanh", "Gerilim Darbe (Noir)"),
     **SFX_PRO,
     **SFX_TR_MEME,
     **SFX_PACK2,

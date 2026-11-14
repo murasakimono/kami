@@ -1354,20 +1354,31 @@ class StudioMixin:
     def studio_beatshift(self, media_path: str, min_gap_s: float = 0.24, sensitivity: float = 1.35) -> dict[str, Any]:
         from app.core.studio_pro_plugins import detect_audio_beats
         ff = self._media.ffmpeg() if self._media else "ffmpeg"
-        return detect_audio_beats(ff, str(media_path), min_gap_s=float(min_gap_s or 0.24), sensitivity=float(sensitivity or 1.35))
+        return detect_audio_beats(
+            ff, str(media_path),
+            min_gap_s=float(min_gap_s if min_gap_s is not None else 0.24),
+            sensitivity=float(sensitivity if sensitivity is not None else 1.35),
+        )
 
     def studio_beat_sync(self, project: dict[str, Any], beats: list[float], clip_id: str = "",
                          mode: str = "markers", step: int = 1, zoom_amt: float = 1.14) -> dict[str, Any]:
         from app.core.studio_pro_plugins import apply_beat_sync
-        return apply_beat_sync(project or {}, list(beats or []), clip_id=str(clip_id or ""), mode=str(mode or "markers"),
-                               step=int(step or 1), zoom_amt=float(zoom_amt or 1.14))
+        return apply_beat_sync(
+            project or {}, list(beats or []), clip_id=str(clip_id or ""), mode=str(mode or "markers"),
+            step=int(step if step is not None else 1), zoom_amt=float(zoom_amt if zoom_amt is not None else 1.14),
+        )
 
     def studio_pixel_sort(self, src_path: str, low_thr: float = 0.25, high_thr: float = 0.85,
                           direction: str = "vertical", reverse: bool = False, max_frames: int = 180) -> dict[str, Any]:
         from app.core.studio_pro_plugins import pixel_sort_video
         ff = self._media.ffmpeg() if self._media else "ffmpeg"
-        res = pixel_sort_video(ff, str(src_path), low_thr=float(low_thr), high_thr=float(high_thr),
-                               direction=str(direction or "vertical"), reverse=bool(reverse), max_frames=int(max_frames or 180))
+        res = pixel_sort_video(
+            ff, str(src_path),
+            low_thr=float(low_thr if low_thr is not None else 0.25),
+            high_thr=float(high_thr if high_thr is not None else 0.85),
+            direction=str(direction or "vertical"), reverse=bool(reverse),
+            max_frames=int(max_frames if max_frames is not None else 180),
+        )
         if res.get("ok") and self._st():
             return {**res, **self._st().info(res["path"])}
         return res
@@ -1375,7 +1386,7 @@ class StudioMixin:
     def studio_datamosh(self, src_path: str, mode: str = "i_frame_drop", intensity: float = 0.6) -> dict[str, Any]:
         from app.core.studio_pro_plugins import datamosh_video
         ff = self._media.ffmpeg() if self._media else "ffmpeg"
-        res = datamosh_video(ff, str(src_path), mode=str(mode or "i_frame_drop"), intensity=float(intensity or 0.6))
+        res = datamosh_video(ff, str(src_path), mode=str(mode or "i_frame_drop"), intensity=float(intensity if intensity is not None else 0.6))
         if res.get("ok") and self._st():
             return {**res, **self._st().info(res["path"])}
         return res
@@ -1384,7 +1395,11 @@ class StudioMixin:
                             w: int = 1280, h: int = 720, dur: float = 4.0) -> dict[str, Any]:
         from app.core.studio_pro_plugins import generate_data_graphic
         ff = self._media.ffmpeg() if self._media else "ffmpeg"
-        res = generate_data_graphic(ff, kind=str(kind or "bar"), data=data, w=int(w or 1280), h=int(h or 720), dur=float(dur or 4.0))
+        res = generate_data_graphic(
+            ff, kind=str(kind or "bar"), data=data,
+            w=int(w if w is not None else 1280), h=int(h if h is not None else 720),
+            dur=float(dur if dur is not None else 4.0),
+        )
         if res.get("ok") and self._st():
             info = self._st().info(res["path"])
             return {**res, **info, "alpha": True}
@@ -1393,23 +1408,32 @@ class StudioMixin:
     def studio_layout_clips(self, project: dict[str, Any], clip_ids: list[str], mode: str = "grid",
                             cols: int = 3, gap: float = 0.04) -> dict[str, Any]:
         from app.core.studio_pro_plugins import layout_clips
-        return layout_clips(project or {}, list(clip_ids or []), mode=str(mode or "grid"), cols=int(cols or 3), gap=float(gap or 0.04))
+        return layout_clips(
+            project or {}, list(clip_ids or []), mode=str(mode or "grid"),
+            cols=int(cols if cols is not None else 3), gap=float(gap if gap is not None else 0.04),
+        )
 
     def studio_duplicate_rename(self, project: dict[str, Any], clip_ids: list[str], count: int = 1,
                                 pattern: str = "{name} #{n}", time_offset: float = 0.25) -> dict[str, Any]:
         from app.core.studio_pro_plugins import duplicate_rename_clips
-        return duplicate_rename_clips(project or {}, list(clip_ids or []), count=int(count or 1),
-                                      pattern=str(pattern or "{name} #{n}"), time_offset=float(time_offset or 0.25))
+        return duplicate_rename_clips(
+            project or {}, list(clip_ids or []), count=int(count if count is not None else 1),
+            pattern=str(pattern or "{name} #{n}"), time_offset=float(time_offset if time_offset is not None else 0.25),
+        )
 
     def studio_power_loop(self, project: dict[str, Any], clip_id: str, mode: str = "pingpong", period_s: float = 1.0) -> dict[str, Any]:
         from app.core.studio_pro_plugins import apply_power_loop
-        return apply_power_loop(project or {}, str(clip_id), mode=str(mode or "pingpong"), period_s=float(period_s or 1.0))
+        return apply_power_loop(project or {}, str(clip_id), mode=str(mode or "pingpong"), period_s=float(period_s if period_s is not None else 1.0))
 
     def studio_adaptive_timing(self, project: dict[str, Any], clip_id: str, in_dur: float = 0.45,
                                out_dur: float = 0.45, new_dur: float | None = None) -> dict[str, Any]:
         from app.core.studio_pro_plugins import set_adaptive_timing
-        return set_adaptive_timing(project or {}, str(clip_id), in_dur=float(in_dur or 0.45),
-                                   out_dur=float(out_dur or 0.45), new_dur=new_dur)
+        return set_adaptive_timing(
+            project or {}, str(clip_id),
+            in_dur=float(in_dur if in_dur is not None else 0.45),
+            out_dur=float(out_dur if out_dur is not None else 0.45),
+            new_dur=new_dur,
+        )
 
     def studio_user_presets_list(self, pack: str = "") -> dict[str, Any]:
         from app.core.studio_pro_plugins import list_user_presets

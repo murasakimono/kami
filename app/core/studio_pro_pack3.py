@@ -65,14 +65,14 @@ FX_PACK3 = {
     "broken-prism": {
         "name": "Kırık Prizma Dağılımı",
         "pack": "Optik",
-        "ff": "split[bp0][bp1];[bp1]crop=iw-24:ih-24:12:12,scale=W:H,rgbashift=rh=16:bh=-16:edge=smear[bp2];[bp0][bp2]blend=all_mode=screen:all_opacity=0.45,eq=saturation=1.3",
+        "ff": "split[p0][p1];[p1]crop=iw-24:ih-24:12:12,scale=W:H,rgbashift=rh=16:bh=-16:edge=smear[p2];[p0][p2]blend=all_mode=screen:all_opacity=0.45,eq=saturation=1.3",
         "css": "saturate(1.3) contrast(1.14)",
         "ov": ["rgb-strong", "prism"],
     },
     "leak-anamorphic-gold": {
         "name": "Altın Anamorfik Işık",
         "pack": "Optik",
-        "ff": "split[la0][la1];[la1]avgblur=sizeX=42:sizeY=2," + _CB(rs=0.36, gs=0.22, bs=-0.2, rh=0.32, gh=0.18) + "[la2];[la0][la2]blend=all_mode=screen:all_opacity=0.48",
+        "ff": "split[l0][l1];[l1]avgblur=sizeX=42:sizeY=2," + _CB(rs=0.36, gs=0.22, bs=-0.2, rh=0.32, gh=0.18) + "[l2];[l0][l2]blend=all_mode=screen:all_opacity=0.48",
         "css": "contrast(1.08) saturate(1.2) sepia(0.14)",
         "ov": ["bloom", "warm-tint"],
     },
@@ -107,14 +107,14 @@ FX_PACK3 = {
     "white-stroke-edge": {
         "name": "Parlak Beyaz Kontur (Outlines)",
         "pack": "Stilize",
-        "ff": "split[ws0][ws1];[ws1]edgedetect=low=0.12:high=0.35:mode=wires,dilation[ws2];[ws0][ws2]blend=all_mode=screen:all_opacity=0.8",
+        "ff": "split[w0][w1];[w1]edgedetect=low=0.12:high=0.35:mode=wires,dilation[w2];[w0][w2]blend=all_mode=screen:all_opacity=0.8",
         "css": "contrast(1.25)",
         "ov": ["bloom"],
     },
     "path-blur-fast": {
         "name": "Hız Yönü Bulanıklığı (Path Blur)",
         "pack": "VFX",
-        "ff": "split[pb0][pb1];[pb1]avgblur=sizeX=28:sizeY=2[pb2];[pb0][pb2]blend=all_mode=lighten:all_opacity=0.52,eq=contrast=1.1",
+        "ff": "split[b0][b1];[b1]avgblur=sizeX=28:sizeY=2[b2];[b0][b2]blend=all_mode=lighten:all_opacity=0.52,eq=contrast=1.1",
         "css": "contrast(1.1) saturate(1.15)",
         "ov": ["zoom"],
     },
@@ -201,8 +201,8 @@ AUDIO_FIX_PACK3 = {
     "place-car": "highpass=f=120,lowpass=f=4800,equalizer=f=220:t=q:w=1.5:g=4,aecho=0.85:0.6:18|32:0.25|0.15",
     "place-subway": "highpass=f=140,lowpass=f=6500,aecho=0.8:0.85:70|150|240:0.48|0.36|0.25",
     "place-stadium": "highpass=f=240,lowpass=f=5200,acompressor=threshold=-16dB:ratio=5,aecho=0.7:0.88:110|230:0.45|0.32",
-    "perfect-pitch-up2": "asetrate=48000*1.122462,aresample=48000,atempo=0.890899",
-    "perfect-pitch-down2": "asetrate=48000*0.890899,aresample=48000,atempo=1.122462",
+    "perfect-pitch-up2": "aresample=48000,asetrate=48000*1.122462,aresample=48000,atempo=0.890899",
+    "perfect-pitch-down2": "aresample=48000,asetrate=48000*0.890899,aresample=48000,atempo=1.122462",
 }
 
 AUDIO_FIX_NAMES_PACK3 = {

@@ -735,7 +735,7 @@ def t_generate_chart(kind: str, data: dict[str, Any] | None = None, dur: float =
     info = ST.info(res["path"])
     info["alpha"] = True
     aid = S.add_asset(pr, info)
-    tr = next((t["id"] for t in pr["tracks"] if t["kind"] == "overlay"), "v1")
+    tr = next((t["id"] for t in pr["tracks"] if t["kind"] == "video" and t["id"] != "v1"), "v1")
     c = {"id": S._nid(pr), "track": tr, "asset": aid, "start": float(start), "dur": float(res["dur"]), "in": 0.0, "speed": 1.0}
     pr["clips"].append(c)
     save(p, pr)
@@ -747,7 +747,7 @@ def t_generate_chart(kind: str, data: dict[str, Any] | None = None, dur: float =
 def t_layout_clips(ids: list[str], mode: str = "grid", cols: int = 3, gap: float = 0.04, path: str = "") -> Any:
     from app.core.studio_pro_plugins import layout_clips
     p, pr = load(path)
-    res = layout_clips(pr, ids, mode=mode, cols=int(cols or 3), gap=float(gap or 0.04))
+    res = layout_clips(pr, ids, mode=mode, cols=int(cols if cols is not None else 3), gap=float(gap if gap is not None else 0.04))
     if res.get("ok"):
         save(p, pr)
     return {k: v for k, v in res.items() if k != "project"}
@@ -758,7 +758,7 @@ def t_layout_clips(ids: list[str], mode: str = "grid", cols: int = 3, gap: float
 def t_duplicate_rename(ids: list[str], count: int = 1, pattern: str = "{name} #{n}", time_offset: float = 0.25, path: str = "") -> Any:
     from app.core.studio_pro_plugins import duplicate_rename_clips
     p, pr = load(path)
-    res = duplicate_rename_clips(pr, ids, count=int(count or 1), pattern=pattern, time_offset=float(time_offset or 0.25))
+    res = duplicate_rename_clips(pr, ids, count=int(count if count is not None else 1), pattern=pattern, time_offset=float(time_offset if time_offset is not None else 0.25))
     if res.get("ok"):
         save(p, pr)
     return {k: v for k, v in res.items() if k != "project"}
@@ -769,7 +769,7 @@ def t_duplicate_rename(ids: list[str], count: int = 1, pattern: str = "{name} #{
 def t_power_loop(id: str, mode: str = "pingpong", period_s: float = 1.0, path: str = "") -> Any:
     from app.core.studio_pro_plugins import apply_power_loop
     p, pr = load(path)
-    res = apply_power_loop(pr, id, mode=mode, period_s=float(period_s or 1.0))
+    res = apply_power_loop(pr, id, mode=mode, period_s=float(period_s if period_s is not None else 1.0))
     if res.get("ok"):
         save(p, pr)
     return {k: v for k, v in res.items() if k != "project"}
@@ -780,7 +780,7 @@ def t_power_loop(id: str, mode: str = "pingpong", period_s: float = 1.0, path: s
 def t_adaptive_timing(id: str, in_dur: float = 0.45, out_dur: float = 0.45, new_dur: float | None = None, path: str = "") -> Any:
     from app.core.studio_pro_plugins import set_adaptive_timing
     p, pr = load(path)
-    res = set_adaptive_timing(pr, id, in_dur=float(in_dur or 0.45), out_dur=float(out_dur or 0.45), new_dur=new_dur)
+    res = set_adaptive_timing(pr, id, in_dur=float(in_dur if in_dur is not None else 0.45), out_dur=float(out_dur if out_dur is not None else 0.45), new_dur=new_dur)
     if res.get("ok"):
         save(p, pr)
     return {k: v for k, v in res.items() if k != "project"}
@@ -789,7 +789,7 @@ def t_adaptive_timing(id: str, in_dur: float = 0.45, out_dur: float = 0.45, new_
 @tool("user_preset", "Mister Horse / AEJuice My Pack: klip önayarını kişisel pakete kaydet, listele, sil veya klibe uygula.",
       {"action": STR, "name": STR, "preset_id": STR, "clip_id": STR, "pack": STR, "color": STR, "path": PATH}, ["action"])
 def t_user_preset(action: str, name: str = "", preset_id: str = "", clip_id: str = "",
-                  pack: str = "Benim Paketim", color: str = "#7C3AED", path: str = "") -> Any:
+                  pack: str = "", color: str = "#7C3AED", path: str = "") -> Any:
     from app.core.studio_pro_plugins import apply_user_preset, delete_user_preset, list_user_presets, save_user_preset
     if action == "list":
         return list_user_presets(pack=pack if pack != "*" else "")
@@ -799,7 +799,7 @@ def t_user_preset(action: str, name: str = "", preset_id: str = "", clip_id: str
     if action == "save":
         cl = S.find_clip(pr, clip_id)
         payload = {k: cl[k] for k in ("fx", "grade", "anim", "style", "afx", "eq", "zoom", "trans", "adaptive") if k in cl}
-        return save_user_preset(name or f"Klip Önayar", payload, pack=pack, color=color)
+        return save_user_preset(name or "Klip Önayar", payload, pack=pack or "Benim Paketim", color=color)
     if action == "apply":
         res = apply_user_preset(pr, clip_id, preset_id)
         if res.get("ok"):
