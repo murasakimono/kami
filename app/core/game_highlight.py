@@ -191,3 +191,134 @@ def virtual_camera_status() -> dict[str, Any]:
         "gpu_matting_ready": has_rvm,
         "note": "Hazir" if has_vcam else "pyvirtualcam (OBS Virtual Camera) kurulu degil",
     }
+
+
+def _detect_audio_peaks(video_path: str, top_n: int = 8, min_gap_s: float = 1.5, win_s: float = 0.25) -> tuple[list[float], float]:
+    """FFmpeg ile video sesindeki en yuksek RMS tepe noktalarini (sn) ve toplam sureyi cikarir."""
+    import array
+    import math
+    import subprocess
+    from app.engines.ytdlp_engine import find_ffmpeg
+
+    ff = find_ffmpeg()
+    if not ff:
+        return [], 0.0
+    sr = 8000
+    step = max(1, int(sr * win_s))
+    nowin = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        r = subprocess.run(
+            [ff, "-v", "error", "-i", str(video_path), "-vn", "-ac", "1", "-ar", str(sr), "-f", "s16le", "pipe:1"],
+            capture_output=True,
+            timeout=30,
+            creationflags=nowin,
+        )
+    except Exception:
+        return [], 0.0
+
+    raw = r.stdout or b""
+    samples = array.array("h")
+    usable = len(raw) - (len(raw) % 2)
+    if usable <= 0:
+        return [], 0.0
+    samples.frombytes(raw[:usable])
+    total_dur = round(len(samples) / float(sr), 3)
+
+    windows: list[tuple[float, float]] = []
+    for i in range(0, len(samples), step):
+        seg = samples[i : i + step]
+        if not seg:
+            continue
+        rms = math.sqrt(sum(float(x) * float(x) for x in seg) / len(seg))
+        t_sec = round((i + len(seg) * 0.5) / float(sr), 2)
+        windows.append((rms, t_sec))
+
+    windows.sort(key=lambda pair: pair[0], reverse=True)
+    picked: list[float] = []
+    for rms, t_sec in windows:
+        if rms <= 0:
+            break
+        if all(abs(t_sec - p) >= min_gap_s for p in picked):
+            picked.append(t_sec)
+        if len(picked) >= top_n:
+            break
+    picked.sort()
+    return picked, total_dur
+
+
+def build_fragmovie_project(
+    clip_paths: list[str] | str,
+    out_kstudio: str = "",
+    title: str = "Oyun Fragmovie",
+    clip_pre_s: float = 1.6,
+    clip_post_s: float = 1.2,
+) -> dict[str, Any]:
+    """Vurgu kliplerindeki ses tepe noktalarina (kill/hit) hizali .kstudio Fragmovie projesi uretir."""
+    from app.core import studio as S
+    from app.engines.ytdlp_engine import find_ffmpeg
+
+    st = S.Studio(find_ffmpeg)
+
+    if isinstance(clip_paths, str):
+        raw_list = [p.strip() for p in clip_paths.replace(";", "\n").splitlines() if p.strip()]
+    else:
+        raw_list = [str(p or "").strip() for p in (clip_paths or []) if str(p or "").strip()]
+
+    valid_files = [str(Path(p)) for p in raw_list if Path(p).is_file()]
+    if not valid_files:
+        return {"ok": False, "error": "Gecerli video klibi bulunamadi"}
+
+    pr = S.new_project(name=title or "Oyun Fragmovie")
+    trans_mode = next((k for k in ("flash", "whip", "zoom", "glitch", "fade") if k in S.TRANS), "")
+    fx_mode = next((k for k in ("rgb-split", "chromatic", "shake", "glitch", "vignette") if k in S.FX), "")
+    sfx_id = next((k for k in ("whoosh", "hitmarker", "tik", "boom") if k in getattr(S, "SFX", {})), "")
+
+    cursor = 0.0
+    segments_added = 0
+    all_peaks: list[dict[str, Any]] = []
+    for fpath in valid_files:
+        info = st.info(fpath)
+        if not info.get("ok"):
+            continue
+        dur = float(info.get("dur") or 0)
+        aid = S.add_asset(pr, info)
+        peaks, audio_dur = _detect_audio_peaks(fpath, top_n=4, min_gap_s=2.0)
+        eff_dur = dur or audio_dur or 4.0
+        if not peaks:
+            peaks = [round(min(eff_dur * 0.5, max(0.5, eff_dur - 0.5)), 2)]
+
+        for idx_p, pk in enumerate(peaks):
+            in_t = max(0.0, round(pk - clip_pre_s, 3))
+            out_t = min(eff_dur, round(pk + clip_post_s, 3))
+            seg_d = max(0.6, round(out_t - in_t, 3))
+            kw: dict[str, Any] = {
+                "asset": aid,
+                "track": "v1",
+                "start": round(cursor, 3),
+                "in": in_t,
+                "dur": seg_d,
+            }
+            if trans_mode and (segments_added > 0 or idx_p > 0):
+                kw["trans"] = {"in": trans_mode, "dur": 0.25}
+            c = S.add_clip(pr, **kw)
+            peak_in_timeline = round(cursor + max(0.0, pk - in_t), 3)
+            pr.setdefault("markers", []).append({"t": peak_in_timeline, "label": f"Vurgu {segments_added + 1}", "color": "#f43f5e"})
+            if fx_mode:
+                S.add_clip(pr, mode=fx_mode, track="fx", start=max(0.0, round(peak_in_timeline - 0.12, 3)), dur=0.35)
+            all_peaks.append({"file": Path(fpath).name, "peak_src": pk, "timeline_s": peak_in_timeline, "clip_id": c.get("id")})
+            cursor = round(cursor + seg_d, 3)
+            segments_added += 1
+
+    if segments_added == 0:
+        return {"ok": False, "error": "Video dosyalari Studio varligi olarak cozumlenemedi"}
+
+    dst = Path(out_kstudio) if out_kstudio else (S.home_dir() / "Projeler" / f"{title or 'Oyun Fragmovie'}{S.PROJECT_EXT}")
+    saved = S.save_project(str(dst), pr)
+    return {
+        "ok": True,
+        "path": saved,
+        "clips_count": segments_added,
+        "duration": cursor,
+        "peaks": all_peaks,
+        "sfx_hint": sfx_id,
+    }

@@ -176,12 +176,32 @@ function aiCard() {
       <button data-ai="vec-photo">${edL("Vektöre çevir: ayrıntılı", "Vectorize: detailed")}</button>
       <button data-ai="gif">${edL("GIF yap (her katman bir kare)", "Make GIF (each layer a frame)")}</button>
       <button data-ai="mp4">${edL("MP4 yap (her katman bir kare)", "Make MP4 (each layer a frame)")}</button>
+      <button data-ai="webp-sheet">${edL("Hareketli WebP Çıkartma Yap", "Make Animated WebP Sheet")}</button>
       <label style="display:flex;gap:8px;align-items:center">${edL("Kare süresi", "Frame time")} <input type="number" id="aiMs" value="120" min="20" max="5000" style="width:70px;background:#0A0810;color:#EDE9F6;border:1px solid #2A2140"> ms</label>
+    </div>
+    <h4>${edL("Photoshop Pro & Makro (MCP)", "Photoshop Pro & Macro (MCP)")}</h4>
+    <div class="btns" style="flex-direction:column;align-items:stretch">
+      <button data-ai="pro-contact-shadow">🛍️ ${edL("Temas Gölgesi + E-Ticaret (1200px)", "Contact Shadow + E-Com (1200px)")}</button>
+      <button data-ai="pro-freq-sep">🩹 ${edL("Frekans Ayrıştırma (Doku/Renk)", "Frequency Separation")}</button>
+      <button data-ai="pro-oklch">🎨 ${edL("OKLCH Renk Paleti Çıkar", "Extract OKLCH Palette")}</button>
+      <button data-ai="pro-wm-embed">🔒 ${edL("Görünmez Telif İmzası Göm", "Embed Invisible Watermark")}</button>
+      <button data-ai="pro-wm-read">🔍 ${edL("Telif İmzasını Oku", "Read Invisible Watermark")}</button>
+      <button data-ai="pro-send-studio">🎬 ${edL("Studio Medyaya Gönder", "Send to Kami Studio")}</button>
+      <div style="display:flex;gap:4px;margin-top:2px">
+        <select id="proMacroSel" style="flex:1;background:#0A0810;color:#EDE9F6;border:1px solid #2A2140;padding:4px"></select>
+        <button data-ai="pro-macro-run" style="flex:none">▶ ${edL("Uygula", "Run")}</button>
+      </div>
+      <div id="proPaletteOut" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px"></div>
     </div>
     <h4>${edL("İpuçları", "Tips")}</h4>
     <p style="color:#8E86A3;line-height:1.5;margin:0">${edL("Nesne sil (J): üzerinden boya, bırakınca silinir. Tıkla-seç (W): nesneye tıkla. Klon (S): Alt+tık kaynak. Sıvılaştır (Q): it/şişir/daralt/döndür.", "Remove (J): paint over it. Click-select (W): click an object. Clone (S): Alt+click source. Liquify (Q).")}</p>
     <p id="aiState" style="color:#6E6684;margin:8px 0 0"></p>`;
   api.pic_ai_status().then((s) => { const e = $("#aiState"); if (e) e.textContent = s?.installed ? edL("Kurulu", "Installed") + (s.device ? " · " + s.device : "") : edL("İlk kullanımda kurulur (~4.5 GB)", "Installs on first use (~4.5 GB)"); });
+  api.pic_macro_list?.().then((ms) => {
+    const arr = Array.isArray(ms) ? ms : (ms?.macros || []);
+    const sel = $("#proMacroSel"); if (!sel || !arr.length) return;
+    sel.innerHTML = arr.map((m) => `<option value="${String(m.id || "").replace(/"/g, "&quot;")}">${m.name || m.id}</option>`).join("");
+  });
 }
 async function aiAction(a) {
   const l = cl();
@@ -224,6 +244,73 @@ async function aiAction(a) {
     if (l.text) return toast(edL("Resim katmanı seç", "Pick an image layer"));
     const r = await aiCall("face", layerDataUrl(l), "", null, edL("Yüzler düzeltiliyor…", "Restoring faces…")); if (!r) return;
     const img = await loadImg(r); edSnap(edL("Yüz düzelt", "Restore faces")); const g = l.c.getContext("2d"); g.clearRect(0, 0, l.c.width, l.c.height); g.drawImage(img, 0, 0, l.c.width, l.c.height); edLayerThumb(ED.cur); edRender();
+  } else if (a === "webp-sheet") {
+    const frames = ED.layers.filter((q) => q.vis).map((q) => { const c = document.createElement("canvas"); c.width = ED.W; c.height = ED.H; const g = c.getContext("2d"); g.globalAlpha = q.op; g.drawImage(q.c, q.x, q.y); return c.toDataURL("image/png"); });
+    if (frames.length < 2) return toast(edL("En az 2 görünür katman gerekli", "Need at least 2 visible layers"));
+    edBusy(edL("Hareketli WebP üretiliyor…", "Exporting animated WebP…"));
+    const saved = [];
+    for (let i = 0; i < frames.length; i++) {
+      const s = await api.pic_save_temp_png(frames[i], `webp_f_${i}`);
+      if (s?.ok) saved.push(s.path);
+    }
+    const r = await api.pic_export_webp_sheet(saved, "", +($("#aiMs")?.value || 140));
+    edBusy("");
+    toast(r?.ok ? edL("WebP kaydedildi: ", "WebP saved: ") + r.path.split(/[\\/]/).pop() : (r?.error || edL("Olmadı", "Failed")));
+  } else if (a.startsWith("pro-")) {
+    const tmp = await api.pic_save_temp_png(edFlatten().toDataURL("image/png"), (ED.name || "kami_pic").replace(/\.[^.]+$/, ""));
+    if (!tmp?.ok) return toast(edL("Geçici görsel yazılamadı", "Could not stage image"));
+    const srcPath = tmp.path;
+    const loadResultToNewDoc = async (outPath, title) => {
+      const idata = await api.image_data(outPath);
+      if (!idata?.ok) return toast(edL("Çıktı açılamadı", "Could not open output"));
+      const im = await loadImg(idata.url);
+      edSnapAll(title); edNew(im.width, im.height, title, outPath);
+      ED.layers[0].c.getContext("2d").drawImage(im, 0, 0); edFit(); edLayersUi(); edRender();
+    };
+    if (a === "pro-contact-shadow") {
+      edBusy(edL("Temas gölgesi & Stüdyo 1200px…", "Contact shadow & Studio 1200px…"));
+      const r = await api.pic_contact_shadow(srcPath, "#FFFFFF", 0.12, 1200, true, "");
+      edBusy("");
+      if (r?.ok) { await loadResultToNewDoc(r.path, ED.name + " · E-Com"); toast(edL("Temas gölgeli stüdyo çıktısı hazır", "Studio pack ready")); }
+      else toast(r?.error || edL("Olmadı", "Failed"));
+    } else if (a === "pro-freq-sep") {
+      edBusy(edL("Frekans ayrıştırılıyor…", "Separating frequencies…"));
+      const r = await api.pic_freq_sep(srcPath, 4.0);
+      edBusy("");
+      if (r?.ok) {
+        const lowD = await api.image_data(r.low_path), highD = await api.image_data(r.high_path);
+        if (lowD?.ok) { const imL = await loadImg(lowD.url); edLayerAdd(edL("Düşük Frekans (Renk)", "Low Freq (Color)")); cl().c.getContext("2d").drawImage(imL, 0, 0); }
+        if (highD?.ok) { const imH = await loadImg(highD.url); edLayerAdd(edL("Yüksek Frekans (Doku)", "High Freq (Texture)")); cl().c.getContext("2d").drawImage(imH, 0, 0); }
+        edLayersUi(); edRender(); toast(edL("Düşük/Yüksek katmanlar eklendi", "Low/High layers added"));
+      } else toast(r?.error || edL("Olmadı", "Failed"));
+    } else if (a === "pro-oklch") {
+      const r = await api.pic_oklch_palette(srcPath, 6);
+      const box = $("#proPaletteOut");
+      if (r?.ok && box) {
+        box.innerHTML = (r.colors || []).map((c) => `<span title="${c.hex} (${c.css || ""})" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:6px;background:#161026;border:1px solid #2E2346;font-size:10px"><i style="width:12px;height:12px;border-radius:3px;background:${c.hex};display:inline-block"></i>${c.hex}</span>`).join("");
+        toast(edL("OKLCH renk paleti çıkarıldı", "OKLCH palette extracted"));
+      }
+    } else if (a === "pro-wm-embed") {
+      const wmTxt = (typeof prompt === "function" ? prompt(edL("Görünmez telif imzası metni:", "Watermark text:"), "Kami Picture © 2026") : "") || "Kami Picture © 2026";
+      const r = await api.pic_watermark_embed(srcPath, wmTxt, "");
+      if (r?.ok) { await loadResultToNewDoc(r.path, ED.name + " · WM"); toast(edL("Telif imzası gömüldü", "Watermark embedded")); }
+      else toast(r?.error || edL("Olmadı", "Failed"));
+    } else if (a === "pro-wm-read") {
+      const targetPath = (ED.path && String(ED.path)) || srcPath;
+      const r = await api.pic_watermark_read(targetPath);
+      toast(r?.ok ? edL("İmza: ", "Watermark: ") + r.text : (r?.error || edL("İmza bulunamadı", "No watermark found")));
+    } else if (a === "pro-send-studio") {
+      const r = await api.pic_send_to_studio(srcPath, "Gorseller");
+      toast(r?.ok ? edL("Studio Medya/Gorseller'e gönderildi: ", "Sent to Studio: ") + r.name : (r?.error || edL("Olmadı", "Failed")));
+    } else if (a === "pro-macro-run") {
+      const mid = $("#proMacroSel")?.value;
+      if (!mid) return toast(edL("Makro seç", "Pick a macro"));
+      edBusy(edL("Makro çalışıyor…", "Running macro…"));
+      const r = await api.pic_macro_run(srcPath, mid, "");
+      edBusy("");
+      if (r?.ok && r.path) { await loadResultToNewDoc(r.path, ED.name + " · " + mid); toast(edL("Makro tamamlandı", "Macro finished")); }
+      else toast(r?.error || edL("Olmadı", "Failed"));
+    }
   }
 }
 

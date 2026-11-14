@@ -1110,7 +1110,7 @@ function clipEl(c, t) {
   const w = Math.max(3, c.dur * ST.px);
   el.style.left = (c.start * ST.px) + "px"; el.style.width = w + "px";
   let label = "";
-  if (k === "text") label = c.subscribe ? `🔔 ${ST.cat.subscribe[c.subscribe] || c.subscribe}` : c.graphic ? `◆ ${ST.cat.graphics?.[c.graphic] || c.graphic}` : c.sticker ? `🎭 ${ST.cat.stickers?.[c.sticker]?.n || c.sticker}` : c.words ? `≡ Altyazı (${c.words.length} kelime)` : "T " + (c.text || "");
+  if (k === "text") label = c.subscribe ? `🔔 ${ST.cat.subscribe[c.subscribe] || c.subscribe}` : c.graphic ? `◆ ${ST.cat.graphics?.[c.graphic] || c.graphic}` : c.sticker ? `${ST.cat.stickers?.[c.sticker]?.glyph || "🎭"} ${ST.cat.stickers?.[c.sticker]?.name || ST.cat.stickers?.[c.sticker]?.n || c.sticker}` : c.words ? `≡ Altyazı (${c.words.length} kelime)` : "T " + (c.text || "");
   else if (k === "fx") label = c.mode === "adjustment" ? "✨ Ayar Katmanı" : ("✦ " + (ST.cat.fx[c.mode]?.name || c.mode));
   else if (k === "compound") label = "⧉ " + (c.name || `Bileşik (${c.children?.length || 0} klip)`);
   else label = a?.name || "?";
@@ -1593,7 +1593,7 @@ function textInsp(c) {
   const fontIn = (key, val) => `<label class="fld w2"><span>Font</span><select class="in" data-k="${key}">${allFonts.map(f => `<option value="${esc(f)}"${f === val ? " selected" : ""} style="font-family:'${esc(f)}',sans-serif">${esc(f)}</option>`).join("")}</select></label>`;
   let h = "";
   if (c.sticker) {
-    const sOpts = Object.fromEntries(Object.entries(ST.cat.stickers || {}).map(([k, v]) => [k, `${v.ico || "◆"} ${v.n || k}`]));
+    const sOpts = Object.fromEntries(Object.entries(ST.cat.stickers || {}).map(([k, v]) => [k, `${v.glyph || v.ico || "✦"} ${v.name || v.n || k}`]));
     h += `<div class="sec">Çıkartma (Sticker)</div>` + sel("Sembol", "sticker", sOpts, c.sticker) +
       color("Renk", "style.color", st.color || "#8B5CF6") + fld("Boyut", "style.size", 30, 300, 1, st.size ?? 100) +
       fld("X", "style.x", 0, 1, .005, st.x ?? .5) + fld("Y", "style.y", 0, 1, .005, st.y ?? .5) + fontIn("style.font", st.font || "Chakra Petch");

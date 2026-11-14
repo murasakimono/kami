@@ -5,15 +5,17 @@ Kami Mockup & Vektor (E-ticaret Stüdyo, Perspektif Giydirme, OKLCH Palet),
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
+import shutil
 import socket
 import urllib.request
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 log = logging.getLogger(__name__)
 
@@ -544,3 +546,338 @@ def ai_bridge_status() -> dict[str, Any]:
         "iopaint_running": _port_open(8080),
         "vram_6gb_preflight": preflight(required_mb=4500),
     }
+
+
+# ---------------------------------------------------------------------------
+# 10.4 E-Ticaret Gelismis Temas Golgesi, WebP Sayfasi, Aksiyon Makrolari, Kopru
+# ---------------------------------------------------------------------------
+
+def _parse_hex_rgba(c: str | None) -> tuple[int, int, int, int]:
+    s = (c or "").strip().lstrip("#")
+    if not s:
+        return (0, 0, 0, 0)
+    if len(s) == 3:
+        s = "".join(ch * 2 for ch in s)
+    if len(s) != 6:
+        return (255, 255, 255, 255)
+    return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16), 255)
+
+
+def add_contact_shadow(
+    image_path: str,
+    out_path: str = "",
+    bg_color: str = "#FFFFFF",
+    pad_ratio: float = 0.12,
+    size: int = 1200,
+    bounce: bool = True,
+) -> dict[str, Any]:
+    """Dekupeli urune cift katmanli AO temas golgesi ve alt kenar ortam isigi ekler."""
+    p = Path(image_path)
+    if not p.is_file():
+        return {"ok": False, "error": "Gorsel bulunamadi"}
+    fg = Image.open(p).convert("RGBA")
+    bbox = fg.getbbox()
+    if bbox:
+        fg = fg.crop(bbox)
+    S = max(256, int(size))
+    pad = max(0.02, min(0.35, float(pad_ratio)))
+    avail = int(S * (1.0 - 2.0 * pad))
+    fg.thumbnail((avail, avail), Image.Resampling.LANCZOS)
+
+    bg_rgba = _parse_hex_rgba(bg_color)
+    canvas = Image.new("RGBA", (S, S), bg_rgba)
+    ox = (S - fg.width) // 2
+    oy = (S - fg.height) // 2
+
+    # Dis genis yumusak golge + ic sikı temas golgesi (AO)
+    sh_far = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    dr_far = ImageDraw.Draw(sh_far)
+    fw = int(fg.width * 0.78)
+    fh = max(16, int(fg.height * 0.10))
+    fx0 = (S - fw) // 2
+    fy0 = min(S - fh - 6, oy + fg.height - fh // 3)
+    dr_far.ellipse([fx0, fy0, fx0 + fw, fy0 + fh], fill=(0, 0, 0, 44))
+    sh_far = sh_far.filter(ImageFilter.GaussianBlur(radius=max(10, S // 48)))
+
+    sh_near = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    dr_near = ImageDraw.Draw(sh_near)
+    nw = int(fg.width * 0.56)
+    nh = max(8, int(fg.height * 0.04))
+    nx0 = (S - nw) // 2
+    ny0 = min(S - nh - 4, oy + fg.height - nh // 2)
+    dr_near.ellipse([nx0, ny0, nx0 + nw, ny0 + nh], fill=(0, 0, 0, 88))
+    sh_near = sh_near.filter(ImageFilter.GaussianBlur(radius=max(4, S // 130)))
+
+    canvas = Image.alpha_composite(canvas, sh_far)
+    canvas = Image.alpha_composite(canvas, sh_near)
+
+    if bounce and bg_rgba[3] > 0:
+        arr = np.asarray(fg, dtype=np.float32)
+        h_fg = arr.shape[0]
+        if h_fg > 8:
+            rows = max(4, int(h_fg * 0.18))
+            grad = np.linspace(0.0, 0.18, rows, dtype=np.float32)[:, None, None]
+            bg_rgb = np.array(bg_rgba[:3], dtype=np.float32)[None, None, :]
+            tail = arr[-rows:, :, :3]
+            alpha_mask = (arr[-rows:, :, 3:4] > 20).astype(np.float32)
+            arr[-rows:, :, :3] = np.clip(tail * (1.0 - grad * alpha_mask) + bg_rgb * (grad * alpha_mask), 0, 255)
+            fg = Image.fromarray(arr.astype(np.uint8), mode="RGBA")
+
+    canvas.paste(fg, (ox, oy), fg)
+    dst = Path(out_path) if out_path else p.with_name(f"{p.stem}_shadow.png")
+    if bg_rgba[3] == 0 or dst.suffix.lower() in (".png", ".webp"):
+        canvas.save(dst)
+    else:
+        canvas.convert("RGB").save(dst)
+    return {"ok": True, "path": str(dst), "size": S, "transparent": bg_rgba[3] == 0}
+
+
+def export_webp_sheet(
+    image_paths: list[str],
+    out_path: str = "",
+    duration_ms: int = 140,
+    loop: int = 0,
+    max_dim: int = 720,
+) -> dict[str, Any]:
+    """Birden fazla kare/PNG gorselini seffaf hareketli WebP sticker/sprite paketine donusturur."""
+    valid = [Path(x) for x in (image_paths or []) if Path(x).is_file()]
+    if len(valid) < 2:
+        return {"ok": False, "error": "En az 2 gecerli kare gorsel gerekli"}
+    imgs: list[Image.Image] = []
+    target_w = target_h = 0
+    for vp in valid:
+        im = Image.open(vp).convert("RGBA")
+        im.thumbnail((max(64, int(max_dim)), max(64, int(max_dim))), Image.Resampling.LANCZOS)
+        target_w = max(target_w, im.width)
+        target_h = max(target_h, im.height)
+        imgs.append(im)
+    frames: list[Image.Image] = []
+    for im in imgs:
+        c = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+        c.paste(im, ((target_w - im.width) // 2, (target_h - im.height) // 2), im)
+        frames.append(c)
+    dst = Path(out_path) if out_path else valid[0].with_name(f"{valid[0].stem}_sheet.webp")
+    if dst.suffix.lower() != ".webp":
+        dst = dst.with_suffix(".webp")
+    frames[0].save(
+        dst,
+        format="WEBP",
+        save_all=True,
+        append_images=frames[1:],
+        duration=max(20, int(duration_ms)),
+        loop=int(loop),
+        lossless=False,
+        quality=90,
+    )
+    return {"ok": True, "path": str(dst), "frames": len(frames), "width": target_w, "height": target_h}
+
+
+def _macros_path() -> Path:
+    from app import paths
+    paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return paths.DATA_DIR / "picture_macros.json"
+
+
+BUILTIN_MACROS: dict[str, dict[str, Any]] = {
+    "ecom_white_shadow": {
+        "name": "E-Ticaret 1200x1200 + Temas Gölgesi",
+        "builtin": True,
+        "steps": [
+            {"op": "contact_shadow", "bg_color": "#FFFFFF", "size": 1200, "pad_ratio": 0.12, "bounce": True},
+        ],
+    },
+    "watermark_protect": {
+        "name": "Görünmez Telif İmzası (Kami)",
+        "builtin": True,
+        "steps": [
+            {"op": "adjust", "contrast": 1.04, "sharpness": 1.08},
+            {"op": "watermark", "text": "Kami Picture Protected"},
+        ],
+    },
+    "social_1080_punch": {
+        "name": "Sosyal Medya 1080px + Canlı Kontrast",
+        "builtin": True,
+        "steps": [
+            {"op": "resize", "width": 1080, "height": 1080, "fit": True},
+            {"op": "adjust", "contrast": 1.12, "saturation": 1.15, "sharpness": 1.18},
+            {"op": "export", "format": "png", "quality": 95},
+        ],
+    },
+    "freq_sep_retouch": {
+        "name": "Frekans Ayrıştırma (Düşük/Yüksek Katman)",
+        "builtin": True,
+        "steps": [
+            {"op": "freq_sep", "radius": 4.0},
+        ],
+    },
+}
+
+
+def _load_user_macros() -> dict[str, dict[str, Any]]:
+    p = _macros_path()
+    if not p.is_file():
+        return {}
+    try:
+        data = json.loads(p.read_text("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def list_macros() -> list[dict[str, Any]]:
+    merged = {**BUILTIN_MACROS, **_load_user_macros()}
+    return [{"id": k, "name": v.get("name") or k, "builtin": bool(v.get("builtin")), "steps": v.get("steps") or []} for k, v in merged.items()]
+
+
+def save_macro(name: str, steps: list[dict[str, Any]], macro_id: str = "") -> dict[str, Any]:
+    clean_name = str(name or "").strip()[:80]
+    if not clean_name or not isinstance(steps, list) or not steps:
+        return {"ok": False, "error": "Gecerli makro adi ve adimlari gerekli"}
+    mid = (macro_id or "").strip() or "".join(c if c.isalnum() or c in "-_" else "_" for c in clean_name.lower()).strip("_") or "macro"
+    data = _load_user_macros()
+    data[mid] = {"name": clean_name, "builtin": False, "steps": steps}
+    _macros_path().write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
+    return {"ok": True, "id": mid, "name": clean_name, "steps": len(steps)}
+
+
+def delete_macro(macro_id: str) -> dict[str, Any]:
+    data = _load_user_macros()
+    if macro_id not in data:
+        return {"ok": False, "error": "Kullanici makrosu bulunamadi"}
+    del data[macro_id]
+    _macros_path().write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
+    return {"ok": True, "id": macro_id}
+
+
+def run_macro(image_path: str, macro: str | list[dict[str, Any]], out_path: str = "") -> dict[str, Any]:
+    """Kayitli makro ID'sini veya adim listesini tek gorsel uzerinde calistirir."""
+    p = Path(image_path)
+    if not p.is_file():
+        return {"ok": False, "error": "Gorsel bulunamadi"}
+    if isinstance(macro, str):
+        merged = {**BUILTIN_MACROS, **_load_user_macros()}
+        if macro not in merged:
+            return {"ok": False, "error": f"Makro bulunamadi: {macro}"}
+        steps = merged[macro].get("steps") or []
+    elif isinstance(macro, list):
+        steps = macro
+    else:
+        return {"ok": False, "error": "Gecersiz makro"}
+
+    cur = p
+    artifacts: list[str] = []
+    work_dir = p.parent
+    tmp_stem = f"{p.stem}_macro"
+    for idx, st in enumerate(steps):
+        op = str((st or {}).get("op") or "").strip().lower()
+        is_last = idx == len(steps) - 1
+        step_out = Path(out_path) if (is_last and out_path) else (work_dir / f"{tmp_stem}_s{idx}{p.suffix or '.png'}")
+        if op == "resize":
+            im = Image.open(cur)
+            w = max(16, int(st.get("width", im.width)))
+            h = max(16, int(st.get("height", im.height)))
+            if st.get("fit", True):
+                im = ImageOps.contain(im, (w, h), Image.Resampling.LANCZOS)
+            else:
+                im = im.resize((w, h), Image.Resampling.LANCZOS)
+            step_png = step_out.with_suffix(".png")
+            im.save(step_png)
+            cur = step_png
+        elif op == "seam_carve":
+            r = seam_carve_resize(str(cur), int(st.get("width", 512)), int(st.get("height", 512)), out_path=str(step_out.with_suffix(".png")))
+            if not r.get("ok"):
+                return r
+            cur = Path(r["path"])
+        elif op == "ecom_pack":
+            r = ecommerce_studio_pack(str(cur), out_path=str(step_out.with_suffix(".png")), pad_ratio=float(st.get("pad_ratio", 0.12)), size=int(st.get("size", 1200)), shadow=bool(st.get("shadow", True)))
+            if not r.get("ok"):
+                return r
+            cur = Path(r["path"])
+        elif op == "contact_shadow":
+            r = add_contact_shadow(str(cur), out_path=str(step_out.with_suffix(".png")), bg_color=str(st.get("bg_color", "#FFFFFF")), pad_ratio=float(st.get("pad_ratio", 0.12)), size=int(st.get("size", 1200)), bounce=bool(st.get("bounce", True)))
+            if not r.get("ok"):
+                return r
+            cur = Path(r["path"])
+        elif op == "freq_sep":
+            r = frequency_separation(str(cur), radius=float(st.get("radius", 4.0)))
+            if not r.get("ok"):
+                return r
+            artifacts.extend([r["low_path"], r["high_path"]])
+        elif op == "adjust":
+            im = Image.open(cur)
+            mode = im.mode
+            rgb = im.convert("RGB")
+            alpha = im.getchannel("A") if "A" in im.getbands() else None
+            for cls, key in ((ImageEnhance.Brightness, "brightness"), (ImageEnhance.Contrast, "contrast"), (ImageEnhance.Color, "saturation"), (ImageEnhance.Sharpness, "sharpness")):
+                val = float(st.get(key, 1.0))
+                if abs(val - 1.0) > 1e-3:
+                    rgb = cls(rgb).enhance(max(0.1, min(3.0, val)))
+            if alpha is not None and mode in ("RGBA", "LA"):
+                rgb = rgb.convert("RGBA")
+                rgb.putalpha(alpha)
+            step_png = step_out.with_suffix(".png")
+            rgb.save(step_png)
+            cur = step_png
+        elif op == "watermark":
+            r = embed_blind_watermark(str(cur), str(st.get("text") or "Kami Protected"), out_path=str(step_out.with_suffix(".png")))
+            if not r.get("ok"):
+                return r
+            cur = Path(r["path"])
+        elif op == "export":
+            fmt = str(st.get("format") or "png").strip().lower().lstrip(".")
+            ext = ".jpg" if fmt in ("jpg", "jpeg") else (".webp" if fmt == "webp" else ".png")
+            dst_exp = Path(out_path) if (is_last and out_path) else (work_dir / f"{tmp_stem}{ext}")
+            im = Image.open(cur)
+            if ext == ".jpg":
+                im.convert("RGB").save(dst_exp, quality=int(st.get("quality", 92)))
+            else:
+                im.save(dst_exp, quality=int(st.get("quality", 92)))
+            cur = dst_exp
+        else:
+            return {"ok": False, "error": f"Desteklenmeyen makro adimi: {op}"}
+        artifacts.append(str(cur))
+
+    final_path = Path(out_path) if out_path else (work_dir / f"{p.stem}_macro{cur.suffix or '.png'}")
+    if cur != final_path and cur.is_file():
+        shutil.copy2(cur, final_path)
+    return {"ok": True, "path": str(final_path), "steps_run": len(steps), "artifacts": artifacts}
+
+
+def batch_run_macro(target: str | list[str], macro: str | list[dict[str, Any]], out_dir: str = "") -> dict[str, Any]:
+    """Bir klasordeki veya dosya listesindeki tum gorsellere makro uygular."""
+    exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+    files: list[Path] = []
+    if isinstance(target, list):
+        files = [Path(x) for x in target if Path(x).is_file()]
+    else:
+        tp = Path(target)
+        if tp.is_dir():
+            files = sorted(x for x in tp.iterdir() if x.is_file() and x.suffix.lower() in exts)
+        elif tp.is_file():
+            files = [tp]
+    if not files:
+        return {"ok": False, "error": "Islenecek gorsel bulunamadi"}
+    od = Path(out_dir) if out_dir else (files[0].parent / "makro_cikti")
+    od.mkdir(parents=True, exist_ok=True)
+    results = []
+    ok_n = 0
+    for f in files:
+        r = run_macro(str(f), macro, out_path=str(od / f"{f.stem}_out.png"))
+        if r.get("ok"):
+            ok_n += 1
+        results.append({"src": str(f), **r})
+    return {"ok": ok_n > 0, "processed": ok_n, "total": len(files), "out_dir": str(od), "results": results}
+
+
+def send_to_studio_asset(image_path: str, folder: str = "Gorseller") -> dict[str, Any]:
+    """Picture ciktisini Kami Studio'nun Medya/Gorseller klasorune dogrudan kopyalar."""
+    p = Path(image_path)
+    if not p.is_file():
+        return {"ok": False, "error": "Gorsel bulunamadi"}
+    from app.core import studio
+    safe_dir = "".join(c for c in (folder or "Gorseller") if c.isalnum() or c in " -_") or "Gorseller"
+    dst_dir = studio.home_dir() / safe_dir
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst = dst_dir / p.name
+    shutil.copy2(p, dst)
+    return {"ok": True, "path": str(dst), "folder": safe_dir, "name": dst.name}

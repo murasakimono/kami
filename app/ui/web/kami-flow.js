@@ -250,6 +250,7 @@
               <button id="ktUgc" class="btn">UGC Matris</button>
               <button id="ktHlStart" class="btn">Vurgu Başlat</button>
               <button id="ktHlStop" class="btn">Durdur</button>
+              <button id="ktFrag" class="btn">🎯 Fragmovie</button>
               <button id="ktVcam" class="btn">Sanal Cam</button>
             </div>
           </div>
@@ -320,6 +321,10 @@
       ov.querySelector("#ktUgc").onclick = () => { const p = ov.querySelector("#ktClipSrc").value.trim(); if (p) callApi("clip_ugc_matrix", [p], p, [p], p.replace(/[^\\/]+$/, "ugc_out")); };
       ov.querySelector("#ktHlStart").onclick = () => callApi("highlight_watcher_start");
       ov.querySelector("#ktHlStop").onclick = () => callApi("highlight_watcher_stop");
+      ov.querySelector("#ktFrag").onclick = () => {
+        const p = ov.querySelector("#ktClipSrc").value.trim();
+        if (p) callApi("highlight_build_fragmovie", [p]);
+      };
       ov.querySelector("#ktVcam").onclick = () => callApi("vcam_status");
       ov.querySelector("#ktPdfMd").onclick = () => { const p = ov.querySelector("#ktDocSrc").value.trim(); if (p) callApi("doc_pdf_to_markdown", p); };
       ov.querySelector("#ktDocConv").onclick = () => { const p = ov.querySelector("#ktDocSrc").value.trim(); if (p) callApi("doc_convert", p, "html"); };

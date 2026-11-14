@@ -1985,6 +1985,59 @@ class Api(StudioMixin):
         from app.core.picture_pro import ai_bridge_status
         return ai_bridge_status()
 
+    def pic_contact_shadow(self, image: str, bg_color: str = "#FFFFFF", pad_ratio: float = 0.12,
+                           size: int = 1200, bounce: bool = True, out_path: str = "") -> dict[str, Any]:
+        from app.core.picture_pro import add_contact_shadow
+        return add_contact_shadow(str(image), out_path=str(out_path or ""), bg_color=str(bg_color),
+                                  pad_ratio=float(pad_ratio), size=int(size), bounce=bool(bounce))
+
+    def pic_export_webp_sheet(self, images: list[str], out_path: str = "", duration_ms: int = 140) -> dict[str, Any]:
+        from app.core.picture_pro import export_webp_sheet
+        return export_webp_sheet([str(x) for x in (images or [])], out_path=str(out_path or ""), duration_ms=int(duration_ms))
+
+    def pic_macro_list(self) -> list[dict[str, Any]]:
+        from app.core.picture_pro import list_macros
+        return list_macros()
+
+    def pic_macro_save(self, name: str, steps: list[dict[str, Any]], macro_id: str = "") -> dict[str, Any]:
+        from app.core.picture_pro import save_macro
+        return save_macro(str(name), steps or [], macro_id=str(macro_id or ""))
+
+    def pic_macro_run(self, image: str, macro: Any, out_path: str = "") -> dict[str, Any]:
+        from app.core.picture_pro import run_macro
+        return run_macro(str(image), macro, out_path=str(out_path or ""))
+
+    def pic_macro_batch(self, target: Any, macro: Any, out_dir: str = "") -> dict[str, Any]:
+        from app.core.picture_pro import batch_run_macro
+        return batch_run_macro(target, macro, out_dir=str(out_dir or ""))
+
+    def pic_send_to_studio(self, image: str, folder: str = "Gorseller") -> dict[str, Any]:
+        from app.core.picture_pro import send_to_studio_asset
+        return send_to_studio_asset(str(image), folder=str(folder or "Gorseller"))
+
+    def pic_set_current(self, path: str) -> dict[str, Any]:
+        from app.core.picture_mcp import set_current_image
+        try:
+            return set_current_image(str(path), by="ui")
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def pic_save_temp_png(self, data_url: str, name: str = "kami_pic") -> dict[str, Any]:
+        import base64
+        from app import paths
+        raw_b64 = str(data_url or "").split(",", 1)[-1]
+        out_dir = paths.DATA_DIR / "pic_work"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        safe = re.sub(r'[<>:"/\\|?*]+', "_", str(name or "kami_pic")).strip(" .")[:48] or "kami_pic"
+        dst = out_dir / f"{safe}.png"
+        dst.write_bytes(base64.b64decode(raw_b64))
+        try:
+            from app.core.picture_mcp import set_current_image
+            set_current_image(str(dst), by="editor")
+        except Exception:
+            pass
+        return {"ok": True, "path": str(dst)}
+
     def picture_poll(self) -> list[dict[str, Any]]:
         with self._inbox_lock:
             q, self._picture_q = getattr(self, "_picture_q", []), []
@@ -2894,13 +2947,27 @@ class Api(StudioMixin):
                                 vocal_bpm=float(vocal_bpm or 0), beat_bpm=float(beat_bpm or 0),
                                 pitch_semi=float(pitch_semi or 0), vocal_offset=float(vocal_offset or 0))
 
-    def hunter_search(self, query: str, site: str = "") -> dict[str, Any]:
+    def hunter_search(self, query: str, site: str = "", cluster: bool = True) -> dict[str, Any]:
         from app.core import kami_hunter
-        return kami_hunter.search(str(query or "").strip(), site=str(site or "").strip())
+        return kami_hunter.search(str(query or "").strip(), site=str(site or "").strip(), cluster=bool(cluster))
+
+    def hunter_archive(self, url: str, title: str = "", artist: str = "", out_dir: str = "", lyrics: str = "") -> dict[str, Any]:
+        from app.core import kami_hunter
+        return kami_hunter.archive_underground_track(
+            str(url or "").strip(),
+            title=str(title or "").strip(),
+            artist=str(artist or "").strip(),
+            out_dir=str(out_dir or "").strip(),
+            lyrics=str(lyrics or "").strip(),
+        )
 
     def mod_list(self) -> list[dict[str, Any]]:
         from app.core import kami_mod
         return kami_mod.list_mods()
+
+    def mod_preview_diff(self, archive: str, game_dir: str) -> dict[str, Any]:
+        from app.core import kami_mod
+        return kami_mod.preview_mod_diff(str(archive or "").strip(), str(game_dir or "").strip())
 
     def mod_install(self, archive: str, game_dir: str) -> dict[str, Any]:
         from app.core import kami_mod
@@ -2909,6 +2976,14 @@ class Api(StudioMixin):
     def mod_rollback(self, mod_id: str) -> dict[str, Any]:
         from app.core import kami_mod
         return kami_mod.rollback_mod(str(mod_id or "").strip())
+
+    def mod_export_profile(self, game_dir: str, out_json: str = "") -> dict[str, Any]:
+        from app.core import kami_mod
+        return kami_mod.export_mod_profile(str(game_dir or "").strip(), str(out_json or "").strip())
+
+    def mod_import_profile(self, profile_json: str) -> dict[str, Any]:
+        from app.core import kami_mod
+        return kami_mod.import_mod_profile(str(profile_json or "").strip())
 
     def phone_bridge_url(self) -> dict[str, Any]:
         from app.core.phone import lan_ip
@@ -3285,6 +3360,12 @@ class Api(StudioMixin):
     def virtual_cam_status(self) -> dict[str, Any]:
         from app.core.game_highlight import virtual_camera_status
         return virtual_camera_status()
+
+    def highlight_build_fragmovie(
+        self, clip_paths: list[str] | str, out_kstudio: str = "", title: str = "Oyun Fragmovie"
+    ) -> dict[str, Any]:
+        from app.core.game_highlight import build_fragmovie_project
+        return build_fragmovie_project(clip_paths, out_kstudio=str(out_kstudio or "").strip(), title=str(title or "Oyun Fragmovie").strip())
 
     # ---------- Faz 15: Belge Donusturucu & Manga Ceviri Studyosu ----------
     def doc_pdf_to_markdown(self, src_pdf: str, out_md: str = "") -> dict[str, Any]:

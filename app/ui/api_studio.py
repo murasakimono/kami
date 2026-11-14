@@ -438,11 +438,16 @@ class StudioMixin:
             return [{"error": str(exc)[:120]}]
         entries = (res or {}).get("entries") if isinstance(res, dict) and "entries" in res else ([res] if res else [])
         out: list[dict[str, Any]] = []
+        skip_words = ("derleme", "compilation", "full bölüm", "1 saat", "10 hours", "en komik sahneler")
         for e in entries or []:
             if not isinstance(e, dict):
                 continue
+            dur = int(e.get("duration") or 0)
             vid = str(e.get("id") or "").strip() or re.sub(r"\W+", "", query)[-16:]
             title = str(e.get("title") or vid).strip()
+            tlow = title.lower()
+            if not is_url and (dur > 60 or any(bw in tlow for bw in skip_words)):
+                continue
             low = (title + " " + query).lower()
             gs = any(k in low for k in ("green screen", "yeşil ekran", "yesil ekran", "yeşil perde", "chroma"))
             u = str(e.get("webpage_url") or e.get("url") or (query if is_url else f"https://www.youtube.com/watch?v={vid}"))
@@ -452,7 +457,7 @@ class StudioMixin:
             out.append({
                 "id": vid,
                 "name": title[:90],
-                "dur": int(e.get("duration") or 0),
+                "dur": dur,
                 "greenscreen": gs,
                 "url": u,
                 "thumb": thumb,

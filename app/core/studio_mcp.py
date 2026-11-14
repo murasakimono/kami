@@ -674,6 +674,11 @@ def t_clipboard_bridge(action: str, t: float = 0.0, selected_ids: list[str] | No
     return {"ok": False, "error": "action_must_be_copy_or_paste"}
 
 
+# Kami Picture Pro + Makro MCP araclari (tek MCP baglantisindan tam kontrol)
+from app.core import picture_mcp as _pic_mcp  # noqa: E402
+TOOLS.update(_pic_mcp.TOOLS)
+
+
 # ---------------------------------------------------------------------------------------------------------------
 def _io():
     """Pencereli (PyInstaller) Kami.exe'de sys.stdin/stdout None olur: devralinan boru tutamaclarini ac."""

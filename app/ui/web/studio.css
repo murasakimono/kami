@@ -218,9 +218,14 @@ textarea.in { min-height: 70px; resize: vertical; user-select: text; }
 #split { grid-area: split; background: transparent; cursor: ns-resize; border-radius: 4px; }
 #split:hover { background: var(--violet); }
 #tl { grid-area: tl; display: flex; flex-direction: column; overflow: hidden; }
-#tlbar { height: 36px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 8px; border-bottom: 1px solid var(--line); }
-#tlbar .tb { padding: 4px 9px; font-size: 12px; }
+#tlbar { min-height: 46px; height: auto; flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 7px 8px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: rgba(13, 10, 20, .65); }
+#tlbar .tb { padding: 5px 10px; font-size: 12px; margin: 0 1px; }
+#tlbar .sep { width: 1px; height: 22px; background: rgba(255,255,255,.16); margin: 0 7px; flex: none; }
 #tlbar input[type=range] { width: 120px; accent-color: var(--violet); }
+.stk-card { min-height: 70px; align-items: center; padding: 9px 7px; }
+.stk-pv { height: 28px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 2px; }
+.stk-pill { display: inline-block; padding: 3px 8px; border-radius: 999px; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .3px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.45); }
+.stk-nm { color: #DDD6FE !important; font-size: 11px !important; font-weight: 600; line-height: 1.2; }
 #tlBody { flex: 1; display: flex; min-height: 0; }
 #tlHeads { width: 172px; flex: none; border-right: 1px solid var(--line); overflow: hidden; padding-top: 38px; background: var(--bg2); }
 .th { height: var(--h, 52px); display: flex; align-items: center; gap: 2px; padding: 0 6px; border-bottom: 1px solid #16111F; font-size: 11px; }

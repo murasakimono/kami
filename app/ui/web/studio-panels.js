@@ -113,7 +113,7 @@ P.sound = async () => {
   const sl = Object.entries(slots);
   if (sl.length) h += sec("Hızlı (1-9 tuşu)") + `<div class="chips">${sl.sort().map(([k, s]) => `<span class="chip">${k} · ${esc(s.name.slice(0, 18))}<button data-unslot="${k}">✕</button></span>`).join("")}</div>`;
   if (sndTab === "kami") {
-    pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği <span id="sfxCnt">${sndCache.kami?.length || 70}</span> telifsiz ses & meme efekti. Sürükle ya da ＋.</div>` +
+    pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği <span id="sfxCnt">${sndCache.kami?.length || 94}</span> telifsiz ses & meme efekti. Sürükle ya da ＋.</div>` +
       `<div class="catpills" id="sndCats"></div><input class="in" id="kamiSndQ" placeholder="Vine boom, slow-mo böcek, earrape, rizz ara…" value="${esc(P.sound.q || "")}" style="width:100%;margin-bottom:6px"><div id="sndList" class="hint">Hazırlanıyor…</div>`;
     const items = sndCache.kami || (sndCache.kami = await job("studio_sfx", []));
     const sc = $("#sfxCnt"); if (sc) sc.textContent = items.length;
@@ -151,7 +151,7 @@ P.sound = async () => {
       sndCache.trLive = r; P.sound.trCat = "🔥 Canlı TR Trend"; renderTr();
     };
   } else if (sndTab === "memevid") {
-    const mvTags = ["slow motion ai hamam böceği", "türkçe yeşil ekran meme", "türkçe shitpost derleme", "dost kayaoğlu yeşil ekran", "toqtir yeşil ekran", "oiia cat green screen", "kurtlar vadisi racon yeşil ekran"];
+    const mvTags = ["slow motion ai hamam böceği", "türkçe yeşil ekran meme", "sıfır bir kısa sahne", "gibi kısa sahne", "kolpaçino kısa sahne", "oiia cat green screen", "kurtlar vadisi racon kısa"];
     pb.innerHTML = h + `<div class="hint">Public meme, slow-mo AI böcek ve yeşil ekran klipleri. Kelime ara veya doğrudan TikTok/YouTube/Instagram linki yapıştır.</div>` +
       `<div class="row"><input class="in" id="mvQ" placeholder="ör. hamam böceği veya https://tiktok.com/... yapıştır" value="${esc(P.sound.mvQ || "")}" style="flex:1"><button class="tb" id="mvGo" style="flex:none">Ara / Getir</button></div>` +
       `<div class="catpills" id="mvQuick">${mvTags.map(t => `<button data-mvquick="${esc(t)}">${esc(t)}</button>`).join("")}</div>` +
@@ -461,15 +461,28 @@ P.stickers = () => {
     if (!P.stickers.openRes) goIc();
     return;
   }
+  const stkPreviewHtml = (k, v) => {
+    const c = v?.color || "#8B5CF6";
+    if (v?.glyph) return `<span class="stk-pv" style="font-size:24px;line-height:1;filter:drop-shadow(0 2px 6px ${c}55)">${esc(v.glyph)}</span>`;
+    if (v?.vec === "pill") {
+      const txt = (v.text || v.name || k).slice(0, 18);
+      return `<span class="stk-pv"><span class="stk-pill" style="background:${esc(c)}">${esc(txt)}</span></span>`;
+    }
+    if (v?.vec === "arrow") return `<span class="stk-pv"><svg viewBox="0 0 48 32" width="44" height="28"><path d="M4 16H36M26 7l12 9-12 9" fill="none" stroke="${esc(c)}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+    if (v?.vec === "ring") return `<span class="stk-pv"><svg viewBox="0 0 40 32" width="40" height="28"><ellipse cx="20" cy="16" rx="14" ry="10.5" fill="none" stroke="${esc(c)}" stroke-width="3.5" transform="rotate(-7 20 16)"/></svg></span>`;
+    if (v?.vec === "censor") return `<span class="stk-pv"><svg viewBox="0 0 56 26" width="52" height="24"><rect x="2" y="4" width="52" height="18" rx="3" fill="#0B0B0E" stroke="#374151" stroke-width="1.5"/><path d="M10 13h36" stroke="#EF4444" stroke-width="2.5" stroke-dasharray="5 3"/></svg></span>`;
+    if (v?.vec === "rec") return `<span class="stk-pv"><svg viewBox="0 0 54 26" width="52" height="24"><rect x="1" y="3" width="52" height="20" rx="10" fill="#18121E" stroke="${esc(c)}" stroke-width="1.6"/><circle cx="14" cy="13" r="4.5" fill="${esc(c)}"/><text x="23" y="16.5" fill="#fff" font-size="9.5" font-weight="700" font-family="Chakra Petch,sans-serif">REC</text></svg></span>`;
+    return `<span class="stk-pv" style="color:${esc(c)};font-size:22px">${esc(v?.ico || "✦")}</span>`;
+  };
   const stMap = ST.cat.stickers || {};
   const entries = Object.entries(stMap);
   const cats = ["Tümü", ...new Set(entries.map(([, v]) => v.cat || v.c || "Genel"))];
   const cat = P.stickers.cat || "Tümü", q = (P.stickers.q || "").toLowerCase();
   const list = entries.filter(([k, v]) => (cat === "Tümü" || (v.cat || v.c) === cat) && (!q || (v.name || v.n || "").toLowerCase().includes(q) || k.toLowerCase().includes(q)));
-  pb.innerHTML = tabs + `<div class="hint">${entries.length} vektör çıkartma (ok, sansür, klaket, sosyal, meme). Tıkla ekle, sağdan boyut ve renk seç.</div>` +
+  pb.innerHTML = tabs + `<div class="hint">${entries.length} vektör & emoji çıkartma (ok, sansür, klaket, sosyal, meme). Tıkla ekle, sağdan boyut ve renk seç.</div>` +
     `<div class="catpills">${cats.map(c => `<button class="${c === cat ? "on" : ""}" data-stkcat="${esc(c)}">${esc(c)}</button>`).join("")}</div>` +
     `<input class="in" id="stkQ" placeholder="Ok, sansür, indirim, ping ara…" value="${esc(P.stickers.q || "")}" style="width:100%;margin-bottom:6px">` +
-    `<div class="grid2">${list.map(([k, v]) => `<div class="card" data-stk="${esc(k)}" draggable="true" data-item='${esc(JSON.stringify({ type: "sticker", kind: k }))}' style="text-align:center"><b style="font-size:18px;display:block">${esc(v.glyph || v.ico || "◆")}</b><small>${esc(v.name || v.n)}</small></div>`).join("")}</div>`;
+    `<div class="grid2">${list.map(([k, v]) => `<div class="card stk-card" data-stk="${esc(k)}" draggable="true" data-item='${esc(JSON.stringify({ type: "sticker", kind: k }))}' style="text-align:center">${stkPreviewHtml(k, v)}<small class="stk-nm">${esc(v.name || v.n || k)}</small></div>`).join("")}</div>`;
   const qi = $("#stkQ"); qi.oninput = () => { P.stickers.q = qi.value; clearTimeout(P.stickers.t); P.stickers.t = setTimeout(() => { P.stickers(); const n = $("#stkQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 150); };
 };
 pb.addEventListener("click", async e => {
@@ -568,11 +581,13 @@ P.fx = () => {
     const ca = ST.cat.canim || { in: {}, out: {}, loop: {} };
     const an = c?.anim || {}, ac = P.fx.acat || "Tümü";
     const acats = [["Tümü", "Tümü"], ["loop", "Sürekli (Salıncak/Nabız)"], ["in", "Giriş"], ["out", "Çıkış"]];
+    const canimName = (k, v) => typeof v === "string" ? v : (v?.name || k);
+    const canimBadge = (slot, k) => slot === "loop" ? (k.includes("shake") || k.includes("rage") ? "⚡" : k.includes("pulse") || k.includes("breath") ? "💓" : "🔄") : slot === "in" ? "➡️" : "⬅️";
     const mk = (slot, title, items) => {
       if (ac !== "Tümü" && ac !== slot) return "";
-      const entries = Object.entries(items || {}).filter(([k, n]) => k !== "none" && (!q || n.toLowerCase().includes(q) || k.toLowerCase().includes(q)));
+      const entries = Object.entries(items || {}).filter(([k, v]) => k !== "none" && (!q || canimName(k, v).toLowerCase().includes(q) || k.toLowerCase().includes(q)));
       if (!entries.length) return "";
-      return sec(title) + `<div class="grid2">${entries.map(([k, n]) => `<div class="card${an[slot] === k ? " on" : ""}" data-canim="${slot}:${k}"><b>${esc(n)}</b><small>${slot === "loop" ? "Sürekli oynar" : slot === "in" ? "Giriş" : "Çıkış"}</small></div>`).join("")}</div>`;
+      return sec(title) + `<div class="grid2">${entries.map(([k, v]) => `<div class="card${an[slot] === k ? " on" : ""}" data-canim="${slot}:${k}"><b>${canimBadge(slot, k)} ${esc(canimName(k, v))}</b><small>${slot === "loop" ? "Sürekli oynar" : slot === "in" ? "Giriş" : "Çıkış"}</small></div>`).join("")}</div>`;
     };
     pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe hareket animasyonu uygula / kaldır (Salıncak, Nabız, Rage…)." : "Önce zaman çizelgesinden bir video veya görsel klibi seç."}</div>` +
       `<div class="catpills">${acats.map(([k, l]) => `<button class="${ac === k ? "on" : ""}" data-ancat="${k}">${l}</button>`).join("")}</div>` +

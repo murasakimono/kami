@@ -515,9 +515,10 @@
         list.innerHTML = items.map((it, idx) => `
           <div class="eco-item">
             <span class="eco-tag">${esc(it.source)}</span>
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(it.url)}">${esc(it.title)}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(it.url)}">${esc(it.title)}${it.quality_score ? ` · Skor ${esc(String(it.quality_score))}` : ""}${it.mirrors_count > 1 ? ` · ${it.mirrors_count} ayna` : ""}</span>
             <button class="eco-btn sec" data-huprev="${idx}" style="padding:4px 8px">▶ Dinle</button>
             <button class="eco-btn sec" data-huadd="${idx}" style="padding:4px 8px">İndir</button>
+            <button class="eco-btn sec" data-huarc="${idx}" style="padding:4px 8px" title="Underground Rap / Etiket + LRC Arşivle">📦 Arşivle</button>
           </div>`).join("");
         list.querySelectorAll("[data-huprev]").forEach((btn) => {
           btn.onclick = async () => {
@@ -538,6 +539,16 @@
             btn.textContent = res && res.ok ? "✓" : "Hata";
           };
         });
+        list.querySelectorAll("[data-huarc]").forEach((btn) => {
+          btn.onclick = async () => {
+            const it = items[Number(btn.dataset.huarc)];
+            if (!it?.url || !api.hunter_archive) return;
+            btn.textContent = "...";
+            const r = await api.hunter_archive(it.url, it.title || "", "", "", "").catch((e) => ({ ok: false, error: String(e) }));
+            btn.textContent = r && r.ok ? "✓ Arşiv" : "Hata";
+            msg.textContent = r && r.ok ? `Arşivlendi: ${r.path || ""}` : ((r && r.error) || "Arşivlenemedi");
+          };
+        });
       };
     } else if (activeTab === "mod") {
       const [mods, steam] = await Promise.all([api.mod_list().catch(() => []), api.mod_steam_games?.().catch(() => []) || []]);
@@ -548,9 +559,12 @@
           <div class="eco-hint">.zip mod arşivini aynı diskte hardlink ile anında kurar; Steam oyunlarını libraryfolders.vdf'den otomatik bulur.</div>
           <div class="eco-row">
             <select class="eco-in" id="ecoMdSteam" style="max-width:220px"><option value="">Steam oyunu seç (${steam.length})...</option>${steam.map((g) => `<option value="${esc(g.dir)}">${esc(g.name)}</option>`).join("")}</select>
-            <input class="eco-in" id="ecoMdArch" placeholder="Mod .zip yolu (C:\\...\\yama.zip)">
+            <input class="eco-in" id="ecoMdArch" placeholder="Mod .zip veya profil .json yolu (C:\\...\\yama.zip)">
             <input class="eco-in" id="ecoMdGame" placeholder="Oyun klasörü (C:\\Games\\...)">
+            <button class="eco-btn sec" id="ecoMdPrev">🔍 Ön İzle</button>
             <button class="eco-btn" id="ecoMdGo">Yedekle & Kur</button>
+            <button class="eco-btn sec" id="ecoMdExp">💾 Profil Dışa Aktar</button>
+            <button class="eco-btn sec" id="ecoMdImp">📥 Profil Kontrol</button>
           </div>
           <div id="ecoMdMsg" class="eco-hint"></div>
           <div class="eco-list" id="ecoMdList">${mods.map((m) => `
@@ -561,6 +575,17 @@
             </div>`).join("") || `<div class="eco-item eco-hint">Kurulu mod yedeği yok.</div>`}</div>
         </div>`;
       bd.querySelector("#ecoMdSteam").onchange = (e) => { if (e.target.value) bd.querySelector("#ecoMdGame").value = e.target.value; };
+      bd.querySelector("#ecoMdPrev").onclick = async () => {
+        const a = bd.querySelector("#ecoMdArch").value.trim();
+        const g = bd.querySelector("#ecoMdGame").value.trim();
+        const msg = bd.querySelector("#ecoMdMsg");
+        if (!a || !g) return;
+        const r = await api.mod_preview_diff(a, g);
+        if (seq !== renderSeq) return;
+        msg.innerHTML = r && r.ok
+          ? `<span class="eco-ok">Ön İzleme (${r.total_files} dosya):</span> ${(r.added || []).length} yeni · ${(r.overwrite || []).length} üzerine yazılacak · ${(r.conflicts || []).length} çakışma`
+          : `<span class="eco-err">Hata:</span> ${esc((r && r.error) || "bilinmiyor")}`;
+      };
       bd.querySelector("#ecoMdGo").onclick = async () => {
         const a = bd.querySelector("#ecoMdArch").value.trim();
         const g = bd.querySelector("#ecoMdGame").value.trim();
@@ -571,6 +596,26 @@
         if (seq !== renderSeq) return;
         if (r.ok) { msg.innerHTML = `<span class="eco-ok">Kuruldu:</span> ${esc(r.name)} (${(r.backed_up || []).length} yedek, ${(r.added || []).length} yeni)`; renderTab(); }
         else msg.innerHTML = `<span class="eco-err">Hata:</span> ${esc(r.error || "bilinmiyor")}`;
+      };
+      bd.querySelector("#ecoMdExp").onclick = async () => {
+        const g = bd.querySelector("#ecoMdGame").value.trim();
+        const msg = bd.querySelector("#ecoMdMsg");
+        if (!g) return;
+        const r = await api.mod_export_profile(g, "");
+        if (seq !== renderSeq) return;
+        msg.innerHTML = r && r.ok
+          ? `<span class="eco-ok">Profil kaydedildi:</span> ${esc(r.path)} (${r.mods_count} mod)`
+          : `<span class="eco-err">Hata:</span> ${esc((r && r.error) || "bilinmiyor")}`;
+      };
+      bd.querySelector("#ecoMdImp").onclick = async () => {
+        const a = bd.querySelector("#ecoMdArch").value.trim();
+        const msg = bd.querySelector("#ecoMdMsg");
+        if (!a) return;
+        const r = await api.mod_import_profile(a);
+        if (seq !== renderSeq) return;
+        msg.innerHTML = r && r.ok
+          ? `<span class="eco-ok">Profil (${r.total} mod):</span> ${(r.present || []).length} kurulu · ${(r.missing || []).length} eksik${(r.missing || []).length ? ` (${esc(r.missing.join(", "))})` : ""}`
+          : `<span class="eco-err">Hata:</span> ${esc((r && r.error) || "bilinmiyor")}`;
       };
       bd.querySelectorAll("[data-rollback]").forEach((btn) => {
         btn.onclick = async () => {

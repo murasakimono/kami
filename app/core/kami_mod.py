@@ -234,3 +234,106 @@ def rollback_mod(mod_id: str) -> dict[str, Any]:
 
     shutil.rmtree(bdir, ignore_errors=True)
     return {"ok": True, "id": mod_id, "restored": restored, "removed": removed}
+
+
+def preview_mod_diff(archive_path: str, game_dir: str) -> dict[str, Any]:
+    """Kurulum oncesi .zip icerigini oyun klasoru ve kurulu diger modlarla karsilastirir."""
+    arch = Path(archive_path)
+    gdir = Path(game_dir)
+    if not arch.is_file():
+        return {"ok": False, "error": "Mod arşivi bulunamadı"}
+    if not gdir.is_dir():
+        return {"ok": False, "error": "Oyun klasörü bulunamadı"}
+    if arch.suffix.lower() != ".zip":
+        return {"ok": False, "error": "Yalnızca .zip desteklenir"}
+
+    gdir_res = str(gdir.resolve())
+    installed_for_game = [m for m in list_mods() if str(m.get("game_dir") or "") == gdir_res]
+    installed_map: dict[str, str] = {}
+    for m in installed_for_game:
+        mname = str(m.get("name") or m.get("id") or "")
+        for rel in (m.get("backed_up") or []) + (m.get("added") or []):
+            installed_map[rel] = mname
+
+    tmp = Path(tempfile.mkdtemp(prefix="kami_mod_diff_"))
+    added: list[str] = []
+    overwrite: list[str] = []
+    conflicts: list[dict[str, str]] = []
+    total_bytes = 0
+    try:
+        _safe_extract_zip(arch, tmp)
+        src_root = _strip_single_root(tmp)
+        for src_file in sorted(src_root.rglob("*")):
+            if not src_file.is_file():
+                continue
+            rel = src_file.relative_to(src_root).as_posix()
+            total_bytes += src_file.stat().st_size
+            dst_file = gdir / rel
+            if dst_file.exists():
+                overwrite.append(rel)
+            else:
+                added.append(rel)
+            if rel in installed_map:
+                conflicts.append({"file": rel, "mod": installed_map[rel]})
+        return {
+            "ok": True,
+            "name": arch.stem,
+            "added": added,
+            "overwrite": overwrite,
+            "conflicts": conflicts,
+            "total_files": len(added) + len(overwrite),
+            "total_bytes": total_bytes,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def export_mod_profile(game_dir: str, out_json: str = "") -> dict[str, Any]:
+    """Oyun klasoru icin kurulu mod listesi profili (.json) disa aktarir."""
+    gdir = Path(game_dir)
+    if not gdir.is_dir():
+        return {"ok": False, "error": "Oyun klasörü bulunamadı"}
+    gdir_res = str(gdir.resolve())
+    mods = [m for m in list_mods() if str(m.get("game_dir") or "") == gdir_res]
+    profile = {
+        "kami_mod_profile": 1,
+        "game_dir": gdir_res,
+        "exported_at": time.time(),
+        "mods": [
+            {
+                "id": m.get("id"),
+                "name": m.get("name"),
+                "installed_at": m.get("installed_at"),
+                "files": sorted(set((m.get("backed_up") or []) + (m.get("added") or []))),
+            }
+            for m in mods
+        ],
+    }
+    dst = Path(out_json) if out_json else (_backups_root() / f"{gdir.name}_mod_profil.json")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "path": str(dst), "mods_count": len(mods)}
+
+
+def import_mod_profile(profile_json: str) -> dict[str, Any]:
+    """Kaydedilmis oyun mod profilini okur ve hangi modlarin kurulu/eksik oldugunu raporlar."""
+    p = Path(profile_json)
+    if not p.is_file():
+        return {"ok": False, "error": "Profil JSON bulunamadı"}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"ok": False, "error": f"Profil okunamadı: {exc}"}
+    gdir = str(data.get("game_dir") or "")
+    cur_mods = {str(m.get("name") or ""): m for m in list_mods() if not gdir or str(m.get("game_dir") or "") == gdir}
+    present: list[str] = []
+    missing: list[str] = []
+    for entry in data.get("mods") or []:
+        nm = str(entry.get("name") or "")
+        if nm in cur_mods:
+            present.append(nm)
+        else:
+            missing.append(nm)
+    return {"ok": True, "game_dir": gdir, "present": present, "missing": missing, "total": len(present) + len(missing)}

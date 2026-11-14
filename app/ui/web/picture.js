@@ -30,6 +30,7 @@ async function load() {
   const ex = Object.entries(r.exif || {}).map(([k, v]) => `${k}: ${v}`).join(" · ");
   $("#pcInfo").textContent = `${r.w}×${r.h} · ${fmtB(r.size)} · ${PC.i + 1}/${PC.list.length}${ex ? " · " + ex : ""}`;
   document.title = "Kami Picture · " + p.split(/[\\/]/).pop();
+  api.pic_set_current?.(p);
   apply();
 }
 function apply() { $("#pcImg").style.transform = `translate(${PC.x}px, ${PC.y}px) scale(${PC.z}) rotate(${PC.rot}deg)`; }

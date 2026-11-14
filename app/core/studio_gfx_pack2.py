@@ -51,11 +51,15 @@ def graphic_pack2(c, kind: str, col, esc, rrect, W: int, H: int, st: dict) -> bo
     y = H * float(st.get("y", 0.5))
 
     if kind == "newspaper-cut":
-        cw, ch = W * 0.66, 280 * k
+        t_txt = title or "GAZETE MANŞETİ"
+        s_txt = sub or "Özel Sayı • 2026 Arşivi"
+        cw = max(W * 0.66, (max(len(t_txt) * 32, len(s_txt) * 18) + 96) * k)
+        cw = min(cw, W * 0.92)
+        ch = 280 * k
         c.ev(2, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c&H00DCE8F2&\\3c&H00262626&\\bord{4 * k:.0f}\\shad{12 * k:.0f}\\frz-1.5\\fscx84\\fscy84\\t(0,220,\\fscx100\\fscy100)\\fad(120,260)", rrect(cw, ch, 8 * k))
         c.ev(3, 0.08, None, f"\\an5\\pos({x:.0f},{y - 62 * k:.0f})\\p1\\1c&H001F1F1F&\\bord0\\shad0\\frz-1.5\\fad(120,260)", rrect(cw - 48 * k, 4 * k, 0))
-        c.ev(4, 0.1, None, f"\\an5\\pos({x:.0f},{y - 16 * k:.0f})\\fn Georgia\\fs{56 * k:.0f}\\b1\\bord0\\shad0\\1c&H00111111&\\frz-1.5\\q0\\fad(150,260)", title or "GAZETE MANŞETİ")
-        c.ev(4, 0.2, None, f"\\an5\\pos({x:.0f},{y + 64 * k:.0f})\\fn Georgia\\fs{30 * k:.0f}\\i1\\bord0\\shad0\\1c&H003A3A3A&\\frz-1.5\\q0\\fad(200,260)", sub or "Özel Sayı • 2026 Arşivi")
+        c.ev(4, 0.1, None, f"\\an5\\pos({x:.0f},{y - 16 * k:.0f})\\fn Georgia\\fs{56 * k:.0f}\\b1\\bord0\\shad0\\1c&H00111111&\\frz-1.5\\q0\\fad(150,260)", t_txt)
+        c.ev(4, 0.2, None, f"\\an5\\pos({x:.0f},{y + 64 * k:.0f})\\fn Georgia\\fs{30 * k:.0f}\\i1\\bord0\\shad0\\1c&H003A3A3A&\\frz-1.5\\q0\\fad(200,260)", s_txt)
         return True
 
     if kind == "history-timeline":
@@ -133,18 +137,24 @@ def graphic_pack2(c, kind: str, col, esc, rrect, W: int, H: int, st: dict) -> bo
         return True
 
     if kind == "device-notif":
-        cw, ch = W * 0.44, 128 * k
+        t_txt = title or "Yeni Mesaj"
+        s_txt = sub or "Şimdi • Bildirim önizlemesi"
+        cw = min(W * 0.88, max(W * 0.44, (max(len(t_txt) * 20, len(s_txt) * 15) + 84) * k))
+        ch = 128 * k
         ny = H * float(st.get("y", 0.14))
         c.ev(3, 0, None, f"\\an5\\move({x:.0f},{ny - 90 * k:.0f},{x:.0f},{ny:.0f},0,240)\\p1\\1c&H0018181B&\\1a&H12&\\3c{acc}\\bord{2 * k:.0f}\\shad{10 * k:.0f}\\fad(80,260)", rrect(cw, ch, 26 * k))
-        c.ev(4, 0.06, None, f"\\an4\\pos({x - cw / 2 + 28 * k:.0f},{ny - 20 * k:.0f})\\fn{c.font}\\fs{32 * k:.0f}\\b1\\bord0\\1c&H00FFFFFF&\\fad(120,260)", title or "Yeni Mesaj")
-        c.ev(4, 0.1, None, f"\\an4\\pos({x - cw / 2 + 28 * k:.0f},{ny + 24 * k:.0f})\\fn{c.font}\\fs{24 * k:.0f}\\bord0\\1c&H00CBD5E1&\\fad(120,260)", sub or "Şimdi • Bildirim önizlemesi")
+        c.ev(4, 0.06, None, f"\\an4\\pos({x - cw / 2 + 28 * k:.0f},{ny - 20 * k:.0f})\\fn{c.font}\\fs{32 * k:.0f}\\b1\\bord0\\1c&H00FFFFFF&\\fad(120,260)", t_txt)
+        c.ev(4, 0.1, None, f"\\an4\\pos({x - cw / 2 + 28 * k:.0f},{ny + 24 * k:.0f})\\fn{c.font}\\fs{24 * k:.0f}\\bord0\\1c&H00CBD5E1&\\fad(120,260)", s_txt)
         return True
 
     if kind == "social-comment":
-        cw, ch = W * 0.56, 150 * k
+        t_txt = title or "@kullanici"
+        s_txt = sub or "Bu video harika olmuş!"
+        cw = min(W * 0.88, max(W * 0.52, (max(len(t_txt) * 18, len(s_txt) * 20) + 88) * k))
+        ch = 150 * k
         c.ev(2, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c&H00FFFFFF&\\3c{acc}\\bord{3 * k:.0f}\\shad{8 * k:.0f}\\fscx85\\t(0,200,\\fscx100)\\fad(100,240)", rrect(cw, ch, 20 * k))
-        c.ev(4, 0.08, None, f"\\an4\\pos({x - cw / 2 + 26 * k:.0f},{y - 30 * k:.0f})\\fn{c.font}\\fs{28 * k:.0f}\\b1\\bord0\\1c{acc}\\fad(120,240)", title or "@kullanici")
-        c.ev(4, 0.12, None, f"\\an4\\pos({x - cw / 2 + 26 * k:.0f},{y + 18 * k:.0f})\\fn{c.font}\\fs{32 * k:.0f}\\bord0\\1c&H00111827&\\fad(140,240)", sub or "Bu video harika olmuş!")
+        c.ev(4, 0.08, None, f"\\an4\\pos({x - cw / 2 + 26 * k:.0f},{y - 30 * k:.0f})\\fn{c.font}\\fs{28 * k:.0f}\\b1\\bord0\\1c{acc}\\fad(120,240)", t_txt)
+        c.ev(4, 0.12, None, f"\\an4\\pos({x - cw / 2 + 26 * k:.0f},{y + 18 * k:.0f})\\fn{c.font}\\fs{32 * k:.0f}\\bord0\\1c&H00111827&\\fad(140,240)", s_txt)
         return True
 
     if kind == "chapter-bar":
@@ -156,10 +166,13 @@ def graphic_pack2(c, kind: str, col, esc, rrect, W: int, H: int, st: dict) -> bo
         return True
 
     if kind == "whiteboard-sketch":
-        cw, ch = W * 0.58, 220 * k
+        t_txt = title or "ANA FİKİR"
+        s_txt = sub or "Adım 1 • Adım 2 • Adım 3"
+        cw = min(W * 0.90, max(W * 0.56, (max(len(t_txt) * 28, len(s_txt) * 19) + 96) * k))
+        ch = 220 * k
         c.ev(2, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c&H00FAF9F5&\\3c&H001E293B&\\bord{5 * k:.0f}\\shad{8 * k:.0f}\\fad(100,240)", rrect(cw, ch, 14 * k))
-        c.ev(4, 0.08, None, f"\\an5\\pos({x:.0f},{y - 34 * k:.0f})\\fn{c.font}\\fs{46 * k:.0f}\\b1\\bord0\\1c{acc}\\fad(120,240)", title or "ANA FİKİR")
-        c.ev(4, 0.16, None, f"\\an5\\pos({x:.0f},{y + 34 * k:.0f})\\fn{c.font}\\fs{32 * k:.0f}\\bord0\\1c&H001E293B&\\fad(160,240)", sub or "Adım 1 • Adım 2 • Adım 3")
+        c.ev(4, 0.08, None, f"\\an5\\pos({x:.0f},{y - 34 * k:.0f})\\fn{c.font}\\fs{46 * k:.0f}\\b1\\bord0\\1c{acc}\\fad(120,240)", t_txt)
+        c.ev(4, 0.16, None, f"\\an5\\pos({x:.0f},{y + 34 * k:.0f})\\fn{c.font}\\fs{32 * k:.0f}\\bord0\\1c&H001E293B&\\fad(160,240)", s_txt)
         return True
 
     if kind == "kinetic-stamp":

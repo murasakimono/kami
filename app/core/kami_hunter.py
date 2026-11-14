@@ -293,10 +293,160 @@ def preview_url(url: str) -> dict[str, Any]:
     return {"ok": False, "error": "Önizleme akışı çözülemedi"}
 
 
-def search(query: str, *, site: str = "", session: requests.Session | None = None) -> dict[str, Any]:
+def _norm_track_key(title: str) -> str:
+    import unicodedata
+
+    t = str(title or "").translate(str.maketrans("ÇĞİIÖŞÜçğıöşüÂÎÛâîû", "cgiiouucgiosuaiuaiu")).lower()
+    t = "".join(ch for ch in unicodedata.normalize("NFKD", t) if not unicodedata.combining(ch))
+    t = re.sub(r"\[[^\]]*\]|\([^)]*\)", " ", t)
+    for noise in ("official", "video", "audio", "lyrics", "sözleri", "sozleri", "hd", "hq", "192kbps", "320kbps", "underground", "rap"):
+        t = re.sub(rf"\b{noise}\b", " ", t)
+    t = re.sub(r"[^a-z0-9]+", " ", t).strip()
+    return t
+
+
+_SOURCE_QUALITY = {
+    "Bandcamp": 95,
+    "Archive.org": 92,
+    "SoundCloud": 84,
+    "VK": 74,
+    "Ok.ru": 70,
+    "Mail.ru": 66,
+    "Dailymotion": 62,
+    "Wayback": 55,
+    "Reddit": 48,
+}
+
+
+def _score_item(it: dict[str, Any], query: str = "") -> int:
+    src = str(it.get("source") or "")
+    score = _SOURCE_QUALITY.get(src, 40)
+    title = str(it.get("title") or "").lower()
+    if any(k in title for k in ("flac", "wav", "lossless", "320")):
+        score += 12
+    if any(k in title for k in ("live", "konser", "remix", "nightcore", "slowed")):
+        score -= 6
+    dur = float(it.get("duration") or 0)
+    if 60 <= dur <= 420:
+        score += 6
+    q_words = [w for w in _norm_track_key(query).split() if len(w) >= 2]
+    nkey = _norm_track_key(title)
+    if q_words and all(w in nkey for w in q_words):
+        score += 10
+    return score
+
+
+def cluster_and_rank_items(items: list[dict[str, Any]], query: str = "") -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Benzer/ayna kayitlari normalize basliga gore kumeler ve kalite puanina gore siralar."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for it in items:
+        copy = dict(it)
+        copy["quality_score"] = _score_item(copy, query)
+        key = _norm_track_key(copy.get("title") or "") or str(copy.get("url") or "")
+        groups.setdefault(key, []).append(copy)
+
+    clusters: list[dict[str, Any]] = []
+    for key, grp in groups.items():
+        grp.sort(key=lambda x: int(x.get("quality_score") or 0), reverse=True)
+        best = dict(grp[0])
+        best["mirrors_count"] = len(grp)
+        best["cluster_key"] = key
+        clusters.append({"key": key, "best": best, "mirrors": grp})
+    clusters.sort(key=lambda cl: int(cl["best"].get("quality_score") or 0), reverse=True)
+    ranked_best = [cl["best"] for cl in clusters]
+    return ranked_best, clusters
+
+
+def archive_underground_track(
+    url_or_path: str,
+    title: str = "",
+    artist: str = "",
+    out_dir: str = "",
+    lyrics: str = "",
+) -> dict[str, Any]:
+    """Underground parcayi indirir/kopyalar, ID3 etiketlerini isler ve varsa .lrc/.lyrics.txt yan dosyasi yazar."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+    from app import paths
+    from app.engines.ytdlp_engine import find_ffmpeg
+
+    src_in = str(url_or_path or "").strip()
+    if not src_in:
+        return {"ok": False, "error": "Kaynak adres veya dosya gerekli"}
+
+    dest_dir = Path(out_dir) if out_dir else (paths.downloads_dir() / "Müzik" / "Kami Hunter Arşiv")
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    base_name = re.sub(r'[<>:"/\\|?*]+', "_", f"{artist + ' - ' if artist else ''}{title or 'underground_track'}").strip(" .")[:100] or "underground_track"
+    dst = dest_dir / f"{base_name}.mp3"
+
+    src_file = Path(src_in)
+    if src_file.is_file():
+        tmp_src = src_file
+    else:
+        stream = src_in
+        pr = preview_url(src_in)
+        if pr.get("ok") and pr.get("stream"):
+            stream = pr["stream"]
+        tmp_dl = dest_dir / f".{base_name}_raw.tmp"
+        try:
+            with requests.get(stream, stream=True, timeout=25, headers={"User-Agent": UA}) as resp:
+                resp.raise_for_status()
+                with open(tmp_dl, "wb") as f:
+                    for chunk in resp.iter_content(65536):
+                        if chunk:
+                            f.write(chunk)
+        except Exception:
+            try:
+                import yt_dlp
+                opts = {"quiet": True, "no_warnings": True, "outtmpl": str(dest_dir / f".{base_name}_yt.%(ext)s"), "format": "bestaudio/best"}
+                ff = find_ffmpeg()
+                if ff:
+                    opts["ffmpeg_location"] = ff
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    ydl.download([src_in])
+                cands = sorted(dest_dir.glob(f".{base_name}_yt.*"), key=lambda x: x.stat().st_mtime, reverse=True)
+                if cands:
+                    tmp_dl = cands[0]
+            except Exception as exc:
+                return {"ok": False, "error": f"İndirme hatası: {str(exc)[:120]}"}
+        if not tmp_dl.is_file():
+            return {"ok": False, "error": "Ses dosyası indirilemedi"}
+        tmp_src = tmp_dl
+
+    ff = find_ffmpeg()
+    meta_ok = False
+    if ff and tmp_src != dst:
+        nowin = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        cmd = [ff, "-y", "-i", str(tmp_src), "-vn", "-b:a", "192k"]
+        if title:
+            cmd += ["-metadata", f"title={title}"]
+        if artist:
+            cmd += ["-metadata", f"artist={artist}"]
+        cmd += ["-metadata", "genre=Underground Rap", str(dst)]
+        r = subprocess.run(cmd, capture_output=True, creationflags=nowin)
+        meta_ok = r.returncode == 0 and dst.is_file()
+    if not meta_ok and tmp_src != dst:
+        shutil.copy2(tmp_src, dst)
+    if tmp_src != src_file and tmp_src.is_file() and tmp_src != dst:
+        try:
+            tmp_src.unlink()
+        except OSError:
+            pass
+
+    sidecar = ""
+    if lyrics and str(lyrics).strip():
+        sc = dst.with_suffix(".lrc" if "[" in lyrics else ".lyrics.txt")
+        sc.write_text(str(lyrics).strip(), encoding="utf-8")
+        sidecar = str(sc)
+
+    return {"ok": dst.is_file(), "path": str(dst), "title": title, "artist": artist, "lyrics_path": sidecar}
+
+
+def search(query: str, *, site: str = "", session: requests.Session | None = None, cluster: bool = True) -> dict[str, Any]:
     q = " ".join(str(query or "").split()).strip()
     if len(q) < 2:
-        return {"ok": False, "error": "En az 2 karakter girin", "items": [], "notes": []}
+        return {"ok": False, "error": "En az 2 karakter girin", "items": [], "clusters": [], "notes": []}
 
     def _run(fn):
         s = session or requests.Session()
@@ -334,4 +484,7 @@ def search(query: str, *, site: str = "", session: requests.Session | None = Non
         if u and u not in seen:
             seen.add(u)
             uniq.append(it)
-    return {"ok": True, "query": q, "items": uniq, "notes": notes}
+    if cluster:
+        ranked, clusters = cluster_and_rank_items(uniq, query=q)
+        return {"ok": True, "query": q, "items": ranked, "clusters": clusters, "notes": notes}
+    return {"ok": True, "query": q, "items": uniq, "clusters": [], "notes": notes}

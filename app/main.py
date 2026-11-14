@@ -107,6 +107,9 @@ def main() -> int:
     if "--studio-mcp" in sys.argv[1:]:   # Claude masaustu: Kami Studio MCP sunucusu (stdio, pencere yok)
         from app.core import studio_mcp
         return studio_mcp.main()
+    if "--picture-mcp" in sys.argv[1:]:   # Claude/Antigravity: Kami Picture Pro MCP sunucusu (stdio)
+        from app.core import picture_mcp
+        return picture_mcp.main()
     if "--cli" in sys.argv[1:]:   # kami-cli bassiz SDK
         from app.core import kami_cli
         _idx = sys.argv.index("--cli")
