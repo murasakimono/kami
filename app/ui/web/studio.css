@@ -563,3 +563,11 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .tv-hyper-whip-l::after { animation-name: tvSlideL; }
 .tv-burn-flash::after, .tv-burn-orange::after { animation-name: tvLeak; }
 .tv-checker-dissolve::after, .tv-tile-flip::after { animation-name: tvFade; }
+.tv-prism-whip::after { animation-name: tvWhip; }
+.tv-broken-glass-cut::after, .tv-datamosh-cut::after { animation-name: tvShake; animation-timing-function: steps(6); }
+.tv-burning-edge::after { animation-name: tvLeak; }
+.tv-liquid-splash-wipe::after, .tv-cyberpunk-slice::after { animation-name: tvBlindsH; }
+.tv-retro-tv-off::after { animation-name: tvBarnH; }
+.tv-kinetic-tile-flip::after { animation-name: tvFlipH; }
+.tv-ink-splatter-wipe::after { animation-name: tvIris; }
+.tv-camera-flash-bulb::after { animation-name: tvFlash; }

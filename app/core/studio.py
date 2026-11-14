@@ -132,9 +132,14 @@ from app.core.studio_pro_pack2 import (  # noqa: E402
     AUDIO_FIX_NAMES_PACK2, AUDIO_FIX_PACK2, CAPTIONS_PACK2, FX_PACK2,
     SFX_CAT_PACK2, SFX_PACK2, TEMPLATES_PACK2, TRANS_PACK2, ZOOM_PACK2, trans_in_pack2,
 )
+from app.core.studio_pro_pack3 import (  # noqa: E402
+    AUDIO_FIX_NAMES_PACK3, AUDIO_FIX_PACK3, FX_PACK3,
+    TEMPLATES_PACK3, TRANS_PACK3, trans_in_pack3,
+)
 FX.update({k: v for k, v in FX_PRO.items() if k not in FX})
 FX.update({k: v for k, v in FX_TR_MEME.items() if k not in FX})
 FX.update({k: v for k, v in FX_PACK2.items() if k not in FX})
+FX.update({k: v for k, v in FX_PACK3.items() if k not in FX})
 CAPTIONS2.update({k: v for k, v in CAPTIONS_PRO.items() if k not in CAPTIONS2})
 CAPTIONS2.update({k: v for k, v in CAPTIONS_PACK2.items() if k not in CAPTIONS2})
 
@@ -148,6 +153,7 @@ TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom
 TRANS.update(TRANS2)   # faz 5b: capraz/sekil/olcek gecisleri (studio_trans2.py)
 TRANS.update({k: v for k, v in TRANS_PRO.items() if k not in TRANS})
 TRANS.update({k: v for k, v in TRANS_PACK2.items() if k not in TRANS})
+TRANS.update({k: v for k, v in TRANS_PACK3.items() if k not in TRANS})
 TRANS_FF = set(TRANS) - {"none", "fade"}
 
 # Hazir zoom sablonlari (klibe gore sn); kullanicininkiler CACHE/templates.json'a eklenir
@@ -1215,20 +1221,38 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
     master = project.get("master") or {}
     lufs = master.get("lufs") if "lufs" in master else opts.get("lufs")
     tail = (f"loudnorm=I={float(lufs):.1f}:TP=-1.5:LRA=11," if lufs else "") + f"alimiter=limit=0.97,apad,atrim=0:{total:.3f}"
+    def _amix_tree(labels: list[str], pfx: str, tail_expr: str) -> str:
+        """Coklu ses girislerini FFmpeg amix kilitlenmesini onlemek icin 4'lu agacta miksler."""
+        cur, step = list(labels), 0
+        while len(cur) > 4:
+            nxt = []
+            for j in range(0, len(cur), 4):
+                grp = cur[j:j + 4]
+                if len(grp) == 1:
+                    nxt.append(grp[0])
+                else:
+                    lbl = f"[{pfx}_{step}]"
+                    step += 1
+                    graph.append("".join(grp) + f"amix=inputs={len(grp)}:normalize=0:dropout_transition=0{lbl}")
+                    nxt.append(lbl)
+            cur = nxt
+        if len(cur) == 1 and step > 0:
+            return f"{cur[0]}{tail_expr}"
+        return "".join(cur) + f"amix=inputs={len(cur)}:normalize=0:dropout_transition=0,{tail_expr}"
+
     if audio_parts:
         for i, (part, _m) in enumerate(audio_parts):
             graph.append(part + f"[a{i}]")
         music = [i for i, (_p, m) in enumerate(audio_parts) if m]
         voice = [i for i, (_p, m) in enumerate(audio_parts) if not m]
         if music and voice:   # muzik konusmanin altina girsin (sidechain)
-            graph.append("".join(f"[a{i}]" for i in voice) + f"amix=inputs={len(voice)}:normalize=0:dropout_transition=0,asplit=2[vb][vk]")
-            graph.append("".join(f"[a{i}]" for i in music) + f"amix=inputs={len(music)}:normalize=0:dropout_transition=0[mb]")
+            graph.append(_amix_tree([f"[a{i}]" for i in voice], "vm", "asplit=2[vb][vk]"))
+            graph.append(_amix_tree([f"[a{i}]" for i in music], "mm", "anull[mb]"))
             amt = float(master.get("duck", 0.6))
             graph.append(f"[mb][vk]sidechaincompress=threshold={0.02 + 0.08 * (1 - amt):.3f}:ratio={2 + 10 * amt:.1f}:attack=20:release=450:makeup=1[md]")
             graph.append(f"[vb][md]amix=inputs=2:normalize=0:dropout_transition=0,{tail}[aout]")
         else:
-            mix = "".join(f"[a{i}]" for i in range(len(audio_parts)))
-            graph.append(f"{mix}amix=inputs={len(audio_parts)}:normalize=0:dropout_transition=0,{tail}[aout]")
+            graph.append(_amix_tree([f"[a{i}]" for i in range(len(audio_parts))], "am", f"{tail}[aout]"))
     else:
         graph.append(f"anullsrc=r=48000:cl=stereo,atrim=0:{total:.3f}[aout]")
     return [*inputs, *_deliver_args(graph, opts, enc, W, H, FPS, total, out, work)], total
@@ -1541,6 +1565,8 @@ def _trans_in(kind: str, d: float, W: int, H: int, tag: str = "t", c0: float = 0
         return trans_in_pro(kind, d, W, H, tag, c0, fps)
     if kind in TRANS_PACK2:
         return trans_in_pack2(kind, d, W, H, tag, c0, fps)
+    if kind in TRANS_PACK3:
+        return trans_in_pack3(kind, d, W, H, tag, c0, fps)
     return trans_in2(kind, d, W, H, tag, c0, fps)
 
 
@@ -1559,6 +1585,7 @@ AUDIO_FIX = {
     "muffle": "lowpass=f=650,volume=0.55",
     **AUDIO_FIX_PRO,
     **AUDIO_FIX_PACK2,
+    **AUDIO_FIX_PACK3,
 }
 
 
@@ -2316,7 +2343,8 @@ AUDIO_FIX_NAMES = {"nr1": "Gürültü azalt (hafif)", "nr2": "Gürültü azalt (
                    "gate": "Kapı (nefes/arka sesi kes)", "bass": "Bas güçlendir", "radio": "Telsiz", "phone": "Telefon", "cave": "Mağara yankısı",
                    "hot-montage": "Sıcak montaj (-10 LUFS + Limiter)", "meme-earrape": "Meme Bas / Kulak Patlatan (-7 LUFS)", "muffle": "Meme duraksama (Lo-Pass Boğuk)",
                    **AUDIO_FIX_NAMES_PRO,
-                   **AUDIO_FIX_NAMES_PACK2}
+                   **AUDIO_FIX_NAMES_PACK2,
+                   **AUDIO_FIX_NAMES_PACK3}
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -2375,7 +2403,7 @@ TEMPLATES = [
         {"t": 0, "graphic": "quote", "dur": 5, "style": {"title": "Kaybetmekten korkma.", "sub": "Biri"}}, {"t": 0, "sfx": "ding"}]},
     {"id": "counter", "group": "Vlog & belgesel", "name": "Sayaç (istatistik)", "items": [
         {"t": 0, "graphic": "counter", "dur": 3, "style": {"from": 0, "to": 1000000, "suffix": " izlenme"}}, {"t": 0, "sfx": "riser"}]},
-] + TEMPLATES_PRO + TEMPLATES_TR_MEME + TEMPLATES_PACK2
+] + TEMPLATES_PRO + TEMPLATES_TR_MEME + TEMPLATES_PACK2 + TEMPLATES_PACK3
 TEMPLATE_NAMES = [{"id": t["id"], "group": t["group"], "name": t["name"], "needs": t.get("needs", "")} for t in TEMPLATES]
 
 

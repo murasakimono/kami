@@ -674,6 +674,147 @@ def t_clipboard_bridge(action: str, t: float = 0.0, selected_ids: list[str] | No
     return {"ok": False, "error": "action_must_be_copy_or_paste"}
 
 
+@tool("beatshift_sync", "PluginPlay Beatshift: müzik/ses dosyasındaki vuruşları (BPM) algılar ve zaman çizelgesine işaret/zoom/flaş/kesim uygular.",
+      {"media_path": STR, "clip_id": STR, "mode": STR, "step": N, "zoom_amt": N, "sensitivity": N, "path": PATH}, ["media_path"])
+def t_beatshift_sync(media_path: str, clip_id: str = "", mode: str = "markers", step: int = 1,
+                     zoom_amt: float = 1.14, sensitivity: float = 1.35, path: str = "") -> Any:
+    from app.core.studio_pro_plugins import apply_beat_sync, detect_audio_beats
+    det = detect_audio_beats(_ffmpeg(), media_path, sensitivity=float(sensitivity or 1.35))
+    if not det.get("ok"):
+        return det
+    p, pr = load(path)
+    res = apply_beat_sync(pr, det["beats"], clip_id=clip_id, mode=mode, step=int(step or 1), zoom_amt=float(zoom_amt or 1.14))
+    save(p, pr)
+    return {**res, "bpm": det.get("bpm"), "beat_count": det.get("beat_count")}
+
+
+@tool("pixel_sort_clip", "PluginPlay Pixel Sorting: video karesindeki parlaklık eşiğindeki pikselleri dikey/yatay gerçek zamanlı sıralar ve zaman çizelgesine ekler.",
+      {"src_path": STR, "low_thr": N, "high_thr": N, "direction": STR, "reverse": {"type": "boolean"}, "add_to_timeline": {"type": "boolean"}, "start": N, "path": PATH}, ["src_path"])
+def t_pixel_sort_clip(src_path: str, low_thr: float = 0.25, high_thr: float = 0.85, direction: str = "vertical",
+                      reverse: bool = False, add_to_timeline: bool = True, start: float = 0.0, path: str = "") -> Any:
+    from app.core.studio_pro_plugins import pixel_sort_video
+    res = pixel_sort_video(_ffmpeg(), src_path, low_thr=float(low_thr), high_thr=float(high_thr),
+                           direction=direction, reverse=bool(reverse))
+    if not res.get("ok") or not add_to_timeline:
+        return res
+    p, pr = load(path)
+    info = ST.info(res["path"])
+    aid = S.add_asset(pr, info)
+    c = {"id": S._nid(pr), "track": "v1", "asset": aid, "start": float(start), "dur": float(info.get("dur") or 3.0), "in": 0.0, "speed": 1.0}
+    pr["clips"].append(c)
+    save(p, pr)
+    return {**res, "clip_id": c["id"], "asset_id": aid}
+
+
+@tool("datamosh_clip", "PluginPlay Datamosh 2: MPEG-4 I-frame düşürerek gerçek datamosh hareket izi/sürükleme üretir.",
+      {"src_path": STR, "mode": STR, "intensity": N, "add_to_timeline": {"type": "boolean"}, "start": N, "path": PATH}, ["src_path"])
+def t_datamosh_clip(src_path: str, mode: str = "i_frame_drop", intensity: float = 0.6,
+                    add_to_timeline: bool = True, start: float = 0.0, path: str = "") -> Any:
+    from app.core.studio_pro_plugins import datamosh_video
+    res = datamosh_video(_ffmpeg(), src_path, mode=mode, intensity=float(intensity or 0.6))
+    if not res.get("ok") or not add_to_timeline:
+        return res
+    p, pr = load(path)
+    info = ST.info(res["path"])
+    aid = S.add_asset(pr, info)
+    c = {"id": S._nid(pr), "track": "v1", "asset": aid, "start": float(start), "dur": float(info.get("dur") or 3.0), "in": 0.0, "speed": 1.0}
+    pr["clips"].append(c)
+    save(p, pr)
+    return {**res, "clip_id": c["id"], "asset_id": aid}
+
+
+@tool("generate_chart_graphic", "PluginPlay Chartist / The Parliament / Multistage Timer: veriye dayalı şeffaf animasyonlu grafik/meclis/sayaç katmanı üretip ekler.",
+      {"kind": STR, "data": {"type": "object"}, "dur": N, "start": N, "add_to_timeline": {"type": "boolean"}, "path": PATH}, ["kind"])
+def t_generate_chart(kind: str, data: dict[str, Any] | None = None, dur: float = 4.0, start: float = 0.0,
+                     add_to_timeline: bool = True, path: str = "") -> Any:
+    from app.core.studio_pro_plugins import generate_data_graphic
+    p, pr = load(path)
+    res = generate_data_graphic(_ffmpeg(), kind=kind, data=data, w=int(pr.get("w") or 1280), h=int(pr.get("h") or 720), dur=float(dur or 4.0))
+    if not res.get("ok") or not add_to_timeline:
+        return res
+    info = ST.info(res["path"])
+    info["alpha"] = True
+    aid = S.add_asset(pr, info)
+    tr = next((t["id"] for t in pr["tracks"] if t["kind"] == "overlay"), "v1")
+    c = {"id": S._nid(pr), "track": tr, "asset": aid, "start": float(start), "dur": float(res["dur"]), "in": 0.0, "speed": 1.0}
+    pr["clips"].append(c)
+    save(p, pr)
+    return {**res, "clip_id": c["id"], "asset_id": aid}
+
+
+@tool("layout_clips", "PluginPlay Layout / GridSmith / Anti-Static: seçili klipleri ızgara, daire (radial), satır/sütun veya eşit dağılımla hizalar.",
+      {"ids": {"type": "array", "items": STR}, "mode": STR, "cols": N, "gap": N, "path": PATH}, ["ids"])
+def t_layout_clips(ids: list[str], mode: str = "grid", cols: int = 3, gap: float = 0.04, path: str = "") -> Any:
+    from app.core.studio_pro_plugins import layout_clips
+    p, pr = load(path)
+    res = layout_clips(pr, ids, mode=mode, cols=int(cols or 3), gap=float(gap or 0.04))
+    if res.get("ok"):
+        save(p, pr)
+    return {k: v for k, v in res.items() if k != "project"}
+
+
+@tool("duplicate_rename_clips", "PluginPlay Duplicate & Rename: seçili klipleri numaralandırma şablonuyla kopyalar.",
+      {"ids": {"type": "array", "items": STR}, "count": N, "pattern": STR, "time_offset": N, "path": PATH}, ["ids"])
+def t_duplicate_rename(ids: list[str], count: int = 1, pattern: str = "{name} #{n}", time_offset: float = 0.25, path: str = "") -> Any:
+    from app.core.studio_pro_plugins import duplicate_rename_clips
+    p, pr = load(path)
+    res = duplicate_rename_clips(pr, ids, count=int(count or 1), pattern=pattern, time_offset=float(time_offset or 0.25))
+    if res.get("ok"):
+        save(p, pr)
+    return {k: v for k, v in res.items() if k != "project"}
+
+
+@tool("power_loop", "PluginPlay Power Loop / AEJuice Loop: klibin anahtar karelerini tüm klip boyunca tekrarlar veya ping-pong döngüye sokar.",
+      {"id": STR, "mode": STR, "period_s": N, "path": PATH}, ["id"])
+def t_power_loop(id: str, mode: str = "pingpong", period_s: float = 1.0, path: str = "") -> Any:
+    from app.core.studio_pro_plugins import apply_power_loop
+    p, pr = load(path)
+    res = apply_power_loop(pr, id, mode=mode, period_s=float(period_s or 1.0))
+    if res.get("ok"):
+        save(p, pr)
+    return {k: v for k, v in res.items() if k != "project"}
+
+
+@tool("set_adaptive_timing", "AtomX / Spunkram Adaptive Markers: klip süresi uzayıp kısaldığında giriş/çıkış animasyonlarını uçlara sabitler.",
+      {"id": STR, "in_dur": N, "out_dur": N, "new_dur": N, "path": PATH}, ["id"])
+def t_adaptive_timing(id: str, in_dur: float = 0.45, out_dur: float = 0.45, new_dur: float | None = None, path: str = "") -> Any:
+    from app.core.studio_pro_plugins import set_adaptive_timing
+    p, pr = load(path)
+    res = set_adaptive_timing(pr, id, in_dur=float(in_dur or 0.45), out_dur=float(out_dur or 0.45), new_dur=new_dur)
+    if res.get("ok"):
+        save(p, pr)
+    return {k: v for k, v in res.items() if k != "project"}
+
+
+@tool("user_preset", "Mister Horse / AEJuice My Pack: klip önayarını kişisel pakete kaydet, listele, sil veya klibe uygula.",
+      {"action": STR, "name": STR, "preset_id": STR, "clip_id": STR, "pack": STR, "color": STR, "path": PATH}, ["action"])
+def t_user_preset(action: str, name: str = "", preset_id: str = "", clip_id: str = "",
+                  pack: str = "Benim Paketim", color: str = "#7C3AED", path: str = "") -> Any:
+    from app.core.studio_pro_plugins import apply_user_preset, delete_user_preset, list_user_presets, save_user_preset
+    if action == "list":
+        return list_user_presets(pack=pack if pack != "*" else "")
+    if action == "delete":
+        return delete_user_preset(preset_id)
+    p, pr = load(path)
+    if action == "save":
+        cl = S.find_clip(pr, clip_id)
+        payload = {k: cl[k] for k in ("fx", "grade", "anim", "style", "afx", "eq", "zoom", "trans", "adaptive") if k in cl}
+        return save_user_preset(name or f"Klip Önayar", payload, pack=pack, color=color)
+    if action == "apply":
+        res = apply_user_preset(pr, clip_id, preset_id)
+        if res.get("ok"):
+            save(p, pr)
+        return {k: v for k, v in res.items() if k != "project"}
+    return {"ok": False, "error": "action_must_be_list_save_apply_delete"}
+
+
+@tool("audio_pro_process", "Soundly Pro + Perfect Pitch: ses klibini FFT denoise, dereverb, LUFS normalize veya perde (pitch) kaydırmayla işler.",
+      {"src_path": STR, "preset": STR, "pitch_semitones": N, "target_lufs": N}, ["src_path"])
+def t_audio_pro_process(src_path: str, preset: str = "denoise_voice", pitch_semitones: float = 0.0, target_lufs: float | None = None) -> Any:
+    from app.core.studio_pro_plugins import process_audio_clip_pro
+    return process_audio_clip_pro(_ffmpeg(), src_path, preset=preset, pitch_semitones=float(pitch_semitones or 0.0), target_lufs=target_lufs)
+
+
 # Kami Picture Pro + Makro MCP araclari (tek MCP baglantisindan tam kontrol)
 from app.core import picture_mcp as _pic_mcp  # noqa: E402
 TOOLS.update(_pic_mcp.TOOLS)

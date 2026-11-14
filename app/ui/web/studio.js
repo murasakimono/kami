@@ -1251,7 +1251,7 @@ lanes.addEventListener("pointerdown", e => {
   if (!edge && !e.altKey && ST.linkTracks && group.length === 1) {
     group = linkedPeers(group[0]).filter(x => !trackOf(x).lock);
   }
-  const st0 = group.map(x => ({ c: x, start: x.start, dur: x.dur, in: x.in || 0, track: x.track }));
+  const st0 = group.map(x => ({ c: x, start: x.start, dur: x.dur, in: x.in || 0, track: x.track, zoom: x.zoom ? clone(x.zoom) : null }));
   const x0 = e.clientX, tg = snapTargets(new Set(group.map(x => x.id)));
   let moved = false;
   renderInsp();
@@ -1273,6 +1273,11 @@ lanes.addEventListener("pointerdown", e => {
         let ne = s0.start + s0.dur + dx; const [sn, hit] = snapT(ne, tg); ne = sn; showSnap(hit);
         const maxDur = maxSrc === Infinity ? 1e6 : (maxSrc - s0.in) / sp;
         c.dur = clamp(ne - s0.start, .05, maxDur);
+        if (c.adaptive?.keepEnds && s0.zoom?.length) {
+          const delta = c.dur - s0.dur, inD = c.adaptive.inDur ?? .45, outD = c.adaptive.outDur ?? .45;
+          const thr = Math.max(inD, s0.dur - outD - .05);
+          c.zoom = s0.zoom.map(k => (k.t >= thr ? { ...k, t: +Math.max(inD, k.t + delta).toFixed(3) } : { ...k }));
+        }
       }
     } else {
       if (ST.editMode === "slip" && group.length === 1) {

@@ -96,6 +96,48 @@ const SFX = (() => {
         if ((t * 2) % 1 < .65) { ctx.fillStyle = "#ff2a2a"; const s = Math.max(8, W * .013); ctx.fillRect(W * .035, H * .045, s, s); } ctx.restore(); break; }
       case "pulse": tint(ctx, W, H, "#fff", "lighter", Math.abs(Math.sin(t * Math.PI * 2)) * .16); break;
       case "crisp": vignette(ctx, W, H, .08); break;
+      case "halation": {
+        const src = copy(ctx, W, H);
+        ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = .38;
+        ctx.filter = `blur(${Math.max(4, Math.round(W / 60))}px) sepia(1) saturate(4) hue-rotate(-35deg)`;
+        ctx.drawImage(src, 0, 0); ctx.restore(); break;
+      }
+      case "prism": {
+        const s = 6 * W / 1280, src = copy(ctx, W, H);
+        ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = .35;
+        ctx.filter = "hue-rotate(-40deg) saturate(2)"; ctx.drawImage(src, -s, -s * .5);
+        ctx.filter = "hue-rotate(150deg) saturate(2)"; ctx.drawImage(src, s, s * .5);
+        ctx.restore(); break;
+      }
+      case "paper-grain": {
+        ctx.save(); ctx.globalCompositeOperation = "multiply"; ctx.globalAlpha = .16;
+        const n = noiseTiles()[0]; ctx.fillStyle = ctx.createPattern(n, "repeat"); ctx.fillRect(0, 0, W, H); ctx.restore(); break;
+      }
+      case "rain": {
+        ctx.save(); ctx.strokeStyle = "rgba(180,220,255,.35)"; ctx.lineWidth = Math.max(1, W / 960);
+        for (let i = 0; i < 42; i++) {
+          const rx = rnd(i * 17 + f * 3) * W, ry = ((rnd(i * 31) + t * (1.8 + rnd(i) * .8)) % 1) * H;
+          ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - 4 * W / 1280, ry + 26 * H / 720); ctx.stroke();
+        }
+        ctx.restore(); break;
+      }
+      case "snow": {
+        ctx.save(); ctx.fillStyle = "rgba(255,255,255,.72)";
+        for (let i = 0; i < 36; i++) {
+          const sx = (rnd(i * 19) + Math.sin(t * 1.4 + i) * .02) * W, sy = ((rnd(i * 23) + t * (.22 + rnd(i) * .2)) % 1) * H;
+          ctx.beginPath(); ctx.arc(sx, sy, Math.max(1.5, (1.5 + rnd(i * 7) * 2.5) * W / 1280), 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore(); break;
+      }
+      case "sparks": {
+        ctx.save(); ctx.globalCompositeOperation = "lighter";
+        for (let i = 0; i < 28; i++) {
+          const ex = (rnd(i * 29) + Math.sin(t * 2.5 + i) * .04) * W, ey = (1 - ((rnd(i * 11) + t * (.35 + rnd(i) * .3)) % 1)) * H;
+          ctx.fillStyle = i % 2 ? "rgba(255,140,40,.85)" : "rgba(255,220,100,.8)";
+          ctx.beginPath(); ctx.arc(ex, ey, Math.max(1.5, 2.2 * W / 1280), 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore(); break;
+      }
     }
   }
   function shakeOffset(ids, t, W) {
@@ -158,11 +200,21 @@ const SFX = (() => {
     else if (kind === "glitch-tear-v" || kind === "glass-shatter") { r.rgb = true; r.dx = .012 * Math.sin(local * 95) * (1 - u); }
     else if (kind === "squeeze-h") r.sx = Math.max(.04, e);
     else if (kind === "squeeze-v") r.sy = Math.max(.04, e);
-    else if (/^(liquid-drip|crt-off|crt-on|ink-splat|strip-blind-|paper-tear-slide|checker-dissolve|tile-flip)/.test(kind)) r.mask = { kind, e };
+    else if (kind === "prism-whip") { r.rgb = true; r.blur = 16 * (1 - u); r.dx = .45 * (1 - e); }
+    else if (kind === "broken-glass-cut") { r.rgb = true; r.flash = .45 * (1 - u); }
+    else if (kind === "burning-edge") { r.leak = .85 * (1 - u); r.mask = { kind: "wipe-r", e }; }
+    else if (kind === "datamosh-cut") { r.rgb = true; r.dx = .02 * Math.sin(local * 110) * (1 - u); }
+    else if (kind === "camera-flash-bulb") { r.flash = .92 * Math.exp(-Math.pow(u * 4.2, 2)); }
+    else if (/^(liquid-splash-wipe|retro-tv-off|kinetic-tile-flip|ink-splatter-wipe|cyberpunk-slice|liquid-drip|crt-off|crt-on|ink-splat|strip-blind-|paper-tear-slide|checker-dissolve|tile-flip)/.test(kind)) r.mask = { kind, e };
     else if (/^(wipe-|barn-|iris|eye|clock|diag-|wave-wipe|corner|diamond|heart|cross|blinds-|checker|stripes|blocks|dissolve|page-curl|split-curtain)/.test(kind)) r.mask = { kind, e };
     return r;
   }
   const TRANS2_MASK = {
+    "liquid-splash-wipe": (c, e, W, H) => { c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, H * e); for (let x = W; x >= 0; x -= W / 30) c.lineTo(x, H * e + Math.sin(x * .03) * H * .08 * (1 - e)); },
+    "retro-tv-off": (c, e, W, H) => { const h = Math.max(3, H * e); c.rect(0, (H - h) / 2, W, h); },
+    "kinetic-tile-flip": (c, e, W, H) => { const bw = W / 6; for (let i = 0; i < 6; i++) c.rect(i * bw, 0, bw * e + 1, H); },
+    "ink-splatter-wipe": (c, e, W, H) => { const r = Math.hypot(W, H) * .62 * e; for (let i = 0; i <= 48; i++) { const a = (i / 48) * Math.PI * 2, rr = Math.max(1, r + Math.sin(a * 7) * W * .05); const px = W / 2 + Math.cos(a) * rr, py = H / 2 + Math.sin(a) * rr; i ? c.lineTo(px, py) : c.moveTo(px, py); } c.closePath(); },
+    "cyberpunk-slice": (c, e, W, H) => { const bh = H / 8; for (let i = 0; i < 8; i++) { const off = (i % 2) * W * .45; c.rect(0, i * bh, Math.max(0, W * e * 1.45 - off), bh + 1); } },
     "liquid-drip": (c, e, W, H) => { c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, H * e); for (let x = W; x >= 0; x -= W / 24) c.lineTo(x, H * e + Math.sin(x / 28) * 28 * (1 - e)); },
     "crt-off": (c, e, W, H) => { const h = Math.max(3, H * (1 - e)); c.rect(0, (H - h) / 2, W, h); },
     "crt-on": (c, e, W, H) => { const h = Math.max(3, H * e); c.rect(0, (H - h) / 2, W, h); },

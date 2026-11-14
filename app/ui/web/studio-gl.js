@@ -12,13 +12,17 @@ const SGL = (() => {
   in vec2 uv; out vec4 o;
   uniform sampler2D img; uniform sampler3D lut; uniform sampler2D curveTex;
   uniform float exp_, con, sat, temp, tint, lutMix, useLut, lutN;
-  uniform float vig, grain, halation, timeSeed, useCurve;
+  uniform float vig, grain, halation, prism, timeSeed, useCurve;
   uniform vec3 lift, gam, gain;
   uniform float keyOn, keySim, keySmooth, keySpill; uniform vec3 keyCol;
   vec2 uvOf(vec3 c){ return vec2(-0.1146*c.r-0.3854*c.g+0.5*c.b, 0.5*c.r-0.4542*c.g-0.0458*c.b); }
   float hash12(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
   void main(){
     vec4 s = texture(img, uv); vec3 c = s.rgb; float a = s.a;
+    if (prism > .005) {
+      vec2 d = (uv - .5) * (.012 * prism);
+      c = vec3(texture(img, uv + d).r, c.g, texture(img, uv - d).b);
+    }
     if (keyOn > .5) {
       float d = distance(uvOf(c), uvOf(keyCol)) * 1.6;
       float k = keySmooth > 0.001 ? clamp((d - keySim) / keySmooth, 0., 1.) : step(keySim, d);
@@ -111,7 +115,7 @@ const SGL = (() => {
     const g = c.grade || {}, k = c.key || {};
     if (k.on) return true;
     if (g.lut && (g.lutMix ?? 1) > 0) return true;
-    if ((g.vignette || 0) > 0.005 || (g.grain || 0) > 0.005 || (g.halation || 0) > 0.005) return true;
+    if ((g.vignette || 0) > 0.005 || (g.grain || 0) > 0.005 || (g.halation || 0) > 0.005 || (g.prism || 0) > 0.005) return true;
     if (g.curves && ["luma", "r", "g", "b"].some(ch => Array.isArray(g.curves[ch]) && g.curves[ch].length >= 2)) return true;
     if (["exp", "con", "temp", "tint"].some(x => Math.abs(g[x] || 0) > 1e-4) || Math.abs((g.sat ?? 1) - 1) > 1e-4) return true;
     return ["lift", "gamma", "gain"].some(w => (g[w] || []).some(v => Math.abs(v) > 1e-4));
@@ -126,7 +130,7 @@ const SGL = (() => {
     const g = c.grade || {}, k = c.key || {};
     gl.uniform1f(U("exp_"), +g.exp || 0); gl.uniform1f(U("con"), +g.con || 0); gl.uniform1f(U("sat"), g.sat ?? 1);
     gl.uniform1f(U("temp"), +g.temp || 0); gl.uniform1f(U("tint"), +g.tint || 0);
-    gl.uniform1f(U("vig"), +g.vignette || 0); gl.uniform1f(U("grain"), +g.grain || 0); gl.uniform1f(U("halation"), +g.halation || 0);
+    gl.uniform1f(U("vig"), +g.vignette || 0); gl.uniform1f(U("grain"), +g.grain || 0); gl.uniform1f(U("halation"), +g.halation || 0); gl.uniform1f(U("prism"), +g.prism || 0);
     gl.uniform1f(U("timeSeed"), (performance.now() * 0.001) % 100);
     const hasC = syncCurves(g.curves);
     gl.uniform1f(U("useCurve"), hasC ? 1 : 0);

@@ -657,22 +657,23 @@ function addFxClip(id, t, snapped) {
 
 // ---------------------------------------------------------------- gecisler
 function transCat(k) {
-  if (/^(none|fade|flash|dip-|lightleak|lens-flare)/.test(k)) return "Temel & Flaş";
-  if (/^(slide|whip|spin|flip|cube-|zoom-spin)/.test(k)) return "Hareket & Dönüş";
-  if (/^(wipe|diag|barn|blinds|wave|stripes|page-curl|burn-wipe|split-curtain)/.test(k)) return "Silme & Perde";
-  if (/^(iris|eye|clock|corner|diamond|heart|cross|checker|blocks|dissolve)/.test(k)) return "Şekilli & Maske";
+  if (/^(none|fade|flash|dip-|lightleak|lens-flare|camera-flash-bulb)/.test(k)) return "Temel & Flaş";
+  if (/^(slide|whip|spin|flip|cube-|zoom-spin|prism-whip|kinetic-tile)/.test(k)) return "Hareket & Dönüş";
+  if (/^(wipe|diag|barn|blinds|wave|stripes|page-curl|burn-wipe|burning-edge|split-curtain|liquid-splash|cyberpunk-slice)/.test(k)) return "Silme & Perde";
+  if (/^(iris|eye|clock|corner|diamond|heart|cross|checker|blocks|dissolve|ink-splat|retro-tv)/.test(k)) return "Şekilli & Maske";
   return "Glitch & Pop";
 }
 P.trans = () => {
   const cat = P.trans.cat || "Tümü", q = (P.trans.q || "").toLowerCase(), ap = !!P.trans.auto;
-  const cats = ["Tümü", "Temel & Flaş", "Hareket & Dönüş", "Silme & Perde", "Şekilli & Maske", "Glitch & Pop"];
-  const items = Object.entries(ST.cat.trans).filter(([k, v]) => (cat === "Tümü" || transCat(k) === cat) && (!q || v.toLowerCase().includes(q) || k.toLowerCase().includes(q)));
-  pb.innerHTML = `<div class="hint">Seçili klibin girişine uygulanır. Süreyi sağ panelden ayarla.</div>` +
+  const cats = ["Tümü", "★ Favori", "Temel & Flaş", "Hareket & Dönüş", "Silme & Perde", "Şekilli & Maske", "Glitch & Pop"];
+  const items = Object.entries(ST.cat.trans).filter(([k, v]) => (cat === "Tümü" || (cat === "★ Favori" ? isFav("tr", k) : transCat(k) === cat)) && (!q || v.toLowerCase().includes(q) || k.toLowerCase().includes(q)))
+    .sort((a, b) => isFav("tr", b[0]) - isFav("tr", a[0]));
+  pb.innerHTML = `<div class="hint">Seçili klibin girişine uygulanır. Süreyi sağ panelden ayarla. ★: favori.</div>` +
     `<div class="uxbar"><button class="tb${ap ? " on" : ""}" id="trAuto" title="Geçiş önizlemelerini otomatik oynat">▶ Oto Oynat</button>` +
-    `<button class="tb${P.trans.sfx ? " on" : ""}" id="trSfx" title="Geçiş eklerken uyumlu Whoosh/Glitch SFX ekle">♪ + Ses Ekle</button></div>` +
+    `<button class="tb${P.trans.sfx ? " on" : ""}" id="trSfx" title="Geçiş eklerken kesim merkezli Whoosh/Glitch SFX ekle">♪ + Ses Ekle</button></div>` +
     `<div class="catpills">${cats.map(c => `<button class="${c === cat ? "on" : ""}" data-trcat="${c}">${c}</button>`).join("")}</div>` +
     `<input class="in" id="trQ" placeholder="${Object.keys(ST.cat.trans).length} geçiş içinde ara…" value="${esc(P.trans.q || "")}" style="width:100%;margin-bottom:6px">` +
-    `<div class="grid2${ap ? " autoplay" : ""}">${items.map(([k, v]) => `<div class="card" data-tr="${k}" title="${esc(v)}"><i class="trv tv-${esc(k)}"></i><b>${esc(v)}</b></div>`).join("")}</div>` +
+    `<div class="grid2${ap ? " autoplay" : ""}">${items.map(([k, v]) => `<div class="card" data-tr="${k}" title="${esc(v)}"><i class="trv tv-${esc(k)}"></i><b>${esc(v)}</b>${k !== "none" ? favStar("tr", k) : ""}</div>`).join("")}</div>` +
     `<div class="row" style="margin-top:10px"><button class="tb" id="trAll">Seçili tüm kesimlere uygula</button></div>`;
   const qi = $("#trQ"); qi.oninput = () => { P.trans.q = qi.value; clearTimeout(P.trans.t); P.trans.t = setTimeout(() => { P.trans(); const n = $("#trQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 160); };
   $("#trAuto").onclick = () => { P.trans.auto = !P.trans.auto; P.trans(); };
@@ -687,9 +688,12 @@ pb.addEventListener("click", async e => {
   if (!cs.length) { toast("Önce bir video klibi seç"); return; }
   snap(); for (const c of cs) { if (t.dataset.tr === "none") delete c.trans; else c.trans = { in: t.dataset.tr, dur: c.trans?.dur || .35 }; }
   if (P.trans.sfx && t.dataset.tr !== "none" && api.studio_sfx) {
-    const k = t.dataset.tr, sfxId = /glitch|crt|pixel|tear/.test(k) ? "glitch" : /flash|burn|flare/.test(k) ? "sub-drop" : "whoosh";
+    const k = t.dataset.tr, sfxId = /glitch|crt|pixel|tear|mosh|slice/.test(k) ? "glitch" : /flash|burn|flare|glass/.test(k) ? "sub-drop" : "whoosh";
     const s = await api.studio_sfx(sfxId);
-    if (s?.ok) { const aid = addAsset(s); placeAt({ asset: aid, start: cs[0].start, dur: Math.min(1.5, s.dur || .7), vol: .8 }, "audio", cs[0].start); }
+    if (s?.ok) {
+      const aid = addAsset(s), sfxDur = Math.min(1.5, s.dur || .7);
+      placeAt({ asset: aid, start: Math.max(0, +(cs[0].start - sfxDur * 0.45).toFixed(3)), dur: sfxDur, vol: .8 }, "audio", Math.max(0, cs[0].start - sfxDur * 0.45));
+    }
   }
   changed();
 });
@@ -756,6 +760,14 @@ const AI_TOOLS = [
   ["parallax", "✨ Parallax 2.5D Ken Burns", "Klip/görsel için derinlikli 2.5D kaydırma hareketi uygular."],
   ["brand", "🎨 Marka Kiti", "Kanal renk paleti, varsayılan yazı tipi ve kanal adını kaydeder."],
   ["motionStatus", "🔧 Motion & Donanım Durumu", "Gyroflow, MuseTalk VRAM ve hareket eklentisi hazır olma durumunu gösterir."],
+  ["pixelSort", "🌈 Pixel Sorting (Gerçek Sıralama)", "Parlaklık eşiğindeki pikselleri dikey/yatay algoritma ile sıralayıp yeni klip üretir."],
+  ["datamosh", "👾 Datamosh 2 (P-Frame Bozulma)", "Gerçek I-frame düşürme & hareket izi sürüklenmesiyle datamosh klibi oluşturur."],
+  ["beatshiftPro", "🥁 Beatshift BPM Sync (Zoom / Flaş / Kes)", "Spektral enerjiyle vuruşları algılayıp seçili klibe otomatik işaret/zoom/flaş/kesim uygular."],
+  ["dataGfx", "📊 Chartist / Meclis / Sayaç Üret", "Animasyonlu Çubuk/Çizgi grafik, Meclis koltuk dağılımı veya Çok Evreli Sayaç üretir."],
+  ["layoutLoop", "📐 Tuval Dizilim & Power Loop", "Seçili klipleri Izgara/Daireye dizer, çoğaltır (#1, #2) ya da anahtar kare döngüsü ekler."],
+  ["adaptiveTime", "⏱ AtomX Adaptive Zamanlama", "Klip süresi değişse bile giriş/çıkış animasyonlarını klip uçlarına sabitler."],
+  ["userPresets", "💾 Kişisel Önayar Paketlerim", "Özelleştirilmiş efekt, grade ve animasyon setlerini paket olarak kaydedip tek tıkla uygular."],
+  ["soundlyPro", "🔊 Soundly Pro DSP + Perfect Pitch", "FFT gürültü silme, yankı azaltma, -14/-16 LUFS ses eşitleme ve perde kaydırma uygular."],
 ];
 P.ai = () => {
   pb.innerHTML = `<div class="hint">Önce zaman çizelgesinde klibi seç. Hepsi geri alınabilir (Ctrl+Z).</div>` +
@@ -962,6 +974,173 @@ async function aiAction(kind, c) {
       tc.dur = Math.max(.2, +(tc.dur - d).toFixed(3));
     }
     changed(); toast(`${rm.length} bölüm (${totalCut.toFixed(1)} sn) metinden kesildi`);
+    return;
+  }
+  if (kind === "pixelSort") {
+    c = c && clipKind(c) === "video" ? c : needSel(["video"]); if (!c) return;
+    const a0 = assetOf(c); if (!a0?.path) { toast("Geçerli kaynak dosya yok"); return; }
+    const cfg = await modal(`<h3>🌈 Pixel Sorting (Algoritmik)</h3><div class="hint">Belirlenen parlaklık aralığındaki pikseller akış yönünde sıralanır.</div>
+      <label class="fld"><span>Yön</span><select class="in" id="psDir"><option value="vertical">Dikey Akış</option><option value="horizontal">Yatay Akış</option></select></label>
+      <label class="fld"><span>Alt Eşik</span><input type="range" id="psLo" min="0.05" max="0.6" step="0.05" value="0.25" oninput="psLoN.value=this.value"><input class="num" id="psLoN" value="0.25" readonly></label>
+      <label class="fld"><span>Üst Eşik</span><input type="range" id="psHi" min="0.4" max="0.98" step="0.02" value="0.85" oninput="psHiN.value=this.value"><input class="num" id="psHiN" value="0.85" readonly></label>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Oluştur</button></div>`,
+      { collect: () => ({ dir: $("#psDir").value, lo: +$("#psLo").value, hi: +$("#psHi").value }) });
+    if (!cfg) return;
+    busy("Pikseller sıralanıyor (NumPy + FFmpeg)…");
+    const r = await job("studio_pixel_sort", [a0.path, cfg.lo, cfg.hi, cfg.dir, false, 180]); busy(null);
+    if (!r?.ok) { toast(r?.error || "Oluşturulamadı", true); return; }
+    snap(); const aid = addAsset(r); c.asset = aid; c.in = 0; changed(); toast("Pixel Sorting klibi hazır");
+    return;
+  }
+  if (kind === "datamosh") {
+    c = c && clipKind(c) === "video" ? c : needSel(["video"]); if (!c) return;
+    const a0 = assetOf(c); if (!a0?.path) { toast("Geçerli kaynak dosya yok"); return; }
+    const cfg = await modal(`<h3>👾 Datamosh 2</h3><div class="hint">Gerçek MPEG-4 I-Frame düşürme veya kare izi sürükleme üretir.</div>
+      <label class="fld"><span>Mod</span><select class="in" id="dmMode"><option value="i_frame_drop">I-Frame Düşür (Klasik Datamosh)</option><option value="echo_bloom">Echo Motion Bloom</option><option value="pixel_repeat">Pixel Repeat Smear</option></select></label>
+      <label class="fld"><span>Şiddet</span><input type="range" id="dmInt" min="0.2" max="1" step="0.1" value="0.6" oninput="dmIntN.value=this.value"><input class="num" id="dmIntN" value="0.6" readonly></label>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Oluştur</button></div>`,
+      { collect: () => ({ mode: $("#dmMode").value, intensity: +$("#dmInt").value }) });
+    if (!cfg) return;
+    busy("Datamosh işleniyor…");
+    const r = await job("studio_datamosh", [a0.path, cfg.mode, cfg.intensity]); busy(null);
+    if (!r?.ok) { toast(r?.error || "Oluşturulamadı", true); return; }
+    snap(); const aid = addAsset(r); c.asset = aid; c.in = 0; changed(); toast(`Datamosh uygulandı (${cfg.mode})`);
+    return;
+  }
+  if (kind === "beatshiftPro") {
+    c = c && ["video", "audio"].includes(clipKind(c)) ? c : needSel(["video", "audio"]); if (!c) return;
+    const a0 = assetOf(c); if (!a0?.path) { toast("Geçerli ses/video dosyası yok"); return; }
+    const cfg = await modal(`<h3>🥁 Beatshift BPM & Vuruş Senkronu</h3>
+      <label class="fld"><span>Uygula</span><select class="in" id="bsMode"><option value="zoom">Vuruşta Zoom Darbesi</option><option value="flash">Vuruşta Flaş Efekti</option><option value="cut">Vuruşlarda Klibi Böl</option><option value="markers">Yalnızca İşaret Koy</option></select></label>
+      <label class="fld"><span>Hassasiyet</span><input type="range" id="bsSens" min="1.05" max="2.0" step="0.05" value="1.35" oninput="bsSensN.value=this.value"><input class="num" id="bsSensN" value="1.35" readonly></label>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Algıla & Uygula</button></div>`,
+      { collect: () => ({ mode: $("#bsMode").value, sens: +$("#bsSens").value }) });
+    if (!cfg) return;
+    busy("Beatshift spektral vuruş analizi…");
+    const det = await job("studio_beatshift", [a0.path, 0.24, cfg.sens]); busy(null);
+    if (!det?.ok) { toast(det?.error || "Vuruş bulunamadı", true); return; }
+    const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
+    const r = await api.studio_beat_sync(p, det.beats || [], c.id, cfg.mode, 1, 1.14);
+    if (r?.ok && r.project) {
+      snap(); ST.p.markers = r.project.markers; ST.p.clips = r.project.clips; changed();
+      toast(`${det.beat_count} vuruş (~${det.bpm} BPM) senkronize edildi`);
+    }
+    return;
+  }
+  if (kind === "dataGfx") {
+    const sample = JSON.stringify({
+      title: "Aylık Performans",
+      items: [
+        { label: "Ocak", value: 42, color: "#7C3AED" },
+        { label: "Şubat", value: 68, color: "#2EE6A6" },
+        { label: "Mart", value: 88, color: "#38BDF8" },
+      ],
+      points: [18, 35, 30, 62, 85],
+      parties: [
+        { label: "A", seats: 140, color: "#7C3AED" },
+        { label: "B", seats: 95, color: "#2EE6A6" },
+        { label: "C", seats: 65, color: "#F59E0B" },
+      ],
+      seconds: 15,
+    }, null, 2);
+    const cfg = await modal(`<h3>📊 Chartist / Meclis / Sayaç Üretici</h3>
+      <label class="fld"><span>Tür</span><select class="in" id="dgKind"><option value="bar">Çubuk Grafik (Bar)</option><option value="line">Çizgi Grafik (Line)</option><option value="parliament">Meclis Koltuk Dağılımı</option><option value="multistage_timer">Çok Evreli Geri Sayım</option></select></label>
+      <label class="fld"><span>Süre (sn)</span><input type="number" class="in" id="dgDur" value="4" min="1" max="20" step="0.5"></label>
+      <textarea class="in" id="dgJson" rows="7" style="width:100%;font-family:monospace;font-size:11px">${esc(sample)}</textarea>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Şeffaf Üret & Ekle</button></div>`,
+      { collect: () => ({ kind: $("#dgKind").value, dur: +$("#dgDur").value || 4, raw: $("#dgJson").value }) });
+    if (!cfg) return;
+    let payload = {};
+    try { payload = JSON.parse(cfg.raw); } catch { toast("Geçersiz JSON", true); return; }
+    busy("Şeffaf animasyonlu grafik render ediliyor…");
+    const r = await job("studio_data_graphic", [cfg.kind, payload, ST.p.w || 1280, ST.p.h || 720, cfg.dur]); busy(null);
+    if (!r?.ok) { toast(r?.error || "Üretilemedi", true); return; }
+    snap(); const aid = addAsset(r); placeAt({ asset: aid, dur: r.dur || cfg.dur }, trackFor("video"), ST.t); changed(); toast("Şeffaf grafik katmanı eklendi");
+    return;
+  }
+  if (kind === "layoutLoop") {
+    const cs = selClips();
+    if (!cs.length) { toast("En az 1 klip seç (Çoklu seçim: Shift+tık)"); return; }
+    const act = await modal(`<h3>📐 Dizilim · Çoğalt · Power Loop</h3><div class="hint">${cs.length} seçili klip üzerinde uygular.</div>
+      <div class="row" style="flex-wrap:wrap;gap:6px">
+        <button class="tb pri" data-v="grid">Izgara Diz</button>
+        <button class="tb" data-v="radial">Daire (Radial)</button>
+        <button class="tb" data-v="row">Yan Yana Sıra</button>
+        <button class="tb" data-v="distribute_x">X Eşit Dağıt</button>
+        <button class="tb" data-v="pingpong">Power Loop (PingPong)</button>
+        <button class="tb" data-v="dup3">3× Çoğalt (#1..#3)</button>
+      </div>`, {});
+    if (!act || act === "no") return;
+    const rawClone = () => { const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url; return p; };
+    const ids = cs.map(x => x.id);
+    let r;
+    if (act === "pingpong") r = await api.studio_power_loop(rawClone(), ids[0], "pingpong", 1.0);
+    else if (act === "dup3") r = await api.studio_duplicate_rename(rawClone(), ids, 3, "{name} #{n}", 0.25);
+    else r = await api.studio_layout_clips(rawClone(), ids, act, 3, 0.04);
+    if (r?.ok && r.project) { snap(); ST.p.clips = r.project.clips; changed(); toast("Düzenleme uygulandı"); }
+    return;
+  }
+  if (kind === "adaptiveTime") {
+    c = c || firstSel(); if (!c) { toast("Bir klip seç"); return; }
+    const curA = c.adaptive || { inDur: 0.45, outDur: 0.45 };
+    const cfg = await modal(`<h3>⏱ AtomX Adaptive Zamanlama</h3><div class="hint">Giriş & çıkış animasyon süreleri klip uzatılıp kısaltılsa bile kenarlara sabit kalır.</div>
+      <label class="fld"><span>Giriş Anim (sn)</span><input type="number" class="in" id="adIn" value="${curA.inDur ?? 0.45}" step="0.05" min="0.05"></label>
+      <label class="fld"><span>Çıkış Anim (sn)</span><input type="number" class="in" id="adOut" value="${curA.outDur ?? 0.45}" step="0.05" min="0.05"></label>
+      <label class="fld"><span>Yeni Klip Süresi (sn)</span><input type="number" class="in" id="adDur" value="${c.dur ?? 3}" step="0.1" min="0.4"></label>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Sabitle</button></div>`,
+      { collect: () => ({ inD: +$("#adIn").value, outD: +$("#adOut").value, dur: +$("#adDur").value }) });
+    if (!cfg) return;
+    const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
+    const r = await api.studio_adaptive_timing(p, c.id, cfg.inD, cfg.outD, cfg.dur);
+    if (r?.ok && r.project) { snap(); ST.p.clips = r.project.clips; changed(); toast(`Adaptive kilitlendi (${r.dur} sn)`); }
+    return;
+  }
+  if (kind === "userPresets") {
+    const res = await api.studio_user_presets_list("");
+    const items = res?.presets || [];
+    const listHtml = items.length ? items.map(it => `<div class="snd" data-upapply="${esc(it.id)}"><span style="border-left:4px solid ${esc(it.color || "#7C3AED")};padding-left:6px"><b>${esc(it.name)}</b> <small class="hint">${esc(it.pack)}</small></span><button class="tb" data-updel="${esc(it.id)}" title="Sil">✕</button></div>`).join("") : `<div class="hint">Henüz kayıtlı kullanıcı önayarı yok. Seçili klibi paket olarak kaydedebilirsin.</div>`;
+    let chosen = null;
+    await modal(`<h3>💾 Kişisel Önayar Paketlerim</h3>
+      <div class="row" style="margin-bottom:8px"><input class="in" id="upName" placeholder="Önayar adı (örn. Sinematik Hook)" style="flex:1"><button class="tb pri" id="upSave" style="flex:none">Seçili Klibi Kaydet</button></div>
+      <div id="upList" style="max-height:220px;overflow:auto">${listHtml}</div>
+      <div class="row" style="margin-top:8px"><button class="tb" data-v="ok">Kapat</button></div>`,
+      {
+        init: m => {
+          $("#upSave", m).onclick = async () => {
+            const cl = firstSel(); if (!cl) { toast("Kaydetmek için önce klip seç"); return; }
+            const nm = $("#upName", m).value.trim() || "Özel Önayar";
+            const pl = {}; for (const k of ["fx", "grade", "anim", "style", "afx", "eq", "zoom", "trans", "adaptive"]) if (cl[k] !== undefined) pl[k] = cl[k];
+            await api.studio_user_preset_save(nm, pl, "Benim Paketim", "#7C3AED", "clip");
+            toast("Önayar kaydedildi: " + nm); m.querySelector("[data-v=ok]")?.click();
+          };
+          $("#upList", m).onclick = async e => {
+            const del = e.target.closest("[data-updel]");
+            if (del) { e.stopPropagation(); await api.studio_user_preset_delete(del.dataset.updel); del.closest("[data-upapply]")?.remove(); return; }
+            const row = e.target.closest("[data-upapply]");
+            if (row) { chosen = items.find(x => x.id === row.dataset.upapply); m.querySelector("[data-v=ok]")?.click(); }
+          };
+        }
+      });
+    if (chosen && firstSel()) {
+      const cl = firstSel(); snap();
+      for (const [k, v] of Object.entries(chosen.payload || {})) cl[k] = clone(v);
+      changed(); toast("Önayar uygulandı: " + chosen.name);
+    }
+    return;
+  }
+  if (kind === "soundlyPro") {
+    c = c && ["video", "audio"].includes(clipKind(c)) ? c : needSel(["video", "audio"]); if (!c) return;
+    const a0 = assetOf(c); if (!a0?.path) { toast("Geçerli ses/video yok"); return; }
+    const cfg = await modal(`<h3>🔊 Soundly Pro DSP + Perfect Pitch</h3>
+      <label class="fld"><span>Önayar</span><select class="in" id="spPre"><option value="denoise_voice">Ses Temizle (FFT Denoise)</option><option value="dereverb_dry">Yankı Azalt (De-Reverb)</option><option value="lufs_youtube">YouTube Loudness (-14 LUFS)</option><option value="lufs_podcast">Podcast (-16 LUFS)</option><option value="place_concert_hall">Mekan: Konser Salonu</option><option value="place_car_cabin">Mekan: Araba Kabini</option><option value="place_subway">Mekan: Metro</option><option value="place_old_tv">Mekan: Eski TV</option></select></label>
+      <label class="fld"><span>Perde (Yarım Ton)</span><input type="range" id="spPt" min="-12" max="12" step="1" value="0" oninput="spPtN.value=this.value"><input class="num" id="spPtN" value="0" readonly></label>
+      <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">İşle & Ekle</button></div>`,
+      { collect: () => ({ preset: $("#spPre").value, pitch: +$("#spPt").value }) });
+    if (!cfg) return;
+    busy("Ses işleniyor (Soundly DSP)…");
+    const r = await job("studio_audio_pro_process", [a0.path, cfg.preset, cfg.pitch, null]); busy(null);
+    if (!r?.ok) { toast(r?.error || "İşlenemedi", true); return; }
+    snap(); const aid = addAsset(r); placeAt({ asset: aid, start: c.start, dur: r.dur || c.dur }, trackFor("audio"), c.start); changed(); toast("Soundly Pro ses eklendi");
     return;
   }
   if (["silence", "freeze", "scenes", "beats", "captions", "reframe", "cutbeats"].includes(kind)) {
