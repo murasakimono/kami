@@ -89,12 +89,13 @@ def t_get_clip(id: str, path: str = "") -> Any:
 
 
 @tool("catalog", "Kullanılabilir efekt modları (fx), geçişler, zoom şablonları, altyazı stilleri, metin animasyonları, abone animasyonları, "
-      "karışım modları (blends), maskeler, bezier önayarları (bezierPresets), EQ/ses eğrileri ve fontlar.", {})
+      "çıkartmalar (stickers), karışım modları (blends), maskeler, bezier önayarları (bezierPresets), EQ/ses eğrileri ve fontlar.", {})
 def t_catalog() -> Any:
     c = S.catalog()
     return {"fx": {k: f"{v['name']} [{v['pack']}]" for k, v in c["fx"].items()}, "trans": c["trans"],
             "zoom": [{"id": z["id"], "name": z["name"]} for z in c["zoom"]], "captions": c["captions"], "anims": c["anims"],
-            "subscribe": c["subscribe"], "graphics": c["graphics"], "templates": c["templates"], "afx": c["afx"], "deliver": c["deliver"],
+            "subscribe": c["subscribe"], "graphics": c["graphics"], "stickers": {k: v["name"] for k, v in c.get("stickers", {}).items()},
+            "templates": c["templates"], "afx": c["afx"], "deliver": c["deliver"],
             "blends": c["blends"], "masks": c["masks"], "bezierPresets": c["bezierPresets"],
             "eqPresets": c["eqPresets"], "audioCurves": c["audioCurves"],
             "tanim": c["tanim"], "canim": {k: ({i: (v["name"] if isinstance(v, dict) else v) for i, v in d.items()}) for k, d in c["canim"].items()}}
@@ -488,6 +489,189 @@ def t_run_recipe(recipe: str, path: str = "") -> Any:
     res = apply_viral_recipe(pr, recipe, brand_kit=kit)
     save(p, res["project"])
     return {"ok": True, "recipe": res["recipe"], "applied_clips": res["applied_clips"]}
+
+
+@tool("version_up_project", "Hyperbrew Version Raptor: açık projeyi sürüm numarası artırarak kaydeder (smart/add/safe).",
+      {"mode": STR, "path": PATH})
+def t_version_up(mode: str = "smart", path: str = "") -> Any:
+    from app.core.studio_workflow import version_up_project
+    p, pr = load(path)
+    res = version_up_project(pr, cur_path=p, mode=mode)
+    _set_current(res["path"])
+    return {k: v for k, v in res.items() if k != "project"}
+
+
+@tool("pro_io_path", "Hyperbrew Pro IO: wildcard ({name}_v{ver}_{w}x{h}_{date}) dosya yolu üretir.",
+      {"pattern": STR, "ext": STR, "out_dir": STR, "path": PATH})
+def t_pro_io_path(pattern: str = "{name}_v{ver}_{w}x{h}_{date}", ext: str = "mp4", out_dir: str = "", path: str = "") -> Any:
+    from app.core.studio_workflow import pro_io_export_path
+    p, pr = load(path)
+    return pro_io_export_path(pr, pattern=pattern, ext=ext, out_dir=out_dir, cur_path=p)
+
+
+@tool("create_variations", "AtomX / Variations: projeyi dikey (9:16), kare (1:1) veya portre (4:5) otomatik sürümlere çoğaltır.",
+      {"presets": {"type": "array", "items": STR}, "path": PATH})
+def t_create_variations(presets: list[str] | None = None, path: str = "") -> Any:
+    from app.core.studio_workflow import create_variations
+    p, pr = load(path)
+    return create_variations(pr, presets=presets, cur_path=p)
+
+
+@tool("batch_style_copy", "AEJuice Copy Ease: kaynak klibin keyframe/ease/zoom/efekt/renk stilini hedef kliplere süresine orantılı kopyalar.",
+      {"src_id": STR, "dst_ids": {"type": "array", "items": STR}, "include_style": {"type": "boolean"}, "path": PATH}, ["src_id", "dst_ids"])
+def t_batch_style_copy(src_id: str, dst_ids: list[str], include_style: bool = True, path: str = "") -> Any:
+    from app.core.studio_workflow import copy_ease_apply
+    p, pr = load(path)
+    res = copy_ease_apply(pr, src_id, dst_ids, include_style=include_style)
+    if res.get("ok"):
+        save(p, pr)
+    return res
+
+
+@tool("stagger_clips", "Mister Horse Shifter: seçili klipleri asc/desc/pyramid/random sırasıyla basamaklar, hizalar veya kare bazlı kaydırır.",
+      {"clip_ids": {"type": "array", "items": STR}, "step": N, "order": STR, "align": STR, "shift_frames": N, "path": PATH})
+def t_stagger_clips(clip_ids: list[str] | None = None, step: float = 0.08, order: str = "asc",
+                    align: str = "", shift_frames: int = 0, path: str = "") -> Any:
+    from app.core.studio_workflow import stagger_clips
+    p, pr = load(path)
+    res = stagger_clips(pr, clip_ids=clip_ids, step=float(step or 0.08), order=order, align=align, shift_frames=int(shift_frames or 0))
+    if res.get("ok"):
+        save(p, pr)
+    return res
+
+
+@tool("anchor_clip", "Klibi/metni 9 noktalı sabitleme (tl/tc/tr/ml/center/mr/bl/bc/br) konumuna oturtur.",
+      {"id": STR, "point": STR, "path": PATH}, ["id"])
+def t_anchor_clip(id: str, point: str = "center", path: str = "") -> Any:
+    from app.core.studio_workflow import anchor_9pt
+    p, pr = load(path)
+    res = anchor_9pt(pr, id, point=point)
+    if res.get("ok"):
+        save(p, pr)
+    return res
+
+
+@tool("add_sticker", "Zaman çizelgesine vektör veya rozet çıkartma (catalog.stickers) ekler.",
+      {"sticker": STR, "start": N, "dur": N, "x": N, "y": N, "color": STR, "title": STR, "path": PATH}, ["sticker"])
+def t_add_sticker(sticker: str, start: float = 0.0, dur: float = 3.0, x: float = 0.5, y: float = 0.5,
+                  color: str = "", title: str = "", path: str = "") -> Any:
+    p, pr = load(path)
+    tr = next((t["id"] for t in pr["tracks"] if t["kind"] == "text"), "t1")
+    st: dict[str, Any] = {"x": float(x), "y": float(y)}
+    if color:
+        st["color"] = color
+    if title:
+        st["title"] = title
+    c = {"id": S._nid(pr), "track": tr, "sticker": sticker, "start": float(start), "dur": float(dur), "style": st}
+    pr["clips"].append(c)
+    save(p, pr)
+    return {"id": c["id"], "sticker": sticker}
+
+
+@tool("tts_voiceover", "Metinden ücretsiz seslendirme (edge-tts / Windows SAPI) üretip ses izine ekler.",
+      {"text": STR, "start": N, "voice": STR, "rate": STR, "path": PATH}, ["text"])
+def t_tts_voiceover(text: str, start: float = 0.0, voice: str = "tr-TR-EmelNeural", rate: str = "+0%", path: str = "") -> Any:
+    from app.ui.api_studio import StudioMixin
+    p, pr = load(path)
+    mx = StudioMixin()
+    res = mx.studio_tts(text, voice=voice, rate=rate)
+    if not res.get("ok"):
+        return res
+    aid = S.add_asset(pr, res)
+    tr = next((t["id"] for t in pr["tracks"] if t["kind"] == "audio"), "a1")
+    c = {"id": S._nid(pr), "track": tr, "asset": aid, "start": float(start), "dur": float(res.get("dur") or 2.0), "in": 0.0, "speed": 1.0, "vol": 1.0}
+    pr["clips"].append(c)
+    save(p, pr)
+    return {"id": c["id"], "asset": aid, "path": res.get("path"), "dur": c["dur"]}
+
+
+@tool("apply_voice_dsp", "Soundly Place it / Shape it: klibe akustik mekan (place-*), Mono Sum, Faz Tersleme, Dry/Wet Mix veya EQ önayarı uygular.",
+      {"id": STR, "afx": {"type": "array", "items": STR}, "eq_preset": STR, "mix": N, "mono_sum": {"type": "boolean"},
+       "phase_invert": {"type": "boolean"}, "path": PATH}, ["id"])
+def t_apply_voice_dsp(id: str, afx: list[str] | None = None, eq_preset: str = "", mix: float = 1.0,
+                      mono_sum: bool = False, phase_invert: bool = False, path: str = "") -> Any:
+    from app.core import studio_fx_adv
+    p, pr = load(path)
+    c = S.find_clip(pr, id)
+    if afx is not None:
+        c["afx"] = list(afx)
+    if eq_preset and eq_preset in studio_fx_adv.EQ_PRESETS:
+        c["eq"] = list(studio_fx_adv.EQ_PRESETS[eq_preset][1])
+    c["afxMix"] = max(0.0, min(1.0, float(mix)))
+    c["monoSum"] = bool(mono_sum)
+    c["phaseInvert"] = bool(phase_invert)
+    save(p, pr)
+    return {"ok": True, "id": id, "afx": c.get("afx"), "eq_preset": eq_preset, "afxMix": c["afxMix"],
+            "monoSum": c["monoSum"], "phaseInvert": c["phaseInvert"]}
+
+
+@tool("purge_unused_assets", "AEJuice Clean Unused: projede hiç klipte kullanılmayan medya varlıklarını temizler.", {"path": PATH})
+def t_purge_unused(path: str = "") -> Any:
+    from app.core.studio_workflow import purge_unused_assets
+    p, pr = load(path)
+    res = purge_unused_assets(pr)
+    save(p, pr)
+    return res
+
+
+@tool("export_gif", "AEJuice Export GIF / WebP: projeyi 2 geçişli yüksek kaliteli GIF veya animasyonlu WebP olarak dışa aktarır.",
+      {"out_path": STR, "fmt": STR, "fps": N, "width": N, "path": PATH}, ["out_path"])
+def t_export_gif(out_path: str, fmt: str = "gif", fps: float = 15, width: float = 720, path: str = "") -> Any:
+    from app.core.studio_workflow import export_gif_webp
+    _, pr = load(path)
+    return export_gif_webp(pr, out_path, ST.ffmpeg(), ST, fmt=fmt, fps=int(fps or 15), width=int(width or 720))
+
+
+@tool("search_open_assets", "Google Material Icons, Noto Emoji, Twemoji ve Lucide içinde ücretsiz açık kaynak ikon/emoji arar.",
+      {"query": STR, "prefix": STR, "limit": N}, ["query"])
+def t_search_open_assets(query: str, prefix: str = "", limit: float = 24) -> Any:
+    from app.core.studio_workflow import search_open_icons
+    return search_open_icons(query, prefix=prefix, limit=int(limit or 24))
+
+
+@tool("fetch_open_asset", "Seçili Iconify varlığını (örn. mdi:fire veya noto:rocket) indirip opsiyonel olarak zaman çizelgesine ekler.",
+      {"icon_id": STR, "color": STR, "add_to_timeline": {"type": "boolean"}, "start": N, "dur": N, "path": PATH}, ["icon_id"])
+def t_fetch_open_asset(icon_id: str, color: str = "", add_to_timeline: bool = False,
+                       start: float = 0.0, dur: float = 3.0, path: str = "") -> Any:
+    from app.core.studio_workflow import fetch_open_icon_file
+    res = fetch_open_icon_file(icon_id, S.home_dir() / "Simgeler", color=color)
+    if not res.get("ok") or not add_to_timeline:
+        return res
+    p, pr = load(path)
+    fp = res["path"]
+    if fp.lower().endswith(".png"):
+        info = ST.info(fp)
+        if info.get("ok"):
+            aid = S.add_asset(pr, info)
+            tr = next((t["id"] for t in pr["tracks"] if t["kind"] == "overlay"), next((t["id"] for t in pr["tracks"] if t["kind"] == "video"), "v1"))
+            c = {"id": S._nid(pr), "track": tr, "asset": aid, "start": float(start), "dur": float(dur), "in": 0.0, "speed": 1.0, "scale": 0.4}
+            pr["clips"].append(c)
+            save(p, pr)
+            return {**res, "clip_id": c["id"], "asset_id": aid}
+    return res
+
+
+@tool("clipboard_bridge", "PluginPlay Copy Pasta: 'copy' modunda t anındaki kareyi panoya kopyalar; 'paste' modunda panodaki görseli varlık olarak ekler.",
+      {"action": STR, "t": N, "selected_ids": {"type": "array", "items": STR}, "add_to_timeline": {"type": "boolean"}, "path": PATH}, ["action"])
+def t_clipboard_bridge(action: str, t: float = 0.0, selected_ids: list[str] | None = None,
+                       add_to_timeline: bool = False, path: str = "") -> Any:
+    from app.core.studio_workflow import clipboard_copy_frame, clipboard_paste_image
+    p, pr = load(path)
+    if action == "copy":
+        return clipboard_copy_frame(pr, float(t or 0.0), ST, selected_ids=selected_ids, out_dir=S.cache_dir() / "clipboard")
+    if action == "paste":
+        res = clipboard_paste_image(S.home_dir() / "Pano")
+        if res.get("ok") and add_to_timeline:
+            info = ST.info(res["path"])
+            if info.get("ok"):
+                aid = S.add_asset(pr, info)
+                tr = next((tr_["id"] for tr_ in pr["tracks"] if tr_["kind"] == "overlay"), "v1")
+                c = {"id": S._nid(pr), "track": tr, "asset": aid, "start": float(t or 0.0), "dur": 3.0, "in": 0.0, "speed": 1.0}
+                pr["clips"].append(c)
+                save(p, pr)
+                return {**res, "clip_id": c["id"], "asset_id": aid}
+        return res
+    return {"ok": False, "error": "action_must_be_copy_or_paste"}
 
 
 # ---------------------------------------------------------------------------------------------------------------

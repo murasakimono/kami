@@ -85,8 +85,13 @@ from app.core.studio_pro_pack import (  # noqa: E402
     CLIP_IN_PRO, CLIP_LOOP_PRO, CLIP_OUT_PRO,
     TEXT_IN_PRO, TEXT_LOOP_PRO, TEXT_OUT_PRO,
 )
+from app.core.studio_pro_pack2 import (  # noqa: E402
+    CLIP_IN_PACK2, CLIP_LOOP_PACK2, CLIP_OUT_PACK2,
+    TEXT_IN_PACK2, TEXT_LOOP_PACK2, TEXT_OUT_PACK2,
+)
 for _src, _dst in ((CLIP_IN2, CLIP_IN), (CLIP_OUT2, CLIP_OUT), (CLIP_LOOP2, CLIP_LOOP),
-                   (CLIP_IN_PRO, CLIP_IN), (CLIP_OUT_PRO, CLIP_OUT), (CLIP_LOOP_PRO, CLIP_LOOP)):
+                   (CLIP_IN_PRO, CLIP_IN), (CLIP_OUT_PRO, CLIP_OUT), (CLIP_LOOP_PRO, CLIP_LOOP),
+                   (CLIP_IN_PACK2, CLIP_IN), (CLIP_OUT_PACK2, CLIP_OUT), (CLIP_LOOP_PACK2, CLIP_LOOP)):
     _dst.update({k: v for k, v in _src.items() if k not in _dst})
 
 
@@ -259,7 +264,9 @@ def text_catalog() -> dict:
     return {"in": TEXT_IN, "out": TEXT_OUT, "loop": TEXT_LOOP}
 
 
-for _tsrc, _tdst in ((TEXT_IN_PRO, TEXT_IN), (TEXT_OUT_PRO, TEXT_OUT), (TEXT_LOOP_PRO, TEXT_LOOP)):
+for _tsrc, _tdst in ((TEXT_IN_PRO, TEXT_IN), (TEXT_OUT_PRO, TEXT_OUT), (TEXT_LOOP_PRO, TEXT_LOOP),
+                     (TEXT_IN_PACK2, TEXT_IN), (TEXT_OUT_PACK2, TEXT_OUT), (TEXT_LOOP_PACK2, TEXT_LOOP)):
+    _tdst.update({k: v for k, v in _tsrc.items() if k not in _tdst})
     _tdst.update({k: v for k, v in _tsrc.items() if k not in _tdst})
 
 

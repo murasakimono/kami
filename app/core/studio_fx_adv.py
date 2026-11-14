@@ -207,6 +207,8 @@ EQ_PRESETS: dict[str, tuple[str, list[float]]] = {
     "radio": ("Radyo / Eski", [-12, -10, -6, 2, 5, 6, 4, -4, -9, -12]),
     "cinema": ("Sıcak Sinema", [3, 2, 1, 0, -1, 1, 2, 2, 3, 2]),
 }
+from app.core.studio_pro_pack2 import EQ_PACK2  # noqa: E402
+EQ_PRESETS.update({k: v for k, v in EQ_PACK2.items() if k not in EQ_PRESETS})
 
 AUDIO_CURVES: dict[str, str] = {
     "tri": "Doğrusal",

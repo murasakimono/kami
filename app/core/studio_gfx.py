@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Callable
 
+from app.core.studio_gfx_pack2 import GRAPHICS_PACK2, STICKERS_PACK2, graphic_pack2  # noqa: E402
+
 SUBSCRIBE_PRO = {
     "yt-light": "YouTube açık (beğen → abone → zil)", "yt-dark": "YouTube koyu (beğen → abone → zil)",
     "play-morph": "Kırmızı oynat → ABONE OL", "channel": "Kanal kartı (avatar + isim)", "folding": "Açılan buton",
@@ -19,6 +21,7 @@ GRAPHICS = {
     "highlight": "Vurgulayıcı kalem", "counter": "Sayaç (0 → N)", "quote": "Alıntı kartı",
     "news-card": "Haber / Kart (MKBHD)", "split-card": "50/50 Bölünmüş Kart", "stat-table": "İstatistik / Sıralama Kartı",
     "birazdan": "Birazdan.. Köşe Rozeti",
+    **GRAPHICS_PACK2,
 }
 
 STICKERS: dict[str, dict] = {
@@ -46,6 +49,7 @@ STICKERS: dict[str, dict] = {
     "boom": {"name": "💥 BOOM!", "cat": "Meme", "glyph": "💥", "color": "#FF4D4D"},
     "crown": {"name": "👑 Kral Tacı", "cat": "Oyun", "glyph": "👑", "color": "#FBBF24"},
     "trophy": {"name": "🏆 Kupa #1", "cat": "Oyun", "glyph": "🏆", "color": "#F59E0B"},
+    **STICKERS_PACK2,
 }
 
 # --- simgeler (0,0 sol ust; yaklasik 40x45 kutu)
@@ -448,6 +452,8 @@ def graphic(kind: str, ts, col, esc, rrect, s: float, e: float, W: int, H: int, 
         pw = max(210 * k, (len(t_txt) * 26 + 56) * k)
         c.ev(3, 0, None, f"\\an5\\pos({x:.0f},{y:.0f})\\p1\\1c{acc}\\bord{3 * k:.0f}\\3c&H00FFFFFF&\\shad{5 * k:.0f}\\fscx75\\fscy75\\t(0,180,\\fscx108\\fscy108)\\t(180,280,\\fscx100\\fscy100)\\fad(80,220)", rrect(pw, 72 * k, 14 * k))
         c.ev(4, 0.05, None, f"\\an5\\pos({x:.0f},{y:.0f})\\fn{c.font}\\fs{34 * k:.0f}\\b1\\bord0\\shad0\\1c&H00FFFFFF&\\fad(80,220)", t_txt)
+    else:
+        graphic_pack2(c, kind, col, esc, rrect, W, H, st)
     return c.out
 
 

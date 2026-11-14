@@ -1534,6 +1534,7 @@ function renderInsp() {
     const ad = c.adj || {};
     h += `<div class="sec">Renk</div>` + fld("Parlaklık", "adj.bri", -50, 50, 1, ad.bri || 0) + fld("Kontrast", "adj.con", -50, 80, 1, ad.con || 0) +
       fld("Doygunluk", "adj.sat", -100, 150, 1, ad.sat || 0) + fld("Ton", "adj.hue", -180, 180, 1, ad.hue || 0) + fld("Sıcaklık", "adj.temp", -100, 100, 1, ad.temp || 0) + fld("Bulanık", "adj.blur", 0, 20, .5, ad.blur || 0);
+    h += `<div class="sec">9-Nokta Sabitleme & Ease (AEJuice)</div><div class="row" style="align-items:center;gap:10px"><div class="anc9">${["tl", "tc", "tr", "ml", "center", "mr", "bl", "bc", "br"].map(pt => `<button class="${(c.anchor || "center") === pt ? "on" : ""}" data-anc="${pt}" title="Sabitle: ${pt}">•</button>`).join("")}</div><div style="display:flex;flex-direction:column;gap:4px"><button class="tb" data-a2="copyease" title="Shift+C">🎯 Ease Kopyala</button><button class="tb" data-a2="pasteease" title="Shift+V">📥 Ease Yapıştır</button></div></div>`;
     h += window.animBox ? animBox(c, "clip") : "";
     h += `<div class="sec">Efektler</div>` + (window.fxRows ? fxRows(c) : "");
     h += `<div class="sec">Giriş geçişi</div>` + sel("Geçiş", "trans.in", ST.cat.trans, c.trans?.in || "none") + fld("Süre", "trans.dur", .1, 2, .05, c.trans?.dur || .35) +
@@ -1541,7 +1542,12 @@ function renderInsp() {
     h += zoomInsp(c);
     h += `<div class="sec">Dikey çerçeve</div><div class="row"><button class="tb" data-a2="reframe">▯ Yüzü takip et</button>${c.reframe?.length ? '<button class="tb" data-a2="unreframe">Kaldır</button>' : ""}</div>`;
   }
-  if (k === "audio" || (k === "video" && a?.audio)) h += `<div class="sec">Ses düzeltme</div><div class="chips">${Object.entries(ST.cat.afx || {}).map(([id, n]) => `<button class="tb${(c.afx || []).includes(id) ? " on" : ""}" data-afx="${id}" style="font-size:11px;padding:4px 8px">${esc(n)}</button>`).join("")}</div><div class="hint">Önizlemede duyulmaz, dışa aktarımda uygulanır. Sesin altına müzik girsin istiyorsan müzik izinde “Kıs” (Ses sayfası).</div>`;
+  if (k === "audio" || (k === "video" && a?.audio)) h += `<div class="sec">Ses düzeltme & Akustik Mekan</div><div class="chips">${Object.entries(ST.cat.afx || {}).map(([id, n]) => `<button class="tb${(c.afx || []).includes(id) ? " on" : ""}" data-afx="${id}" style="font-size:11px;padding:4px 8px">${esc(n)}</button>`).join("")}</div>` +
+    fld("Efekt Mix (Dry/Wet)", "afxMix", 0, 1, .05, c.afxMix ?? 1) +
+    chk("Mono Sum (Stereo → Mono)", "monoSum", c.monoSum) +
+    chk("Faz Tersle (180° Phase Invert)", "phaseInvert", c.phaseInvert) +
+    (a?.path ? `<div class="row"><button class="tb" data-a2="similarsnd">🔍 Benzer Yerel Sesler (Find Similar)</button></div>` : "") +
+    `<div class="hint">Önizlemede temel ayarlar, dışa aktarımda tüm akustik zincir (Place it + Shape it) uygulanır.</div>`;
   if (k === "video" || k === "image") {
     const ky = c.key || {};
     h += `<div class="sec">Perde (yeşil/mavi) · arka plan</div>` + chk("Perdeyi sil", "key.on", ky.on) +
@@ -1849,7 +1855,32 @@ $("#insp").addEventListener("click", async e => {
     if (pre) { snap(); for (const x of selClips()) x.eq = [...pre]; changed(); syncMedia(ST.t, false); toast("EQ uygulandı: " + (ST.cat.eqPresets[b.dataset.eqp]?.[0] || b.dataset.eqp)); }
     return;
   }
+  if (b.dataset.anc && c) {
+    const pts = { tl: [.18, .18], tc: [.5, .18], tr: [.82, .18], ml: [.18, .5], center: [.5, .5], mr: [.82, .5], bl: [.18, .82], bc: [.5, .82], br: [.82, .82] };
+    const pt = pts[b.dataset.anc]; if (!pt) return;
+    snap(); for (const x of selClips()) { x.anchor = b.dataset.anc; x.cx = pt[0]; x.cy = pt[1]; } changed(); toast("Sabitleme noktası: " + b.dataset.anc.toUpperCase());
+    return;
+  }
   const a2 = b.dataset.a2;
+  if (a2 === "copyease" && c) { ST.easeSrcId = c.id; toast("Ease & stil kopyalandı — hedef klibi seçip Ease Yapıştır (Shift+V)"); return; }
+  if (a2 === "pasteease") {
+    const dst = selClips().map(x => x.id).filter(id => id !== ST.easeSrcId);
+    if (!ST.easeSrcId || !dst.length) { toast("Önce kaynak klipten Ease Kopyala (Shift+C), sonra farklı klip seç"); return; }
+    const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
+    const r = await api.studio_copy_ease(p, ST.easeSrcId, dst, true);
+    if (r?.ok && r.project) { snap(); ST.p.clips = r.project.clips; changed(); toast(`${r.applied.length} klibe ease/stil yapıştırıldı`); } else toast(r?.error || "olmadı");
+    return;
+  }
+  if (a2 === "similarsnd" && c) {
+    const a = assetOf(c); if (!a?.path) return;
+    busy("Benzer sesler taranıyor…");
+    const r = await api.studio_sound_similar(a.path, 12); busy(null);
+    if (!r?.ok || !r.matches?.length) { toast("Yerel Sesler/Muzik klasöründe benzer ses bulunamadı"); return; }
+    modal(`<h3>🔍 Benzer Sesler (${esc(a.name)})</h3>` + r.matches.map(m => `<div class="snd"><b>${esc(m.name)}</b><small>${m.dur}s · %${Math.round(m.score * 100)}</small><button data-simadd="${esc(m.path)}">＋</button></div>`).join("") + `<div class="row"><button class="tb pri" data-v="ok">Kapat</button></div>`, {
+      init: m => m.addEventListener("click", ev => { const ad = ev.target.closest("[data-simadd]"); if (ad) importPaths([ad.dataset.simadd]); })
+    });
+    return;
+  }
   if (a2 === "toaudio") { window.setPage?.("audio"); return; }
   if (a2 === "ukfclear" && c) { snap(); delete c.kf; delete ST.bezIdx; changed(); return; }
   if (a2 === "restoreCuts") { const n = restoreCuts([...ST.cutSel]); toast(`${n} kesilen bölge eski haline getirildi`); return; }
@@ -2121,6 +2152,13 @@ document.addEventListener("keydown", e => {
   else if (ctrl && k.toLowerCase() === "s") { e.preventDefault(); save(e.shiftKey); }
   else if (ctrl && k.toLowerCase() === "e") { e.preventDefault(); exportVideo(); }
   else if (ctrl && k.toLowerCase() === "o") { e.preventDefault(); $('[data-a="open"]').click(); }
+  else if (ctrl && e.shiftKey && k.toLowerCase() === "c") {
+    e.preventDefault();
+    const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
+    api.studio_clipboard_copy(p, ST.t, [...ST.sel]).then(r => toast(r?.ok ? "Kare panoya kopyalandı (Copy Pasta)" : (r?.error || "Kopyalanamadı")));
+  }
+  else if (!ctrl && e.shiftKey && k.toLowerCase() === "c") { const c = selClips()[0]; if (c) { ST.easeSrcId = c.id; toast("Ease & stil kopyalandı (Shift+V ile yapıştır)"); } }
+  else if (!ctrl && e.shiftKey && k.toLowerCase() === "v") { $("#insp [data-a2='pasteease']")?.click(); }
   else if (ctrl && k.toLowerCase() === "c") copySel();
   else if (ctrl && k.toLowerCase() === "v") paste();
   else if (ctrl && k.toLowerCase() === "d") { e.preventDefault(); dupSel(); }
@@ -2180,7 +2218,7 @@ async function inbox() {
       }
     }
     const mcp = await api.studio_current();
-    if (mcp && mcp !== ST.path) { if (ST.dirty) await save(); await openProject(mcp); toast("Kami AI yeni bir proje açtı"); }
+    if (typeof mcp === "string" && mcp && mcp !== ST.path) { if (ST.dirty) await save(); await openProject(mcp); toast("Kami AI yeni bir proje açtı"); }
     else if (ST.path && await api.studio_changed(ST.path)) {   // Kami AI (MCP) ya da baska yerden duzenlendi
       const r = await job("studio_open", [ST.path]);
       if (r?.ok) { ST.undo.push(JSON.stringify(ST.p)); ST.p = r.project; ST.p.markers ||= []; afterLoad(true); ST.dirty = false; $("#saved").textContent = "↻ Kami AI düzenledi"; }

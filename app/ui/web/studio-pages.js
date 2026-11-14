@@ -531,11 +531,28 @@ function renderDeliver() {
     <label class="fld w2"><span>Kalite</span><select class="in" id="dvQ"><option value="high"${DV.quality === "high" ? " selected" : ""}>Yüksek</option><option value="medium"${DV.quality === "medium" ? " selected" : ""}>Orta (küçük dosya)</option></select></label>
     <label class="fld w2"><span>Çözünürlük</span><select class="in" id="dvS">${Object.entries(SIZES).map(([k, n]) => `<option value="${k}"${DV.size === k ? " selected" : ""}>${n}</option>`).join("")}</select></label>
     <label class="fld w2"><span>Aralık</span><select class="in" id="dvR"><option value="all">Tüm video</option><option value="loop">Döngü I–O</option><option value="sel">Seçili klipler</option><option value="mk">İlk–son işaret</option><option value="ph">Oynatma kafasından sona</option></select></label>
-    <div class="row"><button class="tb pri" id="dvGo">⬇ Sıraya ekle ve başlat</button><button class="tb" id="dvThumb">Kapak karesi (PNG)</button></div>
+    <div class="row" style="flex-wrap:wrap;gap:6px"><button class="tb pri" id="dvGo">⬇ Sıraya ekle ve başlat</button><button class="tb" id="dvGif">🎞️ Hızlı GIF / WebP</button><button class="tb" id="dvProIo" title="Wildcard çıktı adı öner">🏷️ Pro IO Yol</button><button class="tb" id="dvThumb">Kapak karesi (PNG)</button></div>
+    <div class="hint" id="proIoHint" style="margin-top:4px"></div>
     <div class="sec">Kuyruk</div><div id="dvQueue">${DV.queue.length ? "" : '<div class="hint">Boş.</div>'}</div>
     <div class="hint">Dışa aktarım her zaman asıl dosyalardan, ekran kartıyla (NVENC) yapılır. Stok kullandıysan atıflar: Videolar\\Kami Studio\\Stok\\atiflar.txt</div>`;
   $("#dvR").value = DV.range; renderQueue();
   $("#dvGo").onclick = enqueue;
+  $("#dvProIo").onclick = async () => {
+    const ext = { mp3: "mp3", wav: "wav", gif: "gif", prores: "mov", webm: "webm" }[DV.preset] || "mp4";
+    const p = window.rootProjectClone ? window.rootProjectClone() : clone(ST.p);
+    const r = await api.studio_pro_io_path(p, "{name}_v{ver}_{w}x{h}_{date}", ext, "", ST.path || "");
+    if (r?.ok) { $("#proIoHint").textContent = "Pro IO Öneri: " + r.path; toast("Yol önerisi: " + r.filename); }
+  };
+  $("#dvGif").onclick = async () => {
+    if (!ST.p.clips.length) { toast("Zaman çizelgesi boş"); return; }
+    const fmt = await modal(`<h3>Hızlı GIF / WebP Dışa Aktar</h3><div class="hint">AEJuice / Spunkram tarzı 2 geçişli yüksek kalite palet çıktısı.</div><div class="row"><button class="tb pri" data-v="gif">🎞️ GIF (720p, 15fps)</button><button class="tb" data-v="webp">✨ Animasyonlu WebP</button><button class="tb" data-v="">Vazgeç</button></div>`);
+    if (!fmt) return;
+    const p = window.rootProjectClone ? window.rootProjectClone() : clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
+    busy(fmt.toUpperCase() + " hazırlanıyor…");
+    const r = await job("studio_export_gif", [p, "", fmt, 15, 720]);
+    busy(null);
+    if (r?.ok) { toast("Hazır: " + r.path.split(/[\\/]/).pop()); api.open_path_folder(r.path); } else toast(r?.error || "olmadı", 4500);
+  };
   $("#dvThumb").onclick = async () => { busy("Kare hazırlanıyor…"); const p = window.rootProjectClone ? window.rootProjectClone() : clone(ST.p); for (const a of Object.values(p.assets)) delete a.url; const r = await api.studio_frame_png(p, ST.t, ""); busy(null); if (r.ok) { toast("Kaydedildi: " + r.path.split(/[\\/]/).pop()); api.open_path_folder(r.path); } else toast(r.error); };
 }
 $("#deliver").addEventListener("click", e => { const p = e.target.closest("[data-pre]"); if (p) { DV.preset = p.dataset.pre; renderDeliver(); } });

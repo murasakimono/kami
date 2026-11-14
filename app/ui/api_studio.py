@@ -21,7 +21,8 @@ STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "
                "studio_fetch_sound", "studio_freesound", "studio_tts", "studio_pack_add", "studio_save", "studio_open",
                "studio_stock", "studio_stock_get", "studio_fonts_download", "studio_template", "studio_sfx", "studio_lut_read",
                "studio_gemini_models", "studio_lottie", "studio_catalog_fonts",
-               "studio_multicam_sync", "studio_smart_cut", "studio_audio_enhance", "studio_audio_duck"}
+               "studio_multicam_sync", "studio_smart_cut", "studio_audio_enhance", "studio_audio_duck",
+               "studio_clipboard_copy", "studio_open_icon_search", "studio_open_icon_fetch", "studio_export_gif", "studio_sound_similar"}
 
 
 def _parse_myinstants(page_html: str, limit: int = 60) -> list[dict[str, Any]]:
@@ -1258,3 +1259,88 @@ class StudioMixin:
             return {"ok": False, "error": str(exc)[:200]}
         finally:
             tf.unlink(missing_ok=True)
+
+    # ---- Dalga 7 is akisi & kutuphane yardimcilari (Version Raptor, Pro IO, Copy Pasta, Shifter, Variations, Purge, Icons, GIF, Similar)
+    def studio_version_up(self, project: dict[str, Any], cur_path: str = "", mode: str = "smart") -> dict[str, Any]:
+        from app.core.studio_workflow import version_up_project
+        res = version_up_project(project or {}, cur_path=str(cur_path or ""), mode=str(mode or "smart"))
+        self._studio_saved[res["path"]] = time.time()
+        return res
+
+    def studio_pro_io_path(self, project: dict[str, Any], pattern: str = "{name}_v{ver}_{w}x{h}_{date}",
+                           ext: str = "mp4", out_dir: str = "", cur_path: str = "") -> dict[str, Any]:
+        from app.core.studio_workflow import pro_io_export_path
+        return pro_io_export_path(project or {}, pattern=str(pattern), ext=str(ext), out_dir=str(out_dir or ""), cur_path=str(cur_path or ""))
+
+    def studio_clipboard_copy(self, project: dict[str, Any], t: float = 0.0,
+                              selected_ids: list[str] | None = None) -> dict[str, Any]:
+        from app.core import studio
+        from app.core.studio_workflow import clipboard_copy_frame
+        d = studio.cache_dir() / "clipboard"
+        return clipboard_copy_frame(project or {}, float(t or 0.0), self._st(), selected_ids=selected_ids, out_dir=d)
+
+    def studio_clipboard_paste(self) -> dict[str, Any]:
+        from app.core import studio
+        from app.core.studio_workflow import clipboard_paste_image
+        d = studio.home_dir() / "Pano"
+        res = clipboard_paste_image(d)
+        if res.get("ok") and res.get("path"):
+            return {"ok": True, **self._st().info(res["path"])}
+        return res
+
+    def studio_stagger(self, project: dict[str, Any], clip_ids: list[str] | None = None, step: float = 0.08,
+                       order: str = "asc", align: str = "", shift_frames: int = 0) -> dict[str, Any]:
+        from app.core.studio_workflow import stagger_clips
+        res = stagger_clips(project or {}, clip_ids=clip_ids, step=float(step or 0.08),
+                            order=str(order or "asc"), align=str(align or ""), shift_frames=int(shift_frames or 0))
+        return {**res, "project": project}
+
+    def studio_copy_ease(self, project: dict[str, Any], src_clip_id: str, dst_clip_ids: list[str],
+                         include_style: bool = True) -> dict[str, Any]:
+        from app.core.studio_workflow import copy_ease_apply
+        res = copy_ease_apply(project or {}, str(src_clip_id), dst_clip_ids or [], include_style=bool(include_style))
+        return {**res, "project": project}
+
+    def studio_variations(self, project: dict[str, Any], presets: list[str] | None = None,
+                          cur_path: str = "") -> dict[str, Any]:
+        from app.core.studio_workflow import create_variations
+        return create_variations(project or {}, presets=presets, cur_path=str(cur_path or ""))
+
+    def studio_purge_assets(self, project: dict[str, Any]) -> dict[str, Any]:
+        from app.core.studio_workflow import purge_unused_assets
+        res = purge_unused_assets(project or {})
+        return {**res, "project": project}
+
+    def studio_open_icon_search(self, query: str, prefix: str = "", limit: int = 36) -> dict[str, Any]:
+        from app.core.studio_workflow import search_open_icons
+        return search_open_icons(str(query or "star"), prefix=str(prefix or ""), limit=int(limit or 36))
+
+    def studio_open_icon_fetch(self, icon_id: str, color: str = "", size: int = 512,
+                               png_b64: str = "") -> dict[str, Any]:
+        from app.core import studio
+        from app.core.studio_workflow import fetch_open_icon_file
+        d = studio.home_dir() / "Simgeler"
+        res = fetch_open_icon_file(str(icon_id), d, color=str(color or ""), size=int(size or 512), png_b64=str(png_b64 or ""))
+        if res.get("ok") and res.get("path") and res["path"].lower().endswith(".png"):
+            return {"ok": True, **self._st().info(res["path"]), "svg_path": res.get("svg_path", "")}
+        return res
+
+    def studio_export_gif(self, project: dict[str, Any], out_path: str = "", fmt: str = "gif",
+                          fps: int = 15, width: int = 720) -> dict[str, Any]:
+        from app.core import studio
+        from app.core.studio_workflow import export_gif_webp
+        ff = self._media.ffmpeg() if self._media else "ffmpeg"
+        ext = "webp" if str(fmt).lower() == "webp" else "gif"
+        target = out_path or str(Path.home() / "Videos" / f"{re.sub(r'[^a-zA-Z0-9_-]+', '_', str(project.get('name') or 'kami'))}_{int(time.time())}.{ext}")
+        return export_gif_webp(project or {}, target, ff, self._st(), fmt=ext, fps=int(fps or 15), width=int(width or 720))
+
+    def studio_sound_similar(self, target_path: str, limit: int = 12) -> dict[str, Any]:
+        from app.core import studio
+        from app.core.studio_workflow import find_similar_sounds
+        ff = self._media.ffmpeg() if self._media else "ffmpeg"
+        dirs = [studio.home_dir() / "Sesler", studio.home_dir() / "Muzik"]
+        res = find_similar_sounds(str(target_path), dirs, ff, limit=int(limit or 12))
+        if res.get("ok") and self._media:
+            for m in res["matches"]:
+                m["url"] = self._media.asset_url(m["path"])
+        return res

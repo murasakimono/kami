@@ -20,6 +20,8 @@ BEZIER_PRESETS: dict[str, tuple[float, float, float, float]] = {
     "filmEase": (0.45, 0.0, 0.15, 1.0),
     "pop": (0.34, 1.45, 0.64, 1.0),
 }
+from app.core.studio_pro_pack2 import BEZIER_PACK2  # noqa: E402
+BEZIER_PRESETS.update({k: v for k, v in BEZIER_PACK2.items() if k not in BEZIER_PRESETS})
 
 
 def cubic_bezier(p1x: float, p1y: float, p2x: float, p2y: float, t: float) -> float:

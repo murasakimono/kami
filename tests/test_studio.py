@@ -581,3 +581,112 @@ def test_dalga6_features_and_api_wiring(tmp_path: Path):
     assert r.returncode == 0, r.stderr[-500:]
     assert out.is_file() and out.stat().st_size > 1000
 
+
+def test_dalga7_packs_workflow_and_mcp(tmp_path: Path):
+    import json
+    import shutil
+    import subprocess
+    import pytest
+    from app.core import studio_brand as SB
+    from app.core import studio_gfx as SG
+    from app.core import studio_gfx_pack2 as SG2
+    from app.core import studio_mcp as MCP
+    from app.core import studio_pro_pack2 as P2
+    from app.core import studio_workflow as WF
+
+    cat = S.catalog()
+    assert len(P2.FX_PACK2) == 30 and all(k in cat["fx"] for k in P2.FX_PACK2)
+    assert len(P2.TRANS_PACK2) == 22 and all(k in cat["trans"] for k in P2.TRANS_PACK2)
+    assert len(P2.SFX_PACK2) == 25
+    assert len(P2.AUDIO_FIX_PACK2) == 14 and all(k in cat["afx"] for k in P2.AUDIO_FIX_PACK2)
+    assert len(SG2.GRAPHICS_PACK2) == 18 and all(k in cat["graphics"] for k in SG2.GRAPHICS_PACK2)
+    assert len(SG2.STICKERS_PACK2) == 12 and all(k in cat["stickers"] for k in SG2.STICKERS_PACK2)
+    assert len(P2.TEMPLATES_PACK2) == 21
+    assert len(P2.RECIPES_PACK2) == 6
+    assert len(cat["bezierPresets"]) >= 14
+    assert len(cat["eqPresets"]) >= 12
+
+    # Tum 18 yeni grafik + 12 yeni sticker ASS vektor ciktisi uretmeli
+    p_ass = S.new_project("dalga7_ass", 640, 360, 24)
+    for idx, gk in enumerate(SG2.GRAPHICS_PACK2):
+        S.add_clip(p_ass, track="tx", start=idx * 0.5, dur=0.5, graphic=gk, style={"title": "TEST", "sub": "ALT"})
+    for idx, sk in enumerate(SG2.STICKERS_PACK2):
+        S.add_clip(p_ass, track="tx", start=20 + idx * 0.5, dur=0.5, sticker=sk, style={"x": 0.5, "y": 0.5})
+    ass_txt = S.build_ass(p_ass)
+    assert ass_txt.count("Dialogue:") >= len(SG2.GRAPHICS_PACK2) + len(SG2.STICKERS_PACK2)
+
+    # Workflow unit & disk testleri
+    p_wf = S.new_project("raptor_v01", 1920, 1080, 30)
+    p_wf["assets"]["u1"] = {"path": str(tmp_path / "unused.mp4"), "kind": "video", "dur": 2.0, "name": "unused"}
+    c1 = S.add_clip(p_wf, track="tx", start=0.0, dur=2.0, text="Bir", kf=[{"t": 0.0, "s": 0.8}, {"t": 2.0, "s": 1.2, "bez": "heavyPunch"}])
+    c2 = S.add_clip(p_wf, track="tx", start=0.0, dur=4.0, text="Iki")
+    assert WF.anchor_9pt(p_wf, c1["id"], "tl")["ok"] and c1["style"]["x"] < 0.3
+    assert WF.copy_ease_apply(p_wf, c1["id"], [c2["id"]])["applied"] == [c2["id"]]
+    assert abs(c2["kf"][-1]["t"] - 4.0) < 1e-3
+    assert WF.stagger_clips(p_wf, [c1["id"], c2["id"]], step=0.25, order="desc")["count"] == 2
+    assert c1["start"] > c2["start"]
+    assert WF.purge_unused_assets(p_wf)["removed_count"] == 1 and "u1" not in p_wf["assets"]
+
+    vr = WF.version_up_project(p_wf, cur_path=str(tmp_path / "raptor_v01.kstudio.json"), mode="smart", save_dir=tmp_path)
+    assert vr["ok"] and vr["next_ver"] == 2 and Path(vr["path"]).is_file()
+    pio = WF.pro_io_export_path(p_wf, "{name}_v{ver}_{w}x{h}", "mp4", out_dir=tmp_path, cur_path=vr["path"])
+    assert pio["ok"] and "1920x1080" in pio["filename"] and pio["filename"].endswith(".mp4")
+    vars_res = WF.create_variations(p_wf, ["9:16", "1:1"], save_dir=tmp_path, cur_path=vr["path"])
+    assert vars_res["ok"] and len(vars_res["variations"]) == 2 and Path(vars_res["variations"][0]["path"]).is_file()
+
+    # MCP JSON-RPC tools/list + live call testleri
+    tl = MCP.handle({"id": 1, "method": "tools/list"})
+    tool_names = {t["name"] for t in tl["result"]["tools"]}
+    assert len(tool_names) >= 38
+    for expected_tool in ("version_up_project", "pro_io_path", "create_variations", "batch_style_copy",
+                          "stagger_clips", "anchor_clip", "add_sticker", "tts_voiceover",
+                          "apply_voice_dsp", "purge_unused_assets", "export_gif", "search_open_assets",
+                          "fetch_open_asset", "clipboard_bridge"):
+        assert expected_tool in tool_names, f"Eksik MCP araci: {expected_tool}"
+
+    # MCP tools/call gercek proje uzerinde
+    res_stk = MCP.handle({"id": 2, "method": "tools/call", "params": {"name": "add_sticker", "arguments": {"sticker": "badge-new", "path": vr["path"]}}})
+    assert not res_stk["result"].get("isError")
+    res_dsp = MCP.handle({"id": 3, "method": "tools/call", "params": {"name": "apply_voice_dsp", "arguments": {"id": c1["id"], "afx": ["place-cathedral"], "mix": 0.65, "mono_sum": True, "phase_invert": True, "path": vr["path"]}}})
+    assert not res_dsp["result"].get("isError")
+
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        pytest.skip("ffmpeg yok")
+
+    # 25 yeni SFX FFmpeg ile uretilebilmeli
+    for sid in P2.SFX_PACK2:
+        built = S.ensure_sfx(ff, sid)
+        assert sid in built and Path(built[sid]).is_file() and Path(built[sid]).stat().st_size > 600, f"SFX hatasi: {sid}"
+
+    # 30 yeni FX + TRANS_PACK2 + AUDIO_FIX_PACK2 (monoSum/phaseInvert/afxMix) + GIF export gercek FFmpeg dogrulamasi
+    src = tmp_path / "src7.mp4"
+    subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=24:d=2.0",
+                    "-f", "lavfi", "-i", "sine=frequency=330:duration=2.0", "-shortest",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(src)], check=True)
+    # 30 yeni FX + Soundly DSP
+    pr_fx = S.new_project("d7_fx", 320, 180, 24)
+    pr_fx["assets"]["v1"] = {"path": str(src), "kind": "video", "dur": 2.0, "w": 320, "h": 180, "audio": True, "name": "src7"}
+    fx_keys = list(P2.FX_PACK2.keys())
+    for i, fid in enumerate(fx_keys):
+        t_k = list(P2.TRANS_PACK2.keys())[i % len(P2.TRANS_PACK2)]
+        S.add_clip(pr_fx, asset="v1", track="v1", start=i * 0.2, dur=0.2, fx=[fid],
+                   trans={"in": t_k, "dur": 0.15},
+                   afx=["place-phone-1970"], afxMix=0.55, monoSum=True, phaseInvert=True)
+    out_mp4 = tmp_path / "d7_fx.mp4"
+    args, total = S.build_export(pr_fx, str(out_mp4), tmp_path, "libx264", {"quality": "medium"})
+    assert total > 5.0
+    rfx = subprocess.run([ff, "-y", "-v", "error", *args], cwd=tmp_path, capture_output=True, text=True, timeout=120)
+    assert rfx.returncode == 0, rfx.stderr[-500:]
+    assert out_mp4.is_file() and out_mp4.stat().st_size > 2000
+
+    # 2-gecisli GIF export testi
+    pr_gif = S.new_project("d7_gif", 320, 180, 15)
+    pr_gif["assets"]["v1"] = {"path": str(src), "kind": "video", "dur": 2.0, "w": 320, "h": 180, "audio": True, "name": "src7"}
+    S.add_clip(pr_gif, asset="v1", track="v1", start=0.0, dur=1.2, fx=["liquid-glass"], graphic="sale-badge", style={"title": "%50 İNDİRİM"})
+    st_inst = S.Studio(lambda: ff)
+    out_gif = tmp_path / "d7_out.gif"
+    gr = WF.export_gif_webp(pr_gif, str(out_gif), ff, st_inst, fmt="gif", fps=12, width=320)
+    assert gr["ok"] and out_gif.is_file() and out_gif.stat().st_size > 1500, json.dumps(gr)
+
+

@@ -146,10 +146,32 @@ const SFX = (() => {
     else if (kind === "iris-in") r.mask = { kind: "iris", e };
     else if (kind === "flash-warm") { r.flash = .45 * (1 - u); r.leak = .65 * (1 - u); }
     else if (kind === "whip-blur-fast") { r.dx = 1 - e; r.blur = 24 * (1 - u); }
+    // Dalga 7 (TRANS_PACK2)
+    else if (kind === "morph-zoom" || kind === "zoom-elastic-out") { r.zoom = (kind === "morph-zoom" ? 1.65 - .65 * e : 1 + .45 * (1 - e)); if (kind === "morph-zoom") r.blur = 8 * (1 - u); }
+    else if (kind === "elastic-pop") { const el = 1 - Math.pow(2, -10 * u) * Math.cos(u * Math.PI * 3.5); r.sx = r.sy = Math.max(.2, .5 + .5 * el); }
+    else if (kind === "hyper-whip-r") { r.dx = -(1 - e); r.blur = 28 * (1 - u); }
+    else if (kind === "hyper-whip-l") { r.dx = 1 - e; r.blur = 28 * (1 - u); }
+    else if (kind === "prism-swipe") { r.dx = 1 - e; r.rgb = true; }
+    else if (kind === "kaleido-spin") { r.rot = 180 * (1 - e); r.rgb = true; }
+    else if (kind === "burn-flash") r.flash = .75 * (1 - u);
+    else if (kind === "burn-orange") { r.flash = .3 * (1 - u); r.leak = .85 * (1 - u); }
+    else if (kind === "glitch-tear-v" || kind === "glass-shatter") { r.rgb = true; r.dx = .012 * Math.sin(local * 95) * (1 - u); }
+    else if (kind === "squeeze-h") r.sx = Math.max(.04, e);
+    else if (kind === "squeeze-v") r.sy = Math.max(.04, e);
+    else if (/^(liquid-drip|crt-off|crt-on|ink-splat|strip-blind-|paper-tear-slide|checker-dissolve|tile-flip)/.test(kind)) r.mask = { kind, e };
     else if (/^(wipe-|barn-|iris|eye|clock|diag-|wave-wipe|corner|diamond|heart|cross|blinds-|checker|stripes|blocks|dissolve|page-curl|split-curtain)/.test(kind)) r.mask = { kind, e };
     return r;
   }
   const TRANS2_MASK = {
+    "liquid-drip": (c, e, W, H) => { c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, H * e); for (let x = W; x >= 0; x -= W / 24) c.lineTo(x, H * e + Math.sin(x / 28) * 28 * (1 - e)); },
+    "crt-off": (c, e, W, H) => { const h = Math.max(3, H * (1 - e)); c.rect(0, (H - h) / 2, W, h); },
+    "crt-on": (c, e, W, H) => { const h = Math.max(3, H * e); c.rect(0, (H - h) / 2, W, h); },
+    "ink-splat": (c, e, W, H) => { c.arc(W / 2, H / 2, Math.max(2, e * Math.hypot(W, H) * .6), 0, Math.PI * 2); },
+    "strip-blind-v": (c, e, W, H) => { for (let i = 0; i < 8; i++) c.rect(i * W / 8, 0, e * W / 8 + 1, H); },
+    "strip-blind-h": (c, e, W, H) => { for (let i = 0; i < 6; i++) c.rect(0, i * H / 6, W, e * H / 6 + 1); },
+    "paper-tear-slide": (c, e, W, H) => { c.moveTo(0, 0); for (let y = 0; y <= H; y += H / 24) c.lineTo(W * e + Math.sin(y / 14) * 14, y); c.lineTo(0, H); },
+    "checker-dissolve": (c, e, W, H) => { const bw = W / 10, bh = H / 8; for (let i = 0; i < 10; i++) for (let j = 0; j < 8; j++) if (((i + j) % 2) * .5 < e) c.rect(i * bw, j * bh, bw + 1, bh + 1); },
+    "tile-flip": (c, e, W, H) => { const bw = W / 6, bh = H / 4; for (let i = 0; i < 6; i++) for (let j = 0; j < 4; j++) c.rect(i * bw, j * bh, bw * e + 1, bh * e + 1); },
     "page-curl": (c, e, W, H) => { const p = 1.5 * e; c.moveTo(0, 0); c.lineTo(W * p, 0); c.lineTo(0, H * 2 * p); },
     "split-curtain": (c, e, W, H) => { c.rect(0, 0, W * e * .5, H); c.rect(W * (1 - e * .5), 0, W * e * .5, H); },
     "diag-tl": (c, e, W, H) => { c.moveTo(0, 0); c.lineTo(2 * e * W, 0); c.lineTo(0, 2 * e * H); },

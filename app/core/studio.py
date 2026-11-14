@@ -128,9 +128,15 @@ from app.core.studio_pro_pack import (  # noqa: E402
 from app.core.studio_tr_memes import (  # noqa: E402
     FX_TR_MEME, SFX_CAT_TR_MEME, SFX_TR_MEME, TEMPLATES_TR_MEME,
 )
+from app.core.studio_pro_pack2 import (  # noqa: E402
+    AUDIO_FIX_NAMES_PACK2, AUDIO_FIX_PACK2, CAPTIONS_PACK2, FX_PACK2,
+    SFX_CAT_PACK2, SFX_PACK2, TEMPLATES_PACK2, TRANS_PACK2, ZOOM_PACK2, trans_in_pack2,
+)
 FX.update({k: v for k, v in FX_PRO.items() if k not in FX})
 FX.update({k: v for k, v in FX_TR_MEME.items() if k not in FX})
+FX.update({k: v for k, v in FX_PACK2.items() if k not in FX})
 CAPTIONS2.update({k: v for k, v in CAPTIONS_PRO.items() if k not in CAPTIONS2})
+CAPTIONS2.update({k: v for k, v in CAPTIONS_PACK2.items() if k not in CAPTIONS2})
 
 # Gecis (klip girisi): ffmpeg + onizleme ayni adla
 TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom vuruşu", "slide": "Kaydırma (sağdan)", "blur": "Bulanık", "glitch": "Glitch",
@@ -140,7 +146,8 @@ TRANS = {"none": "Yok", "fade": "Kararma", "flash": "Beyaz flaş", "zoom": "Zoom
          "barn-v": "Perde (dikey)", "barn-h": "Perde (yatay)", "eye": "Göz açılışı", "clock": "Saat yönü",
          "spin": "Dönerek", "pixel": "Pikselden netleş", "shake-in": "Sarsıntılı giriş", "lightleak": "Işık sızması", "zoomblur": "Bulanık zoom"}
 TRANS.update(TRANS2)   # faz 5b: capraz/sekil/olcek gecisleri (studio_trans2.py)
-TRANS.update(TRANS_PRO)
+TRANS.update({k: v for k, v in TRANS_PRO.items() if k not in TRANS})
+TRANS.update({k: v for k, v in TRANS_PACK2.items() if k not in TRANS})
 TRANS_FF = set(TRANS) - {"none", "fade"}
 
 # Hazir zoom sablonlari (klibe gore sn); kullanicininkiler CACHE/templates.json'a eklenir
@@ -165,7 +172,7 @@ ZOOM_PRESETS = [
     {"id": "dive-tl", "name": "Sol üste dal", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.5, "z": 1.6, "cx": 0.3, "cy": 0.3, "e": "inout"}]},
     {"id": "dive-br", "name": "Sağ alta dal", "kf": [{"t": 0, "z": 1, "cx": 0.5, "cy": 0.5}, {"t": 0.5, "z": 1.6, "cx": 0.7, "cy": 0.7, "e": "inout"}]},
     {"id": "drift", "name": "Hafif süzülme (vlog)", "kf": [{"t": 0, "z": 1.08, "cx": 0.46, "cy": 0.5}, {"t": -0.001, "z": 1.1, "cx": 0.54, "cy": 0.48}]},
-] + ZOOM3 + ZOOM_PRO
+] + ZOOM3 + ZOOM_PRO + ZOOM_PACK2
 
 CAPTION_STYLES = {
     "hormozi": "Kelime vurgulu (sarı)", "word": "Tek kelime büyük", "karaoke": "Karaoke dolgu", "plain": "Sade alt yazı",
@@ -1204,7 +1211,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(t.get("vol", 1) if t.get("vol") is not None else 1)}
         audio_parts.append((_audio_chain(ii, cv, cut0, seg, max(s, T0) - T0, speed), bool(t.get("duck"))))
     if frame_t is not None:
-        return [*inputs, "-filter_complex", ";".join(graph), "-map", "[vout]", "-frames:v", "1", out], total
+        return [*inputs, *_fc_args(graph, work), "-map", "[vout]", "-frames:v", "1", out], total
     master = project.get("master") or {}
     lufs = master.get("lufs") if "lufs" in master else opts.get("lufs")
     tail = (f"loudnorm=I={float(lufs):.1f}:TP=-1.5:LRA=11," if lufs else "") + f"alimiter=limit=0.97,apad,atrim=0:{total:.3f}"
@@ -1224,7 +1231,16 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             graph.append(f"{mix}amix=inputs={len(audio_parts)}:normalize=0:dropout_transition=0,{tail}[aout]")
     else:
         graph.append(f"anullsrc=r=48000:cl=stereo,atrim=0:{total:.3f}[aout]")
-    return [*inputs, *_deliver_args(graph, opts, enc, W, H, FPS, total, out)], total
+    return [*inputs, *_deliver_args(graph, opts, enc, W, H, FPS, total, out, work)], total
+
+
+def _fc_args(graph: list[str], work: Path | None = None) -> list[str]:
+    fc = ";".join(graph)
+    if work is not None and len(fc) > 20000:
+        fp = Path(work) / "filter_graph.ffscript"
+        fp.write_text(fc, encoding="utf-8")
+        return ["-/filter_complex", str(fp)]
+    return ["-filter_complex", fc]
 
 
 DELIVER = {
@@ -1239,7 +1255,7 @@ DELIVER = {
 }
 
 
-def _deliver_args(graph: list[str], opts: dict, enc: str, W: int, H: int, FPS: int, total: float, out: str) -> list[str]:
+def _deliver_args(graph: list[str], opts: dict, enc: str, W: int, H: int, FPS: int, total: float, out: str, work: Path | None = None) -> list[str]:
     fmt = opts.get("format", "mp4")
     q = opts.get("quality", "high")
     size = opts.get("size")
@@ -1253,11 +1269,11 @@ def _deliver_args(graph: list[str], opts: dict, enc: str, W: int, H: int, FPS: i
     if fmt in ("mp3", "wav"):
         a = ["-c:a", "libmp3lame", "-b:a", "320k"] if fmt == "mp3" else ["-c:a", "pcm_s16le"]
         graph.append(f"{vmap}nullsink")
-        return ["-filter_complex", ";".join(graph), "-map", "[aout]", *a, "-ar", "48000", *t, out]
+        return [*_fc_args(graph, work), "-map", "[aout]", *a, "-ar", "48000", *t, out]
     if fmt == "gif":
         graph.append(f"{vmap}fps=15,scale=480:-2:flags=lanczos,split[g0][g1];[g0]palettegen=stats_mode=diff[gp];[g1][gp]paletteuse=dither=bayer:bayer_scale=4[gif]")
         graph.append("[aout]anullsink")
-        return ["-filter_complex", ";".join(graph), "-map", "[gif]", "-loop", "0", *t, out]
+        return [*_fc_args(graph, work), "-map", "[gif]", "-loop", "0", *t, out]
     if fmt == "prores":
         v = ["-c:v", "prores_ks", "-profile:v", "3", "-pix_fmt", "yuv422p10le"]
         a = ["-c:a", "pcm_s16le"]
@@ -1278,7 +1294,7 @@ def _deliver_args(graph: list[str], opts: dict, enc: str, W: int, H: int, FPS: i
         v += ["-pix_fmt", "yuv420p"]
         a = ["-c:a", "aac", "-b:a", "320k"]
     mov = ["-movflags", "+faststart"] if fmt in ("mp4", "hevc") else []
-    return ["-filter_complex", ";".join(graph), "-map", vmap, "-map", "[aout]", *v, "-r", str(FPS), *a, "-ar", "48000", *mov, *t, out]
+    return [*_fc_args(graph, work), "-map", vmap, "-map", "[aout]", *v, "-r", str(FPS), *a, "-ar", "48000", *mov, *t, out]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -1523,6 +1539,8 @@ def _trans_in(kind: str, d: float, W: int, H: int, tag: str = "t", c0: float = 0
         return f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if({masks[kind]},alpha(X,Y),0)':{en}"
     if kind in TRANS_PRO:
         return trans_in_pro(kind, d, W, H, tag, c0, fps)
+    if kind in TRANS_PACK2:
+        return trans_in_pack2(kind, d, W, H, tag, c0, fps)
     return trans_in2(kind, d, W, H, tag, c0, fps)
 
 
@@ -1540,6 +1558,7 @@ AUDIO_FIX = {
     "meme-earrape": "bass=g=11:f=85,acompressor=threshold=-12dB:ratio=8:makeup=8,asoftclip=type=tanh,alimiter=limit=0.98",
     "muffle": "lowpass=f=650,volume=0.55",
     **AUDIO_FIX_PRO,
+    **AUDIO_FIX_PACK2,
 }
 
 
@@ -1576,10 +1595,23 @@ def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: f
         ch.append("highpass=f=450,lowpass=f=2800,acompressor=threshold=-18dB:ratio=6,volume=1.3")
     elif vc == "demon":
         ch.append("aecho=0.8:0.6:35:0.4")
-    for fx in (c.get("afx") or []):
-        if fx in AUDIO_FIX:
-            ch.append(AUDIO_FIX[fx])
-    ch.extend(studio_fx_adv.eq_filters(c.get("eq")))
+    afx_chain = [AUDIO_FIX[fx] for fx in (c.get("afx") or []) if fx in AUDIO_FIX]
+    afx_chain.extend(studio_fx_adv.eq_filters(c.get("eq")))
+    afx_mix = float(c.get("afxMix", 1.0) if c.get("afxMix") is not None else 1.0)
+    afx_mix = max(0.0, min(1.0, afx_mix))
+    if afx_chain and afx_mix >= 0.02:
+        if afx_mix < 0.98:
+            pre = head + ",".join(ch)
+            head = (f"{pre},asplit=2[adry{ii}][awet{ii}];"
+                    f"[awet{ii}]{','.join(afx_chain)}[awet2_{ii}];"
+                    f"[adry{ii}][awet2_{ii}]amix=inputs=2:weights={1.0 - afx_mix:.3f} {afx_mix:.3f}:normalize=0,")
+            ch = ["anull"]
+        else:
+            ch.extend(afx_chain)
+    if c.get("monoSum"):
+        ch.append("aformat=channel_layouts=mono,aformat=channel_layouts=stereo")
+    if c.get("phaseInvert"):
+        ch.append("volume=-1")
     ukf_a = kf_resolve(c.get("kf") or [], float(c.get("dur", 0) or 0))
     if any("vol" in q for q in ukf_a):
         v_ex = studio_fx_adv.kf_expr_adv(ukf_a, "vol", f"(t+{cut0:.4f})", vol)
@@ -2237,6 +2269,7 @@ SFX = {
     "record-scratch": ("aevalsrc='0.65*sin(2*PI*(420+260*sin(2*PI*11*t))*t)*exp(-t*5)+0.35*(random(0)-0.5)*exp(-t*6)':d=0.45,bandpass=f=1500:w=2200", "Plak Durma (Scratch)"),
     **SFX_PRO,
     **SFX_TR_MEME,
+    **SFX_PACK2,
 }
 
 SFX_CAT = {
@@ -2252,6 +2285,7 @@ SFX_CAT = {
     "riser": "Dramatik & Gerilim", "kalp": "Dramatik & Gerilim", "dramatic-dun": "Dramatik & Gerilim", "daktilo": "Dramatik & Gerilim",
     **SFX_CAT_PRO,
     **SFX_CAT_TR_MEME,
+    **SFX_CAT_PACK2,
 }
 
 
@@ -2281,7 +2315,8 @@ def ensure_sfx(ffmpeg: str, name: str = "") -> dict[str, str]:
 AUDIO_FIX_NAMES = {"nr1": "Gürültü azalt (hafif)", "nr2": "Gürültü azalt (güçlü)", "voice": "Ses netleştir (EQ + kompresör + de-esser)",
                    "gate": "Kapı (nefes/arka sesi kes)", "bass": "Bas güçlendir", "radio": "Telsiz", "phone": "Telefon", "cave": "Mağara yankısı",
                    "hot-montage": "Sıcak montaj (-10 LUFS + Limiter)", "meme-earrape": "Meme Bas / Kulak Patlatan (-7 LUFS)", "muffle": "Meme duraksama (Lo-Pass Boğuk)",
-                   **AUDIO_FIX_NAMES_PRO}
+                   **AUDIO_FIX_NAMES_PRO,
+                   **AUDIO_FIX_NAMES_PACK2}
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -2340,7 +2375,7 @@ TEMPLATES = [
         {"t": 0, "graphic": "quote", "dur": 5, "style": {"title": "Kaybetmekten korkma.", "sub": "Biri"}}, {"t": 0, "sfx": "ding"}]},
     {"id": "counter", "group": "Vlog & belgesel", "name": "Sayaç (istatistik)", "items": [
         {"t": 0, "graphic": "counter", "dur": 3, "style": {"from": 0, "to": 1000000, "suffix": " izlenme"}}, {"t": 0, "sfx": "riser"}]},
-] + TEMPLATES_PRO + TEMPLATES_TR_MEME
+] + TEMPLATES_PRO + TEMPLATES_TR_MEME + TEMPLATES_PACK2
 TEMPLATE_NAMES = [{"id": t["id"], "group": t["group"], "name": t["name"], "needs": t.get("needs", "")} for t in TEMPLATES]
 
 

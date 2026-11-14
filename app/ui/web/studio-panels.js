@@ -36,7 +36,15 @@ P.media = async () => {
   $("#panelTools").innerHTML = `<button class="tb" id="impBtn">＋ İçe aktar</button>`;
   $("#impBtn").onclick = async () => { const ps = await api.studio_pick_media(); if (ps?.length) importPaths(ps); };
   const as = Object.entries(ST.p.assets);
-  let h = as.length ? "" : `<div class="hint">Dosyaları pencereye sürükle-bırak ya da “İçe aktar”. Video, ses, resim ve GIF olur.<br>İlk eklenenler zaman çizelgesine kendiliğinden dizilir.</div>`;
+  let h = `<div class="uxbar" title="AtomX / Hyperbrew / AEJuice / PluginPlay Hızlı İş Akışı">
+    <button class="tb" id="wfPaste" title="Panodaki resmi (Copy Pasta) içe aktar">📋 Yapıştır</button>
+    <button class="tb" id="wfCopy" title="Oynatma kafasını panoya PNG kopyala (Ctrl+Shift+C)">📸 Kopyala</button>
+    <button class="tb" id="wfVer" title="Version Raptor: Sürüm numarasını artırıp kaydet">⚡ Sürüm +1</button>
+    <button class="tb" id="wfVar" title="9:16 + 1:1 otomatik varyasyonlar üret">📐 Varyasyon</button>
+    <button class="tb" id="wfStg" title="Seçili klipleri kademeli basamakla (Shifter)">🎬 Basamakla</button>
+    <button class="tb" id="wfPurge" title="Kullanılmayan medya varlıklarını temizle">🧹 Temizle</button>
+  </div>`;
+  h += as.length ? "" : `<div class="hint">Dosyaları pencereye sürükle-bırak ya da “İçe aktar”. Video, ses, resim ve GIF olur.<br>İlk eklenenler zaman çizelgesine kendiliğinden dizilir.</div>`;
   h += `<div class="bin">${as.map(([id, a]) => {
     const m = ST.media[a.path], bg = a.kind === "image" || a.gif ? `background-image:url('${a.url}')` : m?.thumbs?.sprite ? `background-image:url(${m.thumbs.sprite});background-size:${(m.thumbs.count || 16) * 100}% 100%;background-position:${100 / ((m.thumbs.count || 16) - 1) * 2}% 0` : "";
     return `<div class="asset ${a.kind}${a.missing ? " missing" : ""}${ST.binSel.has(id) ? " sel" : ""}" draggable="true" data-aid="${id}" style="${bg}" title="${esc(a.path)}">
@@ -45,6 +53,40 @@ P.media = async () => {
   const rec = await api.studio_recent();
   if (rec.length) h += sec("Son projeler") + rec.slice(0, 8).map(r => `<div class="snd" data-open="${esc(r.path)}"><b>${esc(r.name || r.path.split(/[\\/]/).pop())}</b><button title="Aç">↗</button></div>`).join("");
   pb.innerHTML = h;
+  const rawClone = () => { const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url; return p; };
+  $("#wfPaste").onclick = async () => {
+    const r = await api.studio_clipboard_paste();
+    if (!r?.ok) { toast("Panoda görsel yok"); return; }
+    const aid = addAsset(r); dropAsset(aid, ST.t, null); toast("Panodan eklendi: " + r.name);
+  };
+  $("#wfCopy").onclick = async () => {
+    busy("Pano için render ediliyor…");
+    const r = await api.studio_clipboard_copy(rawClone(), ST.t, [...ST.sel]);
+    busy(null);
+    toast(r?.ok ? "Kare panoya kopyalandı (Ctrl+Shift+C)" : (r?.error || "olmadı"));
+  };
+  $("#wfVer").onclick = async () => {
+    const r = await api.studio_version_up(rawClone(), ST.path || "", "smart");
+    if (r?.ok) { ST.path = r.path; $("#pname").value = ST.p.name; toast("Yeni sürüm kaydedildi: " + r.filename); renderPanel(); }
+  };
+  $("#wfVar").onclick = async () => {
+    const p0 = rawClone();
+    const r = await api.studio_variations(p0, ["9:16", "1:1", "4:5"], ST.path || "");
+    if (r?.ok) toast(`${r.variations.length} çoklu oran projesi oluşturuldu (Projeler klasöründe)`);
+  };
+  $("#wfPurge").onclick = async () => {
+    const r = await api.studio_purge_assets(rawClone());
+    if (r?.ok) { snap(); ST.p.assets = r.project.assets; changed(); renderPanel(); toast(`${r.removed_count} kullanılmayan varlık temizlendi`); }
+  };
+  $("#wfStg").onclick = async () => {
+    const ids = [...ST.sel];
+    if (ids.length < 2) { toast("En az 2 klip seç (Shift+tık)"); return; }
+    const ord = await modal(`<h3>🎬 Shifter (Basamakla & Hizala)</h3><div class="hint">${ids.length} seçili klip kademeli dizilir.</div>
+      <div class="row"><button class="tb pri" data-v="asc">Artan (+0.08sn)</button><button class="tb" data-v="desc">Azalan</button><button class="tb" data-v="pyramid">Piramit</button><button class="tb" data-v="random">Rastgele</button></div>`);
+    if (!ord) return;
+    const r = await api.studio_stagger(rawClone(), ids, 0.08, ord, "", 0);
+    if (r?.ok) { snap(); ST.p.clips = r.project.clips; changed(); toast(`${r.count} klip basamaklandı (${ord})`); }
+  };
 };
 pb.addEventListener("dragstart", e => {
   const a = e.target.closest("[data-aid]"); if (a) { e.dataTransfer.setData("text/kami-asset", a.dataset.aid); e.dataTransfer.effectAllowed = "copy"; return; }
@@ -378,24 +420,82 @@ const GFX_DEF = { lower: { title: "İsim Soyisim", sub: "Unvan", x: .07, y: .8 }
   "news-card": { badge: "SON DAKİKA", title: "Başlık Buraya", sub: "Gelişme detayı", x: .5, y: .82 },
   "split-card": { title: "KARŞILAŞTIRMA", left: "ÖNCE", right: "SONRA", x: .5, y: .5 },
   "stat-table": { title: "İSTATİSTİK", rows: "Hız:98|Kalite:99|Güç:95", x: .5, y: .5 },
-  birazdan: { title: "birazdan...", sub: "bekle", x: .82, y: .14 } };
+  birazdan: { title: "birazdan...", sub: "bekle", x: .82, y: .14 },
+  "newspaper-cut": { title: "BÜYÜK GELİŞME", sub: "2026 • ÖZEL SAYI", x: .5, y: .5 },
+  "history-timeline": { title: "2018 — 2022 — 2026", sub: "Dönüm noktaları", x: .5, y: .5 },
+  "chat-bubble": { title: "Bunu gördün mü?", sub: "14:22 ✓✓", x: .5, y: .5 },
+  "bar-chart": { title: "PERFORMANS ARTIŞI", sub: "Q1 · Q2 · Q3 · Q4", x: .5, y: .5 },
+  "donut-stat": { title: "%94", sub: "Başarı Oranı", x: .5, y: .5 },
+  "audio-spec": { title: "NOW PLAYING", x: .5, y: .72 },
+  "countdown-timer": { from: 3, to: 0, x: .5, y: .5 },
+  "sale-badge": { title: "%50 İNDİRİM", sub: "SINIRLI SÜRE", x: .5, y: .5 },
+  "neon-sign": { title: "YENİ SERİ", x: .5, y: .5 },
+  "device-notif": { title: "Yeni Mesaj", sub: "Şimdi • Bildirim", x: .5, y: .14 },
+  "social-comment": { title: "@izleyici", sub: "Harika olmuş!", x: .5, y: .5 },
+  "chapter-bar": { title: "01 · BÖLÜM", x: .5, y: .09 },
+  "whiteboard-sketch": { title: "ANA FİKİR", sub: "Adım 1 • Adım 2 • Adım 3", x: .5, y: .5 },
+  "kinetic-stamp": { title: "ONAYLANDI", x: .5, y: .5 },
+  "split-compare": { title: "ÖNCE", sub: "SONRA", x: .5, y: .5 },
+  "podcast-card": { title: "Konuk İsim", sub: "Podcast #12", x: .06, y: .78 },
+  "map-pin": { title: "ANKARA → İSTANBUL", sub: "450 KM", x: .5, y: .5 },
+  "glitch-title": { title: "GLITCH BAŞLIK", x: .5, y: .5 } };
 function addGfx(kind, t) { snap(); const c = placeAt({ graphic: kind, dur: kind === "endscreen" ? 20 : kind === "progress" ? Math.max(5, projEnd() - t) : 4, style: { ...(GFX_DEF[kind] || {}) } }, "text", t); ST.sel = new Set([c.id]); changed(); }
 
-// ---------------------------------------------------------------- cikartmalar (stickers)
+// ---------------------------------------------------------------- cikartmalar (stickers) + Iconify Acik Kutuphane
 P.stickers = () => {
+  const mode = P.stickers.mode || "local";
+  const tabs = `<div class="seg" style="margin-bottom:8px"><button class="${mode === "local" ? "on" : ""}" data-stktab="local">🎭 Vektör (${Object.keys(ST.cat.stickers || {}).length})</button><button class="${mode === "open" ? "on" : ""}" data-stktab="open">🌐 Açık İkon & Emoji</button></div>`;
+  if (mode === "open") {
+    const res = P.stickers.openRes || [];
+    pb.innerHTML = tabs + `<div class="hint">Ücretsiz Google Material, Noto Emoji, Twemoji & Lucide kütüphanesi. Tıkla: şeffaf PNG olarak indirip zamana ekler.</div>` +
+      `<div class="row" style="margin-bottom:6px"><input class="in" id="icQ" placeholder="fire, arrow, trophy, warning…" value="${esc(P.stickers.icQ || "fire")}" style="flex:1"><button class="tb pri" id="icGo" style="flex:none">Ara</button></div>` +
+      `<div class="grid2">${res.map(ic => `<div class="card" data-oic="${esc(ic.id)}" style="text-align:center"><img src="${esc(ic.svg_url)}" style="width:36px;height:36px;object-fit:contain;margin:2px auto;display:block"><small>${esc(ic.id)}</small></div>`).join("") || '<div class="hint">Arama yap…</div>'}</div>`;
+    const goIc = async () => {
+      P.stickers.icQ = $("#icQ").value.trim() || "fire";
+      const r = await api.studio_open_icon_search(P.stickers.icQ, "", 24);
+      P.stickers.openRes = r?.icons || [];
+      P.stickers();
+    };
+    $("#icGo").onclick = goIc;
+    $("#icQ").onkeydown = e => { if (e.key === "Enter") goIc(); };
+    if (!P.stickers.openRes) goIc();
+    return;
+  }
   const stMap = ST.cat.stickers || {};
   const entries = Object.entries(stMap);
-  const cats = ["Tümü", ...new Set(entries.map(([, v]) => v.c || "Genel"))];
+  const cats = ["Tümü", ...new Set(entries.map(([, v]) => v.cat || v.c || "Genel"))];
   const cat = P.stickers.cat || "Tümü", q = (P.stickers.q || "").toLowerCase();
-  const list = entries.filter(([k, v]) => (cat === "Tümü" || v.c === cat) && (!q || v.n.toLowerCase().includes(q) || k.toLowerCase().includes(q)));
-  pb.innerHTML = `<div class="hint">${entries.length} vektör çıkartma (ok, sansür, klaket, sosyal, meme). Tıkla ekle, sağdan boyut ve renk seç.</div>` +
+  const list = entries.filter(([k, v]) => (cat === "Tümü" || (v.cat || v.c) === cat) && (!q || (v.name || v.n || "").toLowerCase().includes(q) || k.toLowerCase().includes(q)));
+  pb.innerHTML = tabs + `<div class="hint">${entries.length} vektör çıkartma (ok, sansür, klaket, sosyal, meme). Tıkla ekle, sağdan boyut ve renk seç.</div>` +
     `<div class="catpills">${cats.map(c => `<button class="${c === cat ? "on" : ""}" data-stkcat="${esc(c)}">${esc(c)}</button>`).join("")}</div>` +
-    `<input class="in" id="stkQ" placeholder="Ok, sansür, kırmızı ok, ping ara…" value="${esc(P.stickers.q || "")}" style="width:100%;margin-bottom:6px">` +
-    `<div class="grid2">${list.map(([k, v]) => `<div class="card" data-stk="${esc(k)}" draggable="true" data-item='${esc(JSON.stringify({ type: "sticker", kind: k }))}' style="text-align:center"><b style="font-size:18px;display:block">${esc(v.ico || "◆")}</b><small>${esc(v.n)}</small></div>`).join("")}</div>`;
+    `<input class="in" id="stkQ" placeholder="Ok, sansür, indirim, ping ara…" value="${esc(P.stickers.q || "")}" style="width:100%;margin-bottom:6px">` +
+    `<div class="grid2">${list.map(([k, v]) => `<div class="card" data-stk="${esc(k)}" draggable="true" data-item='${esc(JSON.stringify({ type: "sticker", kind: k }))}' style="text-align:center"><b style="font-size:18px;display:block">${esc(v.glyph || v.ico || "◆")}</b><small>${esc(v.name || v.n)}</small></div>`).join("")}</div>`;
   const qi = $("#stkQ"); qi.oninput = () => { P.stickers.q = qi.value; clearTimeout(P.stickers.t); P.stickers.t = setTimeout(() => { P.stickers(); const n = $("#stkQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 150); };
 };
-pb.addEventListener("click", e => {
+pb.addEventListener("click", async e => {
   if (panel !== "stickers") return;
+  const tb = e.target.closest("[data-stktab]"); if (tb) { P.stickers.mode = tb.dataset.stktab; P.stickers(); return; }
+  const oic = e.target.closest("[data-oic]");
+  if (oic) {
+    busy("İkon şeffaf PNG hazırlanıyor…");
+    let pngB64 = "";
+    try {
+      const im = oic.querySelector("img");
+      if (im) {
+        const resp = await fetch(im.src), svgTxt = await resp.text();
+        const cv = document.createElement("canvas"); cv.width = 512; cv.height = 512;
+        const img = new Image(); img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgTxt);
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+        cv.getContext("2d").drawImage(img, 0, 0, 512, 512);
+        pngB64 = cv.toDataURL("image/png");
+      }
+    } catch { }
+    const r = await api.studio_open_icon_fetch(oic.dataset.oic, "", 512, pngB64);
+    busy(null);
+    if (r?.ok && r.path?.toLowerCase().endsWith(".png")) { const aid = addAsset(r); dropAsset(aid, ST.t, null); toast("Eklendi: " + oic.dataset.oic); }
+    else if (r?.ok) toast("İndirildi: " + r.path); else toast(r?.error || "olmadı");
+    return;
+  }
   const ct = e.target.closest("[data-stkcat]"); if (ct) { P.stickers.cat = ct.dataset.stkcat; P.stickers(); return; }
   const st = e.target.closest("[data-stk]"); if (st) addSticker(st.dataset.stk, ST.t);
 });
@@ -490,12 +590,14 @@ P.fx = () => {
   const card = ([id, f]) => `<div class="card${on.has(id) ? " on" : ""}" data-fx="${id}" draggable="true" data-item='${esc(JSON.stringify({ type: "fx", id }))}'><div class="sw" style="${fxThumb ? `background-image:url(${fxThumb});` : ""}filter:${f.css || "none"}"></div><b>${esc(f.name)}</b>${favStar("fx", id)}</div>`;
   const all = Object.entries(ST.cat.fx).filter(([id, f]) => (fc === "Tümü" || (fc === "★ Favori" ? isFav("fx", id) : f.pack === fc)) && (!q || f.name.toLowerCase().includes(q) || f.pack.toLowerCase().includes(q) || id.toLowerCase().includes(q)));
   const favs = fc === "Tümü" ? all.filter(([id]) => isFav("fx", id)) : [];
+  const sz = P.fx.sz || "m";
   pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe uygula / kaldır. Sağ panelden Tümü / Giriş / Çıkış seç." : c && clipKind(c) === "fx" ? "Tıkla: seçili Ayar Katmanına ek efekt yığ." : "Klip seçili değil: tıklayınca efekt izine 3 sn eklenir."} ★: favori.</div>` +
-    `<div class="row" style="margin-bottom:6px"><button class="tb pri" id="addAdjBtn" style="width:100%">✨ + Ayar Katmanı Ekle (5 sn)</button></div>` +
+    `<div class="uxbar"><button class="tb pri" id="addAdjBtn">✨ + Ayar Katmanı</button><span class="sp"></span>` +
+    `<span>Kart:</span><button class="tb${sz === "s" ? " on" : ""}" data-fxsz="s">S</button><button class="tb${sz === "m" ? " on" : ""}" data-fxsz="m">M</button><button class="tb${sz === "l" ? " on" : ""}" data-fxsz="l">L</button></div>` +
     `<div class="catpills">${packNames.map(p => `<button class="${fc === p ? "on" : ""}" data-fxcat="${esc(p)}">${esc(p)}</button>`).join("")}</div>` +
     `<input class="in" id="fxQ" placeholder="${Object.keys(ST.cat.fx).length} efekt içinde ara…" value="${esc(P.fx.q || "")}" style="width:100%;margin-bottom:6px">` +
-    (favs.length ? sec("★ Favoriler") + `<div class="grid2">${favs.map(card).join("")}</div>` : "") +
-    Object.entries(packs).map(([pk, items]) => { const it = items.filter(x => all.some(y => y[0] === x[0])); return it.length ? sec(pk) + `<div class="grid2">${it.map(card).join("")}</div>` : ""; }).join("");
+    (favs.length ? sec("★ Favoriler") + `<div class="grid2 sz-${sz}">${favs.map(card).join("")}</div>` : "") +
+    Object.entries(packs).map(([pk, items]) => { const it = items.filter(x => all.some(y => y[0] === x[0])); return it.length ? sec(pk) + `<div class="grid2 sz-${sz}">${it.map(card).join("")}</div>` : ""; }).join("");
   $("#addAdjBtn").onclick = () => { snap(); const cl = placeAt({ mode: "adjustment", dur: 5, adj: {}, opacity: 1, blend: "normal" }, "fx", ST.t); ST.sel = new Set([cl.id]); changed(); };
   const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 180); };
 };
@@ -503,6 +605,8 @@ pb.addEventListener("click", e => {
   if (panel !== "fx") return;
   const tb = e.target.closest("[data-fxtab]");
   if (tb) { P.fx.tab = tb.dataset.fxtab; P.fx(); return; }
+  const szb = e.target.closest("[data-fxsz]");
+  if (szb) { P.fx.sz = szb.dataset.fxsz; P.fx(); return; }
   const fcat = e.target.closest("[data-fxcat]"); if (fcat) { P.fx.cat = fcat.dataset.fxcat; P.fx(); return; }
   const acat = e.target.closest("[data-ancat]"); if (acat) { P.fx.acat = acat.dataset.ancat; P.fx(); return; }
   const ca = e.target.closest("[data-canim]");
@@ -545,24 +649,34 @@ function transCat(k) {
   return "Glitch & Pop";
 }
 P.trans = () => {
-  const cat = P.trans.cat || "Tümü", q = (P.trans.q || "").toLowerCase();
+  const cat = P.trans.cat || "Tümü", q = (P.trans.q || "").toLowerCase(), ap = !!P.trans.auto;
   const cats = ["Tümü", "Temel & Flaş", "Hareket & Dönüş", "Silme & Perde", "Şekilli & Maske", "Glitch & Pop"];
   const items = Object.entries(ST.cat.trans).filter(([k, v]) => (cat === "Tümü" || transCat(k) === cat) && (!q || v.toLowerCase().includes(q) || k.toLowerCase().includes(q)));
   pb.innerHTML = `<div class="hint">Seçili klibin girişine uygulanır. Süreyi sağ panelden ayarla.</div>` +
+    `<div class="uxbar"><button class="tb${ap ? " on" : ""}" id="trAuto" title="Geçiş önizlemelerini otomatik oynat">▶ Oto Oynat</button>` +
+    `<button class="tb${P.trans.sfx ? " on" : ""}" id="trSfx" title="Geçiş eklerken uyumlu Whoosh/Glitch SFX ekle">♪ + Ses Ekle</button></div>` +
     `<div class="catpills">${cats.map(c => `<button class="${c === cat ? "on" : ""}" data-trcat="${c}">${c}</button>`).join("")}</div>` +
     `<input class="in" id="trQ" placeholder="${Object.keys(ST.cat.trans).length} geçiş içinde ara…" value="${esc(P.trans.q || "")}" style="width:100%;margin-bottom:6px">` +
-    `<div class="grid2">${items.map(([k, v]) => `<div class="card" data-tr="${k}" title="${esc(v)}"><i class="trv tv-${esc(k)}"></i><b>${esc(v)}</b></div>`).join("")}</div>` +
+    `<div class="grid2${ap ? " autoplay" : ""}">${items.map(([k, v]) => `<div class="card" data-tr="${k}" title="${esc(v)}"><i class="trv tv-${esc(k)}"></i><b>${esc(v)}</b></div>`).join("")}</div>` +
     `<div class="row" style="margin-top:10px"><button class="tb" id="trAll">Seçili tüm kesimlere uygula</button></div>`;
   const qi = $("#trQ"); qi.oninput = () => { P.trans.q = qi.value; clearTimeout(P.trans.t); P.trans.t = setTimeout(() => { P.trans(); const n = $("#trQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 160); };
+  $("#trAuto").onclick = () => { P.trans.auto = !P.trans.auto; P.trans(); };
+  $("#trSfx").onclick = () => { P.trans.sfx = !P.trans.sfx; P.trans(); };
   $("#trAll").onclick = () => toast("Önce klipleri seç (Shift+tık), sonra geçişe tıkla");
 };
-pb.addEventListener("click", e => {
+pb.addEventListener("click", async e => {
   if (panel !== "trans") return;
   const ct = e.target.closest("[data-trcat]"); if (ct) { P.trans.cat = ct.dataset.trcat; P.trans(); return; }
   const t = e.target.closest("[data-tr]"); if (!t) return;
   const cs = selClips().filter(c => ["video", "image"].includes(clipKind(c)));
   if (!cs.length) { toast("Önce bir video klibi seç"); return; }
-  snap(); for (const c of cs) { if (t.dataset.tr === "none") delete c.trans; else c.trans = { in: t.dataset.tr, dur: c.trans?.dur || .35 }; } changed();
+  snap(); for (const c of cs) { if (t.dataset.tr === "none") delete c.trans; else c.trans = { in: t.dataset.tr, dur: c.trans?.dur || .35 }; }
+  if (P.trans.sfx && t.dataset.tr !== "none" && api.studio_sfx) {
+    const k = t.dataset.tr, sfxId = /glitch|crt|pixel|tear/.test(k) ? "glitch" : /flash|burn|flare/.test(k) ? "sub-drop" : "whoosh";
+    const s = await api.studio_sfx(sfxId);
+    if (s?.ok) { const aid = addAsset(s); placeAt({ asset: aid, start: cs[0].start, dur: Math.min(1.5, s.dur || .7), vol: .8 }, "audio", cs[0].start); }
+  }
+  changed();
 });
 
 // ---------------------------------------------------------------- zoom

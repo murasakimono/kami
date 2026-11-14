@@ -111,8 +111,8 @@ select.tb { padding: 5px 8px; }
 #saved.dirty { color: var(--amber); }
 
 /* ---------- sol ray + panel ---------- */
-#libtabs { display: flex; flex-wrap: wrap; gap: 3px; padding: 8px 8px 0; }
-#libtabs button { border: 1px solid transparent; background: transparent; color: #A79FBD; border-radius: 8px; padding: 5px 8px; font-size: 11.5px; display: flex; align-items: center; gap: 5px; }
+#libtabs { display: flex; flex-wrap: wrap; gap: 3px; padding: 7px 7px 0; }
+#libtabs button { border: 1px solid transparent; background: transparent; color: #A79FBD; border-radius: 7px; padding: 4px 7px; font-size: 11px; display: flex; align-items: center; gap: 4px; }
 #libtabs button i { font-style: normal; font-size: 13px; }
 #libtabs button:hover { color: #fff; background: rgba(139,92,246,.1); }
 #libtabs button.on { color: #fff; background: #241640; border-color: rgba(139,92,246,.55); }
@@ -222,7 +222,7 @@ textarea.in { min-height: 70px; resize: vertical; user-select: text; }
 #tlbar .tb { padding: 4px 9px; font-size: 12px; }
 #tlbar input[type=range] { width: 120px; accent-color: var(--violet); }
 #tlBody { flex: 1; display: flex; min-height: 0; }
-#tlHeads { width: 128px; flex: none; border-right: 1px solid var(--line); overflow: hidden; padding-top: 26px; background: var(--bg2); }
+#tlHeads { width: 172px; flex: none; border-right: 1px solid var(--line); overflow: hidden; padding-top: 38px; background: var(--bg2); }
 .th { height: var(--h, 52px); display: flex; align-items: center; gap: 2px; padding: 0 6px; border-bottom: 1px solid #16111F; font-size: 11px; }
 .th b { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; color: #B6AECB; }
 .th button { border: 0; background: transparent; padding: 2px 3px; color: var(--mute); font-size: 12px; }
@@ -535,3 +535,26 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .eqb input { writing-mode: vertical-lr; direction: rtl; height: 76px; width: 18px; accent-color: var(--em); }
 .eqb small { font-size: 9px; color: var(--mute); }
 .eqb .eqv { font-size: 9px; color: #C4B5FD; font-variant-numeric: tabular-nums; }
+
+/* ---- Dalga 7: AtomX UX + 9-pt Anchor + Workflow bar + Yeni Gecis CSS Onizlemeleri ---- */
+.uxbar { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+.uxbar .tb { padding: 3px 7px; font-size: 10.5px; }
+.grid2.sz-s { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.grid2.sz-s .card { padding: 5px; font-size: 10px; }
+.grid2.sz-l { grid-template-columns: 1fr; }
+.autoplay .card .trv::after { animation-play-state: running; }
+.anc9 { display: grid; grid-template-columns: repeat(3, 22px); gap: 3px; width: fit-content; margin: 4px 0 8px; }
+.anc9 button { width: 22px; height: 22px; padding: 0; border-radius: 5px; border: 1px solid var(--line); background: var(--panel2); color: var(--mute); font-size: 10px; line-height: 1; }
+.anc9 button.on { background: #2A1650; border-color: var(--em); color: var(--em); }
+.tv-morph-zoom::after, .tv-zoom-elastic-out::after { animation-name: tvZoomBlur; }
+.tv-liquid-drip::after, .tv-strip-blind-h::after { animation-name: tvBlindsH; }
+.tv-glass-shatter::after, .tv-glitch-tear-v::after { animation-name: tvShake; animation-timing-function: steps(6); }
+.tv-crt-off::after, .tv-crt-on::after, .tv-squeeze-v::after { animation-name: tvBarnH; }
+.tv-ink-splat::after { animation-name: tvIris; }
+.tv-strip-blind-v::after, .tv-squeeze-h::after { animation-name: tvBarnV; }
+.tv-kaleido-spin::after { animation-name: tvSpin180; }
+.tv-elastic-pop::after { animation-name: tvPop; }
+.tv-hyper-whip-r::after, .tv-prism-swipe::after, .tv-paper-tear-slide::after { animation-name: tvWipeR; }
+.tv-hyper-whip-l::after { animation-name: tvSlideL; }
+.tv-burn-flash::after, .tv-burn-orange::after { animation-name: tvLeak; }
+.tv-checker-dissolve::after, .tv-tile-flip::after { animation-name: tvFade; }
