@@ -121,3 +121,23 @@ def test_kapsul_share_page_range_password(tmp_path, monkeypatch):
             assert e.code == 404
     finally:
         srv.stop()
+
+
+def test_privacy_shield_regions_and_exif(tmp_path, monkeypatch):
+    from app.core import privacy
+    assert privacy.tc_valid("10000000146") and not privacy.tc_valid("12345678901")
+    src = tmp_path / "ekran.jpg"
+    im = Image.new("RGB", (400, 200), (255, 255, 255))
+    exif = Image.Exif(); exif[0x8825] = {2: (41.0, 0.0, 0.0)}   # GPS
+    im.save(src, exif=exif)
+    scan = {"lines": [{"text": "ara 0532 123 45 67", "words": [
+        {"t": "ara", "x": 10, "y": 10, "w": 30, "h": 20}, {"t": "0532", "x": 50, "y": 10, "w": 40, "h": 20},
+        {"t": "123", "x": 95, "y": 10, "w": 30, "h": 20}, {"t": "45", "x": 130, "y": 10, "w": 20, "h": 20},
+        {"t": "67", "x": 155, "y": 10, "w": 20, "h": 20}]}], "faces": [{"x": 250, "y": 60, "w": 80, "h": 80}]}
+    monkeypatch.setattr(privacy, "_scan", lambda p, f: scan)
+    r = privacy.shield_image(str(src))
+    assert r["ok"] and r["found"] == {"phone": 1, "face": 1}
+    regs = {x["kind"]: x["box"] for x in r["regions"]}
+    assert regs["phone"][0] == 50 and regs["phone"][2] == 175   # "ara" kelimesi gizlenmez
+    with Image.open(r["path"]) as out:
+        assert not out.getexif().get(0x8825)

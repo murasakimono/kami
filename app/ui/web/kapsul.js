@@ -46,14 +46,15 @@
         <label>İndirme sınırı <select class="mx"><option value="0">Sınırsız</option><option value="1">1 kez</option><option value="5">5 kez</option><option value="20">20 kez</option></select></label>
         <label>&nbsp;<button class="pri mk">Dosya seç ve paylaş</button></label>
         <label class="wide">Not (sayfada görünür) <input class="nt" maxlength="200"></label>
+        <label class="wide" style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="sh" style="width:auto"> Görsellerde Gizlilik Kalkanı uygula (yüz, telefon, e-posta, TC, IBAN, kart bulanık; konum bilgisi silinir)</label>
       </div><div class="list"></div></div>`;
     document.body.appendChild(wrap);
     const box = wrap.querySelector(".kb");
     wrap.addEventListener("click", async (e) => {
       if (e.target === wrap || e.target.closest(".close")) { wrap.remove(); return; }
       if (e.target.closest(".mk")) {
-        const r = await A().kapsul_create("", +box.querySelector(".h").value, box.querySelector(".pw").value, +box.querySelector(".mx").value, box.querySelector(".nt").value);
-        if (r?.ok) { box.querySelector(".pw").value = ""; box.querySelector(".nt").value = ""; if (r.url) { navigator.clipboard?.writeText(r.url).catch(() => A().copy_text(r.url)); window.toast?.("Kapsül linki kopyalandı"); } }
+        const r = await A().kapsul_create("", +box.querySelector(".h").value, box.querySelector(".pw").value, +box.querySelector(".mx").value, box.querySelector(".nt").value, box.querySelector(".sh").checked);
+        if (r?.ok) { box.querySelector(".pw").value = ""; box.querySelector(".nt").value = ""; if (r.url) { navigator.clipboard?.writeText(r.url).catch(() => A().copy_text(r.url)); window.toast?.("Kapsül linki kopyalandı" + (r.shielded ? ` · ${Object.values(r.shielded).reduce((a, b) => a + b, 0)} bölge gizlendi` : "")); } }
         else if (r?.error && r.error !== "cancelled") window.toast?.("Olmadı: " + r.error, true);
         render(box); return;
       }

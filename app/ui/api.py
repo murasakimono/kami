@@ -1704,7 +1704,38 @@ class Api(StudioMixin):
         base = room.SERVER.public_base()
         return f"{base}/c/{cid}" if base else ""
 
-    def kapsul_create(self, path: str = "", hours: float = 24, password: str = "", max_dl: int = 0, note: str = "") -> dict[str, Any]:
+    # ---- Gizlilik Kalkani (secenek): yuz, e-posta, telefon, TC, IBAN, kart + EXIF/GPS silme
+    def privacy_shield(self, paths_: list[str] | None = None, kinds: list[str] | None = None) -> dict[str, Any]:
+        from app.core import privacy
+        files = [str(x) for x in (paths_ or []) if x]
+        if not files:
+            if not self._window:
+                return {"ok": False, "error": "no_window"}
+            import webview
+            res = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True,
+                                                  file_types=("Görseller (*.jpg;*.jpeg;*.png;*.webp;*.bmp)", "Tüm dosyalar (*.*)"))
+            if not res:
+                return {"ok": False, "error": "cancelled"}
+            files = list(res)
+        out = []
+        for f in files[:50]:
+            try:
+                r = privacy.shield_image(f, kinds=kinds)
+            except Exception as exc:
+                log.exception("Gizlilik Kalkani: %s", f)
+                r = {"ok": False, "error": f"{type(exc).__name__}"}
+            r.pop("regions", None)
+            out.append({"src": f, **r})
+        return {"ok": True, "items": out}
+
+    def privacy_reveal(self, path: str) -> bool:
+        if os.path.isfile(path):
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+            return True
+        return False
+
+    def kapsul_create(self, path: str = "", hours: float = 24, password: str = "", max_dl: int = 0, note: str = "",
+                      shield: bool = False) -> dict[str, Any]:
         from app.core import kapsul, room
         if not path:
             if not self._window:
@@ -1714,7 +1745,18 @@ class Api(StudioMixin):
             if not res:
                 return {"ok": False, "error": "cancelled"}
             path = res[0]
+        shielded = None
+        if shield and os.path.splitext(path)[1].lower() in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+            from app import paths
+            from app.core import privacy
+            d = paths.DATA_DIR / "kapsul_files"
+            d.mkdir(parents=True, exist_ok=True)
+            sr = privacy.shield_image(path, str(d / f"{int(__import__('time').time())}_{os.path.basename(path)}"))
+            if sr.get("ok"):
+                path, shielded = sr["path"], sr.get("found", {})
         res = kapsul.create(path, hours, password, max_dl, note)
+        if shielded is not None:
+            res["shielded"] = shielded
         if res.get("ok"):
             room.SERVER.start(self._room_name(), True, self._room_id())   # sunucu + tunel (zaten aciksa bir sey yapmaz)
             res["url"] = self._kapsul_url(res["id"])
