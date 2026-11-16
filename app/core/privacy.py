@@ -109,8 +109,11 @@ def _scan(path: str, faces: bool) -> dict[str, Any]:
     try:
         with open(ps1, "w", encoding="utf-8-sig") as f:
             f.write(_PS)
-        subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1,
-                        path, out, "1" if faces else "0"], capture_output=True, timeout=60, creationflags=NO_WINDOW)
+        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1,
+                            str(Path(path).resolve()), out, "1" if faces else "0"], capture_output=True, timeout=60,
+                           creationflags=NO_WINDOW)
+        if not os.path.isfile(out):
+            raise RuntimeError((r.stderr or b"").decode("utf-8", "replace").strip()[-400:] or f"cikis {r.returncode}")
         with open(out, encoding="utf-8") as f:
             data = json.load(f)
         for k in ("lines", "faces"):
