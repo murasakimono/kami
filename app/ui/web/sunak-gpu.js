@@ -1,6 +1,21 @@
 // Kami Faz 17: Sunak PixiJS v8 GPU Sahnesi & Eklemli Kukla Maskot
 // Eski DOM/CSS Sunak katmaninin (sk-ring, sk-char, skFx) yerini GPU uzerinde alir.
 "use strict";
+  // Kucultup geri acinca: gizliyken ticker durur (CPU/GPU bos yere calismasin), gorunur olunca yeniden boyutlanip
+  // cizilir. GPU baglami kaybolursa (hibrit ekran karti, uyku) Pixi'nin geri yuklemesine izin ver; olmazsa canvas
+  // gizlenir ve CSS/2B Sunak devralir (siyah kutu kalmasin).
+  function guardApp(app) {
+    const cv = app.canvas;
+    cv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); cv.style.visibility = "hidden"; }, false);
+    cv.addEventListener("webglcontextrestored", () => { cv.style.visibility = ""; try { app.resize?.(); app.render(); } catch { /* yok */ } }, false);
+    document.addEventListener("visibilitychange", () => {
+      try {
+        if (document.hidden) app.ticker.stop();
+        else { app.ticker.start(); app.resize?.(); app.render(); }
+      } catch { /* uygulama kapanmis */ }
+    });
+  }
+
 
 (function (global) {
   const COSTUME_PRESETS = {
@@ -130,6 +145,7 @@
         app.canvas.className = "sk-fx-gpu";
         document.body.prepend(app.canvas);
         this.bgApp = app;
+        guardApp(app);
 
         const sprNear = makePaperTexture(PIXI, 0);
         const sprMid = makePaperTexture(PIXI, 1.1);
@@ -301,6 +317,7 @@
         app.canvas.className = "sk-altar-gpu";
         altarEl.prepend(app.canvas);
         this.altarApp = app;
+        guardApp(app);
 
         // 1. Hiz halkasi & yorunge katmani
         const ringLayer = new PIXI.Container();

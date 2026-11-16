@@ -98,9 +98,15 @@ def _already_running_mutex() -> bool:
 
 def main() -> int:
     # Kami Oda / Player: ses kullanici tiklamasi beklemeden baslasin (oda otomatik girince AudioContext askida kaliyordu)
+    # Kucultup/tepsiden geri acinca beyaz-siyah ekran: Chromium'un Windows pencere ortusme hesabi (native occlusion)
+    # WebView2'yi "gorunmuyor" sanip cizimi durduruyor, geri gelince yeniden cizmiyor. Kapat; arka plana atma da
+    # Player/Oda sesini ve Sunak'i kesmesin. (Sunak GPU kendi ticker'ini document.hidden'da durdurur.)
     _wv = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
-    if "autoplay-policy" not in _wv:
-        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (_wv + " --autoplay-policy=no-user-gesture-required").strip()
+    for _arg in ("--autoplay-policy=no-user-gesture-required", "--disable-features=CalculateNativeWinOcclusion",
+                 "--disable-backgrounding-occluded-windows"):
+        if _arg.split("=")[0] not in _wv:
+            _wv = (_wv + " " + _arg).strip()
+    os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = _wv
     paths.setup_frozen()
     paths.ensure_dirs()
     _setup_logging()
@@ -341,7 +347,7 @@ def main() -> int:
             win.dom.document.events.drop += DOMEventHandler(on_drop, True, False)
         except Exception:
             log.exception("Surukle-birak oynatma baglanamadi")
-    window.events.loaded += lambda: bind_drop(window)
+    main_win = {"w": window}   # ana pencere yok edilirse (beklenmedik kapanma) istekte yeniden kurulur
 
     # ---- Kami Player: ayri pencere (ayni surec, ayni api); kapaninca yok olur, istekte yeniden kurulur
     player_front = WindowFront("Kami Player")
@@ -567,11 +573,20 @@ def main() -> int:
         api.resume_all()
 
     def quit_app() -> None:
+        # Yalnizca ana pencereyi kapatmak yetmiyordu: mini kart / Player / Studio acik kalinca surec tepside
+        # "hayalet" olarak yasiyor, sonraki acilista mutex "zaten calisiyor" deyip olmayan pencereyi one getirmeye
+        # calisiyordu ("pencere hic gelmiyor"). Hepsini kapat; takilan bir pencere sureci tutarsa 12 sn sonra cik.
+        if quitting["v"]:
+            return
         quitting["v"] = True
-        try:
-            window.destroy()
-        except Exception:
-            log.exception("Pencere kapatilamadi")
+        for w in list(webview.windows):
+            try:
+                w.destroy()
+            except Exception:
+                log.exception("Pencere kapatilamadi")
+        t = threading.Timer(12.0, lambda: os._exit(0))
+        t.daemon = True
+        t.start()
 
     bridge.on_quit = quit_app   # Kami.exe --quit (kurulum/kaldirma/guncelleme)
     tray = desktop.Tray(show_window, pause_all, resume_all, quit_app, lambda: settings.get("language"))
@@ -585,7 +600,29 @@ def main() -> int:
         quitting["v"] = True
         return None
 
-    window.events.closing += on_closing
+    def on_main_closed():
+        if not quitting["v"]:   # X ile gercekten kapandi (tepsiye gizleme kapali): diger pencereler sureci tutmasin
+            log.info("Ana pencere kapandi; Kami cikiyor")
+            quit_app()
+
+    def bind_main(w) -> None:
+        api._set_window(w)
+        w.events.loaded += lambda: bind_drop(w)
+        w.events.closing += on_closing
+        w.events.closed += on_main_closed
+
+    def recreate_main() -> None:
+        if quitting["v"]:
+            return
+        w = webview.create_window(
+            "Kami", url=str(paths.WEB_DIR / "index.html"), js_api=api,
+            width=1445, height=850, min_size=(820, 520),
+            background_color="#0D0A12" if settings.get("theme") == "dark" else "#F5F3F9", text_select=False)
+        main_win["w"] = w
+        bind_main(w)
+
+    bind_main(window)
+    front.on_missing = recreate_main
     if start_hidden:   # Windows'la baslama: tepside basla (kucuk acilir, hemen gizlenir)
         window.events.shown += lambda: winwin.hide(front._hwnd()) if tray.running else None
 

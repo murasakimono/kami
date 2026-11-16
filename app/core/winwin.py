@@ -10,6 +10,7 @@ import ctypes
 import logging
 import os
 import threading
+from typing import Callable
 from ctypes import wintypes
 
 log = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ class WindowFront:
         self._pending = threading.Event()
         self._lock = threading.Lock()
         self._worker: threading.Thread | None = None
+        self.on_missing: Callable[[], None] | None = None   # pencere yoksa (kapanmis) yeniden kurar
 
     def _hwnd(self) -> int:
         if not (self.hwnd and user32 and user32.IsWindow(self.hwnd)):
@@ -128,7 +130,13 @@ class WindowFront:
         while self._pending.is_set():
             self._pending.clear()
             try:
-                if not bring_to_front(self._hwnd()):
+                hwnd = self._hwnd()
+                if not hwnd and self.on_missing is not None:
+                    # Pencere yok edilmis ama surec (tepsi/mini kart) yasiyor: "hic gelmiyor" yerine yeniden kur
+                    log.warning("%s penceresi bulunamadi; yeniden olusturuluyor", self.title)
+                    self.on_missing()
+                    continue
+                if not bring_to_front(hwnd):
                     log.info("Pencere one getirilemedi (Windows izin vermedi ya da pencere yok)")
             except Exception:
                 log.exception("Pencere one getirme hatasi")
