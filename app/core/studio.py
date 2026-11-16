@@ -975,7 +975,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         px_parent = py_parent = None
         if c.get("parent") and str(c["parent"]) in by_id:
             sc_ex, has_ksc, rot_ex, has_krot, px_parent, py_parent = studio_fx_adv.resolve_parent_xform(
-                c, by_id, kf_resolve, T0, off, cut0, W, H
+                c, by_id, kf_resolve, T0, max(s, T0) - T0, cut0, W, H
             )
             if has_ksc or sc_ex != "1.0000":
                 ch.append(f"scale=w='max(2,2*floor(iw*({sc_ex})/2))':h='max(2,2*floor(ih*({sc_ex})/2))':eval=frame")
@@ -2313,7 +2313,7 @@ SFX_CAT = {
     "taco-bell": "Meme & Shitpost", "wrong-buzzer": "Meme & Shitpost", "bonk-meme": "Meme & Shitpost",
     "oof-retro": "Meme & Shitpost", "airhorn-mlg": "Meme & Shitpost", "sad-trombone": "Meme & Shitpost",
     "record-scratch": "Meme & Shitpost", "plak": "Meme & Shitpost",
-    "riser": "Dramatik & Gerilim", "kalp": "Dramatik & Gerilim", "dramatic-dun": "Dramatik & Gerilim", "daktilo": "Dramatik & Gerilim",
+    "riser": "Dramatik & Gerilim", "kalp": "Dramatik & Gerilim", "dramatic-dun": "Dramatik & Gerilim", "daktilo": "Dramatik & Gerilim", "kalem-cizim": "Geçiş & Hareket", "haber-flas": "UI & Oyun", "gerilim-vurdu": "Dramatik & Gerilim",
     **SFX_CAT_PRO,
     **SFX_CAT_TR_MEME,
     **SFX_CAT_PACK2,
