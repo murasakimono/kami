@@ -31,7 +31,7 @@ CF_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/clo
 CF_EXE = paths.DATA_DIR / "tools" / "cloudflared.exe"
 STUN = [{"urls": ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"]}]
 STATIC = {   # oda sayfasinin kullandigi dosyalar (WEB_DIR altinda)
-    "room.js": "room.js", "room-core.js": "room-core.js", "room.css": "room.css", "ns.js": "vendor/ns/ns.js",
+    "room.js": "room.js", "kami-guard.js": "kami-guard.js", "room-core.js": "room-core.js", "room.css": "room.css", "ns.js": "vendor/ns/ns.js",
     "rnnoise-worklet.js": "vendor/ns/rnnoise-worklet.js", "rnnoise.wasm": "vendor/ns/rnnoise.wasm",
     "rnnoise_simd.wasm": "vendor/ns/rnnoise_simd.wasm",
     "icon-192.png": "room-icon-192.png", "icon-512.png": "room-icon-512.png",

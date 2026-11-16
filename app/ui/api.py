@@ -138,6 +138,17 @@ class Api(StudioMixin):
             self._jobs.pop(str(job), None)
             return {"state": "done", "result": j.get("result")}
 
+    def ui_error(self, page: str, msg: str, src: str = "", stack: str = "") -> bool:
+        """kami-guard.js: arayuzdeki JS hatasi -> kami.log (Kami Doktor son hatalari buradan gosterir)."""
+        import collections
+        import time as _t
+        page, msg, src, stack = str(page)[:30], str(msg)[:500], str(src)[:300], str(stack)[:1500]
+        if not hasattr(self, "_ui_errors"):
+            self._ui_errors = collections.deque(maxlen=50)
+        self._ui_errors.append({"t": int(_t.time()), "page": page, "msg": msg, "src": src})
+        log.warning("Arayuz hatasi [%s] %s @ %s%s", page, msg, src, ("\n" + stack) if stack else "")
+        return True
+
     def _set_window(self, window) -> None:
         self._window = window
 
@@ -790,6 +801,32 @@ class Api(StudioMixin):
             return {"ok": False, "error": type(exc).__name__}
         subprocess.Popen(["explorer", "/select,", os.path.normpath(str(out))])
         return {"ok": True, "path": str(out)}
+
+    # ---------- Kami Doktor ----------
+    def doctor_run(self) -> dict[str, Any]:
+        from app.core import doctor
+        wd = getattr(self, "_watchdog", None)
+        return doctor.run_all(self._engine, list(getattr(self, "_ui_errors", []) or []),
+                              getattr(wd, "recoveries", 0), self._manager.base_dir())
+
+    def doctor_fix(self, fix_id: str) -> dict[str, Any]:
+        from app.core import doctor
+        fix_id = str(fix_id or "")
+        if fix_id == "room_relink":
+            return {"ok": True, **self.room_relink()}
+        if fix_id == "open_wv2":
+            os.startfile("https://developer.microsoft.com/microsoft-edge/webview2/")  # type: ignore[attr-defined]
+            return {"ok": True}
+        if fix_id == "report":
+            return self.make_report()
+        fn = doctor.FIXES.get(fix_id)
+        if not fn:
+            return {"ok": False, "error": "unknown_fix"}
+        try:
+            return fn()
+        except Exception as exc:
+            log.exception("Doktor onarimi basarisiz: %s", fix_id)
+            return {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
     def desktop_status(self) -> dict[str, Any]:
         from app.core import desktop, extras

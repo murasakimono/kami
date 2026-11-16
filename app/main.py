@@ -938,7 +938,12 @@ def main() -> int:
 
     threading.Thread(target=update_loop, name="kami-update", daemon=True).start()
 
-    api._watchdog = UiWatchdog(lambda: winwin.is_visible(front._hwnd()))
+    def _reload_main() -> None:   # kalp atisi kesildi: sayfayi yeniden yukle (pywebview arayuz is parcacigini bekler)
+        w = main_win["w"]
+        if w is not None and not quitting["v"]:
+            w.load_url(str(paths.WEB_DIR / "index.html"))
+
+    api._watchdog = UiWatchdog(lambda: winwin.is_visible(front._hwnd()), on_recover=_reload_main)
     api._watchdog.start()
     manager.start()
     debrid.start()

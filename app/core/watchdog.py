@@ -20,6 +20,8 @@ log = logging.getLogger("kami.watchdog")
 
 SLOW_CALL_SEC = float(os.environ.get("KAMI_SLOW_SEC") or 2.0)   # olcum icin: KAMI_SLOW_SEC=0.05
 UI_STALL_SEC = 8.0
+UI_RECOVER_SEC = 25.0     # bu kadar sure kalp atisi yoksa (pencere gorunurken) sayfayi yeniden yukle
+UI_RECOVER_GAP = 120.0    # iki kurtarma arasi en az
 
 
 def log_slow_calls(cls, threshold: float = SLOW_CALL_SEC):
@@ -55,9 +57,15 @@ def thread_dump() -> str:
 
 
 class UiWatchdog:
-    def __init__(self, visible: Callable[[], bool], stall: float = UI_STALL_SEC) -> None:
+    def __init__(self, visible: Callable[[], bool], stall: float = UI_STALL_SEC,
+                 on_recover: Callable[[], None] | None = None, recover_after: float = UI_RECOVER_SEC) -> None:
         self.visible = visible
         self.stall = stall
+        self.on_recover = on_recover
+        self.recover_after = recover_after
+        self._recovered = False
+        self._last_recover = -1e9
+        self.recoveries = 0
         self.last_beat = time.monotonic()
         self._visible_since = time.monotonic()
         self._was_visible = False
@@ -68,6 +76,7 @@ class UiWatchdog:
         if self._reported:
             log.warning("Arayuz yeniden yanit veriyor (%.1f sn sonra)", time.monotonic() - self.last_beat)
             self._reported = False
+        self._recovered = False
         self.last_beat = time.monotonic()
 
     def check(self, now: float | None = None) -> bool:
@@ -80,14 +89,31 @@ class UiWatchdog:
         if vis and not self._was_visible:
             self._visible_since = now   # gizli/kucukken JS zamanlayicisi durur: geri gelince sure tani
         self._was_visible = vis
-        if not vis or self._reported:
+        if not vis:
             return False
         since = now - max(self.last_beat, self._visible_since)
+        if self._reported:
+            # Kendini toparlama: JS tarafi (oluk/bos sayfa, cokmus cizici) hala atmiyorsa sayfayi yeniden yukle
+            if (self.on_recover and not self._recovered and since > self.recover_after
+                    and now - self._last_recover > UI_RECOVER_GAP):
+                self._recovered = True
+                self._last_recover = now
+                self.recoveries += 1
+                log.warning("Arayuz %.0f sn'dir yanit vermiyor: sayfa yeniden yukleniyor", since)
+                threading.Thread(target=self._safe_recover, name="kami-ui-recover", daemon=True).start()
+                return True
+            return False
         if since > self.stall:
             self._reported = True
             log.warning("Arayuz %.0f sn'dir yanit vermiyor. Is parcaciklari:\n%s", since, thread_dump())
             return True
         return False
+
+    def _safe_recover(self) -> None:
+        try:
+            self.on_recover()
+        except Exception:
+            log.exception("Arayuz kurtarma basarisiz")
 
     def start(self) -> None:
         def loop():
