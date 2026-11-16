@@ -1,4 +1,9 @@
-"""Faz 13 — Kami Kasa: SQLite FTS5 (WAL) + SigLIP semantik video/sahne arama & akilli oto-bolumlendirme."""
+"""Kami Kasa: SQLite FTS5 (WAL) tam metin + gercek anlamsal arama (cok dilli metin + CLIP gorsel) & oto-bolumlendirme.
+
+Anlamsal katman 'kasa' arac ortami kuruluysa devreye girer (app.core.kasa_embed, ONNX/CPU):
+  emb_text: baslik+etiket+transkript -> cok dilli MiniLM (Turkce sorgu Turkce/Ingilizce transkripti anlamindan bulur)
+  emb_img : sahnenin anahtar karesi -> CLIP ViT-B/32 ("kirmizi araba", "sahilde gun batimi" gibi gorsel sorgular)
+Kurulu degilse eski davranis: FTS5 + trigram yedegi."""
 from __future__ import annotations
 
 import contextlib
@@ -72,6 +77,11 @@ def _connect(db_path: Path | None = None) -> Iterator[sqlite3.Connection]:
             END;
             """
         )
+        cols = {r[1] for r in con.execute("PRAGMA table_info(kasa_items)")}
+        for col, typ in (("emb_text", "BLOB"), ("emb_img", "BLOB"), ("thumb", "TEXT NOT NULL DEFAULT ''"),
+                         ("kind", "TEXT NOT NULL DEFAULT 'video'"), ("mtime", "REAL NOT NULL DEFAULT 0")):
+            if col not in cols:
+                con.execute(f"ALTER TABLE kasa_items ADD COLUMN {col} {typ}")
         yield con
     finally:
         con.close()
@@ -334,3 +344,211 @@ def kasa_stats(db_path: Path | None = None) -> dict[str, Any]:
     with _connect(db_path) as con:
         row = con.execute("SELECT COUNT(*) AS cnt, COUNT(DISTINCT path) AS files FROM kasa_items").fetchone()
         return {"ok": True, "segments": int(row[0]), "files": int(row[1])}
+
+
+# ================================================================ gercek anlamsal katman
+VIDEO_EXT = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".ts", ".wmv", ".flv"}
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".heic", ".tif", ".tiff"}
+INDEX_STATE: dict[str, Any] = {"running": False, "done": 0, "total": 0, "current": "", "error": ""}
+
+
+def _thumbs_dir() -> Path:
+    from app import paths
+    d = paths.DATA_DIR / "kasa_thumbs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _keyframe(video: Path, t: float) -> str:
+    """Sahnenin anahtar karesi (CLIP girdisi + arayuz kucuk resmi), 384 px."""
+    import subprocess
+    try:
+        from app.engines.ytdlp_engine import find_ffmpeg
+        ff = find_ffmpeg() or "ffmpeg"
+    except Exception:
+        ff = "ffmpeg"
+    h = hashlib.blake2b(f"{video}|{t:.2f}".encode("utf-8"), digest_size=10).hexdigest()
+    out = _thumbs_dir() / f"{h}.jpg"
+    if out.is_file():
+        return str(out)
+    try:
+        subprocess.run([ff, "-y", "-v", "error", "-ss", f"{max(0.0, t):.2f}", "-i", str(video), "-frames:v", "1",
+                        "-vf", "scale=384:-2", "-q:v", "4", str(out)], capture_output=True, timeout=60,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        return ""
+    return str(out) if out.is_file() else ""
+
+
+def _sidecar_transcript(video: Path) -> list[dict[str, Any]]:
+    """Videonun yanindaki .srt/.vtt (Whisper ya da indirilen altyazi) -> [{start, end, text}]."""
+    for ext in (".tr.srt", ".srt", ".en.srt", ".vtt", ".tr.vtt", ".en.vtt"):
+        f = video.with_name(video.stem + ext)
+        if not f.is_file():
+            continue
+        segs = []
+        txt = f.read_text(encoding="utf-8", errors="replace").replace("\r", "")
+        for block in re.split(r"\n\s*\n", txt):
+            m = re.search(r"(\d+):(\d\d):(\d\d)[.,](\d+)\s*-->\s*(\d+):(\d\d):(\d\d)[.,](\d+)", block)
+            if not m:
+                continue
+            g = [int(x) for x in m.groups()]
+            st = g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 1000
+            en = g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 1000
+            body = re.sub(r"<[^>]+>|\{[^}]*\}", "", block[m.end():]).strip()
+            if body:
+                segs.append({"start": st, "end": en, "text": " ".join(body.split())})
+        if segs:
+            return segs
+    return []
+
+
+def embed_rows(path: str, db_path: Path | None = None) -> int:
+    """Bir dosyanin Kasa satirlarina gercek gommeleri yazar (arac kurulu degilse 0)."""
+    from app.core import kasa_embed
+    if not kasa_embed.available():
+        return 0
+    with _connect(db_path) as con:
+        con.row_factory = sqlite3.Row
+        rows = con.execute("SELECT id, title, tags, transcript, start_sec, end_sec, kind, thumb FROM kasa_items WHERE path = ?",
+                           (path,)).fetchall()
+    if not rows:
+        return 0
+    texts = [f"{r['title']} {r['tags']} {r['transcript']}".strip() for r in rows]
+    tv = kasa_embed.embed_text(texts)
+    thumbs = []
+    for r in rows:
+        th = r["thumb"]
+        if not th:
+            th = path if r["kind"] == "image" else _keyframe(Path(path), (float(r["start_sec"]) + float(r["end_sec"] or r["start_sec"])) / 2)
+        thumbs.append(th)
+    ok_idx = [i for i, t in enumerate(thumbs) if t and Path(t).is_file()]
+    iv_list = kasa_embed.embed_images([thumbs[i] for i in ok_idx]) if ok_idx else []
+    iv = {i: v for i, v in zip(ok_idx, iv_list)}
+    with _connect(db_path) as con:
+        for i, r in enumerate(rows):
+            con.execute("UPDATE kasa_items SET emb_text = ?, emb_img = ?, thumb = ? WHERE id = ?",
+                        (_pack_vec(tv[i]) if i < len(tv) else None, _pack_vec(iv[i]) if i in iv else None,
+                         thumbs[i] if r["kind"] != "image" else path, r["id"]))
+        con.commit()
+    return len(rows)
+
+
+def index_image(path: str | Path, tags: str = "", db_path: Path | None = None) -> dict[str, Any]:
+    p = Path(path)
+    if not p.is_file():
+        return {"ok": False, "error": "Gorsel bulunamadi"}
+    with _connect(db_path) as con:
+        con.execute("DELETE FROM kasa_items WHERE path = ?", (str(p),))
+        con.commit()
+    index_segment(str(p), title=p.stem.replace("_", " "), tags=tags, db_path=db_path)
+    with _connect(db_path) as con:
+        con.execute("UPDATE kasa_items SET kind = 'image', thumb = ?, mtime = ? WHERE path = ?", (str(p), p.stat().st_mtime, str(p)))
+        con.commit()
+    return {"ok": True, "indexed": 1, "semantic": embed_rows(str(p), db_path) > 0}
+
+
+def index_media(path: str | Path, tags: str = "", transcript_segments: list[dict[str, Any]] | None = None,
+                db_path: Path | None = None) -> dict[str, Any]:
+    """Video (sahne sahne + yan altyazi) ya da gorsel; ardindan anlamsal gomme."""
+    p = Path(path)
+    if p.suffix.lower() in IMAGE_EXT:
+        return index_image(p, tags, db_path)
+    res = index_video_scenes(p, tags=tags, transcript_segments=transcript_segments or _sidecar_transcript(p), db_path=db_path)
+    if res.get("ok"):
+        with _connect(db_path) as con:
+            con.execute("UPDATE kasa_items SET kind = 'video', mtime = ? WHERE path = ?", (p.stat().st_mtime, str(p)))
+            con.commit()
+        try:
+            res["semantic"] = embed_rows(str(p), db_path) > 0
+        except Exception as exc:
+            log.warning("Kasa gomme basarisiz (%s): %s", p.name, exc)
+            res["semantic"] = False
+    return res
+
+
+def index_folder(folder: str | Path, tags: str = "", db_path: Path | None = None, limit: int = 5000) -> dict[str, Any]:
+    """Klasordeki video/gorselleri (degismeyenleri atlayarak) indeksler. INDEX_STATE ilerlemeyi tutar."""
+    root = Path(folder)
+    if not root.is_dir():
+        return {"ok": False, "error": "Klasor bulunamadi"}
+    files = [f for f in root.rglob("*") if f.is_file() and f.suffix.lower() in VIDEO_EXT | IMAGE_EXT][:limit]
+    with _connect(db_path) as con:
+        known = {r[0]: float(r[1] or 0) for r in con.execute("SELECT path, MAX(mtime) FROM kasa_items GROUP BY path")}
+    todo = [f for f in files if known.get(str(f), -1) < f.stat().st_mtime - 1]
+    INDEX_STATE.update(running=True, done=0, total=len(todo), current="", error="")
+    n = 0
+    try:
+        for f in todo:
+            INDEX_STATE["current"] = f.name
+            try:
+                index_media(f, tags=tags, db_path=db_path)
+                n += 1
+            except Exception as exc:
+                log.warning("Kasa indeksleme atlandi (%s): %s", f.name, exc)
+            INDEX_STATE["done"] += 1
+    finally:
+        INDEX_STATE.update(running=False, current="")
+    return {"ok": True, "indexed": n, "skipped": len(files) - len(todo)}
+
+
+def semantic_search(query: str, limit: int = 30, db_path: Path | None = None) -> dict[str, Any]:
+    """FTS5 + anlamsal (metin ve gorsel) puanlarin birlesimi. Arac yoksa klasik search()."""
+    from app.core import kasa_embed
+    base = search(query, limit=limit * 2, db_path=db_path)
+    q = (query or "").strip()
+    if not q or not kasa_embed.available():
+        base["semantic"] = False
+        base["results"] = _attach(base.get("results") or [], db_path)[:limit]
+        return base
+    try:
+        import numpy as np
+        qt = np.asarray(kasa_embed.embed_text([q])[0], dtype=np.float32)
+        qc = np.asarray(kasa_embed.embed_clip_text([q])[0], dtype=np.float32)
+    except Exception as exc:
+        log.warning("Kasa anlamsal sorgu basarisiz: %s", exc)
+        base["semantic"] = False
+        base["results"] = _attach(base.get("results") or [], db_path)[:limit]
+        return base
+    merged: dict[tuple[str, float], dict[str, Any]] = {(r["path"], r["start_sec"]): {**r, "why": "metin"} for r in base.get("results") or []}
+    with _connect(db_path) as con:
+        con.row_factory = sqlite3.Row
+        rows = con.execute("SELECT path, title, start_sec, end_sec, tags, transcript, emb_text, emb_img, thumb, kind "
+                           "FROM kasa_items WHERE emb_text IS NOT NULL OR emb_img IS NOT NULL").fetchall()
+
+    def cos(blob, qv):
+        if not blob:
+            return 0.0
+        v = np.frombuffer(blob, dtype="<f4")
+        if v.shape != qv.shape:
+            return 0.0
+        d = float(np.linalg.norm(v) * np.linalg.norm(qv))
+        return float(v @ qv) / d if d else 0.0
+
+    for r in rows:
+        ts, cs = cos(r["emb_text"], qt), cos(r["emb_img"], qc)
+        part_t = max(0.0, ts - 0.35) * 2.0          # MiniLM: 0.35 alti ilgisiz
+        part_i = max(0.0, cs - 0.20) * 6.0          # CLIP: 0.20 alti ilgisiz, iyi eslesme ~0.28-0.33
+        if part_t <= 0 and part_i <= 0:
+            continue
+        key = (r["path"], float(r["start_sec"]))
+        cur = merged.get(key)
+        why = "görüntü" if part_i > part_t else "anlam"
+        score = round((cur["score"] if cur else 0.0) + part_t + part_i, 4)
+        merged[key] = {"path": r["path"], "title": r["title"], "start_sec": float(r["start_sec"]), "end_sec": float(r["end_sec"]),
+                       "tags": r["tags"], "snippet": (r["transcript"] or r["tags"] or r["title"])[:180], "score": score,
+                       "thumb": r["thumb"], "kind": r["kind"], "why": why if not cur else cur.get("why", "metin") + "+" + why}
+    ordered = sorted(merged.values(), key=lambda x: x["score"], reverse=True)[:limit]
+    return {"ok": True, "semantic": True, "results": _attach(ordered, db_path)}
+
+
+def _attach(results: list[dict[str, Any]], db_path: Path | None = None) -> list[dict[str, Any]]:
+    """Sonuclara kucuk resim ve tur ekler (FTS sonuclarinda yok)."""
+    need = [r for r in results if "thumb" not in r]
+    if need:
+        with _connect(db_path) as con:
+            for r in need:
+                row = con.execute("SELECT thumb, kind FROM kasa_items WHERE path = ? AND start_sec = ?",
+                                  (r["path"], r["start_sec"])).fetchone()
+                r["thumb"], r["kind"] = (row[0], row[1]) if row else ("", "video")
+    return results

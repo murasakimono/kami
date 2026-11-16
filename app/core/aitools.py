@@ -47,6 +47,13 @@ TOOLS: dict[str, dict[str, Any]] = {
         "python": "3.11",  # IOPaint Pillow 9.5.0'a bagli (3.12 tekerlegi yok)
         "separate": True,  # gelistirmede de ayri ortam: repo .venv'in Pillow'u bozulmasin
     },
+    "kasa": {      # Kami Kasa anlamsal arama: cok dilli metin + CLIP gorsel gomme (ONNX, CPU; torch YOK)
+        "module": "fastembed",
+        "packages": ["fastembed>=0.5", "deep-translator>=1.11"],
+        "extra_index": "",
+        "size_gb": 1.0,    # onnxruntime + MiniLM cok dilli (~0.25 GB) + CLIP ViT-B/32 gorsel+metin (~0.6 GB)
+        "separate": True,
+    },
 }
 # Is turu -> gereken araclar. "lyrics": UVR ile vokali ayir + Whisper ile sozleri yaziya dok (soz bulunamazsa)
 JOBS: dict[str, tuple[str, ...]] = {"whisper": ("whisper",), "uvr": ("uvr",), "lyrics": ("uvr", "whisper")}

@@ -79,10 +79,16 @@ def test_iopaint(_audio: str) -> dict:
     return {"ok": True, "device": "cuda" if torch.cuda.is_available() else "cpu"}
 
 
+def test_kasa(_audio: str) -> dict:
+    import fastembed  # noqa: F401
+    import onnxruntime as ort
+    return {"ok": True, "device": "cpu", "providers": ort.get_available_providers()[:3]}
+
+
 def main(argv: list[str]) -> int:
     name, folder = argv[:2]
-    if name == "iopaint":
-        res = test_iopaint("")
+    if name in ("iopaint", "kasa"):
+        res = (test_iopaint if name == "iopaint" else test_kasa)("")
         emit(**res)
         return 0 if res.get("ok") else 1
     audio = make_audio(folder)

@@ -33,7 +33,13 @@ async function shellPoll() {
   try {
     const q = await api.player_poll();
     for (const it of q || []) {
-      if (it.path) await playerOpenPath(it.path, it.queue);
+      if (it.path) {
+        await playerOpenPath(it.path, it.queue);
+        if (it.at > 0) {   // Kami Kasa: sahnenin saniyesinden baslat (sure bilinince)
+          for (let i = 0; i < 40 && !(PL.dur > 0); i++) await new Promise((ok) => setTimeout(ok, 150));
+          try { await plSeek(it.at, true); } catch { /* oynatici hazir degil */ }
+        }
+      }
       else if (it.url) await playerOpenUrl(it.url);
       if (it.library) plDrawer("lib");
     }

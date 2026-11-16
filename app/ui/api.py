@@ -2608,6 +2608,8 @@ class Api(StudioMixin):
             item["queue"] = [str(x) for x in req["queue"]]
         if req.get("library"):
             item["library"] = True
+        if req.get("at"):
+            item["at"] = float(req["at"])
         with self._inbox_lock:
             self._player_q.append(item)
         self._ensure_player()
@@ -3343,12 +3345,54 @@ class Api(StudioMixin):
 
     # ---------- Faz 13: Kami Kasa Semantik Arama & Oto-Bolumlendirme ----------
     def kasa_index_media(self, video_path: str, tags: str = "", transcript_segments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-        from app.core.semantic_vault import index_video_scenes
-        return index_video_scenes(video_path, tags=tags, transcript_segments=transcript_segments)
+        from app.core.semantic_vault import index_media
+        return index_media(video_path, tags=tags, transcript_segments=transcript_segments)
 
     def kasa_search(self, query: str, limit: int = 30) -> dict[str, Any]:
-        from app.core.semantic_vault import search
-        return search(query, limit=limit)
+        import base64
+        from app.core.semantic_vault import semantic_search
+        res = semantic_search(query, limit=limit)
+        for r in res.get("results") or []:   # kucuk resimler veri adresi olarak (file:// izinlerine takilmasin)
+            th = r.get("thumb") or ""
+            r["thumb_url"] = ""
+            try:
+                if th and os.path.isfile(th) and os.path.getsize(th) < 400_000 and th.lower().endswith((".jpg", ".jpeg")):
+                    with open(th, "rb") as f:
+                        r["thumb_url"] = "data:image/jpeg;base64," + base64.b64encode(f.read()).decode("ascii")
+            except OSError:
+                pass
+        return res
+
+    def kasa_setup(self) -> dict[str, Any]:
+        from app.core import aitools
+        from app.core.semantic_vault import INDEX_STATE, kasa_stats
+        return {"installed": aitools.installed("kasa"), "size_gb": aitools.TOOLS["kasa"]["size_gb"],
+                "installing": (self._ai.installing.get("kasa") if self._ai else None),
+                "index": dict(INDEX_STATE), **kasa_stats()}
+
+    def kasa_index_folder(self, folder: str = "") -> dict[str, Any]:
+        from app.core.semantic_vault import INDEX_STATE, index_folder
+        if INDEX_STATE.get("running"):
+            return {"ok": False, "error": "busy"}
+        if not folder:
+            if not self._window:
+                return {"ok": False, "error": "no_window"}
+            import webview
+            res = self._window.create_file_dialog(webview.FileDialog.FOLDER)
+            if not res:
+                return {"ok": False, "error": "cancelled"}
+            folder = res[0]
+        threading.Thread(target=index_folder, args=(folder,), name="kami-kasa-index", daemon=True).start()
+        return {"ok": True, "folder": folder}
+
+    def kasa_open(self, path: str, at: float = 0.0) -> dict[str, Any]:
+        """Sonuca tikla: video Kami Player'da o saniyeden, gorsel Kami Picture'da."""
+        from app.core.semantic_vault import IMAGE_EXT
+        if not os.path.isfile(path):
+            return {"ok": False, "error": "not_found"}
+        if os.path.splitext(path)[1].lower() in IMAGE_EXT and hasattr(self, "picture_open"):
+            return self.picture_open(path)
+        return self.player_show({"path": path, "at": float(at or 0)})
 
     def kasa_auto_chapters(self, transcript_segments: list[dict[str, Any]], chunk_seconds: float = 180.0, use_ollama: bool = True) -> dict[str, Any]:
         from app.core.semantic_vault import auto_chapters
