@@ -25,7 +25,8 @@ async function wpStart() {
   if (!r?.on) { toast(plL("Oda açılamadı", "Could not open room"), true); return; }
   WP.room = r;
   WP.stream = wpCapture(); wpPad(WP.stream);
-  WP.core = new KamiRoom({ base: r.local, name: (r.name || "Kami") + " · " + plL("Oynatıcı", "Player"), kind: "stream", on: {
+  let key = ""; try { key = await api.room_key(); } catch { /* eski surum */ }
+  WP.core = new KamiRoom({ base: r.local, key, name: (r.name || "Kami") + " · " + plL("Oynatıcı", "Player"), kind: "stream", on: {
     quality: (from, q) => wpBadge(q),
     msg: (from, m) => wpCtl(from, m),
     roster: () => setTimeout(() => wpState(true), 1500),

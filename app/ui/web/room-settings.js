@@ -17,6 +17,14 @@
     $("#roomLinkCopy").onclick = async () => { await linkState(); const u = $("#roomLinkCopy").dataset.url; if (u) { navigator.clipboard?.writeText(u).catch(() => api.copy_text(u)); toast("Oda linki kopyalandı"); } else toast("Önce odayı aç", true); };
     $("#settingsBtn")?.addEventListener("click", () => setTimeout(linkState, 80));
     $("#roomOpenBtn").onclick = () => slow("room_open", true);
+    const pwState = async () => { const st = await api.get_settings(); $("#roomPwState").textContent = st.room_password_hash ? "· açık" : "· yok"; };
+    $("#settingsBtn")?.addEventListener("click", () => setTimeout(pwState, 80));
+    $("#roomPwSave").onclick = async () => {
+      const r = await api.room_set_password($("#roomPw").value);
+      if (!r.ok) { toast("Şifre en az 4 karakter olmalı", true); return; }
+      $("#roomPw").value = ""; pwState();
+      toast(r.locked ? "Oda şifrelendi: davet edilenler girişte şifreyi yazacak" : "Oda şifresi kaldırıldı");
+    };
     $("#roomJoinBtn").onclick = async () => {
       const r = await api.room_join($("#roomJoinUrl").value.trim());
       if (!r.ok) toast("Geçersiz oda bağlantısı", true);

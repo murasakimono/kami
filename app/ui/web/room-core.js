@@ -31,8 +31,9 @@
       this.local = new Map();                     // streamId -> {kind, stream}
       this.roster = []; this.n = 0; this.rv = ""; this.alive = false; this.ice = [];
       this.myQ = o.quality || "src";              // aldigim yayinlar icin istedigim kalite
+      this.key = o.key || "";                     // oda sifresi ozeti (sha256 hex); sifresiz odada bos
     }
-    url(p) { return this.base + p; }
+    url(p) { return this.base + p + (this.key ? (p.includes("?") ? "&" : "?") + "k=" + this.key : ""); }
     async post(p, body) {
       try { const r = await fetch(this.url(p), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: this.id, ...body }) }); return r.ok ? r.json() : null; } catch { return null; }
     }
@@ -154,9 +155,9 @@
       } catch (e) { console.warn("sinyal", e); }
     }
     // ---- yerel izler
-    addLocal(kind, stream) {
+    addLocal(kind, stream, pref = "") {   // pref (ekran): "smooth" akici 60 fps | "sharp" net yazi | "" otomatik
       const sid = stream.id;
-      this.local.set(sid, { kind, stream });
+      this.local.set(sid, { kind, stream, pref });
       for (const [id, P] of this.peers) { this.post("sig", { to: id, data: { t: "meta", meta: { [sid]: kind } } }); this._addTo(P, sid, this.local.get(sid)); }
       return sid;
     }
@@ -185,7 +186,7 @@
             const pref = [...caps.filter((c) => /h264/i.test(c.mimeType)), ...caps.filter((c) => !/h264/i.test(c.mimeType))];
             if (tc && pref.length) tc.setCodecPreferences(pref);
           } catch { /* desteklenmiyor */ }
-          tr.contentHint = L.kind === "player" || L.kind === "cam" ? "motion" : "detail";
+          tr.contentHint = L.kind === "player" || L.kind === "cam" || L.pref === "smooth" ? "motion" : "detail";
         }
         this._applyQ(P);
       }
@@ -198,10 +199,12 @@
           if (tr.kind === "audio") { p.encodings[0].maxBitrate = 256000; p.encodings[0].priority = "high"; p.encodings[0].networkPriority = "high"; }
           else {
             const Q = QUALITY[P.q] || QUALITY.src, h = tr.getSettings?.().height || 1080;
+            let pref = "";
+            for (const L of this.local.values()) if (L.stream.getTracks().includes(tr)) pref = L.pref || "";
             p.encodings[0].scaleResolutionDownBy = Q.h && h > Q.h ? h / Q.h : 1;
-            p.encodings[0].maxFramerate = Q.fps;
-            p.encodings[0].maxBitrate = Q.br;
-            p.degradationPreference = "maintain-framerate";
+            p.encodings[0].maxFramerate = pref === "sharp" ? Math.min(30, Q.fps) : Q.fps;
+            p.encodings[0].maxBitrate = pref === "sharp" ? Math.max(Q.br, 6_000_000) : Q.br;
+            p.degradationPreference = pref === "sharp" ? "maintain-resolution" : "maintain-framerate";
           }
           await snd.setParameters(p);
         } catch { /* ilk muzakereden once olabilir */ }

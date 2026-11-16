@@ -1656,6 +1656,48 @@ class Api(StudioMixin):
         from app.core import room
         return {**room.SERVER.status(), "name": self._room_name()}
 
+    # ---- oda sifresi + Mini-Ada oda seridi
+    def room_set_password(self, password: str = "") -> dict[str, Any]:
+        """Bos: sifreyi kaldir. Sifrenin kendisi saklanmaz, sha256'si ayarlara yazilir (misafir de ayni ozeti gonderir)."""
+        import hashlib
+        pw = str(password or "").strip()
+        if pw and len(pw) < 4:
+            return {"ok": False, "error": "short"}
+        self._manager.settings.set("room_password_hash", hashlib.sha256(pw.encode("utf-8")).hexdigest() if pw else "")
+        return {"ok": True, "locked": bool(pw)}
+
+    def room_key(self) -> str:
+        """Yalnizca Kami pencereleri (ev sahibinin oda penceresi, Player yayini) cagirabilir: sifreyi sormadan girer."""
+        return str(self._manager.settings.get("room_password_hash") or "")
+
+    def room_island_push(self, state: dict[str, Any]) -> bool:
+        """Ev sahibinin oda penceresi (room.js) -> Mini-Ada: kim var, kim konusuyor, mikrofon/kulaklik."""
+        import time as _t
+        st = state if isinstance(state, dict) else {}
+        people = [{"name": str(p.get("name", ""))[:24], "talk": bool(p.get("talk")), "muted": bool(p.get("muted")),
+                   "me": bool(p.get("me"))} for p in (st.get("people") or [])[:8] if isinstance(p, dict)]
+        self._room_island = {"t": _t.time(), "people": people, "muted": bool(st.get("muted")), "deaf": bool(st.get("deaf"))}
+        others = sum(1 for p in people if not p["me"])
+        if self._manager.settings.get("room_island") and others and not self._island_shown:
+            self._island_auto = True        # birisi odaya girdi: seridi kendiligimizden ac
+            self.mini_island_toggle(True)
+        elif not others and getattr(self, "_island_auto", False) and self._island_shown:
+            self._island_auto = False
+            self.mini_island_toggle(False)
+        return True
+
+    def room_island_cmd(self, cmd: str) -> bool:
+        if cmd in ("mute", "deaf", "open"):
+            if cmd == "open":
+                self.room_open(True)
+                return True
+            self._room_island_q = (getattr(self, "_room_island_q", []) + [cmd])[-5:]
+        return True
+
+    def room_island_poll(self) -> list[str]:
+        q, self._room_island_q = getattr(self, "_room_island_q", []), []
+        return q
+
     def room_relink(self) -> dict[str, Any]:
         """Sabit adrese guncel tunel adresini yeniden bildirir (tunel yoksa acar)."""
         from app.core import room
@@ -3240,7 +3282,15 @@ class Api(StudioMixin):
             "telemetry": snapshot(),
             "profile": self._profile_store().active_profile(),
             "visible": bool(self._island_shown),
+            "room": self._room_island_live(),
         }
+
+    def _room_island_live(self) -> dict[str, Any] | None:
+        import time as _t
+        ri = getattr(self, "_room_island", None)
+        if not ri or not self._manager.settings.get("room_island") or _t.time() - ri.get("t", 0) > 6:
+            return None
+        return ri
 
     def mini_island_toggle(self, show: bool | None = None) -> dict[str, Any]:
         target = (not self._island_shown) if show is None else bool(show)

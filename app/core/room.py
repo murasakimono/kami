@@ -134,6 +134,41 @@ class Room:
                     "now": now, "host": self.host_name}
 
 
+def soundboard_list() -> list[dict[str, str]]:
+    """Odanin ses panosu: Kami Studio'nun yerlesik efektlerinden meme, oyun ve dramatik olanlar (ev sahibinde uretilir)."""
+    try:
+        from app.core import studio
+    except Exception:
+        return []
+    keep = ("Meme", "UI & Oyun", "Dramatik", "Vuruş", "TR")
+    out = []
+    for key, (_expr, label) in studio.SFX.items():
+        cat = studio.SFX_CAT.get(key, "")
+        if any(k in cat for k in keep):
+            out.append({"id": key, "label": label, "cat": cat})
+    return out
+
+
+_SB_CACHE: dict[str, bytes] = {}
+
+
+def soundboard_file(key: str) -> bytes | None:
+    if key in _SB_CACHE:
+        return _SB_CACHE[key]
+    if key not in {x["id"] for x in soundboard_list()}:
+        return None
+    from app.core import studio
+    from app.engines.ytdlp_engine import find_ffmpeg
+    got = studio.ensure_sfx(find_ffmpeg() or "", key)
+    f = got.get(key)
+    if not f or not os.path.isfile(f) or os.path.getsize(f) > 3_000_000:
+        return None
+    with open(f, "rb") as fh:
+        data = fh.read()
+    _SB_CACHE[key] = data
+    return data
+
+
 class RoomServer:
     def __init__(self) -> None:
         self.room: Room | None = None
@@ -147,6 +182,31 @@ class RoomServer:
         self._ice: tuple[float, list] = (0.0, [])
         self.stable: Callable[[], tuple[str, str]] = lambda: ("", "")   # (workers.dev adresi, gizli anahtar)
         self.on_join: Callable[[str], None] | None = None
+        self.key_hash: Callable[[], str] = lambda: ""   # oda sifresi: sha256(sifre) hex; bos = sifresiz
+        self._bad: dict[str, list[float]] = {}           # ip -> yanlis sifre zamanlari (kaba kuvvet freni)
+
+    # ---- oda sifresi
+    def locked(self) -> bool:
+        try:
+            return bool(self.key_hash())
+        except Exception:
+            return False
+
+    def key_ok(self, given: str, ip: str) -> bool:
+        want = self.key_hash() if self.locked() else ""
+        if not want:
+            return True
+        now = time.time()
+        hits = [t for t in self._bad.get(ip, []) if now - t < 60]
+        if len(hits) >= 10:            # dakikada 10 yanlis: o adres 1 dk bekler
+            self._bad[ip] = hits
+            return False
+        import hmac
+        if given and hmac.compare_digest(given.lower().encode(), want.lower().encode()):
+            return True
+        hits.append(now)
+        self._bad[ip] = hits[-20:]
+        return False
 
     def start(self, host_name: str, tunnel: bool = True, room_id: str = "") -> dict[str, Any]:
         with self.lock:
@@ -337,6 +397,12 @@ def _handler(srv: RoomServer):
             self.send_header("Content-Length", "0")
             self.end_headers()
 
+        def _ip(self) -> str:
+            return str(self.headers.get("CF-Connecting-IP") or (self.client_address[0] if self.client_address else ""))
+
+        def _key_ok(self, q: dict) -> bool:
+            return srv.key_ok((q.get("k") or [""])[0][:128], self._ip())
+
         def do_GET(self):
             r, rest = self._room()
             if not r:
@@ -353,7 +419,16 @@ def _handler(srv: RoomServer):
                                    {"src": "s/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}]}
                     self._send(json.dumps(m).encode(), "application/manifest+json")
                 elif rest[0] == "info":
-                    self._json({"host": r.host_name, "id": r.id})
+                    self._json({"host": r.host_name, "id": r.id, "locked": srv.locked()})
+                elif rest[0] in ("ice", "poll", "sb") and not self._key_ok(q):
+                    return self._json({"ok": False, "error": "password"}, 401)
+                elif rest[0] == "sb" and len(rest) == 1:
+                    self._json({"sounds": soundboard_list()})
+                elif rest[0] == "sb" and len(rest) == 2:
+                    data = soundboard_file(rest[1])
+                    if data is None:
+                        return self._err(404)
+                    self._send(data, "audio/wav", "max-age=86400")
                 elif rest[0] == "ice":
                     self._json({"iceServers": srv.ice()})
                 elif rest[0] == "poll":
@@ -427,6 +502,9 @@ def _handler(srv: RoomServer):
             pid = str(body.get("id", ""))[:40]
             if not pid:
                 return self._err(400)
+            from urllib.parse import parse_qs, urlsplit
+            if not self._key_ok(parse_qs(urlsplit(self.path).query)):
+                return self._json({"ok": False, "error": "password"}, 401)
             if k == "sig":
                 return self._json({"ok": r.signal(pid, str(body.get("to", ""))[:40], body.get("data"))})
             if k == "chat":

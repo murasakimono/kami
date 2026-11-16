@@ -21,26 +21,47 @@ async function listMics(sel) {
   } catch { /* izin yok */ }
 }
 async function init() {
-  try { const i = await (await fetch(BASE + "info", { cache: "no-store" })).json(); S.host = i.host; $("jnTxt").textContent = `${i.host} seni sesli odaya çağırıyor.`; }
+  try { const i = await (await fetch(BASE + "info", { cache: "no-store" })).json(); S.host = i.host; S.locked = !!i.locked; $("jnTxt").textContent = `${i.host} seni sesli odaya çağırıyor.`; }
   catch { $("jnTxt").textContent = "Oda kapanmış ya da bağlantı geçersiz."; $("jnGo").disabled = true; return; }
   $("jnName").value = PREF.name || "";
   listMics($("jnMic"));
   const kami = await kamiStatus();
+  S.isHost = !!kami?.host;
+  $("jnPw").hidden = !S.locked || S.isHost;
+  if (S.locked && !S.isHost) $("jnPw").value = PREF.pw || "";
   if (kami?.host) { $("jnName").value = kami.name || PREF.name || S.host; if (PREF.autojoin !== false) join(); }
 }
 $("jnGo").onclick = () => join();
 $("jnName").addEventListener("keydown", (e) => e.key === "Enter" && join());
 
+async function sha256hex(t) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+async function roomKey() {   // ev sahibi (Kami penceresi) sifreyi bilmeden girer; misafir yazdigi sifrenin ozetini gonderir
+  if (S.isHost) { try { return await window.pywebview.api.room_key(); } catch { return ""; } }
+  if (!S.locked) return "";
+  return sha256hex($("jnPw").value.trim());
+}
 async function join() {
   const name = $("jnName").value.trim() || "Misafir";
   PREF.name = name; PREF.mic = $("jnMic").value || PREF.mic || ""; save();
   $("jnGo").disabled = true; $("jnErr").textContent = "";
+  S.key = await roomKey().catch(() => "");
+  if (S.locked) {
+    const chk = await fetch(BASE + "ice" + (S.key ? "?k=" + S.key : ""), { cache: "no-store" }).catch(() => null);
+    if (!chk || chk.status === 401) {
+      $("jnErr").textContent = chk ? "Şifre yanlış (çok deneme yapılırsa 1 dakika beklemen gerekir)." : "Odaya ulaşılamadı.";
+      $("jnGo").disabled = false; $("jnPw").hidden = false; $("jnPw").focus(); return;
+    }
+    if (!S.isHost) { PREF.pw = $("jnPw").value.trim(); save(); }
+  }
   S.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive", sampleRate: 48000 });
   try { await S.ctx.resume(); } catch { /* sonra */ }
   try { await buildMic(); } catch (e) {
     $("jnErr").textContent = "Mikrofona izin verilmedi; yalnızca dinleyici olarak giriyorsun.";
   }
-  S.core = new KamiRoom({ base: BASE, name, kind: "user", quality: PREF.q || "auto", on: {
+  S.core = new KamiRoom({ base: BASE, name, key: S.key, kind: "user", quality: PREF.q || "auto", on: {
     roster: onRoster, events: onEvents, track: onTrack, trackgone: onTrackGone, peergone: onPeerGone,
     peerstate: () => netDot(), msg: onAppMsg, bin: onBin, error: () => toast("Bağlantı koptu, yeniden deneniyor…"),
   } });
@@ -129,7 +150,10 @@ window.addEventListener("blur", () => { if (S.ptt && S.pttDown && !window.pywebv
 $("bShare").onclick = async () => {
   if (S.share) { stopShare(); return; }
   try {
-    const st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    const sq = PREF.shareQ || "";
+    const vid = sq === "sharp" ? { frameRate: { ideal: 30, max: 30 }, width: { ideal: 2560 }, height: { ideal: 1440 } }
+      : { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+    const st = await navigator.mediaDevices.getDisplayMedia({ video: vid,
       // restrictOwnAudio: sistem sesinden Kami Oda'nin kendi caldigi sesi (karsi tarafin konusmasi) cikarir; yoksa
       // tam ekran + "sistem sesini paylas" secilince konusan kendi sesini geri duyar (Discord bunu kendi yapiyor)
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
@@ -142,7 +166,7 @@ $("bShare").onclick = async () => {
         toast("Sistem sesi paylaşılıyor, ama bu sürüm odadaki sesleri ayıklayamıyor: yankı olursa kulaklık tak veya “Sistem sesini paylaş”ı kapat.");
     }
     st.getVideoTracks()[0].addEventListener("ended", stopShare);
-    S.shareSid = S.core.addLocal("screen", st);
+    S.shareSid = S.core.addLocal("screen", st, PREF.shareQ || "");
     S.core.setMe({ sharing: "screen" });
     $("bShare").classList.add("act");
     addTile("me", st, "screen", true);
@@ -295,6 +319,7 @@ function syncFsCtl() {
 }
 const fmtT = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = t % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
 function onAppMsg(from, m) {
+  if (m?.k === "sb") return sbIn(from, m);
   if (m?.k === "draw") return drawIn(from, m);
   if (m?.k === "file") return fileIn(from, m);
   if (m?.k !== "pl") return;
@@ -442,6 +467,11 @@ function setupSettings() {
   $("sPtt").textContent = PREF.pttKey || "KeyV";
   $("sPttRow").hidden = !S.ptt;
   $("sQ").value = PREF.q || "auto";
+  $("sShareQ").value = PREF.shareQ || "";
+  $("sShareQ").onchange = (e) => { PREF.shareQ = e.target.value; save(); if (S.share) toast("Yeni kalite bir sonraki paylaşımda geçerli."); };
+  $("sSbVol").value = PREF.sbVol ?? 0.6;
+  $("sSbVol").oninput = (e) => { PREF.sbVol = +e.target.value; save(); };
+  $("sTest").onclick = audioTest;
   $("sMic").onchange = async (e) => { PREF.mic = e.target.value; save(); try { await buildMic(); } catch { toast("Mikrofon açılamadı"); } };
   $("sNs").onchange = async (e) => { PREF.ns = e.target.value; save(); try { await buildMic(); } catch { toast("Mikrofon açılamadı"); } };
   $("sMode").onchange = (e) => { S.ptt = e.target.value === "ptt"; PREF.mode = e.target.value; save(); $("sPttRow").hidden = !S.ptt; applyMicState(); };
@@ -748,5 +778,95 @@ function pipStop() {
 $("bPip").onclick = () => (PIP.on && pipActive() ? pipStop() : pipStart());
 $("pipGo").onclick = (e) => { e.stopPropagation(); pipEnter(); };
 $("pipX").onclick = (e) => { e.stopPropagation(); pipStop(); };
+
+// ---------------------------------------------------------------- ses testi (islenmis mikrofonu 3 sn kaydet, geri cal)
+async function audioTest() {
+  const b = $("sTest");
+  if (!S.mic) { toast("Mikrofon yok ya da izin verilmedi."); return; }
+  if (!window.MediaRecorder) { toast("Bu tarayıcı kayıt desteklemiyor."); return; }
+  b.disabled = true; b.textContent = "Konuş… (3)";
+  const rec = new MediaRecorder(new MediaStream([S.mic])), parts = [];
+  rec.ondataavailable = (e) => e.data.size && parts.push(e.data);
+  rec.onstop = () => {
+    const a = new Audio(URL.createObjectURL(new Blob(parts, { type: rec.mimeType || "audio/webm" })));
+    b.textContent = "Dinleniyor…";
+    a.onended = a.onerror = () => { b.disabled = false; b.textContent = "3 sn kaydet ve dinle"; URL.revokeObjectURL(a.src); };
+    a.play().catch(() => a.onended());
+  };
+  rec.start();
+  let n = 3; const t = setInterval(() => { n--; if (n > 0) b.textContent = `Konuş… (${n})`; else { clearInterval(t); rec.stop(); } }, 1000);
+}
+
+// ---------------------------------------------------------------- ses panosu (Kami'nin yerlesik meme/oyun efektleri)
+const SB = { list: null, buf: new Map(), lastSend: 0, recv: new Map() };
+async function sbLoad() {
+  if (SB.list) return SB.list;
+  try { SB.list = (await (await fetch(S.core.url("sb"), { cache: "no-store" })).json()).sounds || []; } catch { SB.list = []; }
+  return SB.list;
+}
+async function sbBuffer(id) {
+  if (SB.buf.has(id)) return SB.buf.get(id);
+  const p = fetch(S.core.url("sb/" + encodeURIComponent(id))).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+    .then((ab) => S.ctx.decodeAudioData(ab)).catch(() => { SB.buf.delete(id); return null; });
+  SB.buf.set(id, p);
+  return p;
+}
+async function sbPlay(id) {
+  if (S.deaf || !S.ctx) return;
+  const buf = await sbBuffer(id); if (!buf) return;
+  try { await S.ctx.resume(); } catch { /* yok */ }
+  const src = S.ctx.createBufferSource(), g = S.ctx.createGain();
+  g.gain.value = PREF.sbVol ?? 0.6; src.buffer = buf; src.connect(g); g.connect(S.ctx.destination); src.start();
+}
+function sbToast(t) {
+  let e = document.querySelector(".sb-toast");
+  if (!e) { e = document.createElement("div"); e.className = "sb-toast"; document.body.appendChild(e); }
+  e.textContent = t; e.hidden = false; clearTimeout(e._t); e._t = setTimeout(() => (e.hidden = true), 1800);
+}
+function sbSend(id) {
+  const now = Date.now();
+  if (now - SB.lastSend < 1200) return;          // kendi spamini da kes
+  SB.lastSend = now;
+  sbPlay(id);
+  const m = { k: "sb", id };
+  for (const pid of userPeers()) if (!S.core.sendDirect(pid, m)) S.core.send(pid, m);
+}
+function sbIn(from, m) {
+  if ($("sbOff")?.checked || typeof m.id !== "string") return;
+  const now = Date.now(), arr = (SB.recv.get(from) || []).filter((t) => now - t < 5000);
+  if (arr.length >= 3) return;                  // kisi basi 5 sn'de en cok 3 ses
+  arr.push(now); SB.recv.set(from, arr);
+  const it = (SB.list || []).find((x) => x.id === m.id);
+  sbToast(`${nameOf(from)}: ${it?.label || m.id}`);
+  sbPlay(m.id);
+}
+async function sbRender() {
+  const list = await sbLoad(), q = ($("sbFind").value || "").toLowerCase();
+  const groups = {};
+  for (const x of list) if (!q || x.label.toLowerCase().includes(q)) (groups[x.cat] ||= []).push(x);
+  $("sbList").innerHTML = Object.entries(groups).map(([c, xs]) => `<h4>${esc(c)}</h4><div class="g">${xs.map((x) => `<button data-sb="${esc(x.id)}">${esc(x.label)}</button>`).join("")}</div>`).join("")
+    || `<p class="hint">Ses bulunamadı.</p>`;
+}
+$("bSb").onclick = async (e) => {
+  e.stopPropagation();
+  const p = $("sbPanel"); p.hidden = !p.hidden;
+  if (!p.hidden) { await sbRender(); $("sbFind").focus(); }
+};
+$("sbFind").oninput = () => sbRender();
+$("sbList").onclick = (e) => { const b = e.target.closest("[data-sb]"); if (b) { sbSend(b.dataset.sb); b.classList.add("cool"); setTimeout(() => b.classList.remove("cool"), 1200); } };
+document.addEventListener("click", (e) => { if (!e.target.closest("#sbPanel") && !e.target.closest("#bSb")) $("sbPanel").hidden = true; });
+
+// ---------------------------------------------------------------- Mini-Ada oda seridi (yalnizca ev sahibinin Kami penceresi)
+let islandLast = "", islandAt = 0;
+setInterval(async () => {
+  const api = window.pywebview?.api;
+  if (!S.isHost || !S.core || !api?.room_island_push) return;
+  const people = S.roster.filter((p) => p.kind === "user").map((p) => ({
+    name: p.id === S.core.id ? (PREF.name || "Ben") : p.name, me: p.id === S.core.id, muted: !!p.muted,
+    talk: !!document.querySelector(`.tk[data-id="${p.id}"]`)?.classList.contains("talk") }));
+  const st = { people, muted: S.muted, deaf: S.deaf }, js = JSON.stringify(st);
+  if (js !== islandLast || Date.now() - islandAt > 3000) { islandLast = js; islandAt = Date.now(); try { await api.room_island_push(st); } catch { /* yok */ } }
+  try { for (const c of (await api.room_island_poll()) || []) { if (c === "mute") setMuted(!S.muted); if (c === "deaf") setDeaf(!S.deaf); } } catch { /* yok */ }
+}, 600);
 
 if (window.pywebview?.api) init(); else { let done = false; window.addEventListener("pywebviewready", () => { if (!done) { done = true; init(); } }); setTimeout(() => { if (!done) { done = true; init(); } }, 400); }

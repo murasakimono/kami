@@ -119,6 +119,8 @@ DEFAULTS: dict[str, Any] = {
     "watch_name": "Metehan",         # Kami Oda: odada gorunen ad
     "room_id": "",                   # sabit oda anahtari (ilk acilista uretilir)
     "room_worker_url": "",           # sabit adres: https://kami-oda.<hesap>.workers.dev (anahtar DPAPI: room_worker.bin)
+    "room_password_hash": "",        # oda sifresi: sha256(sifre) (sifrenin kendisi saklanmaz); bos = sifresiz
+    "room_island": True,             # odadayken Mini-Ada'da oda seridi (konusanlar + mikrofon), Discord oyun ici gibi
     "room_always": True,             # sabit adres varsa Kami acikken oda hep acik (Ilayda istedigi zaman girer)
     "room_mute_hotkey": "ctrl+shift+m",   # Kami Oda acikken genel kisayollar
     "room_deaf_hotkey": "ctrl+shift+d",

@@ -815,6 +815,7 @@ def main() -> int:
         url, _, key = raw.partition("|")
         return (url or str(settings.get("room_worker_url") or ""), key) if key else ("", "")
     _room.SERVER.stable = _stable
+    _room.SERVER.key_hash = lambda: str(settings.get("room_password_hash") or "")
 
     def room_joined(name: str) -> None:   # biri odaya girdi, ev sahibi pencerede degilse haber ver
         if getattr(api, "_room_win", None) is None and name != api._room_name():
