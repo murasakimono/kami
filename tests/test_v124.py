@@ -87,3 +87,37 @@ def test_kasa_falls_back_without_tool(tmp_path, monkeypatch):
     assert sv.index_media(img, db_path=db)["semantic"] is False
     r = sv.semantic_search("araba", db_path=db)
     assert r["semantic"] is False and r["results"][0]["title"] == "kirmizi araba"
+
+
+def test_kapsul_share_page_range_password(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.core.kapsul._store", lambda: tmp_path / "kapsul.json")
+    from app.core import kapsul
+    from app.core.room import RoomServer
+    f = tmp_path / "şarkı demo.mp3"
+    f.write_bytes(bytes(range(256)) * 40)
+    r = kapsul.create(str(f), hours=1, password="1234", max_dl=1)
+    assert r["ok"] and r["locked"]
+    srv = RoomServer()
+    srv.start("Test", tunnel=False, room_id="odatest456")
+    try:
+        base = f"http://127.0.0.1:{srv.httpd.server_address[1]}/c/{r['id']}"
+        html_ = urllib.request.urlopen(base).read().decode()
+        assert "KAMI KAPSÜL" in html_ and "şarkı demo.mp3" in html_
+        try:
+            urllib.request.urlopen(base + "/raw")
+            raise AssertionError("sifresiz indi")
+        except urllib.error.HTTPError as e:
+            assert e.code == 401
+        k = hashlib.sha256(b"1234").hexdigest()
+        req = urllib.request.Request(base + "/raw?p=" + k, headers={"Range": "bytes=10-19"})
+        resp = urllib.request.urlopen(req)
+        assert resp.status == 206 and resp.read() == bytes(range(10, 20))
+        dl = urllib.request.urlopen(base + "/dl?p=" + k)
+        assert len(dl.read()) == 256 * 40 and "filename*=UTF-8''" in dl.headers["Content-Disposition"]
+        try:   # indirme siniri 1: kapsul oldu
+            urllib.request.urlopen(base)
+            raise AssertionError("sinir asildi")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+    finally:
+        srv.stop()

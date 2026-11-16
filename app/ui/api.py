@@ -1698,6 +1698,39 @@ class Api(StudioMixin):
         q, self._room_island_q = getattr(self, "_room_island_q", []), []
         return q
 
+    # ---- Kami Kapsul: sureli / sifreli paylasim linki (Oda tuneli + sabit adres)
+    def _kapsul_url(self, cid: str) -> str:
+        from app.core import room
+        base = room.SERVER.public_base()
+        return f"{base}/c/{cid}" if base else ""
+
+    def kapsul_create(self, path: str = "", hours: float = 24, password: str = "", max_dl: int = 0, note: str = "") -> dict[str, Any]:
+        from app.core import kapsul, room
+        if not path:
+            if not self._window:
+                return {"ok": False, "error": "no_window"}
+            import webview
+            res = self._window.create_file_dialog(webview.FileDialog.OPEN)
+            if not res:
+                return {"ok": False, "error": "cancelled"}
+            path = res[0]
+        res = kapsul.create(path, hours, password, max_dl, note)
+        if res.get("ok"):
+            room.SERVER.start(self._room_name(), True, self._room_id())   # sunucu + tunel (zaten aciksa bir sey yapmaz)
+            res["url"] = self._kapsul_url(res["id"])
+        return res
+
+    def kapsul_list(self) -> dict[str, Any]:
+        from app.core import kapsul
+        items = kapsul.list_all()
+        for it in items:
+            it["url"] = self._kapsul_url(it["id"])
+        return {"ok": True, "items": items}
+
+    def kapsul_delete(self, cid: str) -> dict[str, Any]:
+        from app.core import kapsul
+        return {"ok": kapsul.delete(str(cid))}
+
     def room_relink(self) -> dict[str, Any]:
         """Sabit adrese guncel tunel adresini yeniden bildirir (tunel yoksa acar)."""
         from app.core import room
@@ -3416,6 +3449,11 @@ class Api(StudioMixin):
     def kasa_setup(self) -> dict[str, Any]:
         from app.core import aitools
         from app.core.semantic_vault import INDEX_STATE, kasa_stats
+        if aitools.installed("kasa") and not getattr(self, "_kasa_warm", False):   # ilk aramada 20 sn beklemesin
+            self._kasa_warm = True
+            from app.core import kasa_embed
+            threading.Thread(target=lambda: (kasa_embed.embed_text(["."]), kasa_embed.embed_clip_text(["."])),
+                             name="kami-kasa-warm", daemon=True).start()
         return {"installed": aitools.installed("kasa"), "size_gb": aitools.TOOLS["kasa"]["size_gb"],
                 "installing": (self._ai.installing.get("kasa") if self._ai else None),
                 "index": dict(INDEX_STATE), **kasa_stats()}

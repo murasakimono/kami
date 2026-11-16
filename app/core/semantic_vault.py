@@ -528,7 +528,7 @@ def semantic_search(query: str, limit: int = 30, db_path: Path | None = None) ->
     for r in rows:
         ts, cs = cos(r["emb_text"], qt), cos(r["emb_img"], qc)
         part_t = max(0.0, ts - 0.35) * 2.0          # MiniLM: 0.35 alti ilgisiz
-        part_i = max(0.0, cs - 0.20) * 6.0          # CLIP: 0.20 alti ilgisiz, iyi eslesme ~0.28-0.33
+        part_i = max(0.0, cs - 0.23) * 6.0          # CLIP: 0.23 alti ilgisiz (olculdu: duz renk ~0.20-0.22), iyi eslesme ~0.28-0.33
         if part_t <= 0 and part_i <= 0:
             continue
         key = (r["path"], float(r["start_sec"]))

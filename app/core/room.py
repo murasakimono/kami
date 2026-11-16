@@ -235,6 +235,13 @@ class RoomServer:
     def port(self) -> int:
         return self.httpd.server_address[1] if self.httpd else 0
 
+    def public_base(self) -> str:
+        """Disaridan erisilen kok adres: sabit Worker (yayinlandiysa) ya da gecici trycloudflare; yoksa bos."""
+        base = self.stable()[0].rstrip("/")
+        if self.public:
+            return base if base and self.published else self.public.rstrip("/")
+        return ""
+
     def status(self) -> dict[str, Any]:
         r = self.room
         local = f"http://127.0.0.1:{self.port}/{r.id}/" if r else ""
@@ -404,6 +411,15 @@ def _handler(srv: RoomServer):
             return srv.key_ok((q.get("k") or [""])[0][:128], self._ip())
 
         def do_GET(self):
+            if self.path.startswith("/c/"):   # Kami Kapsul paylasim linki (oda kimligi gerekmez)
+                from urllib.parse import parse_qs, urlsplit
+                from app.core import kapsul
+                u = urlsplit(self.path)
+                try:
+                    kapsul.serve(self, u.path.strip("/").split("/")[1:], parse_qs(u.query), srv.room.host_name if srv.room else "")
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    pass
+                return
             r, rest = self._room()
             if not r:
                 return self._err(404)
