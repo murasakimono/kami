@@ -1209,6 +1209,11 @@ def main() -> int:
                     api.check_update()
                 except Exception:
                     log.exception("Guncelleme denetimi")
+            try:
+                from app.core import backup
+                backup.maybe_auto_backup(settings)
+            except Exception:
+                log.exception("Otomatik yedek")
             _t.sleep(3600)
 
     threading.Thread(target=update_loop, name="kami-update", daemon=True).start()

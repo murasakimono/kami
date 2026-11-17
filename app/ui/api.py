@@ -101,6 +101,7 @@ class Api(StudioMixin):
         "editor_vectorize", "editor_gif", "room_open", "room_relink", "editor_export", "editor_project_save", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
+        "backup_export", "backup_import",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "reader_series_add", "reader_series_check", "reader_epub_font", "lens_price", "lens_text", "lens_table", "lens_codes", "rss_add", "rss_check", "rss_preview", "subtitle_translate", "subtitle_sync", "player_open_url",
         "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "library_meta", "tmdb_set_key", "iptv_load", "iptv_epg", "cast_devices", "cast_play", "cast_control", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
@@ -1079,6 +1080,40 @@ class Api(StudioMixin):
             return {"ok": False, "error": type(exc).__name__}
         subprocess.Popen(["explorer", "/select,", os.path.normpath(str(out))])
         return {"ok": True, "path": str(out)}
+
+    def backup_export(self, dest_path: str = "") -> dict[str, Any]:
+        from app.core import backup
+        p = str(dest_path or "").strip()
+        if not p and self._window is not None:
+            import time as _t
+            import webview
+            picked = self._window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=f"kami_backup_{_t.strftime('%Y%m%d_%H%M%S')}.kamibak",
+                file_types=("Kami Yedek (*.kamibak)",),
+            )
+            if not picked:
+                return {"ok": False, "cancelled": True}
+            p = picked[0] if isinstance(picked, (list, tuple)) else str(picked)
+        res = backup.create_backup(p or None)
+        if res.get("ok") and not dest_path:
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(res["path"])])
+        return res
+
+    def backup_import(self, src_path: str = "") -> dict[str, Any]:
+        from app.core import backup
+        p = str(src_path or "").strip()
+        if not p and self._window is not None:
+            import webview
+            picked = self._window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=("Kami Yedek (*.kamibak)",),
+            )
+            if not picked:
+                return {"ok": False, "cancelled": True}
+            p = picked[0] if isinstance(picked, (list, tuple)) else str(picked)
+        return backup.restore_backup(p)
 
     # ---------- Kami Doktor ----------
     def ping(self) -> dict[str, Any]:
