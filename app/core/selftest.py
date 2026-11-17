@@ -64,26 +64,35 @@ def run_selftest(
     """Her modul penceresi icin gizli olustur -> ping -> kapat sinamasi."""
     results: dict[str, dict[str, Any]] = {}
     failed_titles: list[str] = []
-
-    for mod, title, html in MODULES:
-        # Prewarm edilmis Player penceresi kullanici tarafindan acilmis sayilmaz -> test et; diger acik pencereleri atla
-        if mod != "player" and getattr(api, f"_{mod}_win", None) is not None:
-            results[mod] = {"status": "skipped", "reason": "already_open"}
-            continue
-        t0 = time.monotonic()
-        try:
-            res = probe_window_fn(mod, title, html, timeout)
-            dt_ms = int((time.monotonic() - t0) * 1000)
-            ok = bool(res and res.get("ok"))
-            entry = {"status": "ok" if ok else "fail", "ms": dt_ms}
-            if not ok:
-                entry["error"] = str((res or {}).get("error") or "no_response")
+    try:
+        setattr(api, "_selftest_active", True)
+    except Exception:
+        pass
+    try:
+        for mod, title, html in MODULES:
+            # Prewarm edilmis Player penceresi kullanici tarafindan acilmis sayilmaz -> test et; diger acik pencereleri atla
+            if mod != "player" and getattr(api, f"_{mod}_win", None) is not None:
+                results[mod] = {"status": "skipped", "reason": "already_open"}
+                continue
+            t0 = time.monotonic()
+            try:
+                res = probe_window_fn(mod, title, html, timeout)
+                dt_ms = int((time.monotonic() - t0) * 1000)
+                ok = bool(res and res.get("ok"))
+                entry = {"status": "ok" if ok else "fail", "ms": dt_ms}
+                if not ok:
+                    entry["error"] = str((res or {}).get("error") or "no_response")
+                    failed_titles.append(title)
+                results[mod] = entry
+            except Exception as exc:
+                dt_ms = int((time.monotonic() - t0) * 1000)
+                results[mod] = {"status": "fail", "ms": dt_ms, "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
                 failed_titles.append(title)
-            results[mod] = entry
-        except Exception as exc:
-            dt_ms = int((time.monotonic() - t0) * 1000)
-            results[mod] = {"status": "fail", "ms": dt_ms, "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
-            failed_titles.append(title)
+    finally:
+        try:
+            setattr(api, "_selftest_active", False)
+        except Exception:
+            pass
 
     all_ok = not failed_titles
     payload = {
@@ -132,10 +141,9 @@ def probe_pywebview_window(webview_mod: Any, api: Any, mod: str, title: str, htm
     else:
         w = None
     if w is None:
-        url = (paths.WEB_DIR / html).as_uri() + "?selftest=1"
         w = webview_mod.create_window(
             f"{title} [SelfTest]",
-            url=url,
+            url=str(paths.WEB_DIR / html),
             js_api=api,
             width=640,
             height=400,
@@ -158,7 +166,7 @@ def probe_pywebview_window(webview_mod: Any, api: Any, mod: str, title: str, htm
         return {"ok": False, "error": f"bad_ping:{val!r}"[:120]}
     finally:
         try:
-            w.hide()
+            w._kami_allow_destroy = True
         except Exception:
             pass
         try:

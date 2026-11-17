@@ -674,10 +674,13 @@
     const lp = e.target.closest("[data-locplay]");
     if (lp) api()?.music_local_play?.(lp.dataset.locplay, lp.dataset.locroot);
   };
-  if (!location.search.includes("selftest=1")) {
-    window.addEventListener("pywebviewready", () => { refreshAuthUi(); refreshLibrespot(); pollSpotify(); renderHome(); });
-    setTimeout(() => { if (window.pywebview) { refreshAuthUi(); refreshLibrespot(); pollSpotify(); if (NAV === "sp_search" && !q.value.trim()) renderHome(); } }, 350);
-  }
+  const _bootMusic = async () => {
+    if (await api()?.is_selftest?.()) return;
+    refreshAuthUi(); refreshLibrespot(); pollSpotify();
+    if (NAV === "sp_search" && !q.value.trim()) renderHome();
+  };
+  window.addEventListener("pywebviewready", _bootMusic);
+  setTimeout(() => { if (window.pywebview) _bootMusic(); }, 350);
   setInterval(pollSpotify, 2500);
   // alt bar arka plan dalga formu gorsellestiricisi (yalnizca oynarken ve gorunurken cizer)
   (() => {

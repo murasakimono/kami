@@ -1143,6 +1143,9 @@ class Api(StudioMixin):
         from app.core.extras import APP_VERSION
         return {"ok": True, "version": APP_VERSION}
 
+    def is_selftest(self) -> bool:
+        return bool(getattr(self, "_selftest_active", False))
+
     def doctor_run(self) -> dict[str, Any]:
         from app.core import doctor
         wd = getattr(self, "_watchdog", None)

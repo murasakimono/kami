@@ -297,7 +297,12 @@ def restore_backup(
     }
 
 
-def maybe_auto_backup(settings_obj: Any, data_dir: Path | None = None, keep: int = 4) -> dict[str, Any] | None:
+def maybe_auto_backup(
+    settings_obj: Any,
+    data_dir: Path | None = None,
+    keep: int = 4,
+    local_storage: dict[str, Any] | str | None = None,
+) -> dict[str, Any] | None:
     if not settings_obj.get("auto_backup", True):
         return None
     last = int(settings_obj.get("auto_backup_last") or 0)
@@ -308,7 +313,7 @@ def maybe_auto_backup(settings_obj: Any, data_dir: Path | None = None, keep: int
     bdir = dd / "backups"
     bdir.mkdir(parents=True, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
-    res = create_backup(bdir / f"auto_{ts}.kamibak", data_dir=dd)
+    res = create_backup(bdir / f"auto_{ts}.kamibak", data_dir=dd, local_storage=local_storage)
     if res.get("ok"):
         settings_obj.set("auto_backup_last", now)
         autos = sorted(bdir.glob("auto_*.kamibak"), key=lambda p: p.stat().st_mtime, reverse=True)

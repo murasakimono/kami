@@ -493,7 +493,7 @@ def main() -> int:
                 log.debug("pencere gizlenemedi", exc_info=True)
 
         def closing():
-            if quitting["v"]:
+            if quitting["v"] or getattr(w, "_kami_allow_destroy", False):
                 return None
             threading.Thread(target=_hide_later, name="kami-keepwarm-hide", daemon=True).start()
             return False   # kapatmayi iptal et; pencere hemen ardindan gizlenir
@@ -539,9 +539,10 @@ def main() -> int:
             if not selftest.should_run(extras.APP_VERSION):
                 return
             def _notify(msg: str) -> None:
+                import json as _json
                 mw = main_win.get("w")
                 if mw is not None:
-                    mw.evaluate_js(f"try{{if(typeof toast==='function')toast({json.dumps(msg)},true,true)}}catch(e){{}}")
+                    mw.evaluate_js(f"try{{if(typeof toast==='function')toast({_json.dumps(msg)},true,true)}}catch(e){{}}")
             selftest.run_selftest(
                 api,
                 extras.APP_VERSION,
@@ -556,8 +557,7 @@ def main() -> int:
     picture_front = WindowFront("Kami Picture")
 
     def make_picture_window(selftest: bool = False):
-        url = ((paths.WEB_DIR / "picture.html").as_uri() + "?selftest=1") if selftest else str(paths.WEB_DIR / "picture.html")
-        w = webview.create_window("Kami Picture", url=url, js_api=api,
+        w = webview.create_window("Kami Picture [SelfTest]" if selftest else "Kami Picture", url=str(paths.WEB_DIR / "picture.html"), js_api=api,
                                   width=1280, height=820, min_size=(520, 360), background_color="#050408",
                                   text_select=False, hidden=selftest)
 
@@ -581,8 +581,7 @@ def main() -> int:
         def _bind_mod(k=_mkey, t=_mtitle, f=_mfile, ww=_mw, hh=_mh, col=_MOD_ICON_COLORS[_mkey]):
             fr = WindowFront(t)
             def _make(selftest: bool = False):
-                url = ((paths.WEB_DIR / f).as_uri() + "?selftest=1") if selftest else str(paths.WEB_DIR / f)
-                w = webview.create_window(t, url=url, js_api=api,
+                w = webview.create_window(f"{t} [SelfTest]" if selftest else t, url=str(paths.WEB_DIR / f), js_api=api,
                                           width=ww, height=hh, min_size=(760, 520), background_color="#08070C",
                                           text_select=True, hidden=selftest)
                 w.events.closed += lambda: setattr(api, f"_{k}_win", None)
@@ -597,8 +596,7 @@ def main() -> int:
     reader_front = WindowFront("Kami Reader")
 
     def make_reader_window(selftest: bool = False):
-        url = ((paths.WEB_DIR / "reader.html").as_uri() + "?selftest=1") if selftest else str(paths.WEB_DIR / "reader.html")
-        w = webview.create_window("Kami Reader", url=url, js_api=api,
+        w = webview.create_window("Kami Reader [SelfTest]" if selftest else "Kami Reader", url=str(paths.WEB_DIR / "reader.html"), js_api=api,
                                   width=1360, height=880, min_size=(560, 400), background_color="#07060B",
                                   text_select=True, hidden=selftest)
 
@@ -634,8 +632,7 @@ def main() -> int:
     studio_front = WindowFront("Kami Studio")
 
     def make_studio_window(selftest: bool = False):
-        url = ((paths.WEB_DIR / "studio.html").as_uri() + "?selftest=1") if selftest else str(paths.WEB_DIR / "studio.html")
-        w = webview.create_window("Kami Studio", url=url, js_api=api,
+        w = webview.create_window("Kami Studio [SelfTest]" if selftest else "Kami Studio", url=str(paths.WEB_DIR / "studio.html"), js_api=api,
                                   width=1600, height=960, min_size=(1100, 680), background_color="#07060B",
                                   text_select=False, hidden=selftest)
 
@@ -1234,7 +1231,14 @@ def main() -> int:
                     log.exception("Guncelleme denetimi")
             try:
                 from app.core import backup
-                backup.maybe_auto_backup(settings)
+                ls_data = None
+                mw = main_win.get("w")
+                if mw is not None:
+                    try:
+                        ls_data = mw.evaluate_js("JSON.stringify(localStorage)")
+                    except Exception:
+                        ls_data = None
+                backup.maybe_auto_backup(settings, local_storage=ls_data)
             except Exception:
                 log.exception("Otomatik yedek")
             _t.sleep(3600)
