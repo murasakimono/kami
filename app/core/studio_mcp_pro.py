@@ -312,6 +312,7 @@ def t_export_checked(out: str = "", preview: bool = False, force: bool = False, 
         return {"blocked": True, "gates": fails, "hint": "Düzelt ya da force=true ile bilerek geç."}
     name = pr.get("name", "video") + ("_taslak" if preview else "")
     out = out or str(S.home_dir() / "Çıktılar" / f"{name}.mp4")
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
     opts: dict[str, Any] = {"quality": "medium" if preview else "high"}
     if preview:
         W, H = int(pr.get("w", 1920)), int(pr.get("h", 1080))
