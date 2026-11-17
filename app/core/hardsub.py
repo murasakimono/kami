@@ -231,7 +231,6 @@ def extract_and_translate(
         srt_path.write_text("\n".join(lines), encoding="utf-8")
 
         out_video = ""
-        note = ""
         if burn:
             if ctx:
                 ctx.set(78, "Türkçe altyazı videoya gömülüyor...")
@@ -242,8 +241,14 @@ def extract_and_translate(
                       if use_nvenc else ["-c:v", "libx264", "-preset", "medium", "-crf", "19"])
             if mask_mode == "box":
                 mask_f = f"drawbox=x=0:y=ih*{tp:.2f}:w=iw:h=ih*{hp:.2f}:color=black@0.78:t=fill"
-            else:
-                mask_f = f"delogo=x=2:y=max(2\\,ih*{tp:.2f}):w=iw-4:h=min(ih-4\\,ih*{hp:.2f}):show=0"
+            else:   # delogo ifade sabiti (ih/iw) tanimaz: piksel olarak hesapla
+                import re as _re
+                pr_ = subprocess.run([ffmpeg, "-hide_banner", "-i", str(p)], capture_output=True, timeout=30, creationflags=NO_WINDOW)
+                m_ = _re.search(r"Video: .*?(\d{2,5})x(\d{2,5})", pr_.stderr.decode("utf-8", "replace"))
+                vw, vh = (int(m_.group(1)), int(m_.group(2))) if m_ else (1920, 1080)
+                y0 = max(2, int(vh * tp))
+                bh = max(4, min(vh - y0 - 2, int(vh * hp)))
+                mask_f = f"delogo=x=2:y={y0}:w={vw - 4}:h={bh}:show=0"
             vf = (
                 f"{mask_f},"
                 f"subtitles='{safe_srt}':force_style='FontSize=20,PrimaryColour=&H00FFFFFF,Outline=1'"
