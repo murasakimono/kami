@@ -70,3 +70,19 @@ def test_music_local_folder_scan(monkeypatch, tmp_path):
     sc = mh.local_scan_folder(str(mdir))
     assert sc["ok"] is True and len(sc["items"]) == 1 and sc["items"][0]["title"] == "01_akrep"
 
+
+def test_spotify_like_uses_new_library_endpoints(monkeypatch):
+    from app.core import music_hub as mh
+    calls = []
+    def fake_sp_api(method, path, body=None, token=""):
+        calls.append((method, path, body))
+        return {"ok": True, "data": [True]}
+    monkeypatch.setattr(mh, "_sp_api", fake_sp_api)
+    r1 = mh.spotify_like_check("abc123")
+    assert r1["ok"] and r1["liked"] is True
+    assert calls[-1][0] == "GET" and "/me/library/contains" in calls[-1][1] and "spotify%3Atrack%3Aabc123" in calls[-1][1]
+    mh.spotify_like_toggle("spotify:track:xyz", True)
+    assert calls[-1][0] == "PUT" and "/me/library?" in calls[-1][1]
+    mh.spotify_like_toggle("xyz", False)
+    assert calls[-1][0] == "DELETE" and "/me/library?" in calls[-1][1]
+

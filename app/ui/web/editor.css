@@ -88,7 +88,8 @@
 .ed-tpls small { color: #8E86A3; font-size: 10px; }
 
 /* AI komut cubugu & sag katman/gecmis dock paneli */
-.ed-aibar { position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; max-width: min(860px, 92vw); background: rgba(16, 12, 23, .92); border: 1px solid #3A2D55; backdrop-filter: blur(10px); box-shadow: 0 8px 28px rgba(0, 0, 0, .5); transition: opacity .25s, transform .2s; }
+.ed-aibar { position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; max-width: min(860px, 92vw); background: rgba(16, 12, 23, .92); border: 1px solid #3A2D55; backdrop-filter: blur(10px); box-shadow: 0 8px 28px rgba(0, 0, 0, .5); transition: opacity .25s, bottom .22s; }
+#ed:has(.ed-layers.open, .ed-layers:hover) .ed-aibar { bottom: 168px; }
 .ed-aibar input { width: 220px; background: #0A0810; border: 1px solid #2A2140; color: #EDE9F6; padding: 5px 9px; font: inherit; font-size: 12px; outline: none; }
 .ed-aibar input:focus { border-color: #8B5CF6; }
 .ed-aibar button { border: 1px solid #2A2140; background: #1E1730; color: #D9CCFF; padding: 5px 9px; cursor: pointer; font: inherit; font-size: 11px; white-space: nowrap; }

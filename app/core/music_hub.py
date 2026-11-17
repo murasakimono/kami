@@ -443,9 +443,12 @@ def spotify_volume(percent: int) -> dict[str, Any]:
 
 
 def spotify_like_check(track_id: str) -> dict[str, Any]:
-    if not track_id:
+    import urllib.parse
+    ref = str(track_id or "").strip()
+    if not ref:
         return {"ok": False, "liked": False}
-    r = _sp_api("GET", f"/me/tracks/contains?ids={track_id}")
+    uri = ref if ref.startswith("spotify:") else f"spotify:track:{ref}"
+    r = _sp_api("GET", f"/me/library/contains?uris={urllib.parse.quote(uri)}")
     if not r.get("ok"):
         return {**r, "liked": False}
     arr = r.get("data") if isinstance(r.get("data"), list) else []
@@ -453,9 +456,12 @@ def spotify_like_check(track_id: str) -> dict[str, Any]:
 
 
 def spotify_like_toggle(track_id: str, like: bool) -> dict[str, Any]:
-    if not track_id:
+    import urllib.parse
+    ref = str(track_id or "").strip()
+    if not ref:
         return {"ok": False, "error": "empty_id"}
-    return _sp_api("PUT" if like else "DELETE", f"/me/tracks?ids={track_id}", {"ids": [track_id]})
+    uri = ref if ref.startswith("spotify:") else f"spotify:track:{ref}"
+    return _sp_api("PUT" if like else "DELETE", f"/me/library?uris={urllib.parse.quote(uri)}", {"uris": [uri]})
 
 
 def spotify_queue_list() -> dict[str, Any]:

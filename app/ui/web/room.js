@@ -1075,7 +1075,7 @@ function spShowBar(title, artist, isLead) {
   let bar = $("spSyncBar");
   if (!bar) {
     bar = document.createElement("div"); bar.id = "spSyncBar";
-    bar.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 12px;background:#130E1D;border:1px solid #2EE6A6;border-radius:10px;margin:8px 12px 0;font-size:12.5px;color:#EDE9F6";
+    bar.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:7px 12px;background:#130E1D;border:1px solid #2EE6A6;border-radius:10px;margin:8px 12px 0;font-size:12.5px;color:#EDE9F6";
     $("room")?.insertBefore(bar, document.querySelector(".rm-main"));
   }
   bar.innerHTML = `<span style="color:#2EE6A6;font-weight:700">🎧 ${isLead ? "Yayınlıyorsun" : "Birlikte Dinleme"}:</span>` +

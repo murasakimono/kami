@@ -53,8 +53,9 @@ body.sunak.sk-drawer .sk-backdrop { display: block; position: fixed; inset: 0; z
 #sunak { position: fixed; inset: 0; display: flex; gap: 16px; padding: 12px 18px 16px; box-sizing: border-box; }
 #sunak .sk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 #sunak .sk-head { display: flex; align-items: center; gap: 12px; height: 52px; flex: 0 0 52px; }
-#sunak .sk-tabs { display: flex; align-items: center; gap: 4px; margin-left: 8px; padding: 3px; background: rgba(18, 14, 25, .85); border: 1px solid #2A2140; border-radius: 10px; }
-#sunak .sk-tab { border: 0; background: transparent; color: var(--sk-mute); font: 600 12.5px var(--font); padding: 5px 11px; border-radius: 7px; cursor: pointer; transition: background .15s, color .15s; }
+#sunak .sk-tabs { display: flex; align-items: center; gap: 4px; margin-left: 8px; padding: 3px; background: rgba(18, 14, 25, .85); border: 1px solid #2A2140; border-radius: 10px; max-width: calc(100vw - 340px); overflow-x: auto; scrollbar-width: none; }
+#sunak .sk-tabs::-webkit-scrollbar { display: none; }
+#sunak .sk-tab { border: 0; background: transparent; color: var(--sk-mute); font: 600 12.5px var(--font); padding: 5px 11px; border-radius: 7px; cursor: pointer; white-space: nowrap; flex: none; transition: background .15s, color .15s; }
 #sunak .sk-tab:hover { color: #fff; background: rgba(157, 107, 255, .14); }
 #sunak .sk-tab.on { background: #3B1580; color: #fff; box-shadow: inset 0 -2px 0 var(--sk-em); }
 #sunak .sk-tab-acts { display: inline-flex; gap: 3px; margin-left: 4px; padding-left: 6px; border-left: 1px solid #2A2140; }
