@@ -5,21 +5,31 @@
   const ADJ0 = { bright: 0, contrast: 0, sat: 0, hue: 0, temp: 0, vib: 0, expo: 0, blur: 0, sharp: 0, grain: 0, vign: 0, lvIn0: 0, lvIn1: 255, lvGamma: 1 };
   const css = document.createElement("style");
   css.textContent = `
-  .ed-ly .badges{position:absolute;top:8px;left:8px;display:flex;gap:3px}.ed-ly .badges i{font-style:normal;font-size:10px;background:#000b;border:1px solid #6D28D9;color:#C4B5FD;padding:0 4px;border-radius:3px}
-  .ed-ly .badges i.edit{background:#2EE6A6;color:#000;border-color:#2EE6A6}
-  .ed-addly.pro{margin-top:4px}.ed-addly.pro button{border-color:#3a2a5a}
-  #edHist{position:absolute;right:14px;top:64px;width:230px;max-height:60vh;overflow:auto;background:#0D0A14f0;border:1px solid #2A2140;border-radius:10px;z-index:40;padding:8px;font-size:12px}
-  #edHist[hidden]{display:none}#edHist h5{margin:2px 4px 8px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8E86A3}
-  #edHist div{padding:5px 8px;border-radius:6px;cursor:pointer;color:#EDE9F6}#edHist div:hover{background:#1d1530}#edHist div.cur{background:#6D28D9}#edHist div.fut{color:#6E6684}
-  #edMaskHud{position:absolute;left:50%;top:60px;transform:translateX(-50%);background:#2EE6A6;color:#000;font-weight:700;padding:5px 14px;border-radius:999px;z-index:40;font-size:12px}
+  .ed-ly .badges{position:absolute;top:8px;left:8px;display:flex;gap:3px}.ed-ly .badges i{font-style:normal;font-size:10px;background:#09060fe6;border:1px solid #8B5CF6;color:#C4B5FD;padding:1px 5px;border-radius:4px;font-weight:600;letter-spacing:.3px}
+  .ed-ly .badges i.edit{background:#2EE6A6;color:#06120d;border-color:#2EE6A6}
+  .ed-addly.pro{margin-top:4px;display:flex;flex-wrap:wrap;gap:5px;width:auto;flex-direction:row}
+  .ed-addly.pro button,.ed-addly.pro select{flex:0 0 auto;border:1px solid #3a2a5a;background:#161024;color:#C4B5FD;border-radius:6px;padding:4px 8px;font:inherit;font-size:11px;cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+  .ed-addly.pro button:hover,.ed-addly.pro select:hover{border-color:#9D6BFF;background:#1f1633;color:#fff}
+  #edHist{position:absolute;right:14px;top:64px;width:246px;max-height:60vh;overflow:auto;background:rgba(13,10,20,.94);backdrop-filter:blur(12px);border:1px solid #2A2140;border-radius:12px;z-index:40;padding:10px;font-size:12px;box-shadow:0 16px 40px rgba(0,0,0,.55)}
+  #edHist[hidden]{display:none}#edHist h5{margin:2px 4px 8px;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#8E86A3;display:flex;justify-content:space-between}
+  #edHist div{position:relative;padding:6px 10px 6px 20px;border-radius:7px;cursor:pointer;color:#EDE9F6;transition:background .12s}
+  #edHist div::before{content:"";position:absolute;left:8px;top:50%;width:6px;height:6px;border-radius:50%;transform:translateY(-50%);background:#4B3E6B}
+  #edHist div:hover{background:#1d1530}#edHist div.cur{background:linear-gradient(90deg,#6D28D9,#7C3AED);font-weight:600}
+  #edHist div.cur::before{background:#2EE6A6;box-shadow:0 0 8px #2EE6A6}
+  #edHist div.fut{color:#6E6684;opacity:.75}
+  #edMaskHud{position:absolute;left:50%;top:60px;transform:translateX(-50%);background:rgba(46,230,166,.95);color:#06120d;font-weight:700;padding:6px 16px;border-radius:999px;z-index:40;font-size:12px;box-shadow:0 8px 24px rgba(46,230,166,.3);letter-spacing:.2px}
   #edMaskHud[hidden]{display:none}
-  #edBatch{position:fixed;inset:0;background:#000a;z-index:90;display:flex;align-items:center;justify-content:center}#edBatch[hidden]{display:none}
-  #edBatch .bx{width:min(640px,94vw);max-height:90vh;overflow:auto;background:#110D19;border:1px solid #2A2140;border-radius:14px;padding:18px 20px;color:#EDE9F6}
-  #edBatch h3{margin:0 0 4px}#edBatch p{color:#8E86A3;margin:0 0 12px;font-size:12px}
-  #edBatch label{display:flex;gap:8px;align-items:center;margin:8px 0;font-size:13px}#edBatch select,#edBatch input[type=number],#edBatch input[type=text]{background:#0b0912;border:1px solid #2A2140;color:#EDE9F6;border-radius:6px;padding:5px 8px}
-  #edBatch .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#edBatch button{border:1px solid #2A2140;background:#1d1530;color:#EDE9F6;border-radius:8px;padding:8px 14px;cursor:pointer}
-  #edBatch button.pri{background:#6D28D9;border-color:#8B5CF6}#edBatch .prog{height:6px;background:#241B33;border-radius:3px;overflow:hidden;margin-top:10px}#edBatch .prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7C3AED,#2EE6A6)}
-  #edBatch .files{font-size:12px;color:#C4B5FD;max-height:90px;overflow:auto;margin:6px 0}`;
+  #edBatch{position:fixed;inset:0;background:rgba(5,3,10,.78);backdrop-filter:blur(6px);z-index:90;display:flex;align-items:center;justify-content:center}#edBatch[hidden]{display:none}
+  #edBatch .bx{width:min(660px,94vw);max-height:90vh;overflow:auto;background:#110D19;border:1px solid #2A2140;border-radius:16px;padding:20px 22px;color:#EDE9F6;box-shadow:0 24px 64px rgba(0,0,0,.65)}
+  #edBatch h3{margin:0 0 4px;font-size:17px}#edBatch p{color:#8E86A3;margin:0 0 12px;font-size:12px;line-height:1.45}
+  #edBatch .b-step{background:#171123;border:1px solid #261D3B;border-radius:10px;padding:10px 12px;margin-bottom:10px}
+  #edBatch .b-step-h{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:#9D6BFF;font-weight:700;margin-bottom:6px}
+  #edBatch label{display:flex;gap:8px;align-items:center;margin:7px 0;font-size:13px;flex-wrap:wrap}#edBatch select,#edBatch input[type=number],#edBatch input[type=text]{background:#0b0912;border:1px solid #2A2140;color:#EDE9F6;border-radius:7px;padding:6px 9px;font:inherit;font-size:12px}
+  #edBatch .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#edBatch button{border:1px solid #2A2140;background:#1d1530;color:#EDE9F6;border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit;font-size:12px;transition:border-color .15s,background .15s}
+  #edBatch button:hover{border-color:#9D6BFF;background:#261b40}
+  #edBatch button.pri{background:#6D28D9;border-color:#8B5CF6;font-weight:600}#edBatch button.pri:hover{background:#7C3AED}
+  #edBatch .prog{height:7px;background:#241B33;border-radius:4px;overflow:hidden;margin-top:10px}#edBatch .prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7C3AED,#2EE6A6);transition:width .2s}
+  #edBatch .files{font-size:11px;color:#C4B5FD;max-height:84px;overflow:auto;margin:6px 0 0;line-height:1.5}`;
   document.head.appendChild(css);
 
   // ---------------------------------------------------------------- maske
@@ -196,12 +206,18 @@
     d.hidden = false;
     d.innerHTML = `<div class="bx"><h3>${L2("Toplu işlem", "Batch processing")}</h3>
       <p>${L2("Aynı görünümü, boyutu ve biçimi bir sürü görsele tek seferde uygula. Asıllar değişmez; sonuçlar seçtiğin klasöre (ya da yanlarına 'Kami toplu' klasörüne) yazılır.", "Apply the same look, size and format to many images at once. Originals are untouched.")}</p>
-      <div class="row"><button id="bPick">📁 ${L2("Görselleri seç", "Pick images")}</button><span id="bCount"></span></div><div class="files" id="bFiles"></div>
-      <label>${L2("Görünüm", "Look")} <select id="bLook"><option value="">${L2("— yok —", "— none —")}</option><option value="__cur">${L2("Şu anki ayarlar (Ayarlar kartı)", "Current adjustment settings")}</option>${PRESETS.map((p, i) => `<option value="${i}">${esc(p.n)}</option>`).join("")}</select></label>
-      <label>${L2("Boyut", "Size")} <select id="bFit"><option value="">${L2("Değiştirme", "Keep")}</option><option value="long">${L2("Uzun kenar", "Long edge")}</option><option value="square">${L2("Kare (doldur)", "Square (cover)")}</option><option value="pad">${L2("Kare (beyaz kenar)", "Square (white pad)")}</option></select> <input id="bPx" type="number" min="64" max="8000" value="1080"> px</label>
-      <label>${L2("Filigran", "Watermark")} <input id="bWm" type="text" placeholder="${L2("boş = yok", "empty = none")}" style="flex:1"> <select id="bWmPos"><option value="br">↘</option><option value="bl">↙</option><option value="c">●</option><option value="tr">↗</option></select></label>
-      <label>${L2("Biçim", "Format")} <select id="bFmt"><option value="jpg">JPG</option><option value="png">PNG</option><option value="webp">WEBP</option></select> ${L2("Kalite", "Quality")} <input id="bQ" type="number" min="40" max="100" value="92"> <span>${L2("Ad eki", "Suffix")}</span><input id="bSfx" type="text" value="_kami" style="width:90px"></label>
-      <div class="row"><button id="bDir">📂 ${L2("Çıktı klasörü", "Output folder")}</button><span id="bOut" style="font-size:12px;color:#8E86A3">${L2("varsayılan: yanlarına 'Kami toplu'", "default: 'Kami toplu' next to each")}</span></div>
+      <div class="b-step"><div class="b-step-h">1 · ${L2("Görseller", "Images")}</div>
+        <div class="row"><button id="bPick">📁 ${L2("Görselleri seç", "Pick images")}</button><span id="bCount"></span></div><div class="files" id="bFiles"></div>
+      </div>
+      <div class="b-step"><div class="b-step-h">2 · ${L2("Görünüm, boyut ve filigran", "Look, size & watermark")}</div>
+        <label>${L2("Görünüm", "Look")} <select id="bLook"><option value="">${L2("— yok —", "— none —")}</option><option value="__cur">${L2("Şu anki ayarlar (Ayarlar kartı)", "Current adjustment settings")}</option>${PRESETS.map((p, i) => `<option value="${i}">${esc(p.n)}</option>`).join("")}</select></label>
+        <label>${L2("Boyut", "Size")} <select id="bFit"><option value="">${L2("Değiştirme", "Keep")}</option><option value="long">${L2("Uzun kenar", "Long edge")}</option><option value="square">${L2("Kare (doldur)", "Square (cover)")}</option><option value="pad">${L2("Kare (beyaz kenar)", "Square (white pad)")}</option></select> <input id="bPx" type="number" min="64" max="8000" value="1080"> px</label>
+        <label>${L2("Filigran", "Watermark")} <input id="bWm" type="text" placeholder="${L2("boş = yok", "empty = none")}" style="flex:1"> <select id="bWmPos"><option value="br">↘</option><option value="bl">↙</option><option value="c">●</option><option value="tr">↗</option></select></label>
+      </div>
+      <div class="b-step"><div class="b-step-h">3 · ${L2("Biçim ve çıktı", "Format & output")}</div>
+        <label>${L2("Biçim", "Format")} <select id="bFmt"><option value="jpg">JPG</option><option value="png">PNG</option><option value="webp">WEBP</option></select> ${L2("Kalite", "Quality")} <input id="bQ" type="number" min="40" max="100" value="92"> <span>${L2("Ad eki", "Suffix")}</span><input id="bSfx" type="text" value="_kami" style="width:90px"></label>
+        <div class="row"><button id="bDir">📂 ${L2("Çıktı klasörü", "Output folder")}</button><span id="bOut" style="font-size:12px;color:#8E86A3">${L2("varsayılan: yanlarına 'Kami toplu'", "default: 'Kami toplu' next to each")}</span></div>
+      </div>
       <div class="prog"><i id="bBar"></i></div><p id="bSt" style="margin-top:8px"></p>
       <div class="row" style="justify-content:flex-end"><button id="bClose">${L2("Kapat", "Close")}</button><button class="pri" id="bGo">${L2("Başlat", "Start")}</button></div></div>`;
     const show = () => { d.querySelector("#bCount").textContent = B.files.length ? L2(`${B.files.length} görsel`, `${B.files.length} images`) : ""; d.querySelector("#bFiles").textContent = B.files.map((f) => f.split(/[\\/]/).pop()).join(" · "); };

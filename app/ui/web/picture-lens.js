@@ -3,19 +3,22 @@
 (() => {
   const css = document.createElement("style");
   css.textContent = `
-  .lt-bar{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
-  .lt-bar button{border:1px solid var(--line);background:#1a1325;color:var(--text);padding:8px;border-radius:8px;cursor:pointer;font:inherit;font-size:13px;text-align:left}
-  .lt-bar button:hover{border-color:#8B5CF6}.lt-out{margin-bottom:14px}
-  .lt-q{display:flex;gap:6px;margin:6px 0}.lt-q input{flex:1;background:#0b0912;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 8px}
-  .lt-q button{border:1px solid var(--line);background:#6D28D9;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer}
-  .lt-it{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center;padding:6px;border:1px solid var(--line);border-radius:8px;margin:5px 0;cursor:pointer}
-  .lt-it:hover{border-color:#8B5CF6}.lt-it img{width:44px;height:44px;object-fit:contain;background:#fff;border-radius:4px}
-  .lt-it b{font-size:12px;display:block;max-height:32px;overflow:hidden}.lt-it small{color:var(--mute);font-size:11px}
-  .lt-it .p{font-weight:700;color:#2EE6A6;white-space:nowrap;text-align:right}.lt-it .p small{display:block;font-weight:400}
-  .lt-sum{font-size:12px;color:var(--mute);margin:4px 0}
-  .lt-txt{width:100%;min-height:120px;background:#0b0912;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px;font:13px/1.45 inherit;box-sizing:border-box}
-  .lt-tbl{border-collapse:collapse;font-size:11px;width:100%;margin-top:6px}.lt-tbl td{border:1px solid var(--line);padding:3px 5px}
-  .lt-code{padding:8px;border:1px solid var(--line);border-radius:8px;margin:5px 0;word-break:break-all;font-size:13px}.lt-code small{color:var(--mute);display:block}`;
+  .lt-bar{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
+  .lt-bar button{border:1px solid var(--line);background:#171124;color:var(--text);padding:9px 10px;border-radius:9px;cursor:pointer;font:inherit;font-size:12.5px;font-weight:600;text-align:left;transition:border-color .15s,background .15s,transform .1s}
+  .lt-bar button:hover{border-color:#9D6BFF;background:#201734;transform:translateY(-1px)}.lt-out{margin-bottom:14px}
+  .lt-q{display:flex;gap:6px;margin:7px 0}.lt-q input{flex:1;background:#0b0912;border:1px solid var(--line);color:var(--text);border-radius:7px;padding:7px 9px;font:inherit;font-size:12.5px}
+  .lt-q button{border:1px solid #8B5CF6;background:#6D28D9;color:#fff;border-radius:7px;padding:7px 12px;cursor:pointer;font:inherit;font-size:12px;font-weight:600}
+  .lt-q button:hover{background:#7C3AED}
+  .lt-it{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;padding:8px;border:1px solid var(--line);background:#120d1c;border-radius:10px;margin:6px 0;cursor:pointer;transition:border-color .15s,background .15s}
+  .lt-it:hover{border-color:#9D6BFF;background:#191228}.lt-it.best{border-color:rgba(46,230,166,.45);background:linear-gradient(90deg,rgba(46,230,166,.08),#120d1c)}
+  .lt-it img{width:46px;height:46px;object-fit:contain;background:#fff;border-radius:6px;padding:2px}
+  .lt-it b{font-size:12px;display:block;max-height:32px;overflow:hidden;line-height:1.3}.lt-it small{color:var(--mute);font-size:11px}
+  .lt-it .p{font-weight:700;color:#2EE6A6;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}.lt-it .p small{display:block;font-weight:500}
+  .lt-best-tag{display:inline-block;font-size:9.5px;font-weight:700;background:#2EE6A6;color:#06120d;padding:1px 5px;border-radius:4px;margin-right:4px;letter-spacing:.3px;vertical-align:middle}
+  .lt-sum{font-size:12px;color:var(--mute);margin:6px 0 8px;padding:6px 10px;background:#151021;border:1px solid var(--line);border-radius:8px}
+  .lt-txt{width:100%;min-height:120px;background:#0b0912;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px;font:13px/1.45 inherit;box-sizing:border-box}
+  .lt-tbl{border-collapse:collapse;font-size:11px;width:100%;margin-top:6px;border-radius:8px;overflow:hidden}.lt-tbl td{border:1px solid var(--line);padding:4px 6px}.lt-tbl tr:first-child td{background:#1c142c;font-weight:600;color:#E2D9F3}.lt-tbl tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .lt-code{padding:9px 10px;border:1px solid var(--line);background:#120d1c;border-radius:9px;margin:6px 0;word-break:break-all;font-size:12.5px}.lt-code small{color:#9D6BFF;display:block;font-weight:600;margin-bottom:2px}`;
   document.head.appendChild(css);
   const tl = (n) => n.toLocaleString("tr-TR", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) + " TL";
 
@@ -53,8 +56,8 @@
     if (!r?.ok) { out.innerHTML = head + `<p class="ln-err">${r?.error === "sorgu" ? L("Ürünü tanıyamadım; adını yazıp Ara'ya bas.", "Couldn't identify the product; type its name and search.") : esc(r?.error || "")}</p>`; wire(); return; }
     const errs = Object.keys(r.errors || {});
     out.innerHTML = head + (r.items.length ? `<div class="lt-sum">${L("En düşük", "Lowest")} <b style="color:#2EE6A6">${tl(r.min)}</b> · ${L("orta", "median")} ${tl(r.median)} · ${r.items.length} ${L("sonuç", "results")}</div>` +
-      r.items.map((i) => `<div class="lt-it" data-url="${esc(i.url)}"><img src="${esc(i.img)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
-        <div><b>${esc(i.name)}</b><small>${esc(i.src)}${i.note ? " · " + esc(i.note) : ""}</small></div><div class="p">${tl(i.price)}<small>${esc(i.src)}</small></div></div>`).join("")
+      r.items.map((i) => { const isBest = i.price === r.min; return `<div class="lt-it${isBest ? " best" : ""}" data-url="${esc(i.url)}"><img src="${esc(i.img)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+        <div><b>${isBest ? `<span class="lt-best-tag">${L("EN UCUZ", "LOWEST")}</span>` : ""}${esc(i.name)}</b><small>${esc(i.src)}${i.note ? " · " + esc(i.note) : ""}</small></div><div class="p">${tl(i.price)}<small>${esc(i.src)}</small></div></div>`; }).join("")
       : `<p class="ln-err">${L("Sonuç yok; adı sadeleştirip tekrar dene.", "No results; simplify the name and retry.")}</p>`) +
       (errs.length ? `<p class="ln-err">${L("Yanıt vermeyen", "Not responding")}: ${esc(errs.join(", "))}</p>` : "");
     wire();
