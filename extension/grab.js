@@ -124,7 +124,29 @@
   $("empty").textContent = L("Bu süzgeçle eşleşen yok.", "Nothing matches this filter.");
 
   S.tab = +new URLSearchParams(location.search).get("tab");
-  chrome.tabs.sendMessage(S.tab, { type: "grab-all" }).then((r) => {
+  function domGrabFallback() {
+    const out = new Map();
+    const add = (u, text, tag) => {
+      if (!u) return;
+      let abs; try { abs = new URL(u, location.href).href; } catch (_) { return; }
+      if (!/^(https?|ftp|magnet):/i.test(abs) || out.has(abs)) return;
+      out.set(abs, { url: abs, text: String(text || "").trim().replace(/\s+/g, " ").slice(0, 160), tag });
+    };
+    for (const a of document.querySelectorAll("a[href]")) add(a.getAttribute("href"), a.textContent || a.title || a.download, "a");
+    for (const m of document.querySelectorAll("video[src], audio[src], video source[src], audio source[src]")) add(m.getAttribute("src"), document.title, "media");
+    for (const im of document.querySelectorAll("img")) {
+      let best = im.currentSrc || im.src, bw = 0;
+      for (const part of (im.getAttribute("srcset") || "").split(",")) {
+        const [u, w] = part.trim().split(/\s+/); const n = parseInt(w) || 0;
+        if (u && n > bw) { bw = n; best = u; }
+      }
+      if (best && !/^data:/i.test(best) && (im.naturalWidth || 0) >= 200) add(best, im.alt, "img");
+    }
+    for (const el of document.querySelectorAll("[data-src], [data-full], [data-original]"))
+      add(el.getAttribute("data-full") || el.getAttribute("data-original") || el.getAttribute("data-src"), el.alt || el.title, "img");
+    return { title: document.title, page: location.href, links: [...out.values()].slice(0, 3000) };
+  }
+  function applyGrab(r) {
     if (!r) throw new Error("yok");
     S.page = r.page; S.title = r.title;
     $("pageName").textContent = r.title || r.page;
@@ -133,8 +155,21 @@
     const pref = ["video", "archive", "audio", "torrent", "doc", "program"].find((k) => S.links.some((l) => l.i.kind === k));
     S.kind = pref || "";
     render();
+  }
+  chrome.tabs.sendMessage(S.tab, { type: "grab-all" }).then((r) => {
+    if (!r) throw new Error("yok");
+    applyGrab(r);
   }).catch(() => {
-    $("empty").hidden = false;
-    $("empty").textContent = L("Sayfa okunamadı. Sayfayı yenileyip tekrar dene (tarayıcı sayfalarında çalışmaz).", "Could not read the page. Reload it and try again (does not work on browser pages).");
+    if (!chrome.scripting?.executeScript) {
+      $("empty").hidden = false;
+      $("empty").textContent = L("Sayfa okunamadı. Sayfayı yenileyip tekrar dene (tarayıcı sayfalarında çalışmaz).", "Could not read the page. Reload it and try again (does not work on browser pages).");
+      return;
+    }
+    chrome.scripting.executeScript({ target: { tabId: S.tab }, func: domGrabFallback }).then((res) => {
+      applyGrab(res?.[0]?.result);
+    }).catch(() => {
+      $("empty").hidden = false;
+      $("empty").textContent = L("Sayfa okunamadı. Sayfayı yenileyip tekrar dene (tarayıcı sayfalarında çalışmaz).", "Could not read the page. Reload it and try again (does not work on browser pages).");
+    });
   });
 })();

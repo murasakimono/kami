@@ -3,6 +3,14 @@
 (() => {
   const PANO = { items: [], open: false };
 
+  function kindBadge(v) {
+    const s = String(v || "").trim();
+    if (/youtube\.com|youtu\.be/i.test(s)) return { ic: "🎬", dl: true };
+    if (/\.(png|jpe?g|webp|gif)(\?|$)/i.test(s)) return { ic: "🖼", dl: true };
+    if (/^https?:\/\//i.test(s) || /^magnet:\?/i.test(s)) return { ic: "🔗", dl: true };
+    return { ic: "📝", dl: false };
+  }
+
   function renderList() {
     const list = document.getElementById("kpList");
     if (!list) return;
@@ -15,11 +23,12 @@
       return;
     }
     for (const x of PANO.items) {
+      const kb = kindBadge(x.value);
       const d = document.createElement("div");
       d.style.cssText = "padding:6px 8px;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.22);clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px);display:flex;justify-content:space-between;align-items:center;gap:6px;cursor:pointer;font-size:11px";
       const sp = document.createElement("span");
       sp.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1";
-      sp.textContent = x.label || x.value || "";
+      sp.textContent = `${kb.ic} ${x.label || x.value || ""}`;
       d.title = x.value || x.label || "";
       d.onclick = () => {
         if (x.value && navigator.clipboard?.writeText) {
@@ -29,6 +38,32 @@
         }
       };
       d.appendChild(sp);
+      if (kb.dl && x.value) {
+        const dl = document.createElement("button");
+        dl.type = "button";
+        dl.textContent = "⬇";
+        dl.title = "İndirme kutusuna al";
+        dl.style.cssText = "background:#2A1650;border:1px solid rgba(157,107,255,.45);color:#EDE9F6;border-radius:5px;padding:1px 6px;cursor:pointer;font-size:10px";
+        dl.onclick = (ev) => {
+          ev.stopPropagation();
+          const inp = document.getElementById("addInput");
+          if (inp) { inp.value = x.value; inp.focus(); }
+        };
+        d.appendChild(dl);
+      }
+      if (x.id) {
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.textContent = "✕";
+        rm.title = "Raftan kaldır";
+        rm.style.cssText = "background:none;border:none;color:#8A829E;cursor:pointer;font-size:11px;padding:0 3px";
+        rm.onclick = async (ev) => {
+          ev.stopPropagation();
+          await api?.pano_shelf_remove?.(x.id).catch(() => {});
+          refresh();
+        };
+        d.appendChild(rm);
+      }
       list.appendChild(d);
     }
   }

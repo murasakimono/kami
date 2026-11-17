@@ -116,7 +116,7 @@ function renderDl(list){$('dls').innerHTML='';if(!list.length){$('dls').innerHTM
   const B=e.querySelector('.b'),btn=(t,a,x={})=>{const b=document.createElement('button');b.textContent=t;b.onclick=async()=>{
    if(a==='remove'&&!confirm(L('Listeden kaldırılsın mı?','Remove from list?')))return;const r=await post('/dl/action',{id:d.id,action:a,...x});if(r.downloads)renderDl(r.downloads);else msg(r.ok?'✓':'✕')};B.appendChild(b)};
   if(d.can_pause)btn('⏸','pause');if(d.can_resume)btn('▶','resume');if(d.can_top)btn('⇡ '+L('Öne','Top'),'top');btn('✕','remove');$('dls').appendChild(e)}}
-async function load(){try{D=await post('/deck/data');if(P>=D.profiles.length)P=0;render();renderDl(D.downloads||[]);$('lim').value=String(D.limit||0)}catch(e){}}
+async function load(){try{D=await post('/deck/data');if(!D||!D.profiles)throw new Error(L('Deck verisi boş','Empty deck data'));if(P>=D.profiles.length)P=0;render();renderDl(D.downloads||[]);$('lim').value=String(D.limit||0)}catch(e){msg('✕ '+(e.message||L('Bağlantı hatası','Connection error')),4000)}}
 async function pollDl(){if($('pDl').hidden)return;try{const r=await post('/deck/data');renderDl(r.downloads||[])}catch(e){}}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
  ['pDeck','pDl'].forEach(p=>$(p).hidden=p!==b.dataset.p);clearInterval(tmr);if(b.dataset.p==='pDl'){pollDl();tmr=setInterval(pollDl,2000)}});

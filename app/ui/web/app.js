@@ -369,8 +369,12 @@ function insertText(el, text) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-let clipTimer = 0;
+let clipTimer = 0, lastPanoUrl = "";
 function showClipOffer(url) {
+  if (url && url !== lastPanoUrl && typeof api !== "undefined" && api.pano_shelf_add) {
+    lastPanoUrl = url;
+    api.pano_shelf_add("url", url, url).then(() => window.KamiPano?.refresh?.()).catch(() => {});
+  }
   if ($("#media").open || $("#cloud").open || $("#rdAsk").open || $("#addInput").value.trim() === url) return;
   $("#clipUrl").textContent = url;
   $("#clipUrl").title = url;

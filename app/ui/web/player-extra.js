@@ -256,6 +256,8 @@ document.addEventListener("click", async (e) => {
     box.querySelectorAll("[data-lh]").forEach((x) => x.onclick = (ev) => { ev.stopPropagation(); const h = hits[+x.dataset.lh]; if (h.local) playerOpenPath(h.local); else api.open_link("https://www.youtube.com/results?search_query=" + encodeURIComponent(h.artist + " " + h.title)); });
     return;
   }
+  if (!["ca", "cb", "copy", "gif", "discord", "audio", "repair"].includes(act)) return;
+  e.stopPropagation();
   const path = PL.info?.path;
   if (!path) { toast(plL("Bu işlem için yerel bir dosya açık olmalı", "Needs a local file"), true); return; }
   if (act === "ca" || act === "cb") { PE[act === "ca" ? "clipA" : "clipB"] = plNow(); const l = $("#peClipLbl"); if (l) l.textContent = peClipLbl(); return; }
@@ -441,8 +443,9 @@ void main(){
   vec3 clean = mix(blur, c, smoothstep(0.015, 0.08, diff));
   vec3 mn = min(min(n, s), min(w, e)), mx = max(max(n, s), max(w, e));
   float amp = clamp(min(mn.g, 1.0 - mx.g) / max(mx.g, 1e-4), 0.0, 1.0);
-  float k = -uStr * mix(0.10, 0.22, sqrt(amp));
-  vec3 sharp = clamp((clean + (n + s + w + e) * k) / (1.0 + 4.0 * k), 0.0, 1.0);
+  // 1 + 4*k daima >= 0.20 kalmali; aksinde bolme patlamasi renkleri tersine cevirir
+  float k = max(-0.20, -uStr * mix(0.08, 0.18, sqrt(amp)));
+  vec3 sharp = clamp((clean + (n + s + w + e) * k) / max(0.20, 1.0 + 4.0 * k), 0.0, 1.0);
   gl_FragColor = vec4(sharp, 1.0);
 }`;
 function cinPlace() {
@@ -718,7 +721,28 @@ window.pxExtraToolsHtml = () => _peTools4() + `<div class="px-shift"><span>${plL
   ${peSeg("lvAspect", [["h", "16:9 YouTube"], ["v", "9:16 Reels / TikTok"]], peCfg().lvAspect || "h")}
   ${(peCfg().lvAspect || "h") === "v" ? peSeg("lvLen", [[15, "15 sn"], [30, "30 sn"], [60, "60 sn"]], peCfg().lvLen || 30) + `<p class="px-hint">${plL("Reels şu anki saniyeden başlar.", "The clip starts at the current position.")}</p>` : ""}
   <div id="peLvRes"></div>`;
+function lvPill(j) {
+  let pill = document.getElementById("peLvPill");
+  if (!j || j.state === "idle") { pill?.remove(); return; }
+  if (!pill) {
+    pill = document.createElement("div");
+    pill.id = "peLvPill";
+    pill.style.cssText = "position:fixed;right:18px;bottom:76px;z-index:950;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(15,11,24,.94);border:1px solid #9D6BFF;box-shadow:0 10px 28px rgba(0,0,0,.55);color:#EDE9F6;font:600 12px 'Segoe UI',sans-serif;backdrop-filter:blur(8px)";
+    document.body.appendChild(pill);
+  }
+  if (j.state === "running") {
+    const pct = j.p ? ` %${Math.round(j.p * 100)}` : "";
+    pill.innerHTML = `<span>🎬 Lyric video${pct}</span><button class="pl-b" data-xa="lvstop">${plL("İptal", "Cancel")}</button>`;
+  } else if (j.state === "done") {
+    pill.innerHTML = `<span style="color:#2EE6A6">✓ ${plL("Lyric video hazır", "Lyric video ready")}</span><button class="pl-b" data-xa="lvplay">${plL("Oynat", "Play")}</button><button class="pl-b" data-xa="lvfolder">${plL("Klasör", "Folder")}</button><button class="pl-b" id="peLvDismiss">✕</button>`;
+    pill.querySelector("#peLvDismiss").onclick = () => pill.remove();
+  } else if (j.state === "error") {
+    pill.innerHTML = `<span style="color:#FF6B81">✕ Lyric video</span><button class="pl-b" id="peLvDismiss">✕</button>`;
+    pill.querySelector("#peLvDismiss").onclick = () => pill.remove();
+  }
+}
 function lvDraw(j) {
+  lvPill(j);
   const box = $("#peLvRes"); if (!box || !j) return;
   if (j.state === "running") box.innerHTML = `<p class="px-hint">${j.stage === "render" ? plL("İşleniyor", "Rendering") + (j.p ? ` · %${Math.round(j.p * 100)}` : plL(" (ilk seferde HyperFrames iner)", " (first run downloads HyperFrames)")) : plL("Hazırlanıyor…", "Preparing…")}</p><button class="pl-b" data-xa="lvstop">${plL("İptal", "Cancel")}</button>`;
   else if (j.state === "done") box.innerHTML = `<p class="px-hint">✓ ${escapeHtml(String(j.out || "").split(/[\\/]/).pop())}</p><button class="pl-b" data-xa="lvplay">${plL("Oynat", "Play")}</button><button class="pl-b" data-xa="lvfolder">${plL("Klasörü aç", "Open folder")}</button>`;
@@ -735,7 +759,7 @@ document.addEventListener("click", async (e) => {
   const seg = e.target.closest?.('#plPanel .px-xseg[data-x="lvStyle"], #plPanel .px-xseg[data-x="lvAspect"], #plPanel .px-xseg[data-x="lvLen"]');
   const b = e.target.closest?.("button");
   if (seg && b) { PX.cfg[seg.dataset.x] = seg.dataset.x === "lvLen" ? +b.dataset.v : b.dataset.v; pxSave(); if (seg.dataset.x === "lvAspect") window.plSettings?.(), window.plSettings?.(); return; }
-  if (!b || !b.closest("#plPanel") || !String(b.dataset.xa || "").startsWith("lv")) return;
+  if (!b || !b.closest("#plPanel, #peLvPill") || !String(b.dataset.xa || "").startsWith("lv")) return;
   e.stopPropagation();
   const a = b.dataset.xa, c = peCfg();
   if (a === "lv") {
