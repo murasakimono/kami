@@ -528,7 +528,8 @@ window.pxExtraVideoHtml = () => _peVid2() + `<div class="px-shift"><span>Anime4K
   <div class="px-shift"><span>${plL("Sinema HD (Live-Action CAS + Deband)", "Cinema HD (Live-Action CAS + Deband)")}</span></div>
   ${peSeg("cinema", [["off", plL("Kapalı", "Off")], ["light", plL("Hafif", "Light")], ["balanced", plL("Dengeli", "Balanced")], ["strong", plL("Güçlü", "Strong")], ["vsr", plL("RTX VSR (Sürücü)", "RTX VSR (Driver)")]], peCfg().cinema || "off")}
   <div class="px-shift"><span>${plL("Bölünmüş Ekran Karşılaştırma (%)", "Split-Screen Compare (%)")}</span><input id="cinSplitRange" type="range" min="0" max="90" value="0" style="width:120px"></div>
-  <div class="px-shift"><span>${plL("Sessizlik Atlayıcı (Ders/Podcast 2x)", "Silence Skipper (2x)")}</span><button type="button" class="btn ghost" id="plSkipSilBtn">${window._plSkipSil ? plL("Açık ✓", "On ✓") : plL("Kapalı", "Off")}</button></div>
+  <div class="px-shift"><span>${plL("Sessizlik Atlayıcı (Ders/Podcast 2x)", "Silence Skipper (2x)")}</span></div>
+  <div class="px-xseg" id="plSkipSilSeg"><button type="button" class="${!window._plSkipSil ? "on" : ""}" data-sil="0">${plL("Kapalı", "Off")}</button><button type="button" class="${window._plSkipSil ? "on" : ""}" data-sil="1">${plL("Açık", "On")}</button></div>
   <p class="px-hint">${plL("Ekran kartında çalışır. RTX VSR seçilirse WebGL tuvali kapatılır.", "Runs on GPU. RTX VSR disables WebGL canvas.")}</p>`;
 document.addEventListener("click", (e) => {
   const seg = e.target.closest?.('#plPanel .px-xseg[data-x="a4k"], #plPanel .px-xseg[data-x="a4kQ"], #plPanel .px-xseg[data-x="cinema"]'); const b = e.target.closest?.("button");
@@ -838,11 +839,12 @@ document.addEventListener("input", (e) => {
   }
 });
 let _silTimer = 0, _silBaseRate = 1.0, _silLowSince = 0, _silBoosted = false;
-function plToggleSilenceSkip() {
-  window._plSkipSil = !window._plSkipSil;
+function plToggleSilenceSkip(force) {
+  const next = typeof force === "boolean" ? force : !window._plSkipSil;
+  if (next === !!window._plSkipSil) return;
+  window._plSkipSil = next;
   const v = $("#plVideo");
-  const btn = $("#plSkipSilBtn");
-  if (btn) btn.textContent = window._plSkipSil ? plL("Açık ✓", "On ✓") : plL("Kapalı", "Off");
+  document.querySelectorAll("#plSkipSilSeg [data-sil]").forEach((x) => x.classList.toggle("on", (x.dataset.sil === "1") === next));
   if (!window._plSkipSil) {
     if (_silTimer) { clearInterval(_silTimer); _silTimer = 0; }
     if (v && _silBoosted) { v.playbackRate = _silBaseRate || 1.0; _silBoosted = false; }
@@ -878,5 +880,7 @@ function plToggleSilenceSkip() {
   toast(plL("Sessizlik atlayıcı açık (2x)", "Silence skipper on (2x)"));
 }
 document.addEventListener("click", (e) => {
+  const sb = e.target.closest?.("#plSkipSilSeg [data-sil]");
+  if (sb) { e.stopPropagation(); plToggleSilenceSkip(sb.dataset.sil === "1"); return; }
   if (e.target.id === "plSkipSilBtn") plToggleSilenceSkip();
 });

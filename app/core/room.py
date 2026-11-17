@@ -520,7 +520,8 @@ def _handler(srv: RoomServer):
                     data = soundboard_file(rest[1])
                     if data is None:
                         return self._err(404)
-                    self._send(data, "audio/wav", "max-age=86400")
+                    ctype = "audio/ogg" if data[:4] == b"OggS" else ("audio/mpeg" if data[:3] == b"ID3" else "audio/wav")
+                    self._send(data, ctype, "max-age=86400")
                 elif rest[0] == "ice":
                     self._json({"iceServers": srv.ice()})
                 elif rest[0] == "poll":

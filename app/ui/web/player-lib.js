@@ -155,6 +155,11 @@ window.plDrawer = (tab) => {
         <button class="px-x" data-tab="close">✕</button></div><div class="px-body" id="pxBody"></div>`;
     document.body.appendChild(d);
     d.addEventListener("click", pxDrawerClick);
+    document.addEventListener("click", (ev) => {
+      if (d.hidden) return;
+      if (d.contains(ev.target) || ev.target.closest?.('[data-pl="queue"], #plDrawer')) return;
+      d.hidden = true;
+    });
   }
   if ($("#plPanel")) $("#plPanel").hidden = true;
   if (tab) PX.libTab = tab;
