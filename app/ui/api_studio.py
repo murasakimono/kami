@@ -22,7 +22,8 @@ STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "
                "studio_stock", "studio_stock_get", "studio_fonts_download", "studio_template", "studio_sfx", "studio_lut_read",
                "studio_gemini_models", "studio_lottie", "studio_catalog_fonts",
                "studio_multicam_sync", "studio_smart_cut", "studio_audio_enhance", "studio_audio_duck",
-               "studio_clipboard_copy", "studio_open_icon_search", "studio_open_icon_fetch", "studio_export_gif", "studio_sound_similar"}
+               "studio_clipboard_copy", "studio_open_icon_search", "studio_open_icon_fetch", "studio_export_gif", "studio_sound_similar",
+               "studio_qc", "studio_poster", "studio_ref_profile", "studio_ref_lut"}
 
 
 def _parse_myinstants(page_html: str, limit: int = 60) -> list[dict[str, Any]]:
@@ -661,6 +662,132 @@ class StudioMixin:
                 except OSError:
                     pass
         threading.Thread(target=run, daemon=True, name=f"studio-{kind}").start()
+        return {"ok": True, "job": jid}
+
+    # ---- v1.25: yayin oncesi kontrol, kapak karesi, referans stil, konusma temizligi, netlestirme/RIFE, hareket takibi
+    def studio_qc(self, path: str, platform: str = "youtube", project: dict | None = None) -> dict[str, Any]:
+        from app.core import studio_finish as sf
+        res: dict[str, Any] = {"ok": True, "issues": [], "listen": []}
+        if path and Path(path).is_file():
+            res = sf.media_qc(self._media.ffmpeg(), str(path), str(platform or "youtube"))
+        if project:
+            res["edit"] = sf.project_qc(project)
+        return res
+
+    def studio_poster(self, path: str, t: float = -1) -> dict[str, Any]:
+        from app.core import studio_finish as sf
+        if not Path(str(path)).is_file():
+            return {"ok": False, "error": "dosya yok"}
+        return sf.bake_poster(self._media.ffmpeg(), str(path), None if float(t) < 0 else float(t))
+
+    def studio_ref_profile(self, path: str) -> dict[str, Any]:
+        from app.core import studio_finish as sf
+        if not Path(str(path)).is_file():
+            return {"ok": False, "error": "dosya yok"}
+        prof = sf.reference_profile(self._media.ffmpeg(), str(path))
+        try:
+            prof["bpm"] = float(self._st().beats(str(path)).get("bpm") or 0)
+        except Exception:
+            prof["bpm"] = 0.0
+        return prof
+
+    def studio_ref_lut(self, ref_path: str, src_path: str, strength: float = 0.8, name: str = "") -> dict[str, Any]:
+        """Referansin rengini kaynaga tasiyan .cube uretir; LUT klasorune yazilir, klibin grade.lut alanina verilir."""
+        from app.core import studio, studio_finish as sf
+        ff = self._media.ffmpeg()
+        dur = lambda p: sf._duration(sf._ff(ff, ["-i", p]))   # noqa: E731
+        ref = sf.color_stats(ff, str(ref_path), dur(str(ref_path)))
+        src = sf.color_stats(ff, str(src_path), dur(str(src_path)))
+        size = 17
+        safe = re.sub(r'[<>:"/\\|?*]+', "_", name or ("Ref - " + Path(str(ref_path)).stem))[:60]
+        out = sf.write_cube(studio.lut_dir() / f"{safe}.cube", sf.transfer_lut(src, ref, size, max(0.1, min(1.0, float(strength)))), size, safe)
+        return {"ok": True, "lut": out.name, "ref": ref, "src": src}
+
+    def studio_speech_suggest(self, words: list) -> list:
+        from app.core import studio_finish as sf
+        ws = [{"w": str(w.get("w", "")), "s": float(w.get("s", 0)), "e": float(w.get("e", 0))} for w in (words or []) if isinstance(w, dict)]
+        return sf.speech_suggestions(ws)
+
+    def studio_src_frame(self, path: str, t: float, width: int = 960) -> dict[str, Any]:
+        """Kaynak dosyadan tek kare (JPEG data URL): takip kutusu cizmek icin."""
+        import base64
+        import subprocess
+        from app.core.studio_finish import NO_WINDOW
+        r = subprocess.run([self._media.ffmpeg(), "-hide_banner", "-loglevel", "error", "-ss", f"{max(0.0, float(t)):.3f}", "-i", str(path),
+                            "-frames:v", "1", "-vf", f"scale={int(width)}:-2", "-f", "image2", "-c:v", "mjpeg", "-q:v", "4", "-"],
+                           capture_output=True, timeout=60, creationflags=NO_WINDOW)
+        if not r.stdout:
+            return {"ok": False, "error": "kare alinamadi"}
+        return {"ok": True, "url": "data:image/jpeg;base64," + base64.b64encode(r.stdout).decode()}
+
+    def studio_ncnn_install(self, tool: str) -> dict[str, Any]:
+        from app.core import aitools, studio_enhance as se
+        tool = str(tool)
+        if tool not in ("esrgan", "rife", "track"):
+            return {"ok": False, "error": "bad_tool"}
+        st = self._st()
+        jid = "n" + str(int(time.time() * 1000))
+        job = {"id": jid, "state": "running", "p": 0.0, "error": "", "cancel": threading.Event(), "line": ""}
+        st.jobs[jid] = job
+
+        def run() -> None:
+            try:
+                ok = aitools.install("track", lambda s: job.update(line=str(s)[-160:])) if tool == "track" else \
+                    se.install(tool, lambda s: job.update(line=str(s)[-160:]))
+                job.update(state="done" if ok else "error", p=1.0, error="" if ok else "kurulamadi")
+            except Exception as exc:
+                log.exception("ncnn kurulum")
+                job.update(state="error", error=str(exc)[:200])
+        threading.Thread(target=run, daemon=True, name="studio-ncnn-install").start()
+        return {"ok": True, "job": jid}
+
+    def studio_enhance(self, kind: str, path: str, start: float, dur: float, opts: dict | None = None) -> dict[str, Any]:
+        """upscale (Real-ESRGAN) | interp (RIFE). Sonuc yeni dosya: Videolar\\Kami Studio\\Netlestirilmis."""
+        from app.core import studio, studio_enhance as se
+        kind = "upscale" if kind == "upscale" else "interp"
+        if not se.installed("esrgan" if kind == "upscale" else "rife"):
+            return {"ok": False, "error": "need_tool", "tool": "esrgan" if kind == "upscale" else "rife"}
+        st = self._st()
+        jid = "e" + str(int(time.time() * 1000))
+        job = {"id": jid, "state": "running", "p": 0.0, "error": "", "cancel": threading.Event(), "line": ""}
+        st.jobs[jid] = job
+        threading.Thread(target=se.run, args=(job, self._media.ffmpeg(), kind, str(path), float(start), max(0.1, float(dur)),
+                                              dict(opts or {}), studio.home_dir() / "Netleştirilmiş"), daemon=True, name="studio-ncnn").start()
+        return {"ok": True, "job": jid}
+
+    def studio_track(self, path: str, start: float, dur: float, box: list) -> dict[str, Any]:
+        """Kutuyu (x, y, w, h; 0-1) kaynakta izler -> {kf:[{t,cx,cy,w,h}]}. Ayri kucuk 'track' ortami (OpenCV)."""
+        from app.core import aitools
+        if not aitools.installed("track"):
+            return {"ok": False, "error": "need_tool", "tool": "track"}
+        b = [max(0.0, min(1.0, float(x))) for x in (list(box or []) + [0, 0, 0, 0])[:4]]
+        if b[2] < 0.005 or b[3] < 0.005:
+            return {"ok": False, "error": "kutu cok kucuk"}
+        st = self._st()
+        jid = "t" + str(int(time.time() * 1000))
+        job = {"id": jid, "state": "running", "p": 0.0, "error": "", "cancel": threading.Event(), "line": ""}
+        st.jobs[jid] = job
+
+        def run() -> None:
+            import tempfile
+            fd, out = tempfile.mkstemp(prefix="kstudio_track_", suffix=".json")
+            os.close(fd)
+            try:
+                args = ["app.tools.studio_track_run", str(path), out, f"{float(start):.3f}", f"{float(dur):.3f}", *[f"{x:.5f}" for x in b]]
+                res = aitools._run_once(args, lambda m: job.update(p=float(m.get("p", job["p"]))), job["cancel"], "track", {})
+                if "done" in res:
+                    job.update(state="done", p=1.0, result=json.loads(Path(out).read_text("utf-8")))
+                else:
+                    job.update(state="error", error=str(res.get("error", ""))[:300])
+            except Exception as exc:
+                log.exception("Studio takip")
+                job.update(state="error", error=str(exc)[:200])
+            finally:
+                try:
+                    os.remove(out)
+                except OSError:
+                    pass
+        threading.Thread(target=run, daemon=True, name="studio-track").start()
         return {"ok": True, "job": jid}
 
     def studio_ai_install(self, tool: str) -> dict[str, Any]:
@@ -1332,7 +1459,6 @@ class StudioMixin:
 
     def studio_export_gif(self, project: dict[str, Any], out_path: str = "", fmt: str = "gif",
                           fps: int = 15, width: int = 720) -> dict[str, Any]:
-        from app.core import studio
         from app.core.studio_workflow import export_gif_webp
         ff = self._media.ffmpeg() if self._media else "ffmpeg"
         ext = "webp" if str(fmt).lower() == "webp" else "gif"

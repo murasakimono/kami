@@ -1778,22 +1778,90 @@ def build_ass(project: dict, t0: float = 0.0) -> str:
         if e <= 0:
             continue
         if tr.get("kind") == "text":
-            if c.get("subscribe") in studio_gfx.SUBSCRIBE_PRO:
-                ev += studio_gfx.subscribe(c["subscribe"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
-            elif c.get("subscribe"):
-                ev += _subscribe(c["subscribe"], s, e, W, H, c.get("style") or {})
-            elif c.get("graphic"):
-                ev += studio_gfx.graphic(c["graphic"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
-            elif c.get("sticker"):
-                ev += studio_gfx.sticker(c["sticker"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
-            elif c.get("words"):
-                ev += _captions(c, s, e, W, H)
-            elif c.get("text"):
-                ev += _text(c, s, e, W, H)
+            n0 = len(ev)
+            _text_clip_events(c, ev, s, e, W, H)
+            if c.get("trackPath"):   # hareket takibi: yazi/cikartma nesneyle birlikte kayar
+                ev[n0:] = apply_track_path(ev[n0:], c["trackPath"], s, W, H)
         elif tr.get("kind") == "fx":
             kind = FX.get(c.get("mode", ""), {}).get("ass")
             if kind:
                 ev += _fx_text(kind, s, e, W, H, c)
+    return _build_ass_tail(project, clips, tracks, head, ev, t0, W, H)
+
+
+def _text_clip_events(c: dict, ev: list[str], s: float, e: float, W: int, H: int) -> None:
+    if c.get("subscribe") in studio_gfx.SUBSCRIBE_PRO:
+        ev += studio_gfx.subscribe(c["subscribe"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
+    elif c.get("subscribe"):
+        ev += _subscribe(c["subscribe"], s, e, W, H, c.get("style") or {})
+    elif c.get("graphic"):
+        ev += studio_gfx.graphic(c["graphic"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
+    elif c.get("sticker"):
+        ev += studio_gfx.sticker(c["sticker"], _ts, _col, _esc, _rrect, s, e, W, H, c.get("style") or {})
+    elif c.get("words"):
+        ev += _captions(c, s, e, W, H)
+    elif c.get("text"):
+        ev += _text(c, s, e, W, H)
+
+
+_POS_RE = re.compile(r"\\pos\((-?[\d.]+),(-?[\d.]+)\)")
+_MOVE_RE = re.compile(r"\\move\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)(?:,[\d.]+,[\d.]+)?\)")
+_TR_RE = re.compile(r"\\t\([^()]*\)|\\fad\([^()]*\)")
+
+
+def _ts_sec(ts: str) -> float:
+    h, m, sec = ts.split(":")
+    return int(h) * 3600 + int(m) * 60 + float(sec)
+
+
+def apply_track_path(lines: list[str], path: list[dict], s0: float, W: int, H: int, max_rate: float = 5.0) -> list[str]:
+    """ASS olaylarini takip yolu boyunca parcalar: her parca \\move ile bir anahtar kareden digerine kayar.
+    path: [{t (klip basina gore sn), dx, dy (kare orani, ilk konuma gore)}]. Ilk parca giris animasyonunu korur."""
+    pts = sorted(({"t": float(q.get("t", 0)), "dx": float(q.get("dx", 0)), "dy": float(q.get("dy", 0))} for q in path or []), key=lambda q: q["t"])
+    if len(pts) < 2:
+        return lines
+    thin, last = [pts[0]], pts[0]["t"]
+    for q in pts[1:-1]:
+        if q["t"] - last >= 1 / max_rate:
+            thin.append(q)
+            last = q["t"]
+    thin.append(pts[-1])
+    out: list[str] = []
+    for ln in lines:
+        m = re.match(r"(Dialogue: [^,]*,)([^,]+),([^,]+),(.*)$", ln)
+        if not m:
+            out.append(ln)
+            continue
+        ls, le = _ts_sec(m.group(2)), _ts_sec(m.group(3))
+        body = m.group(4)
+        mv = _MOVE_RE.search(body)
+        if mv:   # giris kaymasi: son konuma sabitle
+            body = body.replace(mv.group(0), f"\\pos({mv.group(3)},{mv.group(4)})")
+        pm = _POS_RE.search(body)
+        if not pm:
+            out.append(ln)
+            continue
+        x0, y0 = float(pm.group(1)), float(pm.group(2))
+        def at(t: float) -> tuple[float, float]:
+            if t <= thin[0]["t"]:
+                return thin[0]["dx"], thin[0]["dy"]
+            for a, b in zip(thin, thin[1:]):
+                if t <= b["t"]:
+                    k = (t - a["t"]) / max(1e-6, b["t"] - a["t"])
+                    return a["dx"] + (b["dx"] - a["dx"]) * k, a["dy"] + (b["dy"] - a["dy"]) * k
+            return thin[-1]["dx"], thin[-1]["dy"]
+        cuts = [ls] + [s0 + q["t"] for q in thin if ls < s0 + q["t"] < le] + [le]
+        for i, (a, b) in enumerate(zip(cuts, cuts[1:])):
+            if b - a < 0.01:
+                continue
+            (dx1, dy1), (dx2, dy2) = at(a - s0), at(b - s0)
+            seg = body if i == 0 else _TR_RE.sub("", body)
+            mvs = f"\\move({x0 + dx1 * W:.0f},{y0 + dy1 * H:.0f},{x0 + dx2 * W:.0f},{y0 + dy2 * H:.0f},0,{int((b - a) * 1000)})"
+            out.append(f"{m.group(1)}{_ts(a)},{_ts(b)},{_POS_RE.sub(lambda _m: mvs, seg, count=1)}")
+    return out
+
+
+def _build_ass_tail(project: dict, clips: list, tracks: dict, head: str, ev: list[str], t0: float, W: int, H: int) -> str:
     for c in clips:   # klip ustu mod yazilari (VHS tarih vb.)
         tr = tracks.get(c.get("track"), {})
         if tr.get("kind") == "video" and not tr.get("hide"):

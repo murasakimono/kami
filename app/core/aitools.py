@@ -54,6 +54,13 @@ TOOLS: dict[str, dict[str, Any]] = {
         "size_gb": 1.0,    # onnxruntime + MiniLM cok dilli (~0.25 GB) + CLIP ViT-B/32 gorsel+metin (~0.6 GB)
         "separate": True,
     },
+    "track": {     # Kami Studio hareket takibi: yazi/cikartma/bulanikligi nesneye yapistir (OpenCV CSRT, CPU)
+        "module": "cv2",
+        "packages": ["opencv-contrib-python-headless>=4.9"],
+        "extra_index": "",
+        "size_gb": 0.15,
+        "separate": True,
+    },
 }
 # Is turu -> gereken araclar. "lyrics": UVR ile vokali ayir + Whisper ile sozleri yaziya dok (soz bulunamazsa)
 JOBS: dict[str, tuple[str, ...]] = {"whisper": ("whisper",), "uvr": ("uvr",), "lyrics": ("uvr", "whisper")}
