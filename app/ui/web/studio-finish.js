@@ -10,10 +10,14 @@
     ["interp", "🐢 Akıcı Ağır Çekim (RIFE)", "Ara kare üretir: 2x/4x pürüzsüz ağır çekim ya da 60 fps akıcılık (ilk kullanımda bir kez indirilir)."],
     ["track", "📍 Hareket Takibi", "Yazı/çıkartma/görseli videodaki bir nesneye yapıştırır: kutuyu çiz, nesne nereye giderse o da gider."],
     ["poster", "🖼 Kapak Karesini Göm", "Dışa aktardığın videonun 0. karesine en canlı kareyi (ya da oynatma kafasını) yazar; akışta siyah kapak çıkmaz."],
+    ["speedramp", "🏎️ Hız Eğrisi (Speed Ramp)", "CapCut Pro / Spunkram tarzı hazır hız eğrileri: Montage, Hero, Bullet, Jump Cut, Flash In/Out, Araba/Futbol Velocity."],
+    ["audioreact", "🔊 Ses-Tepkili Zoom (Audio-Reactive)", "Müzik/oyun bas ve tepe vuruşlarına göre klibe otomatik nabız zoom anahtar kareleri yazar."],
+    ["reframe916", "📱 Akıllı Oto-Reframe (16:9 → 9:16)", "Yatay videodaki yüz/özneyi takip ederek dikey kadraja otomatik odaklar."],
+    ["aivision", "👁️ AI Görüş Paketi (Kare Şeridi)", "Tasarımcı Dayı / Video Use yöntemi: 2 sn'de bir kare şeridi ve ses enerji haritası çıkarır."],
   );
   const _ai = aiAction;
   aiAction = async (kind, c) => {
-    const f = { qc, speech, refstyle, upscale: c2 => enhance("upscale", c2), interp: c2 => enhance("interp", c2), track, poster }[kind];
+    const f = { qc, speech, refstyle, upscale: c2 => enhance("upscale", c2), interp: c2 => enhance("interp", c2), track, poster, speedramp, audioreact, reframe916, aivision }[kind];
     return f ? f(c) : _ai(kind, c);
   };
 
@@ -230,5 +234,64 @@
       else { o.kf = rel.map(q => ({ t: q.t, x: +(bx + q.dx).toFixed(4), y: +(by + q.dy).toFixed(4) })); o._tracked = true; }
       changed(); toast(res.lost?.length ? `Takip edildi (${res.lost.length} karede nesne kayboldu, oralar yumuşatıldı)` : "Takip edildi — klip artık nesneyle birlikte hareket ediyor"); return;
     }
+  }
+
+  // ---------------------------------------------------------------- v1.26 Pro Araclari
+  async function speedramp(c) {
+    c = c && clipKind(c) === "video" ? c : needSel(["video"]); if (!c) return;
+    const pre = await api.studio_speed_ramp_presets();
+    const pick = await modal(`<h3>🏎️ Hız Eğrisi (Speed Ramp)</h3>
+      <div class="hint">Seçili klibe CapCut Pro / Spunkram tarzı hız eğrisi uygular.</div>
+      <div class="sf-list">${Object.entries(pre || {}).map(([k, v]) => `<button class="tb" data-v="${esc(k)}" style="justify-content:flex-start">${esc(v.name)}</button>`).join("")}</div>
+      <div class="row">${c.ramp ? `<button class="tb" data-v="__off">Eğriyi kaldır</button>` : ""}<button class="tb" data-v="">Vazgeç</button></div>`);
+    if (!pick) return;
+    snap();
+    if (pick === "__off") { delete c.ramp; changed(); toast("Hız eğrisi kaldırıldı"); return; }
+    if (pre?.[pick]?.pts) { c.ramp = pre[pick].pts; changed(); toast("Hız eğrisi uygulandı: " + pre[pick].name); }
+  }
+
+  async function audioreact(c) {
+    c = c && ["video", "image"].includes(clipKind(c)) ? c : needSel(["video", "image"]); if (!c) return;
+    const srcC = ST.p.clips.find(x => (clipKind(x) === "audio" || assetOf(x)?.audio) && x.start < c.start + c.dur && x.start + x.dur > c.start) || c;
+    const a = assetOf(srcC); if (!a?.path) { toast("Sesli bir klip bulunamadı"); return; }
+    const str = await modal(`<h3>🔊 Ses-Tepkili Zoom</h3><div class="hint">Bas/tepe enerjisine göre otomatik nabız zoom uygulanır.</div>
+      <div class="row"><button class="tb" data-v="0.08">Hafif (%8)</button><button class="tb pri" data-v="0.15">Orta (%15)</button><button class="tb" data-v="0.26">Sert (%26)</button></div>`);
+    if (!str) return;
+    busy("Ses enerjisi ölçülüyor…");
+    let r;
+    try { r = await api.studio_audio_reactive(a.path, srcC.in || 0, c.dur * (srcC.speed || 1), c.dur, +str); } finally { busy(null); }
+    if (!r?.ok || !r.kf?.length) { toast("Ses anahtar karesi üretilemedi"); return; }
+    snap(); c.zoom = r.kf; changed();
+    toast(`${r.kf.length} ses-tepkili zoom anahtar karesi eklendi`);
+  }
+
+  async function reframe916(c) {
+    c = c && clipKind(c) === "video" ? c : needSel(["video"]); if (!c) return;
+    const a = assetOf(c); if (!a?.path) return;
+    busy("Özne / yüz konumu izleniyor…");
+    let r;
+    try { r = await api.studio_auto_reframe(a.path, c.in || 0, c.dur * (c.speed || 1)); } finally { busy(null); }
+    if (!r?.ok || !r.kf?.length) { toast("Oto-Reframe başarısız"); return; }
+    snap(); c.kf = r.kf; changed();
+    toast(`Oto-Reframe (${r.method}) uygulandı: ${r.kf.length} nokta`);
+  }
+
+  async function aivision(c) {
+    c = c && clipKind(c) === "video" ? c : (selClips()[0] || ST.p.clips.find(x => clipKind(x) === "video"));
+    const path = (c && assetOf(c)?.path) || await pickOne(); if (!path) return;
+    busy("Kare şeridi & ses haritası hazırlanıyor…");
+    let r;
+    try { r = await api.studio_inspect_ai(path, 2.0); } finally { busy(null); }
+    if (!r?.ok) { toast("Analiz başarısız"); return; }
+    const es = r.energy_summary || {};
+    await modal(`<h3>👁️ AI Görüş Paketi</h3>
+      <div class="sf-stats">
+        <div class="sf-stat"><small>Süre</small><b>${fmt(r.duration)}</b></div>
+        <div class="sf-stat"><small>Boyut</small><b>${r.w}×${r.h}</b></div>
+        <div class="sf-stat"><small>Sessiz Sn</small><b>${(es.quiet_secs || []).length}</b></div>
+        <div class="sf-stat"><small>Zirve Sn</small><b>${(es.peak_secs || []).length}</b></div>
+      </div>
+      ${r.sheet_url ? `<img src="${esc(r.sheet_url)}" style="width:100%;max-height:46vh;object-fit:contain;border-radius:6px;border:1px solid #2A2140;background:#000">` : ""}
+      <div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`);
   }
 })();

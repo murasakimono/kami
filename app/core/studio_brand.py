@@ -266,9 +266,11 @@ VIRAL_RECIPES: dict[str, dict[str, Any]] = {
 from app.core.studio_pro_pack import RECIPES_PRO  # noqa: E402
 from app.core.studio_tr_memes import RECIPES_TR_MEME  # noqa: E402
 from app.core.studio_pro_pack2 import RECIPES_PACK2  # noqa: E402
+from app.core.studio_pro_v26 import PRO_STYLES_V26  # noqa: E402
 VIRAL_RECIPES.update({k: v for k, v in RECIPES_PRO.items() if k not in VIRAL_RECIPES})
 VIRAL_RECIPES.update({k: v for k, v in RECIPES_TR_MEME.items() if k not in VIRAL_RECIPES})
 VIRAL_RECIPES.update({k: v for k, v in RECIPES_PACK2.items() if k not in VIRAL_RECIPES})
+VIRAL_RECIPES.update({k: v for k, v in PRO_STYLES_V26.items() if k not in VIRAL_RECIPES})
 
 
 class BrandKitStore:

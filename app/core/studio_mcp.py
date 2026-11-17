@@ -833,6 +833,56 @@ def _io():
     return os.fdopen(fi, "rb", buffering=0), os.fdopen(fo, "wb", buffering=0)
 
 
+@tool("inspect_video_for_ai", "Tasarımcı Dayı / Video Use yöntemi: videodan 2 sn'de bir kare şeridi (contact sheet) + ses enerji haritası + meta çıkarır.",
+      {"media_path": STR, "interval_s": N}, ["media_path"])
+def t_inspect_video_for_ai(media_path: str, interval_s: float = 2.0) -> Any:
+    from app.core.studio_pro_v26 import inspect_video_for_ai
+    return inspect_video_for_ai(_ffmpeg(), media_path, S.media_dir() / "Inspect", float(interval_s or 2.0))
+
+
+@tool("apply_audio_reactive", "Ses/bas enerjisine göre klibe otomatik nabız zoom anahtar kareleri (aeon-music-video / Araba-Futbol edit) yazar.",
+      {"clip": STR, "strength": N, "path": PATH}, ["clip"])
+def t_apply_audio_reactive(clip: str, strength: float = 0.14, path: str = "") -> Any:
+    from app.core.studio_pro_v26 import build_audio_reactive_kf
+    p, pr = load(path)
+    c = find_clip(pr, clip)
+    src = pr["assets"][c["asset"]]["path"]
+    sp = float(c.get("speed") or 1.0)
+    kf = build_audio_reactive_kf(_ffmpeg(), src, float(c.get("in") or 0.0), float(c["dur"]) * sp, float(c["dur"]), float(strength or 0.14))
+    if not kf:
+        return {"ok": False, "error": "no_audio_or_empty"}
+    c["zoom"] = kf
+    save(p, pr)
+    return {"ok": True, "clip": clip, "keyframes": len(kf)}
+
+
+@tool("auto_reframe_clip", "16:9 klibi yüz/özne merkezli dinamik 9:16 dikey kadraja otomatik odaklar.",
+      {"clip": STR, "path": PATH}, ["clip"])
+def t_auto_reframe_clip(clip: str, path: str = "") -> Any:
+    from app.core.studio_pro_v26 import auto_reframe_plan
+    p, pr = load(path)
+    c = find_clip(pr, clip)
+    src = pr["assets"][c["asset"]]["path"]
+    res = auto_reframe_plan(src, float(c.get("in") or 0.0), float(c["dur"]) * float(c.get("speed") or 1.0))
+    if res.get("ok") and res.get("kf"):
+        c["kf"] = res["kf"]
+        save(p, pr)
+    return res
+
+
+@tool("apply_speed_ramp", "CapCut Pro hız eğrisi (montage, hero, bullet, jump_cut, flash_in, flash_out, car_velocity) uygular.",
+      {"clip": STR, "preset": STR, "path": PATH}, ["clip", "preset"])
+def t_apply_speed_ramp(clip: str, preset: str, path: str = "") -> Any:
+    from app.core.studio_pro_v26 import SPEED_RAMP_PRESETS
+    if preset not in SPEED_RAMP_PRESETS:
+        return {"ok": False, "error": f"unknown_preset:{preset}", "available": list(SPEED_RAMP_PRESETS)}
+    p, pr = load(path)
+    c = find_clip(pr, clip)
+    c["ramp"] = SPEED_RAMP_PRESETS[preset]["pts"]
+    save(p, pr)
+    return {"ok": True, "clip": clip, "preset": preset}
+
+
 def handle(msg: dict) -> dict | None:
     mid, method = msg.get("id"), msg.get("method", "")
     if mid is None:

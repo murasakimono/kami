@@ -137,6 +137,7 @@ from app.core.studio_pro_pack3 import (  # noqa: E402
     AUDIO_FIX_NAMES_PACK3, AUDIO_FIX_PACK3, FX_PACK3,
     TEMPLATES_PACK3, TRANS_PACK3, trans_in_pack3,
 )
+from app.core.studio_pro_v26 import TRANS_V26, trans_in_v26  # noqa: E402
 FX.update({k: v for k, v in FX_PRO.items() if k not in FX})
 FX.update({k: v for k, v in FX_TR_MEME.items() if k not in FX})
 FX.update({k: v for k, v in FX_PACK2.items() if k not in FX})
@@ -155,6 +156,7 @@ TRANS.update(TRANS2)   # faz 5b: capraz/sekil/olcek gecisleri (studio_trans2.py)
 TRANS.update({k: v for k, v in TRANS_PRO.items() if k not in TRANS})
 TRANS.update({k: v for k, v in TRANS_PACK2.items() if k not in TRANS})
 TRANS.update({k: v for k, v in TRANS_PACK3.items() if k not in TRANS})
+TRANS.update({k: v for k, v in TRANS_V26.items() if k not in TRANS})
 TRANS_FF = set(TRANS) - {"none", "fade"}
 
 # Hazir zoom sablonlari (klibe gore sn); kullanicininkiler CACHE/templates.json'a eklenir
@@ -1633,6 +1635,8 @@ def _trans_in(kind: str, d: float, W: int, H: int, tag: str = "t", c0: float = 0
         return trans_in_pack2(kind, d, W, H, tag, c0, fps)
     if kind in TRANS_PACK3:
         return trans_in_pack3(kind, d, W, H, tag, c0, fps)
+    if kind in TRANS_V26:
+        return trans_in_v26(kind, d, W, H, tag, c0, fps)
     return trans_in2(kind, d, W, H, tag, c0, fps)
 
 

@@ -180,6 +180,27 @@ class StudioMixin:
             r["url"] = self._media_url(r["path"])
         return r
 
+    def studio_inspect_ai(self, path: str, interval_s: float = 2.0) -> dict[str, Any]:
+        from app.core import studio
+        from app.core.studio_pro_v26 import inspect_video_for_ai
+        r = inspect_video_for_ai(self._st().ffmpeg(), str(path), studio.media_dir() / "Inspect", float(interval_s or 2.0))
+        if r.get("contact_sheet"):
+            r["sheet_url"] = self._media_url(r["contact_sheet"])
+        return r
+
+    def studio_audio_reactive(self, path: str, start: float = 0.0, dur: float = 10.0, clip_dur: float = 10.0, strength: float = 0.14) -> dict[str, Any]:
+        from app.core.studio_pro_v26 import build_audio_reactive_kf
+        kf = build_audio_reactive_kf(self._st().ffmpeg(), str(path), float(start or 0), float(dur or 10), float(clip_dur or 10), float(strength or 0.14))
+        return {"ok": bool(kf), "kf": kf}
+
+    def studio_auto_reframe(self, path: str, start: float = 0.0, dur: float = 10.0) -> dict[str, Any]:
+        from app.core.studio_pro_v26 import auto_reframe_plan
+        return auto_reframe_plan(str(path), float(start or 0), float(dur or 10))
+
+    def studio_speed_ramp_presets(self) -> dict[str, Any]:
+        from app.core.studio_pro_v26 import SPEED_RAMP_PRESETS
+        return SPEED_RAMP_PRESETS
+
     def studio_silences(self, path: str, start: float, dur: float, db: float = -35, min_len: float = 0.45) -> list:
         return self._st().silences(str(path), float(start), float(dur), float(db), float(min_len))
 

@@ -591,3 +591,17 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .sf-tk-wrap { position: relative; display: inline-block; cursor: crosshair; user-select: none; border: 1px solid #3B2D5E; border-radius: 6px; overflow: hidden; margin: 8px 0; background: #000; }
 .sf-tk-wrap img { max-width: min(820px, 80vw); max-height: 58vh; display: block; }
 .sf-tk-box { position: absolute; border: 2px solid #2EE6A6; box-shadow: 0 0 0 9999px rgba(7, 6, 11, .55); display: none; pointer-events: none; }
+
+/* ---- v1.26 gl-transitions CSS onizleme kartlari ---- */
+.tv-directional-wipe::after { animation-name: tvWipeR; }
+.tv-morph-warp::after { animation-name: tvZoom; }
+.tv-dreamy-fade::after { animation-name: tvBlur; }
+.tv-cube-rotate::after { animation-name: tvFlipH; }
+.tv-swirl-spin::after { animation-name: tvSpin; }
+.tv-pixelize-dissolve::after { animation-name: tvGlitch; }
+.tv-window-slice::after { animation-name: tvWipeR; }
+.tv-radial-wipe::after { animation-name: tvSpin; }
+.tv-burn-warm::after { animation-name: tvFlash; }
+.tv-doom-melt::after { animation-name: tvSlideD; }
+.tv-cross-hatch::after { animation-name: tvGlitch; }
+.tv-circle-open::after { animation-name: tvIris; }
