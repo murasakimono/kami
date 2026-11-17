@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami Süzgeç</title>
+<style>
+  :root{--bg:#08070C;--card:#130E1D;--line:#2E2346;--tx:#EDE9F6;--mut:#9E96B8;--ac:#9D6BFF;--em:#2EE6A6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px "Chakra Petch","Segoe UI",sans-serif;padding:18px 22px}
+  .top{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .top h1{margin:0;font-size:18px;color:#C4B5FD}
+  input{background:#110D19;border:1px solid var(--line);border-radius:9px;color:var(--tx);padding:8px 12px;font:inherit}
+  .btn{border:1px solid var(--line);background:#1A1328;color:var(--tx);border-radius:9px;padding:8px 13px;cursor:pointer;font:600 12.5px inherit}
+  .btn:hover{border-color:var(--ac)} .btn.pri{background:#6D28D9;border-color:var(--ac)}
+  .cols{display:grid;grid-template-columns:1.1fr 1fr;gap:16px}
+  @media(max-width:900px){.cols{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .panel h3{margin:0 0 10px;font-size:13px;color:var(--ac);text-transform:uppercase;letter-spacing:.6px}
+  .row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;font-size:12.5px}
+  .row:hover{background:rgba(157,107,255,.09)}
+  .bar{height:6px;background:#241B33;border-radius:3px;overflow:hidden;margin-top:3px}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,#7C3AED,#2EE6A6)}
+</style>
+<script src="kami-embed.js"></script>
+</head>
+<body>
+  <div class="top">
+    <h1>🧹 KAMI SÜZGEÇ</h1>
+    <input id="q" style="flex:1;min-width:200px" placeholder="Dosya ara… (Everything / hızlı tarama)">
+    <input id="root" style="width:220px" placeholder="Klasör (boş = Kullanıcı)">
+    <button class="btn pri" id="find">Ara</button>
+    <button class="btn" id="scan">Disk Analizi</button>
+  </div>
+  <div class="cols">
+    <div class="panel"><h3>Dosya Arama</h3><div id="res"><small style="color:var(--mut)">Aramak için yazıp Enter'a bas.</small></div></div>
+    <div class="panel"><h3>Disk Haritası</h3><div id="map"><small style="color:var(--mut)">Analiz için 'Disk Analizi'ne bas.</small></div></div>
+  </div>
+  <script>
+    const api = () => window.pywebview?.api;
+    const esc = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const fmt = (b) => b > 1e9 ? (b / 1e9).toFixed(2) + " GB" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.round(b / 1024) + " KB";
+    async function doSearch() {
+      const q = document.getElementById("q").value.trim(), root = document.getElementById("root").value.trim();
+      if (!q) return;
+      document.getElementById("res").innerHTML = "Aranıyor…";
+      const r = await api()?.cleaner_search?.(q, root).catch(() => null);
+      const items = r?.items || [];
+      document.getElementById("res").innerHTML = items.length ? items.map((x) => `
+        <div class="row">
+          <div style="flex:1;min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</b><small style="color:var(--mut)">${esc(x.path)}</small></div>
+          <span>${fmt(x.size)}</span>
+          <button class="btn" data-trash="${esc(x.path)}" title="Geri Dönüşüm Kutusu'na gönder">🗑</button>
+        </div>`).join("") : "Sonuç yok.";
+    }
+    async function doMap() {
+      const root = document.getElementById("root").value.trim();
+      document.getElementById("map").innerHTML = "Hesaplanıyor…";
+      const r = await api()?.cleaner_treemap?.(root).catch(() => null);
+      const items = r?.items || [];
+      const max = items[0]?.size || 1;
+      document.getElementById("map").innerHTML = items.map((x) => `
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:12px"><span>${x.dir ? "📁" : "📄"} ${esc(x.name)}</span><b>${fmt(x.size)}</b></div>
+          <div class="bar"><i style="width:${Math.max(2, Math.round((x.size / max) * 100))}%"></i></div>
+        </div>`).join("") || "Boş.";
+    }
+    document.getElementById("find").onclick = doSearch;
+    document.getElementById("q").onkeydown = (e) => { if (e.key === "Enter") doSearch(); };
+    document.getElementById("scan").onclick = doMap;
+    document.getElementById("res").onclick = async (e) => {
+      const b = e.target.closest("[data-trash]");
+      if (!b || !confirm("Geri Dönüşüm Kutusu'na taşınsın mı?")) return;
+      const r = await api()?.cleaner_trash?.(b.dataset.trash).catch(() => null);
+      if (r?.ok) b.closest(".row")?.remove();
+    };
+  </script>
+</body>
+</html>

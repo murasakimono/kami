@@ -4288,3 +4288,36 @@ class Api(StudioMixin):
     def kamipack_import(self, pack_path: str, dest_dir: str = "") -> dict[str, Any]:
         from app.core.kamipack import import_kamipack
         return import_kamipack(pack_path, dest_dir=dest_dir or None)
+
+    # ---------- Dalga C/D/E: Kami Oyun, Kami Muzik, Kami Suzgec ----------
+    def games_list(self) -> dict[str, Any]:
+        from app.core.games import list_games
+        return list_games()
+
+    def games_launch(self, launch_target: str) -> dict[str, Any]:
+        from app.core.games import launch_game
+        return launch_game(launch_target)
+
+    def games_backup_save(self, title: str, out_dir: str = "") -> dict[str, Any]:
+        from app.core.games import backup_save_ludusavi
+        return backup_save_ludusavi(title, out_dir)
+
+    def music_search(self, query: str, limit: int = 12) -> dict[str, Any]:
+        from app.core.music_hub import search_ytmusic
+        return search_ytmusic(query, limit=limit)
+
+    def music_spotify_now(self) -> dict[str, Any]:
+        from app.core.music_hub import spotify_now
+        return spotify_now(str(self.settings.get("spotify_token") or ""))
+
+    def cleaner_search(self, query: str, root: str = "", limit: int = 80) -> dict[str, Any]:
+        from app.core.cleaner import search_files
+        return search_files(query, root=root, limit=limit)
+
+    def cleaner_treemap(self, root: str = "") -> dict[str, Any]:
+        from app.core.cleaner import disk_treemap
+        return disk_treemap(root=root)
+
+    def cleaner_trash(self, path: str) -> dict[str, Any]:
+        from app.core.cleaner import trash_path
+        return trash_path(path)

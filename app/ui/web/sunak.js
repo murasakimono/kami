@@ -45,6 +45,9 @@ function skBuild() {
         <button type="button" class="sk-tab" data-mod="studio">Studio</button>
         <button type="button" class="sk-tab" data-mod="picture">Picture</button>
         <button type="button" class="sk-tab" data-mod="reader">Reader</button>
+        <button type="button" class="sk-tab" data-mod="games">Oyun</button>
+        <button type="button" class="sk-tab" data-mod="music">Müzik</button>
+        <button type="button" class="sk-tab" data-mod="cleaner">Süzgeç</button>
         <span class="sk-tab-acts" id="skTabActs" hidden>
           <button type="button" class="sk-tab-ico" id="skTabPop" title="${skL("Ayrı pencerede aç", "Open in separate window")}">↗</button>
           <button type="button" class="sk-tab-ico" id="skTabKill" title="${skL("Sekmeyi kapat (RAM boşalt)", "Close tab")}">✕</button>
@@ -233,7 +236,7 @@ function skBind() {
   });
   document.addEventListener("mousemove", (e) => SK.eye?.lookAt(e.clientX, e.clientY));
   // Tek pencere sekme yoneticisi (tembel yukleme + postMessage API koprusu)
-  const MOD_URL = { player: "player.html", studio: "studio.html", picture: "picture.html", reader: "reader.html" };
+  const MOD_URL = { player: "player.html", studio: "studio.html", picture: "picture.html", reader: "reader.html", games: "games.html", music: "music.html", cleaner: "cleaner.html" };
   let curMod = "home";
   const openTab = (mod) => {
     curMod = mod;
