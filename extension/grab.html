@@ -23,8 +23,10 @@
   button.sec { background: var(--card); color: #C4B5FD; border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 13px; }
   main { padding: 10px 22px 40px; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 6px 8px; border-bottom: 1px solid #1d1628; vertical-align: middle; }
+  td { padding: 7px 8px; border-bottom: 1px solid #1d1628; vertical-align: middle; cursor: pointer; }
   tr:hover td { background: #140f1c; }
+  tr.sel td { background: rgba(124, 58, 237, .18); }
+  td.kd { width: 28px; text-align: center; font-size: 15px; }
   td.nm { max-width: 0; width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   td.nm small { display: block; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
   td:first-child { width: 30px; }

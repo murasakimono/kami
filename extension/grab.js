@@ -13,7 +13,8 @@
     ["program", L("Program", "Program"), /^(exe|msi|apk|dmg|appimage|deb|rpm|msix|zipx)$/],
     ["torrent", "Torrent", /^(torrent)$/],
   ];
-  const S = { links: [], kind: "", sel: new Set(), page: "", title: "", tab: 0 };
+  const KIND_IC = { video: "🎬", audio: "🎵", archive: "📦", image: "🖼", doc: "📄", program: "⚙", torrent: "🧲", other: "🔗" };
+  const S = { links: [], kind: "", sel: new Set(), page: "", title: "", tab: 0, lastIdx: -1, cap: 300 };
 
   function info(l) {
     if (/^magnet:/i.test(l.url)) {
@@ -53,17 +54,44 @@
       .filter(([k]) => !k || counts[k]).map(([k, n]) => `<button class="chip ${S.kind === k ? "on" : ""}" data-k="${k}">${n}<b>${k ? counts[k] : S.links.length}</b></button>`).join("");
     const vis = visible();
     const tb = $("list"); tb.textContent = "";
-    for (const l of vis.slice(0, 2000)) {
+    const slice = vis.slice(0, S.cap);
+    const frag = document.createDocumentFragment();
+    slice.forEach((l, idx) => {
       const tr = document.createElement("tr");
+      if (S.sel.has(l.url)) tr.className = "sel";
       const c = document.createElement("input"); c.type = "checkbox"; c.checked = S.sel.has(l.url);
-      c.onchange = () => { c.checked ? S.sel.add(l.url) : S.sel.delete(l.url); count(); };
+      const toggle = (checked, shift) => {
+        if (shift && S.lastIdx >= 0) {
+          const a = Math.min(S.lastIdx, idx), b = Math.max(S.lastIdx, idx);
+          for (let k = a; k <= b; k++) {
+            const u = vis[k]?.url; if (!u) continue;
+            checked ? S.sel.add(u) : S.sel.delete(u);
+          }
+          render();
+        } else {
+          checked ? S.sel.add(l.url) : S.sel.delete(l.url);
+          tr.classList.toggle("sel", checked);
+          count();
+        }
+        S.lastIdx = idx;
+      };
+      c.onclick = (e) => { e.stopPropagation(); toggle(c.checked, e.shiftKey); };
       const td0 = document.createElement("td"); td0.appendChild(c);
+      const tdK = document.createElement("td"); tdK.className = "kd"; tdK.textContent = KIND_IC[l.i.kind] || "🔗";
       const td1 = document.createElement("td"); td1.className = "nm"; td1.textContent = l.i.name; const sm = document.createElement("small"); sm.textContent = l.url; td1.appendChild(sm);
       const td2 = document.createElement("td"); td2.className = "ext"; td2.textContent = l.i.ext ? "." + l.i.ext : "";
       const td3 = document.createElement("td"); td3.className = "host"; td3.textContent = l.i.host;
-      tr.append(td0, td1, td2, td3); tr.onclick = (e) => { if (e.target !== c) { c.checked = !c.checked; c.onchange(); } };
-      tb.appendChild(tr);
+      tr.append(td0, tdK, td1, td2, td3);
+      tr.onclick = (e) => { if (e.target === c) return; c.checked = !c.checked; toggle(c.checked, e.shiftKey); };
+      frag.appendChild(tr);
+    });
+    if (vis.length > S.cap) {
+      const more = document.createElement("tr");
+      more.innerHTML = `<td colspan="5" style="text-align:center;padding:12px"><button type="button" class="sec" id="grabMore">${L(`Daha fazla göster (${vis.length - S.cap} kaldı)`, `Show more (${vis.length - S.cap} left)`)}</button></td>`;
+      more.querySelector("#grabMore").onclick = () => { S.cap += 400; render(); };
+      frag.appendChild(more);
     }
+    tb.appendChild(frag);
     $("empty").hidden = vis.length > 0;
     count();
   }
