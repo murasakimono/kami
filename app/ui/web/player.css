@@ -464,3 +464,19 @@ body.pl-open #sunak { visibility: hidden; }
 #player .pl-wp.live { background: #FF4D6A; color: #fff; }
 #player .pl-wp svg { width: 18px; height: 18px; }
 #player .pl-wp em { font-style: normal; font-size: 10px; opacity: .8; }
+
+/* ---- v1.28 Player+ (temel; gorsel cila Antigravity) ---- */
+.pp-cast { position: absolute; right: 18px; top: 64px; z-index: 30; display: flex; gap: 6px; align-items: center; padding: 8px 10px;
+  background: rgba(13,10,20,.92); border: 1px solid rgba(139,92,246,.5); color: #EDE9F6; font: 12px "Chakra Petch", sans-serif; }
+.pp-cast button { background: #1E1630; color: #EDE9F6; border: 1px solid rgba(139,92,246,.35); padding: 4px 8px; cursor: pointer; }
+.pp-pick { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(4,3,8,.6); }
+.pp-pick > div { min-width: 300px; max-width: 460px; padding: 14px; background: #120E1C; border: 1px solid #7C3AED; display: grid; gap: 6px; color: #EDE9F6; }
+.pp-pick button { text-align: left; background: #1E1630; color: #EDE9F6; border: 1px solid rgba(139,92,246,.3); padding: 8px 10px; cursor: pointer; }
+.pp-info { display: flex; gap: 12px; margin: 8px 0 12px; }
+.pp-info img { width: 96px; border-radius: 4px; object-fit: cover; }
+.pp-info p { font-size: 12px; opacity: .8; line-height: 1.45; margin: 6px 0 0; max-height: 9em; overflow: auto; }
+.px-series.pp-poster { min-height: 150px; display: flex; flex-direction: column; justify-content: flex-end; }
+.pp-groups { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 8px; }
+.pp-groups button { background: #1E1630; color: #C4B5FD; border: 1px solid rgba(139,92,246,.25); padding: 3px 8px; font-size: 11px; cursor: pointer; }
+.pp-groups button.on { background: #6D28D9; color: #fff; }
+.pp-ch img { width: 28px; height: 28px; object-fit: contain; margin-right: 6px; }

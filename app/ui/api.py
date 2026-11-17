@@ -99,7 +99,7 @@ class Api(StudioMixin):
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
-        "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
+        "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "library_meta", "tmdb_set_key", "iptv_load", "iptv_epg", "cast_devices", "cast_play", "cast_control", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     }) | STUDIO_JOBS
 
@@ -1175,7 +1175,105 @@ class Api(StudioMixin):
         vid = mt.youtube_id(str(p), tags or {})
         if vid:
             out += mt.sponsorblock(vid, self._mt_cache())
+        if info.get("series"):   # kullanicinin ogrettigi intro/outro (her dizi, anime olmasa da)
+            try:
+                from app.core import player_plus as PP
+                mine = PP.find_intro(str(p), info["series"])
+                for m in mine:
+                    if m.get("from_end") and duration:
+                        span = m["end"] - m["start"]
+                        m["start"], m["end"] = max(0.0, float(duration) - span - 2), float(duration)
+                out = [o for o in out if not any(o.get("type") == m["type"] for m in mine)] + mine
+            except Exception:
+                log.exception("ogrenilmis intro")
         return {"ok": True, "segments": out, "series": info.get("series", ""), "episode": info.get("episode", 0)}
+
+    # ---------- v1.28 Player+: bilgi, intro ogret, IPTV, TV'ye yayin ----------
+    def _tmdb_store(self):
+        from app import paths
+        from app.core.debrid import TokenStore
+        return TokenStore(paths.DATA_DIR / "tmdb_key.bin")
+
+    def tmdb_set_key(self, key: str) -> dict[str, Any]:
+        import re as _re
+        import requests
+        key = str(key or "").strip()
+        if not _re.fullmatch(r"[A-Za-z0-9]{20,64}", key):
+            return {"ok": False, "error": "bad_key"}
+        try:
+            r = requests.get("https://api.themoviedb.org/3/configuration", params={"api_key": key}, timeout=12)
+        except requests.RequestException:
+            return {"ok": False, "error": "network"}
+        if r.status_code != 200:
+            return {"ok": False, "error": "bad_key"}
+        self._tmdb_store().save(key)
+        return {"ok": True}
+
+    def library_meta(self, names: list | None = None, movies: list | None = None) -> dict[str, Any]:
+        """Dizi (TVmaze) ve film (TMDB, anahtar varsa) bilgisi: afis, ozet, yil, tur, puan, bolum adlari."""
+        from app.core import player_plus as PP
+        out: dict[str, Any] = {"series": {}, "movies": {}}
+        for n in (names or [])[:60]:
+            i = PP.series_info(str(n))
+            if i:
+                out["series"][str(n)] = {k: v for k, v in i.items() if k != "_t"}
+        key = self._tmdb_store().load() if movies else ""
+        for stem in (movies or [])[:60]:
+            t, y = PP.guess_movie(str(stem))
+            i = PP.movie_info(t, y, key) if t else None
+            if i:
+                out["movies"][str(stem)] = {k: v for k, v in i.items() if k != "_t"}
+        out["tmdb"] = bool(key) if movies else None
+        return out
+
+    def player_intro_learn(self, path: str, start: float, end: float, kind: str = "intro") -> dict[str, Any]:
+        from pathlib import Path
+        from app.core import player_plus as PP
+        from app.core.library import parse_name
+        info = parse_name(Path(str(path)).stem)
+        if not info.get("series"):
+            return {"ok": False, "error": "dizi_degil"}
+        return PP.learn_intro(str(path), info["series"], float(start), float(end), "outro" if kind == "outro" else "intro")
+
+    def iptv_load(self, src: str) -> dict[str, Any]:
+        from app.core import player_plus as PP
+        res = PP.load_playlist(str(src))
+        if res.get("ok"):
+            lists = self._manager.settings.get("iptv_lists") or []
+            if src not in lists:
+                self._manager.settings.set("iptv_lists", ([src] + lists)[:10])
+        return res
+
+    def iptv_epg(self, url: str, ids: list | None = None) -> dict[str, Any]:
+        from app.core import player_plus as PP
+        return PP.load_epg(str(url), [str(x) for x in ids or []])
+
+    def iptv_lists(self) -> list:
+        return list(self._manager.settings.get("iptv_lists") or [])
+
+    def cast_devices(self) -> dict[str, Any]:
+        from app.core import player_plus as PP
+        devs = PP.discover(3.0)
+        self._cast_devs = {d["id"]: d for d in devs}
+        return {"ok": True, "devices": [{"id": d["id"], "name": d["name"], "model": d["model"]} for d in devs]}
+
+    def cast_play(self, dev_id: str, path: str, start: float = 0.0) -> dict[str, Any]:
+        from app.core import player_plus as PP
+        d = (getattr(self, "_cast_devs", {}) or {}).get(str(dev_id))
+        if not d:
+            return {"ok": False, "error": "cihaz_yok"}
+        import os as _os
+        if not _os.path.isfile(str(path)):
+            return {"ok": False, "error": "yalniz_yerel_dosya"}
+        self._cast_cur = d
+        return PP.cast_play(d, str(path), float(start or 0))
+
+    def cast_control(self, action: str, value: float = 0) -> dict[str, Any]:
+        from app.core import player_plus as PP
+        d = getattr(self, "_cast_cur", None)
+        if not d:
+            return {"ok": False, "error": "yayin_yok"}
+        return PP.cast_control(d, str(action), float(value or 0))
 
     def library_posters(self, names: list | None = None) -> dict[str, Any]:
         from app.core import mediatools as mt
