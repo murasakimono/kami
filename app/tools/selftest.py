@@ -85,10 +85,16 @@ def test_kasa(_audio: str) -> dict:
     return {"ok": True, "device": "cpu", "providers": ort.get_available_providers()[:3]}
 
 
+def test_track(_audio: str) -> dict:
+    import cv2
+    ok = any(getattr(m, "TrackerCSRT_create", None) for m in (getattr(cv2, "legacy", None), cv2) if m)
+    return {"ok": True, "device": "cpu", "csrt": bool(ok), "cv": cv2.__version__}
+
+
 def main(argv: list[str]) -> int:
     name, folder = argv[:2]
-    if name in ("iopaint", "kasa"):
-        res = (test_iopaint if name == "iopaint" else test_kasa)("")
+    if name in ("iopaint", "kasa", "track"):
+        res = {"iopaint": test_iopaint, "kasa": test_kasa, "track": test_track}[name]("")
         emit(**res)
         return 0 if res.get("ok") else 1
     audio = make_audio(folder)
