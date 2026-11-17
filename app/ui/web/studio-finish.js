@@ -19,7 +19,7 @@
 
   const lastOut = () => (window.DV?.queue || []).find(q => q.state === "done")?.out || "";
   const pickOne = async () => (await api.studio_pick_media())?.[0] || "";
-  const tl = t => (t == null ? "" : `<a href="#" data-seek="${t}">${fmt(+t)}</a>`);
+  const tl = t => (t == null ? "" : `<a href="#" class="sf-seek" data-seek="${t}">${fmt(+t)}</a>`);
 
   async function sjob(r, label) {
     if (r?.error === "need_tool") {
@@ -51,12 +51,17 @@
     const lv = { err: "⛔", warn: "⚠️", info: "ℹ️" };
     const all = [...(r.issues || []), ...(r.edit || [])];
     const L = r.loudness || {};
-    const v = await modal(`<h3>Kontrol sonucu</h3>
-      ${r.duration ? `<div class="hint">${fmt(r.duration)} · Ses ${L.i != null ? L.i.toFixed(1) + " LUFS" : "—"} · Tepe ${L.tp != null ? L.tp.toFixed(1) + " dBTP" : "—"} · Hedef ${r.target?.lufs ?? ""} LUFS</div>` : ""}
-      ${all.length ? `<div class="qcl">${all.map(i => `<div>${lv[i.level] || "•"} ${esc(i.msg)} ${tl(i.t)}</div>`).join("")}</div>` : `<div class="hint">Sorun bulunmadı ✔</div>`}
-      ${r.listen?.length ? `<div class="sec">Dinlemen gereken anlar</div>${r.listen.map(x => `<div>${tl(x.t)} — ${esc(x.why)}</div>`).join("")}` : ""}
-      <div class="row">${all.some(i => i.fix === "poster") && path ? `<button class="tb" data-v="poster">Kapak karesini göm</button>` : ""}
-      ${all.some(i => i.fix === "loudness") ? `<button class="tb" data-v="loud">Ses hedefini ${r.target?.lufs} LUFS yap</button>` : ""}
+    const v = await modal(`<h3>✅ Yayın Öncesi Kontrol</h3>
+      ${r.duration ? `<div class="sf-stats">
+        <div class="sf-stat"><small>Süre</small><b>${fmt(r.duration)}</b></div>
+        <div class="sf-stat"><small>Ses (LUFS)</small><b>${L.i != null ? L.i.toFixed(1) : "—"}</b></div>
+        <div class="sf-stat"><small>Tepe (dBTP)</small><b>${L.tp != null ? L.tp.toFixed(1) : "—"}</b></div>
+        <div class="sf-stat"><small>Hedef</small><b>${r.target?.lufs ?? "—"} LUFS</b></div>
+      </div>` : ""}
+      ${all.length ? `<div class="sf-list">${all.map(i => `<div class="sf-item ${esc(i.level || "info")}"><span>${lv[i.level] || "•"}</span><span style="flex:1">${esc(i.msg)}</span>${tl(i.t)}</div>`).join("")}</div>` : `<div class="sf-ok">Sorun bulunmadı — yayına hazır ✔</div>`}
+      ${r.listen?.length ? `<div class="sec">Dinlemen gereken 5 an</div><div class="sf-list">${r.listen.map(x => `<div class="sf-item info"><span style="flex:1">${esc(x.why)}</span>${tl(x.t)}</div>`).join("")}</div>` : ""}
+      <div class="row">${all.some(i => i.fix === "poster") && path ? `<button class="tb" data-v="poster">🖼 Kapak karesini göm</button>` : ""}
+      ${all.some(i => i.fix === "loudness") ? `<button class="tb" data-v="loud">🔊 Hedefi ${r.target?.lufs} LUFS yap</button>` : ""}
       <button class="tb pri" data-v="no">Tamam</button></div>`, { init: m => m.addEventListener("click", e => { const a = e.target.closest("[data-seek]"); if (a) { e.preventDefault(); seek(+a.dataset.seek); } }) });
     if (v === "poster") return poster(null, path);
     if (v === "loud") { snap(); ST.p.master = { ...(ST.p.master || {}), lufs: r.target.lufs }; changed(); toast("Ana çıkış hedefi ayarlandı; yeniden dışa aktar"); }
@@ -81,8 +86,8 @@
     const words = caps.flatMap(tc => tc.words.map(w => ({ w: w.w, s: tc.start + w.s, e: tc.start + w.e }))).filter(w => w.s >= c.start && w.e <= c1).sort((a, b) => a.s - b.s);
     const sug = await api.studio_speech_suggest(words);
     if (!sug?.length) { toast("Temizlenecek bir şey bulunamadı"); return; }
-    const picked = await modal(`<h3>Konuşma temizliği</h3><div class="hint">İşaretliler kesilir. İşaretsiz gelenler ifadenin ortasında: kesmek komşu kelimeyi kırpabilir, önce dinle.</div>
-      <div class="qcl" style="max-height:50vh;overflow:auto">${sug.map((s, i) => `<label style="display:block"><input type="checkbox" data-i="${i}" ${s.safe ? "checked" : ""}> ${tl(s.s)} <b>${esc(s.label)}</b> “${esc(s.text)}”</label>`).join("")}</div>
+    const picked = await modal(`<h3>🧹 Konuşma Temizliği</h3><div class="hint">İşaretliler kesilir. İşaretsizler ifadenin ortasında: önce dinleyip kontrol et.</div>
+      <div class="sf-list">${sug.map((s, i) => `<label class="sf-item sf-chk"><input type="checkbox" data-i="${i}" ${s.safe ? "checked" : ""}><b style="color:#C4B5FD">${esc(s.label)}</b><span style="flex:1;color:#A39BB5">“${esc(s.text)}”</span>${tl(s.s)}</label>`).join("")}</div>
       <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Seçilenleri kes</button></div>`,
       { init: m => m.addEventListener("click", e => { const a = e.target.closest("[data-seek]"); if (a) { e.preventDefault(); seek(+a.dataset.seek); } }),
         collect: () => [...document.querySelectorAll("#modal [data-i]:checked")].map(x => sug[+x.dataset.i]) });
@@ -120,11 +125,17 @@
     const mine = ST.p.clips.filter(x => x.track === "v1");
     const myAvg = mine.length ? mine.reduce((a, x) => a + x.dur, 0) / mine.length : 0;
     const vids = selClips().filter(x => clipKind(x) === "video" || clipKind(x) === "image");
-    const v = await modal(`<h3>Referans: ${esc(ref.split(/[\\/]/).pop())}</h3>
-      <div class="hint">Çekim ortalaması <b>${pc.avg} sn</b> (medyan ${pc.median}, dakikada ${pc.per_min} kesim, ilk kesim ${pc.first_cut} sn, en uzun ${pc.max} sn)${myAvg ? ` · senin projen ${myAvg.toFixed(2)} sn` : ""}<br>
-      Ses ${p.lufs != null ? p.lufs.toFixed(1) + " LUFS" : "—"} · ${p.bpm ? Math.round(p.bpm) + " BPM" : "BPM yok"} · ${p.vertical ? "dikey" : "yatay"} · doygunluk %${Math.round((p.color?.sat || 0) * 100)}</div>
-      <div class="row">${vids.length ? `<button class="tb pri" data-v="color">Rengini seçili ${vids.length} klibe uygula</button>` : `<span class="hint">Rengini uygulamak için önce klipleri seç.</span>`}
-      ${p.lufs != null ? `<button class="tb" data-v="loud">Ses hedefini ${Math.round(Math.max(-23, Math.min(-9, p.lufs)))} LUFS yap</button>` : ""}
+    const v = await modal(`<h3>🎯 Referans: ${esc(ref.split(/[\\/]/).pop())}</h3>
+      <div class="sf-stats">
+        <div class="sf-stat"><small>Kesim Ort.</small><b>${pc.avg ?? "—"} sn</b></div>
+        <div class="sf-stat"><small>Dakikada</small><b>${pc.per_min ?? "—"} kesim</b></div>
+        <div class="sf-stat"><small>Ses (LUFS)</small><b>${p.lufs != null ? p.lufs.toFixed(1) : "—"}</b></div>
+        <div class="sf-stat"><small>Tempo</small><b>${p.bpm ? Math.round(p.bpm) + " BPM" : "—"}</b></div>
+        <div class="sf-stat"><small>Doygunluk</small><b>%${Math.round((p.color?.sat || 0) * 100)}</b></div>
+      </div>
+      <div class="hint">${myAvg ? `Senin projenin çekim ortalaması: <b>${myAvg.toFixed(2)} sn</b> · ` : ""}${p.vertical ? "Dikey (9:16)" : "Yatay (16:9)"}</div>
+      <div class="row">${vids.length ? `<button class="tb pri" data-v="color">🎨 Rengini seçili ${vids.length} klibe uygula</button>` : `<span class="hint">Rengini uygulamak için önce klipleri seç.</span>`}
+      ${p.lufs != null ? `<button class="tb" data-v="loud">🔊 Ses hedefini ${Math.round(Math.max(-23, Math.min(-9, p.lufs)))} LUFS yap</button>` : ""}
       <button class="tb" data-v="no">Kapat</button></div>`);
     if (v === "loud") { snap(); ST.p.master = { ...(ST.p.master || {}), lufs: Math.round(Math.max(-23, Math.min(-9, p.lufs))) }; changed(); toast("Ana çıkış hedefi ayarlandı"); }
     if (v === "color") {
@@ -183,15 +194,15 @@
       if (!w) return;
       if (w === "off") { snap(); delete o.trackPath; if (o._tracked) { delete o.kf; delete o._tracked; } changed(); toast("Takip kaldırıldı"); return; }
     }
-    const v = ST.p.clips.filter(x => clipKind(x) === "video" && x.start <= ST.t && x.start + x.dur > ST.t && x !== o).sort((a, b) => (a.track > b.track ? 1 : -1))[0];
+    const v = ST.p.clips.filter(x => clipKind(x) === "video" && x.start <= ST.t && x.start + x.dur > ST.t && x !== o).sort((a, b) => (parseInt(String(b.track).slice(1), 10) || 0) - (parseInt(String(a.track).slice(1), 10) || 0))[0];
     if (!v) { toast("Oynatma kafasının altında video yok"); return; }
     const sp = v.speed || 1, srcT = (v.in || 0) + (ST.t - v.start) * sp;
     const end = Math.min(o.start + o.dur, v.start + v.dur), dur = Math.max(.2, (end - ST.t) * sp);
     const fr = await api.studio_src_frame(assetOf(v).path, srcT);
     if (!fr?.ok) { toast("Kare alınamadı"); return; }
     let box = null;
-    const ok = await modal(`<h3>Takip edilecek nesne</h3><div class="hint">Nesnenin etrafına kutu çiz (sürükle). ${fmt(ST.t)} → ${fmt(end)} arası izlenir.</div>
-      <div style="position:relative;display:inline-block;cursor:crosshair;user-select:none" id="tkW"><img src="${fr.url}" style="max-width:min(820px,80vw);max-height:60vh;display:block" draggable="false"><i id="tkB" style="position:absolute;border:2px solid #4cf;box-shadow:0 0 0 9999px #0006;display:none"></i></div>
+    const ok = await modal(`<h3>📍 Takip Edilecek Nesne</h3><div class="hint">Nesnenin etrafına kutu çiz (sürükle). ${fmt(ST.t)} → ${fmt(end)} arası izlenir.</div>
+      <div class="sf-tk-wrap" id="tkW"><img src="${fr.url}" draggable="false"><i id="tkB" class="sf-tk-box"></i></div>
       <div class="row"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">İzle</button></div>`, {
       init: m => {
         const w = $("#tkW", m), b = $("#tkB", m); let s = null;

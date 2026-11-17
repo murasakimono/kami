@@ -170,6 +170,16 @@ class StudioMixin:
     def studio_beats(self, path: str) -> dict[str, Any]:
         return self._st().beats(str(path))
 
+    def studio_split_audio_channels(self, path: str) -> dict[str, Any]:
+        return self._st().split_audio_channels(str(path))
+
+    def studio_make_proxy(self, path: str, height: int = 720) -> dict[str, Any]:
+        st = self._st()
+        r = st.make_proxy(str(path), int(height))
+        if r.get("ok") and r.get("path"):
+            r["url"] = self._media_url(r["path"])
+        return r
+
     def studio_silences(self, path: str, start: float, dur: float, db: float = -35, min_len: float = 0.45) -> list:
         return self._st().silences(str(path), float(start), float(dur), float(db), float(min_len))
 

@@ -131,8 +131,12 @@ function clipMenu(c, e) {
     "-",
   ];
   if (k === "video" && a?.audio) items.push({ ic: "♪", l: c.detached ? "Ses zaten ayrı" : "Sesi ayrı ize ayır", f: () => detachAudio(), dis: !!c.detached || (c.vol === 0) });
+  if ((k === "video" || k === "audio") && a?.audio) items.push({ ic: "🎛", l: "Ses kanallarını ayır (Oyun/Mik)", f: () => splitAudioChannels(c) });
   if (k === "video" || k === "audio") items.push({ ic: "⛓", l: "Bağı kaldır (J/L Cut)", f: () => window.unlinkClip?.(c) });
-  if (k === "video") items.push({ ic: "❄", l: "Kareyi dondur", k: "Shift+F", f: () => freezeFrame?.() }, { ic: "✂", l: n > 1 ? `Arka planı sil (${n} klip)` : "Arka planı sil (bu klip)", f: () => matteSel() });
+  if (k === "video") items.push({ ic: "❄", l: "Kareyi dondur", k: "Shift+F", f: () => freezeFrame?.() },
+    { ic: "⏳", l: "\"BİRAZDAN..\" Blur Intro Yap", f: () => birazdanBlurIntro(c) },
+    { ic: "⚡", l: a?.proxyUrl ? "Proxy açık (Orijinale dön)" : "4K Proxy Oluştur (Akıcı Önizleme)", f: () => toggleProxy(c) },
+    { ic: "✂", l: n > 1 ? `Arka planı sil (${n} klip)` : "Arka planı sil (bu klip)", f: () => matteSel() });
   if (vis) items.push({ ic: "✦", l: "Animasyon ekle…", f: () => { animTab.clip = "in"; renderInsp(); $("#insp .atabs")?.scrollIntoView({ block: "center" }); } },
     { ic: "◐", l: "Renk sayfasında düzenle", f: () => setPage("color") });
   if (k === "text" && !c.subscribe && !c.graphic) items.push({ ic: "T", l: "Animasyon seç…", f: () => { animTab.text = "in"; renderInsp(); $("#insp .atabs")?.scrollIntoView({ block: "center" }); } });
@@ -335,6 +339,68 @@ function detachAudio() {
   ST.sel = new Set(nw); changed(); toast(vs.length > 1 ? `${vs.length} klibin sesi ayrıldı` : "Ses ayrı ize alındı");
 }
 window.detachAudio = detachAudio;
+
+async function splitAudioChannels(c) {
+  const a = assetOf(c); if (!a?.path) return;
+  busy("Ses kanalları ayrılıyor…");
+  let r;
+  try { r = await api.studio_split_audio_channels(a.path); } finally { busy(null); }
+  if (!r?.ok || !r.paths?.length) { toast(r?.error === "single_mono_stream" ? "Bu dosyada tek mono ses kanalı var" : "Kanallar ayrılamadı"); return; }
+  const aids = await importPaths(r.paths);
+  if (!aids.length) return;
+  snap();
+  const nw = [];
+  aids.forEach((aid, idx) => {
+    const lbl = r.labels?.[idx] || `Kanal ${idx + 1}`;
+    let tk = ST.p.tracks.find(t => t.kind === "audio" && !ST.p.clips.some(o => o.track === t.id && o.start < c.start + c.dur && o.start + o.dur > c.start));
+    if (!tk) { const id = addTrack("audio", lbl); tk = ST.p.tracks.find(t => t.id === id); }
+    const ac = addClip({ asset: aid, track: tk.id, start: c.start, dur: c.dur, in: c.in || 0, speed: c.speed, vol: c.vol ?? 1, link: c.id });
+    nw.push(ac.id);
+  });
+  c.vol = 0; c.detached = nw[0];
+  ST.sel = new Set(nw); changed();
+  toast(`${nw.length} ses kanalı ayrı izlere eklendi (${r.mode === "streams" ? "çoklu iz" : "Sol/Sağ"})`);
+}
+window.splitAudioChannels = splitAudioChannels;
+
+async function birazdanBlurIntro(c) {
+  if (!c) return;
+  snap();
+  c.adj = { ...(c.adj || {}), blur: Math.max(16, c.adj?.blur || 0), bri: c.adj?.bri ?? -10 };
+  const txt = placeAt({
+    text: "BİRAZDAN..", dur: Math.min(c.dur, 3.0),
+    style: { font: "Anton", size: 11, anim: "pop", pos: "custom", x: 0.5, y: 0.22, color: "#FFFFFF", outline: 8, outlineColor: "#000000", shadow: 4 },
+  }, "text", c.start);
+  try {
+    const sfx = await api.studio_sfx("whoosh");
+    const who = Array.isArray(sfx) ? sfx.find(x => x.id === "whoosh" || x.name === "Whoosh") : null;
+    if (who?.path) {
+      const aids = await importPaths([who.path]);
+      if (aids[0]) placeAt({ asset: aids[0], dur: Math.min(1.5, c.dur), in: 0, vol: 0.9 }, "audio", c.start);
+    }
+  } catch { }
+  ST.sel = new Set([c.id, txt.id]);
+  changed();
+  toast("\"BİRAZDAN..\" blur intro uygulandı");
+}
+window.birazdanBlurIntro = birazdanBlurIntro;
+
+async function toggleProxy(c) {
+  const a = assetOf(c); if (!a?.path) return;
+  if (a.proxyUrl) {
+    delete a.proxyUrl;
+    dropEl(c.id); draw(); toast("Orijinal kalite önizlemeye dönüldü");
+    return;
+  }
+  busy("Akıcı 720p proxy hazırlanıyor…");
+  let r;
+  try { r = await api.studio_make_proxy(a.path, 720); } finally { busy(null); }
+  if (!r?.ok || !r.url) { toast("Proxy oluşturulamadı"); return; }
+  a.proxyUrl = r.url;
+  dropEl(c.id); draw();
+  toast("Proxy aktif (dışa aktarım yine orijinalden yapılır)");
+}
+window.toggleProxy = toggleProxy;
 
 // ---------------------------------------------------------------- arka plan silme: secili klip(ler)
 async function matteSel() {

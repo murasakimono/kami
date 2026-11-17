@@ -388,6 +388,68 @@ class Studio:
                 "dur": round(dur, 3), "w": int(i.get("width") or 0), "h": int(i.get("height") or 0),
                 "audio": bool(i.get("audio")) and kind != "image", "name": Path(path).stem, "vcodec": i.get("vcodec", "")}
 
+    def split_audio_channels(self, path: str) -> dict[str, Any]:
+        """Coklu ses izini (OBS oyun+mikrofon) veya tek stereo izi (Sol/Sag) ayri WAV dosyalarina boler."""
+        if not os.path.isfile(path):
+            return {"ok": False, "error": "not_found"}
+        pr = subprocess.run(
+            [self.ffprobe(), "-v", "quiet", "-print_format", "json", "-show_streams", "-select_streams", "a", path],
+            capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW,
+        )
+        try:
+            streams = json.loads(pr.stdout or "{}").get("streams") or []
+        except Exception:
+            streams = []
+        if not streams:
+            return {"ok": False, "error": "no_audio_streams"}
+        out_dir = media_dir() / "Kanallar"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stem = re.sub(r"[^\w\-]+", "_", Path(path).stem)[:40]
+        paths: list[str] = []
+        labels: list[str] = []
+        if len(streams) >= 2:
+            for idx, st in enumerate(streams):
+                tags = st.get("tags") or {}
+                raw_lbl = str(tags.get("title") or tags.get("handler_name") or f"Kanal {idx + 1}").strip()
+                safe = re.sub(r"[^\w\-]+", "_", raw_lbl)[:24] or f"k{idx + 1}"
+                dst = out_dir / f"{stem}_a{idx + 1}_{safe}.wav"
+                self._run(["-y", "-loglevel", "error", "-i", path, "-map", f"0:a:{idx}", "-vn", "-ar", "48000", "-ac", "2", str(dst)], timeout=600)
+                if dst.is_file():
+                    paths.append(str(dst))
+                    labels.append(raw_lbl if raw_lbl != f"Kanal {idx + 1}" else f"Kanal {idx + 1}")
+            mode = "streams"
+        else:
+            ch = int(streams[0].get("channels") or 1)
+            if ch < 2:
+                return {"ok": False, "error": "single_mono_stream"}
+            for side, flt, lbl in (("sol", "pan=stereo|c0=c0|c1=c0", "Sol Kanal"), ("sag", "pan=stereo|c0=c1|c1=c1", "Sağ Kanal")):
+                dst = out_dir / f"{stem}_{side}.wav"
+                self._run(["-y", "-loglevel", "error", "-i", path, "-map", "0:a:0", "-vn", "-af", flt, "-ar", "48000", str(dst)], timeout=600)
+                if dst.is_file():
+                    paths.append(str(dst))
+                    labels.append(lbl)
+            mode = "stereo_lr"
+        return {"ok": bool(paths), "mode": mode, "paths": paths, "labels": labels}
+
+    def make_proxy(self, path: str, height: int = 720) -> dict[str, Any]:
+        """4K/agir video klibi icin hafif onizleme vekili (720p, hizli keyframe) uretir; export orijinali kullanir."""
+        if not os.path.isfile(path):
+            return {"ok": False, "error": "not_found"}
+        out_dir = media_dir() / "Proxy"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        h = hashlib.sha1(f"{path}:{os.path.getmtime(path)}:{height}".encode()).hexdigest()[:12]
+        dst = out_dir / f"{Path(path).stem[:32]}_{h}_{height}p.mp4"
+        if not dst.is_file():
+            self._run([
+                "-y", "-loglevel", "error", "-i", path,
+                "-vf", f"scale=-2:min({int(height)},ih)",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-g", "15",
+                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(dst),
+            ], timeout=3600)
+        if not dst.is_file():
+            return {"ok": False, "error": "proxy_failed"}
+        return {"ok": True, "path": str(dst)}
+
     def _pcm(self, path: str, rate: int, start: float = 0.0, dur: float = 0.0, filt: str = "") -> memoryview:
         args = []
         if start:
@@ -2394,18 +2456,51 @@ def sfx_dir() -> Path:
     return d
 
 
+_SFX_VERSION = "2.0-cc0"
+
+
+def _sfx_asset(key: str) -> Path | None:
+    import sys
+    for base in (Path(__file__).resolve().parent.parent / "assets" / "sfx",
+                 Path(getattr(sys, "_MEIPASS", "")) / "app" / "assets" / "sfx"):
+        p = base / f"{key}.ogg"
+        if p.is_file():
+            return p
+    return None
+
+
 def ensure_sfx(ffmpeg: str, name: str = "") -> dict[str, str]:
     """Eksik efektleri uretir; {ad: yol}."""
+    d = sfx_dir()
+    ver_f = d / ".sfx_version"
+    try:
+        cur_ver = ver_f.read_text(encoding="utf-8").strip() if ver_f.is_file() else ""
+    except OSError:
+        cur_ver = ""
+    if cur_ver != _SFX_VERSION and ffmpeg:
+        for old in d.glob("*.wav"):
+            old.unlink(missing_ok=True)
+        try:
+            ver_f.write_text(_SFX_VERSION, encoding="utf-8")
+        except OSError:
+            pass
     out = {}
     for key, (expr, label) in SFX.items():
         if name and key != name:
             continue
         safe_lbl = re.sub(r'[<>:"/\\|?*]+', "-", label).strip() or key
-        f = sfx_dir() / f"{safe_lbl}.wav"
+        f = d / f"{safe_lbl}.wav"
         if not f.is_file() and ffmpeg:
-            subprocess.run([ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-f", "lavfi", "-i", expr,
-                            "-af", "aformat=channel_layouts=stereo,aresample=48000,afade=t=out:st=0:d=0.02:curve=nofade,alimiter=limit=0.95",
-                            "-ar", "48000", str(f)], capture_output=True, timeout=60, creationflags=NO_WINDOW)
+            ogg = _sfx_asset(key)
+            if ogg:
+                cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-i", str(ogg),
+                       "-af", "aformat=channel_layouts=stereo,aresample=48000,alimiter=limit=0.95",
+                       "-ar", "48000", str(f)]
+            else:
+                cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-f", "lavfi", "-i", expr,
+                       "-af", "aformat=channel_layouts=stereo,aresample=48000,afade=t=out:st=0:d=0.02:curve=nofade,alimiter=limit=0.95",
+                       "-ar", "48000", str(f)]
+            subprocess.run(cmd, capture_output=True, timeout=60, creationflags=NO_WINDOW)
         if f.is_file():
             out[key] = str(f)
     return out

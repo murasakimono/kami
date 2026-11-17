@@ -266,8 +266,7 @@ pb.addEventListener("click", async e => {
     const ids = await importPaths([r.path]);
     const aid = ids[0]; if (!aid) return;
     const a = ST.p.assets[aid]; snap();
-    const ov = it.greenscreen ? ST.p.tracks.find(x => x.id === "v2") : null;
-    const c = placeAt({ asset: aid, dur: a.dur || 5, in: 0, fit: it.greenscreen ? "contain" : "cover", scale: it.greenscreen ? 0.65 : 1 }, ov ? "v2" : "video", ST.t);
+    const c = placeAt({ asset: aid, dur: a.dur || 5, in: 0, fit: it.greenscreen ? "contain" : "cover", scale: it.greenscreen ? 0.65 : 1 }, "video", ST.t, it.greenscreen ? "v2" : null);
     if (it.greenscreen) { c.key = { on: true, color: "#00ff00", sim: 0.25, smooth: 0.08 }; }
     ST.sel = new Set([c.id]); changed();
     toast(it.greenscreen ? "Eklendi + yeşil ekran anahtarı açıldı" : "Meme klibi eklendi");

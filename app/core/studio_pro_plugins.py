@@ -113,7 +113,9 @@ def detect_audio_beats(ffmpeg_bin: str, media_path: str, min_gap_s: float = 0.24
     std_flux = float(np.std(flux))
     thresh = local_mean * float(sensitivity) + std_flux * 0.45
 
-    min_gap_frames = max(1, int(round((min_gap_s * 1000.0) / hop_ms)))
+    total_dur = len(samples) / sr
+    eff_gap = max(float(min_gap_s), total_dur / max(1, max_beats)) if total_dur > 120 and min_gap_s < 1.0 else float(min_gap_s)
+    min_gap_frames = max(1, int(round((eff_gap * 1000.0) / hop_ms)))
     beats: list[float] = []
     last_idx = -min_gap_frames
     for i in range(1, n_frames - 1):

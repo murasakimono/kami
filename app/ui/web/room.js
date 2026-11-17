@@ -800,21 +800,34 @@ async function audioTest() {
 // ---------------------------------------------------------------- ses panosu (Kami'nin yerlesik meme/oyun efektleri)
 const SB = { list: null, buf: new Map(), lastSend: 0, recv: new Map() };
 async function sbLoad() {
-  if (SB.list) return SB.list;
-  try { SB.list = (await (await fetch(S.core.url("sb"), { cache: "no-store" })).json()).sounds || []; } catch { SB.list = []; }
-  return SB.list;
+  if (Array.isArray(SB.list) && SB.list.length) return SB.list;
+  if (!S.core) return null;
+  try {
+    const res = await fetch(S.core.url("sb"), { cache: "no-store" });
+    if (!res.ok) return null;
+    const sounds = (await res.json()).sounds || [];
+    if (sounds.length) SB.list = sounds;
+    return sounds;
+  } catch {
+    return null;
+  }
 }
 async function sbBuffer(id) {
   if (SB.buf.has(id)) return SB.buf.get(id);
+  if (!S.core || !S.ctx) return null;
   const p = fetch(S.core.url("sb/" + encodeURIComponent(id))).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
     .then((ab) => S.ctx.decodeAudioData(ab)).catch(() => { SB.buf.delete(id); return null; });
   SB.buf.set(id, p);
   return p;
 }
 async function sbPlay(id) {
-  if (S.deaf || !S.ctx) return;
-  const buf = await sbBuffer(id); if (!buf) return;
+  if (S.deaf || !S.core) return;
+  if (!S.ctx) {
+    try { const a = new Audio(S.core.url("sb/" + encodeURIComponent(id))); a.volume = PREF.sbVol ?? 0.6; a.play().catch(() => {}); } catch { /* yok */ }
+    return;
+  }
   try { await S.ctx.resume(); } catch { /* yok */ }
+  const buf = await sbBuffer(id); if (!buf) return;
   const src = S.ctx.createBufferSource(), g = S.ctx.createGain();
   g.gain.value = PREF.sbVol ?? 0.6; src.buffer = buf; src.connect(g); g.connect(S.ctx.destination); src.start();
 }
@@ -841,7 +854,9 @@ function sbIn(from, m) {
   sbPlay(m.id);
 }
 async function sbRender() {
-  const list = await sbLoad(), q = ($("sbFind").value || "").toLowerCase();
+  const list = await sbLoad();
+  if (!list) { $("sbList").innerHTML = `<p class="hint">Önce odaya bağlan.</p>`; return; }
+  const q = ($("sbFind").value || "").toLowerCase();
   const groups = {};
   for (const x of list) if (!q || x.label.toLowerCase().includes(q)) (groups[x.cat] ||= []).push(x);
   $("sbList").innerHTML = Object.entries(groups).map(([c, xs]) => `<h4>${esc(c)}</h4><div class="g">${xs.map((x) => `<button data-sb="${esc(x.id)}">${esc(x.label)}</button>`).join("")}</div>`).join("")

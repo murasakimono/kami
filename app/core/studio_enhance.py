@@ -115,12 +115,14 @@ def run(job: dict, ffmpeg: str, kind: str, path: str, start: float, dur: float, 
         fout.mkdir()
         fps = probe_fps(ffmpeg, path)
         job["line"] = "Kareler çıkarılıyor"
-        vf = []
+        vf = [f"fps={fps:.4f}"]
         if kind == "upscale":   # 4K'yi asmasin: kaynak buyukse once kucult
             sc = 4 if int(opts.get("scale", 2)) == 4 else 2
             vf.append(f"scale='min(iw,{3840 // sc})':-2")
+        if dur * fps > 4500:
+            raise RuntimeError("Klip çok uzun (>4500 kare); önce kısa bir kesite böl.")
         cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", path,
-               *(["-vf", ",".join(vf)] if vf else []), "-fps_mode", "passthrough", str(fin / "%08d.png")]
+               "-vf", ",".join(vf), "-fps_mode", "cfr", str(fin / "%08d.png")]
         subprocess.run(cmd, capture_output=True, timeout=3600, creationflags=NO_WINDOW, check=True)
         n_in = _count(fin)
         if not n_in:

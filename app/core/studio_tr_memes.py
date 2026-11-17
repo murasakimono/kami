@@ -241,9 +241,34 @@ TEMPLATES_TR_MEME: list[dict] = [
             {"t": 0.0, "sfx": "vine-boom"},
         ],
     },
+    {
+        "id": "roblox-16x9-hook",
+        "group": "Oyun & meme",
+        "name": "🎮 Roblox 16:9 Yatay Kurgu (AlpGDK Tarzı)",
+        "items": [
+            {"t": 0.0, "text": "BİRAZDAN..", "dur": 2.4,
+             "style": {"font": "Anton", "size": 10.5, "anim": "pop", "pos": "custom", "x": 0.5, "y": 0.22, "color": "#FFFFFF", "outline": 8, "outlineColor": "#000000"}},
+            {"t": 0.0, "sfx": "whoosh"},
+            {"t": 2.4, "text": "İŞTE BAŞLIYORUZ!", "dur": 1.6,
+             "style": {"font": "Montserrat Black", "size": 7.5, "anim": "bounce", "pos": "custom", "x": 0.5, "y": 0.78, "color": "#FFE600", "outline": 7, "outlineColor": "#000000"}},
+            {"t": 2.4, "sfx": "pop"},
+        ],
+    },
 ]
 
 RECIPES_TR_MEME: dict[str, dict] = {
+    "roblox_yatay_2026": {
+        "id": "roblox_yatay_2026",
+        "name": "🎮 Roblox 16:9 Yatay YouTube (AlpGDK)",
+        "desc": "Canlı oyun renkleri, hızlı zoom-pop, net konuşma ses ayarı, pop-up Roblox altyazı ve -13 LUFS YouTube dengesi.",
+        "grade": {"con": 0.14, "sat": 1.24, "exp": 0.03},
+        "zoom_preset": "zoom-pop-in",
+        "trans_in": "zoom-in",
+        "audio_fx": ["voice", "hot-montage"],
+        "sub_style": "roblox-pop",
+        "shutter_angle": 180,
+        "lufs": -13.0,
+    },
     "ai_bocek_slowmo": {
         "id": "ai_bocek_slowmo",
         "name": "🐛 Slow-Mo AI Böcek / Absürt",

@@ -214,10 +214,11 @@ function trackFor(kind) {
   return ST.p.tracks.find(t => t.kind === kind)?.id || addTrack(kind);
 }
 function addTrack(kind, name) {
-  const pre = { video: "v", audio: "a", text: "t", fx: "f" }[kind];
+  const k = ({ video: "video", audio: "audio", text: "text", fx: "fx" }[kind]) || "video";
+  const pre = { video: "v", audio: "a", text: "t", fx: "f" }[k];
   let i = 1; while (ST.p.tracks.some(t => t.id === pre + i)) i++;
-  const t = { id: pre + i, kind, name: name || { video: "Video", audio: "Ses", text: "Metin", fx: "Efekt" }[kind] + " " + i };
-  if (kind === "video") ST.p.tracks.unshift(t); else ST.p.tracks.push(t);
+  const t = { id: pre + i, kind: k, name: name || { video: "Video", audio: "Ses", text: "Metin", fx: "Efekt" }[k] + " " + i };
+  if (k === "video") ST.p.tracks.unshift(t); else ST.p.tracks.push(t);
   return t.id;
 }
 function appendAsset(aid) {
@@ -230,10 +231,12 @@ function addClip(o) {
   ST.p.clips.push(c); return c;
 }
 // oynatma kafasina: ust katmanda bos izi bul
-function placeAt(o, kind, t = ST.t) {
-  const cands = ST.p.tracks.filter(tr => tr.kind === kind);
-  let tr = cands.find(tr => !ST.p.clips.some(c => c.track === tr.id && c.start < t + o.dur - 1e-3 && c.start + c.dur > t + 1e-3));
-  const id = tr?.id || addTrack(kind);
+function placeAt(o, kind, t = ST.t, preferId = null) {
+  const k = ({ video: "video", audio: "audio", text: "text", fx: "fx" }[kind]) || "video";
+  const cands = ST.p.tracks.filter(tr => tr.kind === k);
+  const isFree = tr => !ST.p.clips.some(c => c.track === tr.id && c.start < t + o.dur - 1e-3 && c.start + c.dur > t + 1e-3);
+  let tr = (preferId ? cands.find(x => x.id === preferId && isFree(x)) : null) || cands.find(isFree);
+  const id = tr?.id || addTrack(k);
   return addClip({ ...o, track: id, start: t });
 }
 
@@ -455,13 +458,14 @@ function layoutView() {
 function mediaEl(c) {
   let r = ST.rt[c.id];
   const a = assetOf(c);
-  if (r && r.src === a.url) return r;
+  const srcUrl = a.proxyUrl || a.url;
+  if (r && r.src === srcUrl) return r;
   if (r) dropEl(c.id);
   const isV = a.kind === "video" && !a.gif;
   const el = document.createElement(isV ? "video" : "audio");
-  el.preload = "auto"; el.crossOrigin = "anonymous"; el.src = a.url; el.playsInline = true;
+  el.preload = "auto"; el.crossOrigin = "anonymous"; el.src = srcUrl; el.playsInline = true;
   if (isV) { el.muted = !a.audio; el.addEventListener("seeked", () => { if (!ST.playing) draw(); }); el.addEventListener("loadeddata", () => draw()); }
-  r = ST.rt[c.id] = { el, src: a.url, isV };
+  r = ST.rt[c.id] = { el, src: srcUrl, isV };
   return r;
 }
 function dropEl(id) {
@@ -602,7 +606,7 @@ function clipVol(c, t) {
   const hasSolo = ST.p.tracks.some(x => (x.kind === "audio" || x.kind === "video") && x.solo);
   if (hasSolo && !tr.solo) return 0;
   const l = t - c.start, ukf = c.kf?.length ? kfResolve(c.kf, c.dur) : null;
-  let v = ukf ? kfAt(ukf, "vol", l, c.vol ?? 1) : (c.vol ?? 1);
+  let v = (ukf ? kfAt(ukf, "vol", l, c.vol ?? 1) : (c.vol ?? 1)) * (tr.vol ?? 1);
   if (tr.duck && ST.p.clips.some(x => x !== c && !trackOf(x).duck && !trackOf(x).mute && (trackOf(x).kind === "audio" || (trackOf(x).kind === "video" && assetOf(x)?.audio)) && t >= x.start && t < x.start + x.dur))
     v *= 1 - .7 * ((ST.p.master || {}).duck ?? .6);
   if (c.fadeIn > 0 && l < c.fadeIn) v *= l / c.fadeIn;
@@ -2128,10 +2132,18 @@ document.addEventListener("click", e => {
         const a = audioC ? assetOf(audioC) : null;
         if (a?.path) {
           const b = await job("studio_beats", [a.path]);
-          const ts = (b?.beats || []).map(t => +(audioC.start + (t - (audioC.in || 0)) / (audioC.speed || 1)).toFixed(3)).filter(t => t >= 0);
+          const srcList = (audioC.dur > 120 && b?.onsets?.length) ? b.onsets : (b?.beats || []);
+          let ts = srcList.map(t => +(audioC.start + (t - (audioC.in || 0)) / (audioC.speed || 1)).toFixed(3))
+            .filter(t => t >= audioC.start && t <= audioC.start + audioC.dur);
+          if (ts.length > 80) {
+            const minGap = Math.max(2.0, audioC.dur / 80);
+            const thinned = [];
+            for (const t of ts) if (!thinned.length || t - thinned.at(-1) >= minGap) thinned.push(t);
+            ts = thinned;
+          }
           if (ts.length) {
-            ST.p.markers = [...(ST.p.markers || []).filter(m => m.kind !== "beat"), ...ts.slice(0, 200).map(t => ({ t, kind: "beat" }))];
-            beatCount = Math.min(ts.length, 200);
+            ST.p.markers = [...(ST.p.markers || []).filter(m => m.kind !== "beat"), ...ts.map(t => ({ t, kind: "beat" }))];
+            beatCount = ts.length;
           }
         }
       }
@@ -2173,7 +2185,18 @@ document.addEventListener("keydown", e => {
   else if (ctrl && k.toLowerCase() === "d") { e.preventDefault(); dupSel(); }
   else if (ctrl && k.toLowerCase() === "l") { e.preventDefault(); $('[data-a="link"]').click(); }
   else if (ctrl && k.toLowerCase() === "a") { e.preventDefault(); ST.sel = new Set(ST.p.clips.map(c => c.id)); renderTimeline(); renderInsp(); }
-  else if (k === "Delete" || k === "Backspace") deleteSel(e.shiftKey || ST.ripple);
+  else if (k === "Delete" || k === "Backspace") {
+    if (ST.binSel?.size && (!ST.sel.size || e.target.closest("#panel"))) {
+      snap();
+      for (const aid of ST.binSel) {
+        delete ST.p.assets[aid];
+        ST.p.clips = ST.p.clips.filter(c => c.asset !== aid);
+      }
+      ST.binSel.clear();
+      changed(); renderPanel?.();
+      toast("Seçili medya silindi");
+    } else deleteSel(e.shiftKey || ST.ripple);
+  }
   else if (k.toLowerCase() === "q" && !ctrl) trimSide("l");
   else if (k.toLowerCase() === "w" && !ctrl) trimSide("r");
   else if (k.toLowerCase() === "s" && !ctrl) splitAtPlayhead();

@@ -54,18 +54,23 @@ def main(argv: list[str]) -> int:
     def small(f):
         return cv2.resize(f, (int(W0 * sc), int(H0 * sc))) if sc < 1 else f
     sw, sh = int(W0 * sc), int(H0 * sc)
-    box = (int(bx * sw), int(by * sh), max(4, int(bw * sw)), max(4, int(bh * sh)))
+    x0 = max(0, min(sw - 4, int(bx * sw)))
+    y0 = max(0, min(sh - 4, int(by * sh)))
+    bw_px = max(4, min(sw - x0, int(bw * sw)))
+    bh_px = max(4, min(sh - y0, int(bh * sh)))
+    box = (x0, y0, bw_px, bh_px)
     tr = _tracker(cv2)
     tr.init(small(fr), box)
     step = max(1, int(round(fps / 12)))   # saniyede ~12 anahtar kare
-    kf = [{"t": round(start, 3), "cx": bx + bw / 2, "cy": by + bh / 2, "w": bw, "h": bh}]
+    kf = [{"t": round(start, 3), "cx": (x0 + bw_px / 2) / sw, "cy": (y0 + bh_px / 2) / sh, "w": bw_px / sw, "h": bh_px / sh}]
     lost: list[float] = []
     i = 1
     while True:
         ok, fr = cap.read()
         if not ok:
             break
-        t = start + i / fps
+        pos_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+        t = (pos_ms / 1000.0) if pos_ms and pos_ms > 0 else (start + i / fps)
         if t > start + dur:
             break
         good, b = tr.update(small(fr))

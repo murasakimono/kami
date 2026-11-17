@@ -571,3 +571,23 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .tv-kinetic-tile-flip::after { animation-name: tvFlipH; }
 .tv-ink-splatter-wipe::after { animation-name: tvIris; }
 .tv-camera-flash-bulb::after { animation-name: tvFlash; }
+
+/* ---- studio-finish (v1.25 Akilli Pro Kartlar) ---- */
+.sf-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; margin: 8px 0 10px; }
+.sf-stat { background: #141020; border: 1px solid #2A2140; padding: 7px 9px; border-radius: 6px; }
+.sf-stat small { display: block; font-size: 10px; color: #9E96B8; text-transform: uppercase; letter-spacing: .04em; }
+.sf-stat b { font-size: 13px; color: #EDE9F6; font-weight: 700; }
+.sf-list { max-height: 44vh; overflow-y: auto; display: grid; gap: 5px; margin: 8px 0; padding-right: 4px; }
+.sf-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: #130F1E; border: 1px solid #261E38; border-radius: 6px; font-size: 12px; }
+.sf-item.err { border-left: 3px solid #FF4D6A; }
+.sf-item.warn { border-left: 3px solid #F5B94A; }
+.sf-item.info { border-left: 3px solid #8B5CF6; }
+.sf-chk { cursor: pointer; transition: border-color .12s, background .12s; }
+.sf-chk:hover { border-color: #6D28D9; background: #191328; }
+.sf-chk input { accent-color: #8B5CF6; width: 15px; height: 15px; flex-shrink: 0; }
+.sf-seek { margin-left: auto; padding: 2px 7px; border-radius: 4px; background: rgba(139, 92, 246, .16); border: 1px solid rgba(139, 92, 246, .35); color: #C4B5FD; font-size: 11px; text-decoration: none; white-space: nowrap; }
+.sf-seek:hover { background: rgba(139, 92, 246, .32); color: #fff; }
+.sf-ok { padding: 12px; border-radius: 6px; background: rgba(46, 230, 166, .08); border: 1px solid rgba(46, 230, 166, .35); color: #2EE6A6; font-size: 12px; text-align: center; margin: 8px 0; }
+.sf-tk-wrap { position: relative; display: inline-block; cursor: crosshair; user-select: none; border: 1px solid #3B2D5E; border-radius: 6px; overflow: hidden; margin: 8px 0; background: #000; }
+.sf-tk-wrap img { max-width: min(820px, 80vw); max-height: 58vh; display: block; }
+.sf-tk-box { position: absolute; border: 2px solid #2EE6A6; box-shadow: 0 0 0 9999px rgba(7, 6, 11, .55); display: none; pointer-events: none; }

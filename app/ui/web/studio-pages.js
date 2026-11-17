@@ -487,14 +487,22 @@ function renderMixer() {
   startVuLoop();
 }
 function dbOf(v) { return v <= 0 ? "-∞" : (20 * Math.log10(v)).toFixed(1) + " dB"; }
+let _mixSnap = false;
+$("#mixer").addEventListener("pointerdown", e => {
+  if (e.target.closest("input[type='range']")) _mixSnap = false;
+});
 $("#mixer").addEventListener("input", e => {
-  const f = e.target.closest("[data-tvol]"); if (f) { const t = ST.p.tracks.find(x => x.id === f.dataset.tvol); t.vol = +f.value; f.closest(".chan").querySelector(".db").textContent = dbOf(t.vol); ST.dirty = true; window.syncMedia?.(ST.t, false); scheduleSaveP(); return; }
-  if (e.target.id === "mxD") { (ST.p.master ||= {}).duck = +e.target.value; e.target.nextElementSibling.value = Math.round(e.target.value * 100) + "%"; scheduleSaveP(); return; }
-  if (e.target.id === "mxPan") { const c = selClips()[0]; if (!c) return; c.pan = +e.target.value; e.target.nextElementSibling.value = Math.round(c.pan * 100) + "%"; window.syncMedia?.(ST.t, false); ST.dirty = true; scheduleSaveP(); return; }
-  if (e.target.dataset.eqi != null) { const c = selClips()[0]; if (!c) return; c.eq ||= new Array(10).fill(0); c.eq[+e.target.dataset.eqi] = +e.target.value; e.target.previousElementSibling.textContent = (+e.target.value).toFixed(0); window.syncMedia?.(ST.t, false); ST.dirty = true; scheduleSaveP(); }
+  const f = e.target.closest("[data-tvol]");
+  if (f) {
+    if (!_mixSnap) { snap(); _mixSnap = true; }
+    const t = ST.p.tracks.find(x => x.id === f.dataset.tvol); t.vol = +f.value; f.closest(".chan").querySelector(".db").textContent = dbOf(t.vol); ST.dirty = true; window.syncMedia?.(ST.t, false); scheduleSaveP(); return;
+  }
+  if (e.target.id === "mxD") { if (!_mixSnap) { snap(); _mixSnap = true; } (ST.p.master ||= {}).duck = +e.target.value; e.target.nextElementSibling.value = Math.round(e.target.value * 100) + "%"; scheduleSaveP(); return; }
+  if (e.target.id === "mxPan") { const c = selClips()[0]; if (!c) return; if (!_mixSnap) { snap(); _mixSnap = true; } c.pan = +e.target.value; e.target.nextElementSibling.value = Math.round(c.pan * 100) + "%"; window.syncMedia?.(ST.t, false); ST.dirty = true; scheduleSaveP(); return; }
+  if (e.target.dataset.eqi != null) { const c = selClips()[0]; if (!c) return; if (!_mixSnap) { snap(); _mixSnap = true; } c.eq ||= new Array(10).fill(0); c.eq[+e.target.dataset.eqi] = +e.target.value; e.target.previousElementSibling.textContent = (+e.target.value).toFixed(0); window.syncMedia?.(ST.t, false); ST.dirty = true; scheduleSaveP(); }
 });
 function scheduleSaveP() { changed(false); }
-$("#mixer").addEventListener("change", e => { if (e.target.id === "mxL") { snap(); (ST.p.master ||= {}).lufs = e.target.value ? +e.target.value : null; changed(false); } });
+$("#mixer").addEventListener("change", e => { _mixSnap = false; if (e.target.id === "mxL") { snap(); (ST.p.master ||= {}).lufs = e.target.value ? +e.target.value : null; changed(false); } });
 $("#mixer").addEventListener("click", async e => {
   const mu = e.target.closest("[data-tm]"), so = e.target.closest("[data-ts]"), du = e.target.closest("[data-td]"), fx = e.target.closest("[data-tfix]"), ma = e.target.closest("[data-mafx]"), ep = e.target.closest("[data-meqp]");
   if (e.target.id === "mxDuckFile") {
