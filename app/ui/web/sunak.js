@@ -45,6 +45,7 @@ function skBuild() {
         <button type="button" class="sk-tab" data-mod="studio">Studio</button>
         <button type="button" class="sk-tab" data-mod="picture">Picture</button>
         <button type="button" class="sk-tab" data-mod="reader">Reader</button>
+        <button type="button" class="sk-tab" data-mod="room">${skL("Oda", "Room")}</button>
         <button type="button" class="sk-tab" data-mod="games">Oyun</button>
         <button type="button" class="sk-tab" data-mod="music">Müzik</button>
         <button type="button" class="sk-tab" data-mod="cleaner">Süzgeç</button>
@@ -238,7 +239,7 @@ function skBind() {
   // Tek pencere sekme yoneticisi (tembel yukleme + postMessage API koprusu)
   const MOD_URL = { player: "player.html", studio: "studio.html", picture: "picture.html", reader: "reader.html", games: "games.html", music: "music.html", cleaner: "cleaner.html" };
   let curMod = "home";
-  const openTab = (mod) => {
+  const openTab = async (mod) => {
     curMod = mod;
     const host = $("#skTabHost"), acts = $("#skTabActs");
     $$("#skTabs .sk-tab").forEach((b) => b.classList.toggle("on", b.dataset.mod === mod));
@@ -248,15 +249,22 @@ function skBind() {
       host.hidden = false;
       [...host.children].forEach((f) => { f.hidden = f.dataset.mod !== mod; });
       if (!host.querySelector(`iframe[data-mod="${mod}"]`)) {
-        const fr = document.createElement("iframe");
-        fr.dataset.mod = mod;
-        fr.src = MOD_URL[mod];
-        fr.allow = "microphone; camera; clipboard-read; clipboard-write";
-        host.appendChild(fr);
+        let url = MOD_URL[mod] || "";
+        if (mod === "room") {
+          const st = await api?.room_open?.(false).catch(() => null);
+          url = st?.local || "";
+        }
+        if (url) {
+          const fr = document.createElement("iframe");
+          fr.dataset.mod = mod;
+          fr.src = url;
+          fr.allow = "microphone; camera; display-capture; clipboard-read; clipboard-write";
+          host.appendChild(fr);
+        }
       }
     }
     if (acts) acts.hidden = false;
-    const pop = $("#skTabPop"); if (pop) pop.hidden = !["player", "studio", "picture", "reader"].includes(mod);   // Oyun/Muzik/Suzgec'in ayri penceresi yok
+    const pop = $("#skTabPop"); if (pop) pop.hidden = !["player", "studio", "picture", "reader", "room"].includes(mod);   // Oyun/Muzik/Suzgec'in ayri penceresi yok
   };
   // sekme acikken sag ray/Araclar indirme ekranina ait: once Indirmeler'e don (cekmece sekmenin arkasinda kalmasin)
   document.addEventListener("click", (e) => { if (curMod !== "home" && e.target.closest?.("#skDock button:not(#skToolsBtn), .sk-tools-g button")) openTab("home"); }, true);
@@ -265,7 +273,7 @@ function skBind() {
     if (b) openTab(b.dataset.mod);
   });
   $("#skTabPop")?.addEventListener("click", () => {
-    const fn = { player: () => api?.player_show?.({}), studio: () => api?.studio_open?.(""), picture: () => api?.picture_open?.(""), reader: () => api?.reader_show?.("") }[curMod];
+    const fn = { player: () => api?.player_show?.({}), studio: () => api?.studio_open?.(""), picture: () => api?.picture_open?.(""), reader: () => api?.reader_show?.(""), room: () => api?.room_open?.(true) }[curMod];
     fn?.();
   });
   $("#skTabKill")?.addEventListener("click", () => {

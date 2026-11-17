@@ -267,4 +267,127 @@
     d.querySelector("#bSt").textContent = L2(`✓ ${ok} görsel hazır${fail ? `, ${fail} olmadı` : ""}`, `✓ ${ok} done${fail ? `, ${fail} failed` : ""}`);
     go.disabled = false;
   }
+
+  // ---------------------------------------------------------------- AI Komut Cubugu & Sag Katman/Gecmis Paneli
+  let sdTab = "layers";
+  function ensureProDock() {
+    const ed = document.getElementById("ed");
+    if (!ed) return;
+    if (!document.getElementById("edAiBar")) {
+      const bar = document.createElement("div");
+      bar.id = "edAiBar"; bar.className = "ed-aibar";
+      bar.innerHTML = `
+        <input id="edAiIn" placeholder="${L2("AI komut: arka plan sil, 4x, yüz, vektör, sb, maske…", "AI command: remove bg, 4x, face, vector, bw, mask…")}">
+        <button class="pri" data-aic="run">✦ ${L2("Uygula", "Run")}</button>
+        <button data-aic="nobg">✦ ${L2("Arka plan sil", "Remove BG")}</button>
+        <button data-aic="upscale">↗ 4x</button>
+        <button data-aic="face">☺ ${L2("Yüz", "Face")}</button>
+        <button data-aic="vec-color">✎ SVG</button>
+        <button data-aic="mask">⬚ ${L2("Maske", "Mask")}</button>
+        <button data-aic="batch">⚡ ${L2("Toplu", "Batch")}</button>`;
+      ed.appendChild(bar);
+      const runCmd = (raw) => {
+        const q = String(raw || "").toLowerCase().trim();
+        if (!q) return;
+        if (/(arka\s*plan|remove\s*bg|nobg|temizle)/.test(q)) window.aiAction?.("nobg");
+        else if (/(4x|b[üu]y[üu]t|upscale|netle[şs]tir)/.test(q)) window.aiAction?.("upscale");
+        else if (/(y[üu]z|face|gfpgan)/.test(q)) window.aiAction?.("face");
+        else if (/(vekt[öo]r|svg)/.test(q)) window.aiAction?.(q.includes("siyah") || q.includes("bw") ? "vec-bw" : "vec-color");
+        else if (/(maske|mask)/.test(q)) maskNew(q.includes("seç") || q.includes("sel"));
+        else if (/(siyah|beyaz|bw|gray)/.test(q)) adjNew("bw");
+        else if (/(e[ğg]ri|curve)/.test(q)) adjNew("curves");
+        else if (/(seviye|level)/.test(q)) adjNew("levels");
+        else if (/(renk|ton|hue|doygun)/.test(q)) adjNew("hue");
+        else if (/(toplu|batch)/.test(q)) batchOpen();
+        else toast(L2("Komut anlaşılamadı: arka plan, 4x, yüz, svg, maske, siyah-beyaz, toplu", "Unknown command: nobg, 4x, face, svg, mask, bw, batch"));
+      };
+      bar.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-aic]"); if (!b) return;
+        const c = b.dataset.aic;
+        if (c === "run") runCmd(bar.querySelector("#edAiIn").value);
+        else if (c === "mask") maskNew(false);
+        else if (c === "batch") batchOpen();
+        else window.aiAction?.(c);
+      });
+      bar.querySelector("#edAiIn")?.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); runCmd(e.target.value); }
+      });
+    }
+    if (!document.getElementById("edSideToggle")) {
+      const tg = document.createElement("button");
+      tg.id = "edSideToggle"; tg.className = "ed-side-toggle";
+      tg.textContent = L2("◧ Katman / Geçmiş", "◧ Layers / History");
+      ed.appendChild(tg);
+      const dk = document.createElement("aside");
+      dk.id = "edSideDock"; dk.className = "ed-sidedock"; dk.hidden = true;
+      dk.innerHTML = `
+        <div class="ed-sd-tabs">
+          <button data-sdt="layers" class="on">${L2("Katmanlar", "Layers")}</button>
+          <button data-sdt="history">${L2("Geçmiş", "History")}</button>
+        </div>
+        <div class="ed-sd-body" id="edSdBody"></div>
+        <div class="ed-sd-foot" id="edSdFoot">
+          <button data-sda="add">+ ${L2("Katman", "Layer")}</button>
+          <button data-sda="adj">◐ ${L2("Ayar", "Adj")}</button>
+          <button data-sda="dup">⧉ ${L2("Çoğalt", "Dup")}</button>
+          <button data-sda="del">✕ ${L2("Sil", "Del")}</button>
+        </div>`;
+      ed.appendChild(dk);
+      tg.onclick = () => { dk.hidden = !dk.hidden; renderSideDock(); };
+      dk.querySelector(".ed-sd-tabs").onclick = (e) => {
+        const b = e.target.closest("button[data-sdt]"); if (!b) return;
+        sdTab = b.dataset.sdt;
+        dk.querySelectorAll(".ed-sd-tabs button").forEach((x) => x.classList.toggle("on", x === b));
+        dk.querySelector("#edSdFoot").style.display = sdTab === "layers" ? "flex" : "none";
+        renderSideDock();
+      };
+      dk.querySelector("#edSdFoot").onclick = (e) => {
+        const b = e.target.closest("button[data-sda]"); if (!b) return;
+        const a = b.dataset.sda;
+        if (a === "add") { edLayerAdd?.(L2("Katman", "Layer")); renderSideDock(); }
+        else if (a === "adj") { adjNew("color"); renderSideDock(); }
+        else if (a === "dup") { edLayerDup?.(); renderSideDock(); }
+        else if (a === "del") { edLayerDel?.(); renderSideDock(); }
+      };
+      dk.querySelector("#edSdBody").onclick = (e) => {
+        const row = e.target.closest("[data-sdi]");
+        if (row && sdTab === "layers") {
+          const i = +row.dataset.sdi;
+          const act = e.target.closest("button[data-sdl]")?.dataset.sdl;
+          if (act === "vis") { ED.layers[i].vis = !ED.layers[i].vis; edLayersUi(); edRender(); }
+          else if (act === "up" && i < ED.layers.length - 1) { const [x] = ED.layers.splice(i, 1); ED.layers.splice(i + 1, 0, x); ED.cur = i + 1; edLayersUi(); edRender(); }
+          else if (act === "dn" && i > 0) { const [x] = ED.layers.splice(i, 1); ED.layers.splice(i - 1, 0, x); ED.cur = i - 1; edLayersUi(); edRender(); }
+          else { ED.cur = i; edLayersUi(); }
+          renderSideDock();
+        } else if (row && sdTab === "history") {
+          const target = +row.dataset.sdi; let n = ED.undo.length;
+          while (n > target && ED.undo.length) { edUndo(); n--; }
+          while (n < target && ED.redo.length) { edRedo(); n++; }
+          renderSideDock();
+        }
+      };
+    }
+  }
+  function renderSideDock() {
+    const dk = document.getElementById("edSideDock"), body = document.getElementById("edSdBody");
+    if (!dk || dk.hidden || !body) return;
+    if (sdTab === "layers") {
+      body.innerHTML = [...ED.layers].map((l, i) => ({ l, i })).reverse().map(({ l, i }) => `
+        <div class="ed-sd-item ${i === ED.cur ? "on" : ""}" data-sdi="${i}">
+          <button data-sdl="vis" title="Göster/Gizle">${l.vis ? "👁" : "◌"}</button>
+          <span class="nm">${l.adj ? "◐ " : ""}${esc(l.name || "Katman")}</span>
+          <button data-sdl="up" title="Yukarı">↑</button>
+          <button data-sdl="dn" title="Aşağı">↓</button>
+        </div>`).join("");
+    } else {
+      const past = ED.undo.map((s) => s.label || "?"), fut = [...ED.redo].reverse().map((s) => s.label || "?");
+      body.innerHTML = `<div class="ed-sd-item ${past.length ? "" : "on"}" data-sdi="0"><span class="nm">◇ ${L2("Başlangıç", "Start")}</span></div>` +
+        past.map((t, i) => `<div class="ed-sd-item ${i === past.length - 1 ? "on" : ""}" data-sdi="${i + 1}"><span class="nm">${esc(t)}</span></div>`).join("") +
+        fut.map((t, i) => `<div class="ed-sd-item" style="opacity:.45" data-sdi="${past.length + i + 1}"><span class="nm">${esc(t)}</span></div>`).join("");
+    }
+  }
+  const _lui2 = edLayersUi;
+  window.edLayersUi = edLayersUi = function () { _lui2.apply(this, arguments); ensureProDock(); renderSideDock(); };
+  setTimeout(ensureProDock, 200);
 })();

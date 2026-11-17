@@ -2732,7 +2732,7 @@ def apply_template(project: dict, tid: str, t: float, ffmpeg: str = "", clip_id:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# Fontlar: sistem + kullanici + Kami + Kami Studio\Fontlar; ucretsiz Google Fonts paketi
+# Fontlar: sistem + kullanici + Kami + Kami Studio\Fontlar; ucretsiz Google Fonts paketi (Canva/YouTube popüler fontlar dahil)
 GOOGLE_FONTS = {
     "Anton": "ofl/anton/Anton-Regular.ttf", "Bebas Neue": "ofl/bebasneue/BebasNeue-Regular.ttf",
     "Bangers": "ofl/bangers/Bangers-Regular.ttf", "Luckiest Guy": "apache/luckiestguy/LuckiestGuy-Regular.ttf",
@@ -2744,7 +2744,63 @@ GOOGLE_FONTS = {
     "Pacifico": "ofl/pacifico/Pacifico-Regular.ttf", "Montserrat": "ofl/montserrat/Montserrat%5Bwght%5D.ttf",
     "Oswald": "ofl/oswald/Oswald%5Bwght%5D.ttf", "Caveat": "ofl/caveat/Caveat%5Bwght%5D.ttf",
     "Rubik Mono One": "ofl/rubikmonoone/RubikMonoOne-Regular.ttf", "Bowlby One": "ofl/bowlbyone/BowlbyOne-Regular.ttf",
+    "Syne": "ofl/syne/Syne%5Bwght%5D.ttf", "Outfit": "ofl/outfit/Outfit%5Bwght%5D.ttf",
+    "Space Grotesk": "ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf", "Plus Jakarta Sans": "ofl/plusjakartasans/PlusJakartaSans%5Bwght%5D.ttf",
+    "DM Sans": "ofl/dmsans/DMScans%5Bopsz%2Cwght%5D.ttf" if False else "ofl/dmsans/DMSans%5Bopsz%2Cwght%5D.ttf",
+    "Inter": "ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf", "Sora": "ofl/sora/Sora%5Bwght%5D.ttf",
+    "Manrope": "ofl/manrope/Manrope%5Bwght%5D.ttf", "Rubik": "ofl/rubik/Rubik%5Bwght%5D.ttf",
+    "Barlow Condensed": "ofl/barlowcondensed/BarlowCondensed-Bold.ttf", "Teko": "ofl/teko/Teko%5Bwght%5D.ttf",
+    "Kanit": "ofl/kanit/Kanit-Bold.ttf", "Prompt": "ofl/prompt/Prompt-Bold.ttf",
+    "Work Sans": "ofl/worksans/WorkSans%5Bwght%5D.ttf", "Fira Sans": "ofl/firasans/FiraSans-Bold.ttf",
+    "Nunito": "ofl/nunito/Nunito%5Bwght%5D.ttf", "Quicksand": "ofl/quicksand/Quicksand%5Bwght%5D.ttf",
+    "Righteous": "ofl/righteous/Righteous-Regular.ttf", "Lobster": "ofl/lobster/Lobster-Regular.ttf",
+    "Abril Fatface": "ofl/abrilfatface/AbrilFatface-Regular.ttf", "Cinzel": "ofl/cinzel/Cinzel%5Bwght%5D.ttf",
+    "Cormorant Garamond": "ofl/cormorantgaramond/CormorantGaramond-Bold.ttf", "Playfair Display": "ofl/playfairdisplay/PlayfairDisplay%5Bwght%5D.ttf",
+    "Special Elite": "apache/specialelite/SpecialElite-Regular.ttf", "VT323": "ofl/vt323/VT323-Regular.ttf",
+    "Silkscreen": "ofl/silkscreen/Silkscreen-Regular.ttf", "Bungee": "ofl/bungee/Bungee-Regular.ttf",
 }
+
+_TR_GLYPHS = tuple(ord(c) for c in "çğıöşüÇĞİÖŞÜ")
+
+
+def font_tr_map(idx: dict[str, str] | None = None) -> dict[str, bool]:
+    """Her font icin Turkce karakterlerin (çğıöşüÇĞİÖŞÜ) glif destegini dondurur."""
+    fonts = idx if idx is not None else fonts_index()
+    cf = CACHE / "fonts_tr.json"
+    cached: dict[str, bool] = {}
+    try:
+        cached = json.loads(cf.read_text("utf-8"))
+    except (OSError, ValueError):
+        pass
+    out: dict[str, bool] = {}
+    dirty = False
+    try:
+        from fontTools.ttLib import TTFont  # type: ignore
+    except Exception:
+        TTFont = None  # noqa: N806
+    for fam, p in fonts.items():
+        if fam in cached:
+            out[fam] = bool(cached[fam])
+            continue
+        ok = True
+        if TTFont is not None:
+            try:
+                tt = TTFont(p, fontNumber=0, lazy=True)
+                cmap = tt.getBestCmap() or {}
+                ok = all(cp in cmap for cp in _TR_GLYPHS)
+                tt.close()
+            except Exception:
+                ok = True
+        out[fam] = ok
+        cached[fam] = ok
+        dirty = True
+    if dirty:
+        try:
+            CACHE.mkdir(parents=True, exist_ok=True)
+            cf.write_text(json.dumps(cached, ensure_ascii=False), "utf-8")
+        except OSError:
+            pass
+    return out
 
 
 def font_dir() -> Path:

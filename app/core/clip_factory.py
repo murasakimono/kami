@@ -86,21 +86,44 @@ def _probe_size(video_path: Path) -> tuple[int, int, float]:
 
 
 def _detect_subject_x_ratio(video_path: Path) -> float:
-    """MediaPipe/OpenCV varsa yuz merkez X oranini (0..1) bulur; yoksa 0.5 doner."""
+    """MediaPipe/OpenCV varsa videonun %15/%45/%75 karelerinden medyan yuz merkez X oranini (0..1) bulur."""
     try:
         import cv2
-        import mediapipe as mp
         cap = cv2.VideoCapture(str(video_path))
-        ok, frame = cap.read()
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        sample_idx = [int(total * r) for r in (0.15, 0.45, 0.75)] if total > 10 else [0]
+        frames = []
+        for idx in sample_idx:
+            if idx > 0:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+            if ok and frame is not None:
+                frames.append(frame)
         cap.release()
-        if not ok or frame is None:
+        if not frames:
             return 0.5
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        with mp.solutions.face_detection.FaceDetection(min_detection_confidence=0.5) as fd:
-            res = fd.process(rgb)
-            if res.detections:
-                box = res.detections[0].location_data.relative_bounding_box
-                return max(0.15, min(0.85, float(box.xmin + box.width * 0.5)))
+        ratios: list[float] = []
+        try:
+            import mediapipe as mp
+            with mp.solutions.face_detection.FaceDetection(min_detection_confidence=0.5) as fd:
+                for fr in frames:
+                    res = fd.process(cv2.cvtColor(fr, cv2.COLOR_BGR2RGB))
+                    if res.detections:
+                        box = res.detections[0].location_data.relative_bounding_box
+                        ratios.append(float(box.xmin + box.width * 0.5))
+        except Exception:
+            cascade_p = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
+            if cascade_p.is_file():
+                clf = cv2.CascadeClassifier(str(cascade_p))
+                for fr in frames:
+                    gray = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY)
+                    faces = clf.detectMultiScale(gray, 1.15, 4)
+                    if len(faces):
+                        fx, _, fw, _ = max(faces, key=lambda b: b[2] * b[3])
+                        ratios.append((fx + fw * 0.5) / max(1, fr.shape[1]))
+        if ratios:
+            ratios.sort()
+            return max(0.15, min(0.85, ratios[len(ratios) // 2]))
     except Exception:
         pass
     return 0.5

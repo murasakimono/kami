@@ -213,7 +213,10 @@ async function brFonts() {
     <input class="in" id="fnQ" placeholder="Font ara…"><div class="fgrid" id="fnList"></div>`;
   const list = () => {
     const q = $("#fnQ").value.toLowerCase(), fs = (ST.cat.fonts || []).filter(f => f.toLowerCase().includes(q)).slice(0, 240);
-    $("#fnList").innerHTML = fs.map(f => `<div class="font" data-font="${esc(f)}"><span class="fprev" style="font-family:'kf_${esc(f)}',sans-serif">Abone Ol 123</span><small>${esc(f)}</small></div>`).join("");
+    $("#fnList").innerHTML = fs.map(f => {
+      const noTr = ST.fontTr?.[f] === false;
+      return `<div class="font" data-font="${esc(f)}"><span class="fprev" style="font-family:'kf_${esc(f)}',sans-serif">${noTr ? "Subscribe 123" : "Abone Ol çğıöşü"}</span><small>${esc(f)}${noTr ? ` <b style="color:#f59e0b" title="Türkçe harf (çğıöşü) desteği eksik">⚠️ TR yok</b>` : ""}</small></div>`;
+    }).join("");
     for (const el of $$(".font", $("#fnList"))) loadFontFace(el.dataset.font);
   };
   $("#fnQ").oninput = list; list();
@@ -227,7 +230,7 @@ function loadFontFace(f) {
 }
 async function loadFonts() {
   const r = await job("studio_catalog_fonts", []);
-  ST.fontMap = r.map; ST.googleFonts = r.google; ST.cat.fonts = r.fonts;
+  ST.fontMap = r.map; ST.fontTr = r.tr || {}; ST.googleFonts = r.google; ST.cat.fonts = r.fonts;
   let dl = $("#fontList"); if (!dl) { dl = document.createElement("datalist"); dl.id = "fontList"; document.body.appendChild(dl); }
   dl.innerHTML = r.fonts.map(f => `<option value="${esc(f)}">`).join("");
   if (window.jasReloadFonts) window.jasReloadFonts();

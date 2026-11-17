@@ -16,8 +16,13 @@ COMMAND_MAP: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
+def _norm_tr(text: str) -> str:
+    tbl = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
+    return (text or "").translate(tbl).lower().strip()
+
+
 def parse_voice_command(text: str, *, require_wake: bool = True) -> dict[str, Any]:
-    raw = (text or "").strip()
+    raw = _norm_tr(text)
     if not raw:
         return {"ok": False, "wake": False, "action": "", "arg": ""}
 
@@ -30,6 +35,51 @@ def parse_voice_command(text: str, *, require_wake: bool = True) -> dict[str, An
         if rx.search(body):
             return {"ok": True, "wake": True, "action": action, "arg": body}
     return {"ok": True, "wake": True, "action": "unknown", "arg": body}
+
+
+def listen_once(seconds: float = 3.5, require_wake: bool = False) -> dict[str, Any]:
+    """Mikrofondan kisa ses kaydedip faster-whisper varsa metne cevirir ve komutu cozer."""
+    import tempfile
+    import wave
+    from pathlib import Path
+    try:
+        import pyaudiowpatch as pyaudio  # type: ignore
+    except Exception:
+        try:
+            import pyaudio  # type: ignore
+        except Exception:
+            return {"ok": False, "error": "audio_input_missing"}
+    rate, ch, chunk = 16000, 1, 1024
+    pa = pyaudio.PyAudio()
+    frames: list[bytes] = []
+    try:
+        st = pa.open(format=pyaudio.paInt16, channels=ch, rate=rate, input=True, frames_per_buffer=chunk)
+        for _ in range(int(rate / chunk * max(1.0, float(seconds)))):
+            frames.append(st.read(chunk, exception_on_overflow=False))
+        st.stop_stream()
+        st.close()
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:120]}
+    finally:
+        pa.terminate()
+
+    tmp = Path(tempfile.gettempdir()) / "kami_voice_cmd.wav"
+    with wave.open(str(tmp), "wb") as wf:
+        wf.setnchannels(ch)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(b"".join(frames))
+    try:
+        from faster_whisper import WhisperModel  # type: ignore
+        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        segs, _ = model.transcribe(str(tmp), language="tr")
+        txt = " ".join(s.text.strip() for s in segs).strip()
+        parsed = parse_voice_command(txt, require_wake=require_wake)
+        return {**parsed, "text": txt}
+    except Exception as exc:
+        return {"ok": False, "error": f"transcribe_failed: {str(exc)[:80]}"}
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def voice_capabilities() -> dict[str, Any]:

@@ -574,10 +574,11 @@ P.captions = () => {
     sec("Stil") + `<div class="grid2">${Object.entries(ST.cat.captions).map(([k, v]) => `<div class="card${k === (localStorage.kstCap || "hormozi") ? " on" : ""}" data-cap="${k}"><i class="capv cv-${esc(ST.cat.capb?.[k]?.b || k)}"${ST.cat.capb?.[k]?.font ? ` style="font-family:'${esc(ST.cat.capb[k].font)}'"` : ""}><span>bu</span><u>örnek</u><span>yazı</span></i><b>${esc(v)}</b></div>`).join("")}</div>` +
     `<div class="row" style="margin-top:12px"><button class="tb pri" id="capGo">≡ ${c ? "Seçili klibe altyazı" : "Altyazı oluştur"}</button></div>` +
     `<div class="row" style="margin-top:6px"><button class="tb" id="capBi">🌐 Çift Dilli (.SRT/.ASS)</button><button class="tb" id="capConv">↺ .SRT↔.ASS Dönüştür</button></div>` +
-    `<div class="row" style="margin-top:6px"><button class="tb" id="capExpSrt">📄 .SRT İndir</button><button class="tb" id="capFindRep">🔍 Bul & Değiştir</button></div>` +
+    `<div class="row" style="margin-top:6px"><button class="tb" id="capExpSrt">📄 .SRT İndir</button><button class="tb" id="capFindRep">🔍 Bul & Değiştir</button><button class="tb" id="capTxtCut">✂️ Metinden Kurgu</button></div>` +
     `<div class="hint">Yazım hatalarını sağ paneldeki “Kelimeler” kutusundan düzeltebilirsin.</div>`;
   $("#capGo").onclick = () => aiAction("captions", firstSel());
   $("#capBi").onclick = () => aiAction("bilingual", firstSel());
+  $("#capTxtCut").onclick = () => aiAction("transcriptCut", firstSel());
   $("#capExpSrt").onclick = async () => {
     const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
     const r = await api.studio_export_srt(p, "");
@@ -1032,19 +1033,33 @@ async function aiAction(kind, c) {
     const tc = (c?.words?.length ? c : null) || ST.p.clips.find(x => x.words?.length);
     if (!tc?.words?.length) { toast("Önce otomatik altyazı oluştur"); return; }
     const vid = ST.p.clips.find(x => ["video", "audio"].includes(clipKind(x)) && x.start < tc.start + tc.dur && x.start + x.dur > tc.start);
-    const delSet = new Set();
+    const delSet = new Set(); let lastTw = -1;
     const chips = tc.words.map((w, i) => `<button type="button" class="tb" data-tw="${i}" style="margin:2px;padding:3px 7px;font-size:12px">${esc(w.w)}</button>`).join("");
     const picked = await modal(
-      `<h3>📝 Metinden Kurgu</h3><div class="hint">Silmek istediğin kelimelere tıkla (üzeri çizilir); video o anlardan kesilir.</div>` +
+      `<h3>📝 Metinden Kurgu</h3><div class="hint">Silmek istediğin kelimelere tıkla (Shift ile aralık seç); video o anlardan kesilir.</div>` +
+      `<input id="twFind" placeholder="Kelime ara / vurgula…" style="width:100%;margin:6px 0">` +
       `<div id="twWrap" style="max-height:240px;overflow:auto;padding:6px;background:rgba(0,0,0,.2);border-radius:6px">${chips}</div>` +
       `<div class="row" style="margin-top:10px"><button class="tb" data-v="no">Vazgeç</button><button class="tb pri" data-v="ok">Kesimleri Uygula</button></div>`,
       {
         init: m => {
+          const toggle = (i, force) => {
+            const b = $(`[data-tw="${i}"]`, m); if (!b) return;
+            const on = force !== undefined ? force : !delSet.has(i);
+            if (on) { delSet.add(i); b.style.textDecoration = "line-through"; b.style.opacity = ".45"; }
+            else { delSet.delete(i); b.style.textDecoration = ""; b.style.opacity = ""; }
+          };
+          $("#twFind", m).oninput = e => {
+            const q = e.target.value.trim().toLowerCase();
+            $$("[data-tw]", m).forEach(b => { b.style.outline = q && b.textContent.toLowerCase().includes(q) ? "1px solid #2EE6A6" : ""; });
+          };
           $("#twWrap", m).onclick = e => {
             const b = e.target.closest("[data-tw]"); if (!b) return;
             const i = +b.dataset.tw;
-            if (delSet.has(i)) { delSet.delete(i); b.style.textDecoration = ""; b.style.opacity = ""; }
-            else { delSet.add(i); b.style.textDecoration = "line-through"; b.style.opacity = ".45"; }
+            if (e.shiftKey && lastTw >= 0) {
+              const a = Math.min(lastTw, i), z = Math.max(lastTw, i), want = !delSet.has(i);
+              for (let k = a; k <= z; k++) toggle(k, want);
+            } else toggle(i);
+            lastTw = i;
           };
         },
         collect: () => [...delSet],

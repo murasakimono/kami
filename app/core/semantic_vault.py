@@ -349,6 +349,7 @@ def kasa_stats(db_path: Path | None = None) -> dict[str, Any]:
 # ================================================================ gercek anlamsal katman
 VIDEO_EXT = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".ts", ".wmv", ".flv"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".heic", ".tif", ".tiff"}
+DOC_EXT = {".pdf", ".txt", ".md"}
 INDEX_STATE: dict[str, Any] = {"running": False, "done": 0, "total": 0, "current": "", "error": ""}
 
 
@@ -448,12 +449,77 @@ def index_image(path: str | Path, tags: str = "", db_path: Path | None = None) -
     return {"ok": True, "indexed": 1, "semantic": embed_rows(str(p), db_path) > 0}
 
 
+def _extract_doc_chunks(p: Path) -> list[tuple[int, str]]:
+    """PDF veya metin/markdown dosyasindan (sayfa_no, metin_parcasi) listesi cikarir."""
+    ext = p.suffix.lower()
+    chunks: list[tuple[int, str]] = []
+    if ext == ".pdf":
+        try:
+            import fitz  # pymupdf
+            doc = fitz.open(str(p))
+            for i, page in enumerate(doc):
+                txt = re.sub(r"\s+", " ", (page.get_text("text") or "").strip())
+                if not txt:
+                    continue
+                for off in range(0, len(txt), 650):
+                    part = txt[off:off + 650].strip()
+                    if len(part) >= 15:
+                        chunks.append((i + 1, part))
+            doc.close()
+        except Exception:
+            pass
+        return chunks
+    try:
+        raw = p.read_text(encoding="utf-8", errors="replace")
+        txt = re.sub(r"\s+", " ", raw.strip())
+        for idx, off in enumerate(range(0, len(txt), 650)):
+            part = txt[off:off + 650].strip()
+            if len(part) >= 15:
+                chunks.append((idx + 1, part))
+    except Exception:
+        pass
+    return chunks
+
+
+def index_document(path: str | Path, tags: str = "", db_path: Path | None = None) -> dict[str, Any]:
+    """PDF / TXT / MD ders notlarini sayfa numarasiyla indeksler."""
+    p = Path(path)
+    if not p.is_file():
+        return {"ok": False, "error": "dosya yok"}
+    chunks = _extract_doc_chunks(p)
+    if not chunks:
+        return {"ok": False, "error": "metin bos"}
+    with _connect(db_path) as con:
+        con.execute("DELETE FROM kasa_items WHERE path = ?", (str(p),))
+        con.execute("DELETE FROM kasa_fts WHERE path = ?", (str(p),))
+        mtime = p.stat().st_mtime
+        for pg, part in chunks:
+            ttl = f"{p.stem} · s.{pg}"
+            vec = text_embedding(f"{ttl} {tags} {part}")
+            con.execute(
+                "INSERT INTO kasa_items (path, title, start_sec, end_sec, tags, transcript, embedding, kind, mtime) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'doc', ?)",
+                (str(p), ttl, float(pg), float(pg), tags, part, _pack_vec(vec), mtime),
+            )
+            con.execute("INSERT INTO kasa_fts (path, title, tags, transcript) VALUES (?, ?, ?, ?)",
+                        (str(p), ttl, tags, part))
+        con.commit()
+    try:
+        sem = embed_rows(str(p), db_path) > 0
+    except Exception:
+        sem = False
+    return {"ok": True, "indexed": len(chunks), "semantic": sem}
+
+
 def index_media(path: str | Path, tags: str = "", transcript_segments: list[dict[str, Any]] | None = None,
                 db_path: Path | None = None) -> dict[str, Any]:
-    """Video (sahne sahne + yan altyazi) ya da gorsel; ardindan anlamsal gomme."""
+    """Video (sahne sahne + yan altyazi), gorsel ya da PDF/not belge; ardindan anlamsal gomme."""
     p = Path(path)
-    if p.suffix.lower() in IMAGE_EXT:
+    ext = p.suffix.lower()
+    if ext in IMAGE_EXT:
         return index_image(p, tags, db_path)
+    if ext in DOC_EXT:
+        return index_document(p, tags, db_path)
     res = index_video_scenes(p, tags=tags, transcript_segments=transcript_segments or _sidecar_transcript(p), db_path=db_path)
     if res.get("ok"):
         with _connect(db_path) as con:
@@ -468,11 +534,11 @@ def index_media(path: str | Path, tags: str = "", transcript_segments: list[dict
 
 
 def index_folder(folder: str | Path, tags: str = "", db_path: Path | None = None, limit: int = 5000) -> dict[str, Any]:
-    """Klasordeki video/gorselleri (degismeyenleri atlayarak) indeksler. INDEX_STATE ilerlemeyi tutar."""
+    """Klasordeki video/gorsel/belgeleri (degismeyenleri atlayarak) indeksler. INDEX_STATE ilerlemeyi tutar."""
     root = Path(folder)
     if not root.is_dir():
         return {"ok": False, "error": "Klasor bulunamadi"}
-    files = [f for f in root.rglob("*") if f.is_file() and f.suffix.lower() in VIDEO_EXT | IMAGE_EXT][:limit]
+    files = [f for f in root.rglob("*") if f.is_file() and f.suffix.lower() in VIDEO_EXT | IMAGE_EXT | DOC_EXT][:limit]
     with _connect(db_path) as con:
         known = {r[0]: float(r[1] or 0) for r in con.execute("SELECT path, MAX(mtime) FROM kasa_items GROUP BY path")}
     todo = [f for f in files if known.get(str(f), -1) < f.stat().st_mtime - 1]

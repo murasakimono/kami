@@ -12,12 +12,17 @@
   input{background:#110D19;border:1px solid var(--line);border-radius:9px;color:var(--tx);padding:8px 12px;font:inherit}
   .btn{border:1px solid var(--line);background:#1A1328;color:var(--tx);border-radius:9px;padding:8px 13px;cursor:pointer;font:600 12.5px inherit}
   .btn:hover{border-color:var(--ac)} .btn.pri{background:#6D28D9;border-color:var(--ac)}
+  .spbox{margin-bottom:16px;padding:14px;background:#110D19;border:1px solid var(--line);border-radius:12px;display:grid;gap:10px}
+  .sp-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .sp-cov{width:52px;height:52px;border-radius:8px;background:#1A1328;object-fit:cover}
+  .sp-ctl{display:flex;gap:6px;align-items:center}
+  .sp-lyr{max-height:130px;overflow-y:auto;padding:8px 10px;background:#09070F;border:1px solid #221A35;border-radius:8px;font-size:12.5px;line-height:1.65;color:var(--mut)}
+  .sp-lyr .on{color:var(--em);font-weight:700}
   .list{display:grid;gap:7px}
   .row{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px}
   .row:hover{border-color:var(--ac)}
   .meta{flex:1;min-width:0} .meta b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .meta small{color:var(--mut);font-size:12px}
-  .spbox{margin-top:16px;padding:12px 14px;background:#110D19;border:1px solid var(--line);border-radius:10px;font-size:12.5px;color:var(--mut)}
 </style>
 <script src="kami-embed.js"></script>
 </head>
@@ -26,15 +31,36 @@
     <h1>🎵 KAMI MÜZİK</h1>
     <input id="q" style="flex:1;min-width:220px;max-width:420px" placeholder="Şarkı veya sanatçı ara (YouTube Music)…">
     <button class="btn pri" id="go">Ara</button>
+    <button class="btn" id="spCfgBtn">Spotify Bağla</button>
+  </div>
+  <div class="spbox" id="spTokBox" hidden>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="spTok" type="password" style="flex:1;min-width:240px" placeholder="Spotify OAuth Bearer Token…">
+      <button class="btn pri" id="spSave">Kaydet</button>
+      <button class="btn" id="spClear">Temizle</button>
+    </div>
+  </div>
+  <div class="spbox" id="spNowBox">
+    <div class="sp-head">
+      <img class="sp-cov" id="spCov" alt="" hidden>
+      <div class="meta">
+        <b id="spTitle">Spotify: Bağlı değil veya çalan parça yok</b>
+        <small id="spArtist">Token eklersen çalan şarkıyı buradan kontrol edip senkron sözleri görebilirsin.</small>
+      </div>
+      <div class="sp-ctl">
+        <button class="btn" data-sp="previous" title="Önceki">⏮</button>
+        <button class="btn pri" data-sp="toggle" id="spPlayBtn" title="Oynat / Duraklat">⏯</button>
+        <button class="btn" data-sp="next" title="Sonraki">⏭</button>
+      </div>
+    </div>
+    <div class="sp-lyr" id="spLyr" hidden></div>
   </div>
   <div class="list" id="list"></div>
-  <div class="spbox">
-    <b>Spotify Kontrol Köprüsü:</b> Resmi Spotify Web API token'ını Ayarlar'a eklersen çalan şarkı ve sözler burada senkron akar; aşağıdaki sonuçları ise doğrudan Kami Player (EQ + Bas + Oda Jam) veya MP3/FLAC indiriciyle çalıştırabilirsin.
-  </div>
   <script>
     const api = () => window.pywebview?.api;
     const esc = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    let ITEMS = [];
+    let ITEMS = [], SP_PLAYING = false, LAST_TRACK = "", LYRICS = [];
+
     async function search() {
       const q = document.getElementById("q").value.trim(); if (!q) return;
       document.getElementById("list").innerHTML = `<div style="color:var(--mut);padding:12px">Aranıyor…</div>`;
@@ -47,14 +73,53 @@
           <button class="btn" data-dl="${i}">⬇ İndir</button>
         </div>`).join("") : `<div style="color:var(--mut);padding:12px">Sonuç bulunamadı.</div>`;
     }
+
+    async function pollSpotify() {
+      const r = await api()?.music_spotify_now?.().catch(() => null);
+      if (!r?.ok) return;
+      if (!r.title) { spTitle.textContent = "Spotify: Şu an çalan parça yok"; spArtist.textContent = ""; spCov.hidden = true; spLyr.hidden = true; return; }
+      SP_PLAYING = !!r.playing;
+      spPlayBtn.textContent = SP_PLAYING ? "⏸" : "▶";
+      spTitle.textContent = r.title;
+      spArtist.textContent = r.artist || "";
+      if (r.cover) { spCov.src = r.cover; spCov.hidden = false; } else spCov.hidden = true;
+      const key = `${r.artist} - ${r.title}`;
+      if (key !== LAST_TRACK) {
+        LAST_TRACK = key;
+        const lr = await api()?.music_lyrics?.(r.title, r.artist).catch(() => null);
+        LYRICS = lr?.lines || [];
+        if (!LYRICS.length && lr?.plain) LYRICS = lr.plain.split(/\r?\n/).filter(Boolean).map((tx) => ({ t: -1, text: tx }));
+      }
+      if (LYRICS.length) {
+        spLyr.hidden = false;
+        const sec = (r.progress_ms || 0) / 1000;
+        let activeIdx = -1;
+        LYRICS.forEach((ln, idx) => { if (ln.t >= 0 && ln.t <= sec) activeIdx = idx; });
+        spLyr.innerHTML = LYRICS.map((ln, idx) => `<div class="${idx === activeIdx ? "on" : ""}">${esc(ln.text)}</div>`).join("");
+        const onEl = spLyr.querySelector(".on");
+        if (onEl) onEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      } else spLyr.hidden = true;
+    }
+
     document.getElementById("go").onclick = search;
     document.getElementById("q").onkeydown = (e) => { if (e.key === "Enter") search(); };
+    spCfgBtn.onclick = () => { spTokBox.hidden = !spTokBox.hidden; };
+    spSave.onclick = async () => { await api()?.music_set_spotify_token?.(spTok.value); spTok.value = ""; spTokBox.hidden = true; pollSpotify(); };
+    spClear.onclick = async () => { await api()?.music_set_spotify_token?.(""); spTok.value = ""; pollSpotify(); };
+    document.querySelector(".sp-ctl").onclick = async (e) => {
+      const b = e.target.closest("[data-sp]"); if (!b) return;
+      const act = b.dataset.sp === "toggle" ? (SP_PLAYING ? "pause" : "play") : b.dataset.sp;
+      await api()?.music_spotify_control?.(act);
+      setTimeout(pollSpotify, 350);
+    };
     document.getElementById("list").onclick = (e) => {
       const p = e.target.closest("[data-play]");
       if (p) { const it = ITEMS[+p.dataset.play]; if (it) api()?.player_open_url?.(it.url); }
       const d = e.target.closest("[data-dl]");
       if (d) { const it = ITEMS[+d.dataset.dl]; if (it) { api()?.add_url?.(it.url); d.textContent = "✓"; } }
     };
+    window.addEventListener("pywebviewready", pollSpotify);
+    setInterval(pollSpotify, 2500);
   </script>
 </body>
 </html>

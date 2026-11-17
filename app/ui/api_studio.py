@@ -1012,7 +1012,8 @@ class StudioMixin:
                     m[fam] = self._media.asset_url(path)
                 except Exception:
                     pass
-        return {"fonts": sorted(idx, key=str.lower), "map": m, "google": list(studio.GOOGLE_FONTS)}
+        tr_map = studio.font_tr_map(idx)
+        return {"fonts": sorted(idx, key=str.lower), "map": m, "tr": tr_map, "google": list(studio.GOOGLE_FONTS)}
 
     def studio_fonts_download(self) -> dict[str, Any]:
         from app.core import studio

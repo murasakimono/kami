@@ -1646,7 +1646,7 @@ function zoomInsp(c) {
 function textInsp(c) {
   const st = c.style || {};
   const allFonts = [...new Set([...(ST.cat.fonts || []), ...(st.font ? [st.font] : [])])];
-  const fontIn = (key, val) => `<label class="fld w2"><span>Font</span><select class="in" data-k="${key}">${allFonts.map(f => `<option value="${esc(f)}"${f === val ? " selected" : ""} style="font-family:'${esc(f)}',sans-serif">${esc(f)}</option>`).join("")}</select></label>`;
+  const fontIn = (key, val) => `<label class="fld w2"><span>Font</span><select class="in" data-k="${key}">${allFonts.map(f => `<option value="${esc(f)}"${f === val ? " selected" : ""} style="font-family:'${esc(f)}',sans-serif">${esc(f)}${ST.fontTr?.[f] === false ? " (⚠️ TR yok)" : ""}</option>`).join("")}</select></label>`;
   let h = "";
   if (c.sticker) {
     const sOpts = Object.fromEntries(Object.entries(ST.cat.stickers || {}).map(([k, v]) => [k, `${v.glyph || v.ico || "✦"} ${v.name || v.n || k}`]));

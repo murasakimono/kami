@@ -4124,12 +4124,15 @@ class Api(StudioMixin):
         return {"ok": True, "folder": folder}
 
     def kasa_open(self, path: str, at: float = 0.0) -> dict[str, Any]:
-        """Sonuca tikla: video Kami Player'da o saniyeden, gorsel Kami Picture'da."""
-        from app.core.semantic_vault import IMAGE_EXT
+        """Sonuca tikla: video Kami Player'da o saniyeden, gorsel Kami Picture'da, PDF/not Kami Reader'da."""
+        from app.core.semantic_vault import DOC_EXT, IMAGE_EXT
         if not os.path.isfile(path):
             return {"ok": False, "error": "not_found"}
-        if os.path.splitext(path)[1].lower() in IMAGE_EXT and hasattr(self, "picture_open"):
+        ext = os.path.splitext(path)[1].lower()
+        if ext in IMAGE_EXT and hasattr(self, "picture_open"):
             return self.picture_open(path)
+        if ext in DOC_EXT and hasattr(self, "reader_open"):
+            return self.reader_open(path)
         return self.player_show({"path": path, "at": float(at or 0)})
 
     def kasa_auto_chapters(self, transcript_segments: list[dict[str, Any]], chunk_seconds: float = 180.0, use_ollama: bool = True) -> dict[str, Any]:
@@ -4296,9 +4299,10 @@ class Api(StudioMixin):
         return import_kamipack(pack_path, dest_dir=dest_dir or None)
 
     # ---------- Dalga C/D/E: Kami Oyun, Kami Muzik, Kami Suzgec ----------
-    def games_list(self) -> dict[str, Any]:
-        from app.core.games import list_games
-        return list_games()
+    def games_list(self, include_owned: bool = True) -> dict[str, Any]:
+        from app.core.games import list_games, TRACKER
+        TRACKER.ensure_started()
+        return list_games(include_owned=include_owned)
 
     def games_launch(self, launch_target: str) -> dict[str, Any]:
         from app.core.games import launch_game
@@ -4308,6 +4312,23 @@ class Api(StudioMixin):
         from app.core.games import backup_save_ludusavi
         return backup_save_ludusavi(title, out_dir)
 
+    def games_set_sgdb_key(self, key: str) -> dict[str, Any]:
+        from app.core.games import set_sgdb_key
+        return set_sgdb_key(key)
+
+    def games_set_steam_web(self, api_key: str, steam_id: str) -> dict[str, Any]:
+        from app.core.games import set_steam_web
+        return set_steam_web(api_key, steam_id)
+
+    def games_tracker_status(self) -> dict[str, Any]:
+        from app.core.games import TRACKER
+        TRACKER.ensure_started()
+        return TRACKER.status()
+
+    def games_set_auto_replay(self, enabled: bool) -> dict[str, Any]:
+        from app.core.games import TRACKER
+        return TRACKER.set_auto_replay(enabled)
+
     def music_search(self, query: str, limit: int = 12) -> dict[str, Any]:
         from app.core.music_hub import search_ytmusic
         return search_ytmusic(query, limit=limit)
@@ -4315,6 +4336,18 @@ class Api(StudioMixin):
     def music_spotify_now(self) -> dict[str, Any]:
         from app.core.music_hub import spotify_now
         return spotify_now(str(self._manager.settings.get("spotify_token") or ""))
+
+    def music_set_spotify_token(self, token: str) -> dict[str, Any]:
+        from app.core.music_hub import set_spotify_token
+        return set_spotify_token(token)
+
+    def music_spotify_control(self, action: str) -> dict[str, Any]:
+        from app.core.music_hub import spotify_control
+        return spotify_control(str(self.settings.get("spotify_token") or ""), action)
+
+    def music_lyrics(self, title: str, artist: str = "") -> dict[str, Any]:
+        from app.core.music_hub import fetch_track_lyrics
+        return fetch_track_lyrics(title, artist)
 
     def cleaner_search(self, query: str, root: str = "", limit: int = 80) -> dict[str, Any]:
         from app.core.cleaner import search_files
