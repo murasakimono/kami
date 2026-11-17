@@ -51,8 +51,10 @@ DPAPI_KEY_LABELS: dict[str, str] = {
 
 
 def _sqlite_backup(src_db: Path, dst_db: Path) -> None:
+    import contextlib
     dst_db.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(str(src_db), timeout=10.0) as src, sqlite3.connect(str(dst_db), timeout=10.0) as dst:
+    with contextlib.closing(sqlite3.connect(str(src_db), timeout=10.0)) as src, \
+            contextlib.closing(sqlite3.connect(str(dst_db), timeout=10.0)) as dst:
         src.backup(dst)
 
 
