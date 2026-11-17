@@ -36,6 +36,7 @@
       });
     }
     set(v) { Object.assign(this.target, v); return this; }
+    poke() { this.blinkT = 0; this.squash = 1.4; this.glance = { t: 0.7, side: Math.random() < 0.5 ? -1 : 1 }; return this; }
     start() {
       if (this.running) return this; this.running = true; let last = performance.now();
       const loop = (now) => { if (!this.running) return; const dt = Math.min(0.05, (now - last) / 1000); last = now; this.step(dt); this.draw(); this.raf = requestAnimationFrame(loop); };
@@ -103,9 +104,32 @@
       const pulse = T.playbackState === 'playing' && !still ? Math.max(0, Math.sin(this.t * 7.5)) * 0.018 : 0;
       const sq = this.squash * 0.035;
       const sx = 1 + pulse + sq * 0.6, sy = 1 + pulse - sq + breath * 0.006;
+      const px = !still ? clamp(T.mouseX || 0, -1, 1) * 2.4 * k : 0;
+      const py = !still ? clamp(T.mouseY || 0, -1, 1) * 1.6 * k : 0;
       let shake = 0; if (this.cur.name === 'error' && !still) shake = (Math.random() - 0.5) * 4 * k;
+      // canli tilsim aurasi + hiz kivilcimlari (goz piksellerine dokunmaz)
+      if (!still) {
+        const sp = clamp(T.downloadSpeed || 0, 0, 1);
+        const auraR = (135 + breath * 8 + sp * 26) * k;
+        const ag = ctx.createRadialGradient(W / 2, H * 0.5, 16 * k, W / 2, H * 0.5, auraR);
+        const col = T.isError ? '255,77,106' : (sp > 0.25 || T.mood === 'happy' ? '46,230,166' : '157,107,255');
+        ag.addColorStop(0, `rgba(${col},${(0.16 + sp * 0.16).toFixed(2)})`);
+        ag.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = ag;
+        ctx.fillRect(0, 0, W, H);
+        if (sp > 0.12 || T.isDownloading) {
+          const cnt = Math.min(8, 3 + Math.round(sp * 5));
+          for (let i = 0; i < cnt; i++) {
+            const ph = (this.t * (0.7 + sp * 1.4) + i * 0.37) % 1;
+            const rx = W / 2 + Math.sin(i * 2.3 + this.t * 1.8) * (76 + (i % 3) * 18) * k;
+            const ry = H * 0.85 - ph * H * 0.72;
+            ctx.fillStyle = `rgba(46,230,166,${((1 - ph) * 0.65).toFixed(2)})`;
+            ctx.beginPath(); ctx.arc(rx, ry, (1.5 + sp * 1.5) * k, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+      }
       ctx.save();
-      ctx.translate(W / 2 + shake, H / 2 + breath * 3 * k); ctx.scale(sx, sy); ctx.translate(-W / 2, -H / 2);
+      ctx.translate(W / 2 + shake + px, H / 2 + breath * 3 * k + py); ctx.scale(sx, sy); ctx.translate(-W / 2, -H / 2);
       // ekolayzir: kare arkasinda iki yana cubuklar
       if (T.levels && T.levels.length) {
         const n = T.levels.length, cy = oy0 + this.fh * k * this.eyeY;

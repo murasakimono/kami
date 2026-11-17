@@ -156,6 +156,27 @@ function skBind() {
   const altar = $("#skAltar");
   altar.addEventListener("mouseenter", () => SK.eye?.set({ lid: 1 }));
   altar.addEventListener("mouseleave", () => SK.eye?.set({ lid: 0 }));
+  $("#skEye")?.addEventListener("click", () => {
+    SK.eye?.poke?.();
+    const act = (window.S?.items || []).filter((x) => x.status === "active").length;
+    toast(act ? skL(`🔥 ${act} aktif indirme işleniyor`, `🔥 ${act} active downloads`) : skL("👁 Kami Tılsım Ruhu hazır", "👁 Kami Talisman Spirit ready"));
+  });
+  let peekT = 0, peekEl = null;
+  const hidePeek = () => { clearTimeout(peekT); peekEl?.classList.remove("on"); };
+  $("#skTrack")?.addEventListener("mouseover", (e) => {
+    const st = e.target.closest(".sk-strip"); if (!st) return;
+    clearTimeout(peekT);
+    peekT = setTimeout(() => {
+      const d = (window.S?.items || []).find((x) => String(x.id) === st.dataset.id); if (!d) return;
+      if (!peekEl) { peekEl = document.createElement("div"); peekEl.className = "sk-peek"; document.body.appendChild(peekEl); }
+      const r = st.getBoundingClientRect();
+      peekEl.innerHTML = `<b>${esc(d.name || d.url || "")}</b><small>${esc(d.category || "dosya")} · ${fmtBytes(d.total || d.done || 0)} · %${Math.round(d.progress || 0)}</small>`;
+      peekEl.style.left = Math.max(12, Math.min(window.innerWidth - 292, r.left)) + "px";
+      peekEl.style.top = Math.max(12, r.top - 72) + "px";
+      peekEl.classList.add("on");
+    }, 360);
+  });
+  $("#skTrack")?.addEventListener("mouseout", (e) => { if (e.target.closest(".sk-strip")) hidePeek(); });
   document.addEventListener("mousemove", (e) => SK.eye?.lookAt(e.clientX, e.clientY));
   // dosya surukleme: ruh uyanir, birakinca yutar (asil ekleme extras.js'teki drop dinleyicisinde)
   let depth = 0;

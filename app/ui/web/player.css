@@ -483,3 +483,9 @@ body.pl-open #sunak { visibility: hidden; }
 .pp-groups button:hover { border-color: #9D6BFF; color: #fff; }
 .pp-groups button.on { background: #6D28D9; border-color: #9D6BFF; color: #fff; font-weight: 600; }
 .pp-ch img { width: 28px; height: 28px; object-fit: contain; margin-right: 8px; border-radius: 4px; background: rgba(255,255,255,.05); }
+.pl-waveseek { display: none; position: absolute; left: 0; right: 0; bottom: 5px; width: 100%; height: 20px; pointer-events: none; opacity: .9; }
+#player.is-audio .pl-waveseek { display: block; }
+.pl-synchud { position: absolute; left: 50%; top: 56px; transform: translate(-50%, -6px); z-index: 35; padding: 7px 16px; border-radius: 999px;
+  background: rgba(13,10,20,.88); backdrop-filter: blur(10px); border: 1px solid rgba(157,107,255,.55); color: #EDE9F6; font: 600 13px "Chakra Petch", sans-serif;
+  box-shadow: 0 10px 26px rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .16s, transform .16s; }
+.pl-synchud.on { opacity: 1; transform: translate(-50%, 0); }

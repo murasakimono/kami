@@ -30,6 +30,7 @@
     const all = LS("kami.delay", {}); if (PL.info?.path) { all[PL.info.path] = ms; SV("kami.delay", all); }
     window.plAudioGraph?.();
     if (PL.delay) PL.delay.delayTime.setTargetAtTime(ms / 1000, PL.ctx.currentTime, 0.02);
+    window.plSyncHud?.(`🔊 ${plL("Ses gecikmesi", "Audio delay")}: ${ms} ms`);
     toast(plL(`Ses gecikmesi: ${ms} ms (bu dosya için kaydedildi)`, `Audio delay: ${ms} ms (saved for this file)`));
   }
   const curDelay = () => PP.fileDelay ?? (PX.cfg.delay || 0);

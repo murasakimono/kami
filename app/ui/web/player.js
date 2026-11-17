@@ -35,7 +35,7 @@ function plBuild() {
       ${window.KAMI_PLAYER_WINDOW ? "" : `<button class="pl-x" id="plClose" title="${plL("Kapat (Esc)", "Close (Esc)")}">‹</button>`}
     </div>
     <div class="pl-deck">
-      <div class="pl-seek" id="plSeek"><i class="pl-buf" id="plBuf"></i><i class="pl-fill" id="plFill"></i><i class="pl-knob" id="plKnob"></i><span class="pl-tip" id="plTip"><img id="plThumb" alt=""><b id="plTipT"></b></span></div>
+      <div class="pl-seek" id="plSeek"><canvas class="pl-waveseek" id="plWaveSeek" width="600" height="22"></canvas><i class="pl-buf" id="plBuf"></i><i class="pl-fill" id="plFill"></i><i class="pl-knob" id="plKnob"></i><span class="pl-tip" id="plTip"><img id="plThumb" alt=""><b id="plTipT"></b></span></div>
       <div class="pl-row">
         <div class="pl-left"><span class="pl-time"><b id="plCur">0:00</b> / <span id="plDur">0:00</span></span>
           <button class="pl-b" data-pl="prev" id="plPrev" title="${plL("Önceki (P)", "Previous (P)")}">⏮</button><button class="pl-b" data-pl="back" title="-10 sn">−10</button><button class="pl-b" data-pl="fwd" title="+10 sn">+10</button><button class="pl-b" data-pl="next" id="plNext" title="${plL("Sonraki (N)", "Next (N)")}">⏭</button></div>
@@ -406,8 +406,23 @@ function plAudioGraph() {
   } catch (e) { console.warn("Web Audio kurulamadi", e); }
 }
 
-// muzik modunda figurun iki yaninda bagimsiz, ayna simetrik 16 bantlik ekolayzir
+// muzik modunda figurun iki yaninda bagimsiz, ayna simetrik 16 bantlik ekolayzir + seekbar spektrumu
+function plWaveDraw(reset) {
+  const cv = $("#plWaveSeek"); if (!cv || !$("#player")?.classList.contains("is-audio")) return;
+  const g = cv.getContext("2d"), W = cv.width, H = cv.height;
+  g.clearRect(0, 0, W, H);
+  if (reset || !PL.bins) return;
+  const bars = 64, step = Math.max(1, Math.floor((PL.bins.length * 0.65) / bars)), bw = W / bars;
+  const prog = PL.dur ? Math.min(1, Math.max(0, plNow() / PL.dur)) : 0;
+  for (let i = 0; i < bars; i++) {
+    const v = Math.pow((PL.bins[Math.min(PL.bins.length - 1, 1 + i * step)] || 0) / 255, 1.25);
+    const h = Math.max(2, v * (H - 3)), x = i * bw + 1, w = Math.max(2, bw - 2);
+    g.fillStyle = (i / bars) <= prog ? "rgba(46, 230, 166, .82)" : "rgba(157, 107, 255, .36)";
+    g.fillRect(x, H - h, w, h);
+  }
+}
 function plBigEq(reset) {
+  plWaveDraw(reset);
   const L = $("#plBigEqL"), R = $("#plBigEqR"); if (!L || !PL.bins) return;
   PL.eqOn = !reset;
   const n = 16, bars = [...L.children], bars2 = [...R.children];
@@ -467,11 +482,23 @@ async function plAss(it) {
 }
 function plAssDestroy() { try { PL.ass?.destroy(); } catch { /* zaten kapali */ } PL.ass = null; }
 function plAssSync() { if (PL.ass) PL.ass.timeOffset = PL.offset - PL.subShift; }
+let _syncHudT = 0;
+function plSyncHud(txt) {
+  const host = $("#player"); if (!host) return;
+  let el = $("#plSyncHud");
+  if (!el) { el = document.createElement("div"); el.id = "plSyncHud"; el.className = "pl-synchud"; host.appendChild(el); }
+  el.textContent = txt; el.classList.add("on");
+  clearTimeout(_syncHudT);
+  _syncHudT = setTimeout(() => el.classList.remove("on"), 1400);
+}
+window.plSyncHud = plSyncHud;
 // altyazi kaydirma: G / H (VLC gibi), ayarlar panelinde de dugme
 function plShift(d) {
   PL.subShift = d === 0 ? 0 : Math.round((PL.subShift + d) * 10) / 10;
   plAssSync(); plSubDraw(plNow());
-  toast(plL("Altyazı ", "Subtitles ") + (PL.subShift > 0 ? "+" : "") + PL.subShift.toFixed(1) + " sn");
+  const msg = plL("Altyazı ", "Subtitles ") + (PL.subShift > 0 ? "+" : "") + PL.subShift.toFixed(1) + " sn";
+  plSyncHud("💬 " + msg);
+  toast(msg);
   window.plOnShift?.();
 }
 // dil kodlari: tur/tr/Turkish -> tr
