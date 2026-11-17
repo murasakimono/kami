@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 import secrets
 import subprocess
 import threading
@@ -50,15 +51,80 @@ class Room:
         self.cv = threading.Condition()
         self.on_join: Callable[[str], None] | None = None
 
-    def say(self, who: str, text: str, kind: str = "chat") -> None:
+    def say(self, who: str, text: str, kind: str = "chat", reply: int = 0) -> None:
         text = str(text or "").strip()[:800]
         if not text:
             return
         with self.cv:
             self.seq += 1
-            self.events.append({"n": self.seq, "who": who[:40], "text": text, "kind": kind, "t": time.time()})
+            e: dict[str, Any] = {"n": self.seq, "who": who[:40], "text": text, "kind": kind, "t": time.time()}
+            if reply:
+                tgt = next((x for x in self.events if x["n"] == int(reply) and x.get("kind") == "chat"), None)
+                if tgt:
+                    e["re"] = {"n": tgt["n"], "who": tgt["who"], "text": tgt["text"][:90]}
+            self.events.append(e)
             self.events = self.events[-300:]
             self.cv.notify_all()
+        if kind == "chat":
+            self._persist()
+
+    def update(self, n: int, who: str, emoji: str = "", pin: bool | None = None) -> bool:
+        """Tepki (ayni kisi ayni emojiye tekrar basinca geri alir) ya da sabitleme. Istemcilere 'upd' olayi gider."""
+        with self.cv:
+            tgt = next((x for x in self.events if x["n"] == int(n) and x.get("kind") == "chat"), None)
+            if not tgt:
+                return False
+            if emoji:
+                emoji = str(emoji)[:8]
+                rx = tgt.setdefault("rx", {})
+                names = rx.setdefault(emoji, [])
+                if who in names:
+                    names.remove(who)
+                else:
+                    names.append(who[:40])
+                if not names:
+                    rx.pop(emoji, None)
+            if pin is not None:
+                tgt["pin"] = bool(pin)
+            self.seq += 1
+            self.events.append({"n": self.seq, "kind": "upd", "target": tgt["n"], "rx": tgt.get("rx", {}), "pin": tgt.get("pin", False),
+                                "t": time.time(), "who": who[:40], "text": ""})
+            self.events = self.events[-300:]
+            self.cv.notify_all()
+        self._persist()
+        return True
+
+    # kalici oda: sohbet (tepki, sabitleme dahil) Kami yeniden acilinca geri gelir
+    history_path: Path | None = None
+
+    def _persist(self) -> None:
+        if not self.history_path:
+            return
+        try:
+            keep = [e for e in self.events if e.get("kind") == "chat"][-200:]
+            tmp = self.history_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"id": self.id, "events": keep}, ensure_ascii=False), "utf-8")
+            tmp.replace(self.history_path)
+        except OSError:
+            pass
+
+    def restore(self) -> None:
+        if not self.history_path or not self.history_path.is_file():
+            return
+        try:
+            d = json.loads(self.history_path.read_text("utf-8"))
+        except (OSError, ValueError):
+            return
+        if d.get("id") != self.id:
+            return
+        evs = [e for e in d.get("events") or [] if isinstance(e, dict) and e.get("kind") == "chat"][-200:]
+        with self.cv:
+            for i, e in enumerate(evs, 1):   # siralari yeniden ver: istemciler 0'dan baslayip hepsini alir
+                if e.get("re"):
+                    e["re"]["n"] = 0
+                e["n"] = i
+            self.events = evs
+            self.seq = len(evs)
 
     def touch(self, pid: str, name: str, kind: str = "user") -> None:
         with self.cv:
@@ -220,6 +286,9 @@ class RoomServer:
             if not self.room:
                 self.room = Room(host_name, room_id)
                 self.room.on_join = self.on_join
+                if room_id:   # sabit oda: sohbet gecmisi kalici
+                    self.room.history_path = paths.DATA_DIR / f"room_history_{re.sub(r'[^A-Za-z0-9_-]', '', room_id)[:40]}.json"
+                    self.room.restore()
             if not self.httpd:
                 from app.core.net import ExclusiveHTTPServer
                 self.httpd = ExclusiveHTTPServer.make(("127.0.0.1", 0), _handler(self))
@@ -536,7 +605,20 @@ def _handler(srv: RoomServer):
                 return self._json({"ok": r.signal(pid, str(body.get("to", ""))[:40], body.get("data"))})
             if k == "chat":
                 p = r.peers.get(pid)
-                r.say(p["name"] if p else "Misafir", str(body.get("text", "")))
+                try:
+                    rep = int(body.get("reply") or 0)
+                except (TypeError, ValueError):
+                    rep = 0
+                r.say(p["name"] if p else "Misafir", str(body.get("text", "")), "chat", rep)
+            elif k in ("react", "pin"):
+                p = r.peers.get(pid)
+                try:
+                    tn = int(body.get("n") or 0)
+                except (TypeError, ValueError):
+                    tn = 0
+                ok = r.update(tn, p["name"] if p else "Misafir", str(body.get("emoji") or "") if k == "react" else "",
+                              bool(body.get("on", True)) if k == "pin" else None)
+                return self._json({"ok": ok})
             elif k == "me":
                 r.set_me(pid, **{x: body[x] for x in ("muted", "deaf", "sharing", "bg") if x in body})
             elif k == "leave":

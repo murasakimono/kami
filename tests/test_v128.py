@@ -44,3 +44,21 @@ def test_learn_and_find_intro_same_file(tmp_path, monkeypatch):
     PP._INTRO.d = {}
     assert PP.learn_intro("C:/d/ep1.mkv", "Dizi", 62, 151)["ok"]
     assert PP.find_intro("C:/d/ep1.mkv", "Dizi")[0]["start"] == 62
+
+
+def test_room_reactions_pins_replies_and_history(tmp_path):
+    from app.core.room import Room
+    r = Room("h", "oda1")
+    r.history_path = tmp_path / "h.json"
+    r.say("Ali", "selam")
+    r.say("Veli", "aleyküm", "chat", reply=1)
+    assert r.events[1]["re"]["who"] == "Ali"
+    assert r.update(1, "Veli", emoji="🔥") and r.update(1, "Veli", pin=True)
+    upd = [e for e in r.events if e["kind"] == "upd"][-1]
+    assert upd["target"] == 1 and upd["rx"] == {"🔥": ["Veli"]} and upd["pin"] is True
+    r.update(1, "Veli", emoji="🔥")                       # ayni tepki geri alinir
+    assert r.events[0].get("rx") == {}
+    r2 = Room("h", "oda1")
+    r2.history_path = tmp_path / "h.json"
+    r2.restore()
+    assert [e["text"] for e in r2.events] == ["selam", "aleyküm"] and r2.events[0]["pin"] is True and r2.seq == 2

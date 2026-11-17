@@ -52,7 +52,9 @@
       navigator.sendBeacon?.(this.url("leave"), new Blob([JSON.stringify({ id: this.id })], { type: "application/json" })) || this.post("leave", {});
     }
     setMe(st) { this.post("me", st); }
-    chat(text) { this.post("chat", { text }); }
+    chat(text, reply = 0) { this.post("chat", { text, reply }); }
+    react(n, emoji) { this.post("react", { n, emoji }); }
+    pin(n, on = true) { this.post("pin", { n, on }); }
 
     async _loop() {
       let fails = 0;
@@ -78,8 +80,10 @@
     _wants(p) { return p.id !== this.id && !(this.kind === "stream" && p.kind === "stream"); }
     _sync() {
       const ids = new Set(this.roster.filter((p) => this._wants(p)).map((p) => p.id));
+      const before = this.peers.size;
       for (const id of ids) if (!this.peers.has(id)) this._peer(id);
       for (const id of [...this.peers.keys()]) if (!ids.has(id)) this._drop(id);
+      if (this.peers.size !== before) for (const P of this.peers.values()) this._applyQ(P);   // kisi sayisi degisti: kaliteyi yeniden ayarla
     }
     _peer(id) {
       const pc = new RTCPeerConnection({ iceServers: this.ice, bundlePolicy: "max-bundle" });
@@ -224,7 +228,11 @@
           if (!p.encodings || !p.encodings.length) p.encodings = [{}];
           if (tr.kind === "audio") { p.encodings[0].maxBitrate = 256000; p.encodings[0].priority = "high"; p.encodings[0].networkPriority = "high"; }
           else {
-            const Q = QUALITY[P.q] || QUALITY.src, h = tr.getSettings?.().height || 1080;
+            // kalabalik koruma: yayinci her izleyiciye ayri kodlar (mesh); 5+ kiside yukleme bant genisligi ve islemci tasar
+            const n = this.peers.size, cap = n >= 7 ? "480" : n >= 5 ? "720" : n >= 4 ? "1080_30" : "";
+            const order = ["480", "720", "1080_30", "1080", "src"], want = QUALITY[P.q] ? P.q : "src";
+            const qk = cap && order.indexOf(cap) < order.indexOf(want) ? cap : want;
+            const Q = QUALITY[qk], h = tr.getSettings?.().height || 1080;
             let pref = "";
             for (const L of this.local.values()) if (L.stream.getTracks().includes(tr)) pref = L.pref || "";
             p.encodings[0].scaleResolutionDownBy = Q.h && h > Q.h ? h / Q.h : 1;

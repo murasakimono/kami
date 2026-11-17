@@ -43,7 +43,10 @@
       <div class="rm-circle" id="circle"></div>
     </section>
     <aside class="rm-chat" id="chat">
+      <div class="rm-chattools"><input id="chatQ" placeholder="Sohbette ara" autocomplete="off"></div>
+      <div class="rm-pins" id="pins" hidden></div>
       <div class="rm-msgs" id="msgs"></div>
+      <div class="rm-reply" id="replyBar" hidden><span id="replyTxt"></span><button id="replyX" type="button" aria-label="Vazgeç">✕</button></div>
       <form class="rm-send" id="send"><label class="att" title="Dosya / görsel gönder (yapıştırmak da olur)"><input type="file" id="fileIn" multiple hidden><svg viewBox="0 0 24 24"><path d="M20 11l-8 8a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg></label><input id="msg" placeholder="Mesaj yaz…" maxlength="800" autocomplete="off"><button aria-label="Gönder"><svg viewBox="0 0 24 24"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg></button></form>
     </aside>
   </main>

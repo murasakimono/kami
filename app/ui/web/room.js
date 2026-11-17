@@ -67,6 +67,7 @@ async function join() {
   } });
   if (S.mic) S.micSid = S.core.addLocal("mic", new MediaStream([S.mic]));
   await S.core.join();
+  setTimeout(() => S.core?.broadcast({ k: "yt", act: "req", at: Date.now() }), 3500);   // odada acik YouTube varsa yakala
   S.core.setMe({ muted: S.muted });
   $("join").hidden = true; $("room").hidden = false;
   if (PREF.chatOpen === false) $("room").classList.add("nochat");
@@ -105,12 +106,38 @@ async function buildMic() {
       node.connect(rn); node = rn;
     } catch (e) { console.warn("RNNoise", e); toast("Güçlü gürültü engelleme açılamadı; tarayıcınınki kullanılıyor."); }
   }
+  node = voiceFx(node, PREF.vfx || "none");   // "Doğal" seciliyken hat hic degismez (ses kalitesi korunur)
   const an = S.ctx.createAnalyser(); an.fftSize = 512; node.connect(an);
   const dest = S.ctx.createMediaStreamDestination(); node.connect(dest);
   const track = dest.stream.getAudioTracks()[0];
   if (S.mic && S.core && S.micSid) S.core.replaceTrack(S.micSid, S.mic, track);
   S.mic = track; S.micAn = an;
   applyMicState();
+}
+// ses efektleri: yalniz secilince devreye girer; her biri tek kanalli basit WebAudio dugumleri (gecikme eklemez, gurultu engellemeden sonra)
+function voiceFx(input, kind) {
+  const C = S.ctx;
+  if (!kind || kind === "none") return input;
+  const out = C.createGain();
+  if (kind === "radyo" || kind === "telefon") {
+    const hp = C.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = kind === "telefon" ? 500 : 300;
+    const lp = C.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = kind === "telefon" ? 3000 : 4200;
+    const sh = C.createWaveShaper(); const k = kind === "telefon" ? 6 : 3, n = 1024, curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = i * 2 / n - 1; curve[i] = (1 + k) * x / (1 + k * Math.abs(x)); }
+    sh.curve = curve; out.gain.value = 0.8;
+    input.connect(hp); hp.connect(lp); lp.connect(sh); sh.connect(out);
+  } else if (kind === "robot") {
+    const ring = C.createGain(); ring.gain.value = 0;
+    const osc = C.createOscillator(); osc.frequency.value = 55; osc.connect(ring.gain); osc.start();
+    input.connect(ring); ring.connect(out); out.gain.value = 1.6;
+  } else if (kind === "magara" || kind === "salon") {
+    const len = C.sampleRate * (kind === "magara" ? 2.6 : 1.2), ir = C.createBuffer(1, len, C.sampleRate), d = ir.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, kind === "magara" ? 2.2 : 3.5);
+    const cv = C.createConvolver(); cv.buffer = ir;
+    const wet = C.createGain(); wet.gain.value = kind === "magara" ? 0.45 : 0.28;
+    input.connect(out); input.connect(cv); cv.connect(wet); wet.connect(out);
+  } else return input;
+  return out;
 }
 function micOpen() { return !S.muted && !S.deaf && (!S.ptt || S.pttDown); }
 function applyMicState() {
@@ -319,6 +346,7 @@ function syncFsCtl() {
 }
 const fmtT = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = t % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
 function onAppMsg(from, m) {
+  if (m?.k === "yt") return ytIn(from, m);
   if (m?.k === "sb") return sbIn(from, m);
   if (m?.k === "draw") return drawIn(from, m);
   if (m?.k === "file") return fileIn(from, m);
@@ -436,26 +464,77 @@ function netDot(w) {
 }
 
 // ---------------------------------------------------------------- sohbet
+const REACTS = ["👍", "😂", "❤️", "😮", "😢", "🔥"];
+let replyTo = 0;
+function rxHtml(e) {
+  const rx = e.rx || {};
+  return Object.entries(rx).map(([em, names]) => `<button class="rx${names.includes(PREF.name) ? " mine" : ""}" data-rx="${esc(em)}" title="${esc(names.join(", "))}">${esc(em)} ${names.length}</button>`).join("");
+}
+function msgHtml(e) {
+  const t = new Date(e.t * 1000);
+  return `${e.re ? `<div class="quote"><b>${esc(e.re.who)}</b>${esc(e.re.text)}</div>` : ""}<b>${esc(e.who)}</b>${esc(e.text)}<time>${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}</time>` +
+    (e.kind === "chat" ? `<span class="mact"><button data-ma="reply" title="Yanıtla">↩</button><button data-ma="react" title="Tepki">☺</button><button data-ma="pin" title="${e.pin ? "Sabitlemeyi kaldır" : "Sabitle"}">📌</button></span><div class="rxs">${rxHtml(e)}</div>` : "");
+}
+const EV = new Map();   // n -> olay (tepki/sabitleme guncellemeleri icin)
+function renderPins() {
+  const pins = [...EV.values()].filter((e) => e.pin);
+  const box = $("pins"); box.hidden = !pins.length;
+  box.innerHTML = pins.slice(-3).map((e) => `<div data-goto="${e.n}">📌 <b>${esc(e.who)}</b> ${esc(e.text.slice(0, 80))}</div>`).join("");
+}
 function onEvents(evs) {
   const box = $("msgs");
   for (const e of evs) {
+    if (e.kind === "upd") {   // tepki / sabitleme
+      const tgt = EV.get(e.target); if (!tgt) continue;
+      tgt.rx = e.rx; tgt.pin = e.pin;
+      const el = box.querySelector(`.msg[data-n="${e.target}"]`); if (el) el.innerHTML = msgHtml(tgt);
+      renderPins();
+      continue;
+    }
+    if (box.querySelector(`.msg[data-n="${e.n}"]`)) continue;
+    EV.set(e.n, e);
     const el = document.createElement("div");
     const me = e.who === PREF.name && e.kind !== "sys";
     el.className = "msg" + (e.kind === "sys" ? " sys" : "") + (me ? " me" : "");
-    const t = new Date(e.t * 1000);
-    el.innerHTML = `<b>${esc(e.who)}</b>${esc(e.text)}<time>${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}</time>`;
+    el.dataset.n = e.n;
+    el.innerHTML = msgHtml(e);
     box.appendChild(el);
     if ($("room").classList.contains("nochat") && e.kind !== "sys" && !me) { $("rmUnread").hidden = false; toast(`${e.who}: ${e.text}`); }
   }
+  renderPins(); filterChat();
   box.scrollTop = box.scrollHeight;
 }
+function filterChat() {
+  const q = ($("chatQ")?.value || "").toLocaleLowerCase("tr").trim();
+  for (const el of $("msgs").children) el.hidden = !!q && !el.textContent.toLocaleLowerCase("tr").includes(q);
+}
+$("chatQ").oninput = filterChat;
+$("msgs").addEventListener("click", (ev) => {
+  const el = ev.target.closest(".msg[data-n]"); if (!el || !S.core) return;
+  const n = +el.dataset.n, e = EV.get(n);
+  const rx = ev.target.closest("[data-rx]"); if (rx) { S.core.react(n, rx.dataset.rx); return; }
+  const a = ev.target.closest("[data-ma]")?.dataset.ma;
+  if (!a) { for (const o of $("msgs").querySelectorAll(".msg.act")) if (o !== el) o.classList.remove("act"); el.classList.toggle("act"); return; }   // dokunmatik: eylemleri goster
+  if (!e) return;
+  if (a === "reply") { replyTo = n; $("replyTxt").textContent = `↩ ${e.who}: ${e.text.slice(0, 70)}`; $("replyBar").hidden = false; $("msg").focus(); }
+  if (a === "pin") S.core.pin(n, !e.pin);
+  if (a === "react") {
+    document.querySelector(".rx-pick")?.remove();
+    const p = document.createElement("div"); p.className = "rx-pick";
+    p.innerHTML = REACTS.map((x) => `<button data-pick="${x}">${x}</button>`).join("");
+    p.onclick = (k) => { const b = k.target.closest("[data-pick]"); if (b) S.core.react(n, b.dataset.pick); p.remove(); };
+    el.appendChild(p); setTimeout(() => document.addEventListener("click", () => p.remove(), { once: true }), 0);
+  }
+});
+$("pins").onclick = (ev) => { const g = ev.target.closest("[data-goto]"); if (g) $("msgs").querySelector(`.msg[data-n="${g.dataset.goto}"]`)?.scrollIntoView({ block: "center" }); };
+$("replyX").onclick = () => { replyTo = 0; $("replyBar").hidden = true; };
 $("fileIn").onchange = (e) => { [...e.target.files].forEach(sendFile); e.target.value = ""; };
 $("msg").addEventListener("paste", (e) => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) { e.preventDefault(); fs.forEach(sendFile); } });
 document.addEventListener("paste", (e) => { if (e.target.closest?.("input,textarea") || !S.core) return; const fs = [...(e.clipboardData?.files || [])]; if (fs.length) { e.preventDefault(); fs.forEach(sendFile); } });
 $("chat").addEventListener("dragover", (e) => { if (e.dataTransfer?.types?.includes("Files")) { e.preventDefault(); $("chat").classList.add("drop"); } });
 $("chat").addEventListener("dragleave", () => $("chat").classList.remove("drop"));
 $("chat").addEventListener("drop", (e) => { e.preventDefault(); $("chat").classList.remove("drop"); [...(e.dataTransfer?.files || [])].forEach(sendFile); });
-$("send").onsubmit = (e) => { e.preventDefault(); const t = $("msg").value.trim(); if (t) { S.core.chat(t); $("msg").value = ""; } };
+$("send").onsubmit = (e) => { e.preventDefault(); const t = $("msg").value.trim(); if (t) { S.core.chat(t, replyTo); $("msg").value = ""; replyTo = 0; $("replyBar").hidden = true; } };
 $("rmChatBtn").onclick = () => { const c = $("room").classList.toggle("nochat"); PREF.chatOpen = !c; save(); $("rmUnread").hidden = true; setTimeout(layout, 50); };
 
 // ---------------------------------------------------------------- ayarlar
@@ -474,6 +553,14 @@ function setupSettings() {
   $("sTest").onclick = audioTest;
   $("sMic").onchange = async (e) => { PREF.mic = e.target.value; save(); try { await buildMic(); } catch { toast("Mikrofon açılamadı"); } };
   $("sNs").onchange = async (e) => { PREF.ns = e.target.value; save(); try { await buildMic(); } catch { toast("Mikrofon açılamadı"); } };
+  if (!$("sVfx")) {   // ses efekti secimi (gurultu engelleme ayarinin hemen altina)
+    const row = $("sNs").closest("label") || $("sNs").parentElement;
+    const l = document.createElement("label"); l.className = row?.className || "";
+    l.innerHTML = `<span>Ses efekti</span><select id="sVfx"><option value="none">Doğal (efekt yok)</option><option value="radyo">Radyo</option><option value="telefon">Telefon</option><option value="robot">Robot</option><option value="salon">Salon yankısı</option><option value="magara">Mağara yankısı</option></select>`;
+    row?.after(l);
+    $("sVfx").value = PREF.vfx || "none";
+    $("sVfx").onchange = async (e) => { PREF.vfx = e.target.value; save(); try { await buildMic(); toast(e.target.value === "none" ? "Ses efekti kapalı" : "Ses efekti açık (herkes böyle duyar)"); } catch { toast("Mikrofon açılamadı"); } };
+  }
   $("sMode").onchange = (e) => { S.ptt = e.target.value === "ptt"; PREF.mode = e.target.value; save(); $("sPttRow").hidden = !S.ptt; applyMicState(); };
   $("sPtt").onclick = () => { S.capture = true; $("sPtt").textContent = "Bir tuşa bas…"; };
   $("sQ").onchange = (e) => { PREF.q = e.target.value; save(); for (const T of S.tiles.values()) if (T.pid !== "me") { const q = T.el.querySelector(".q"); if (q) { q.value = e.target.value; q.onchange(); } } };
@@ -885,3 +972,76 @@ setInterval(async () => {
 }, 600);
 
 if (window.pywebview?.api) init(); else { let done = false; window.addEventListener("pywebviewready", () => { if (!done) { done = true; init(); } }); setTimeout(() => { if (!done) { done = true; init(); } }, 400); }
+
+
+// ---------------------------------------------------------------- birlikte YouTube (herkes ayni anda; ekran paylasimi gerekmez)
+const YT = { p: null, id: "", apply: 0, ready: null, lead: false, beat: null };
+function ytId(u) {
+  const m = String(u || "").match(/(?:youtu\.be\/|v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/) || String(u || "").match(/^([\w-]{11})$/);
+  return m ? m[1] : "";
+}
+function ytApi() {
+  if (YT.ready) return YT.ready;
+  YT.ready = new Promise((ok) => {
+    window.onYouTubeIframeAPIReady = ok;
+    const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(sc);
+  });
+  return YT.ready;
+}
+async function ytOpen(id, t = 0, playing = true) {
+  await ytApi();
+  let tile = $("ytTile");
+  if (!tile) {
+    tile = document.createElement("div"); tile.id = "ytTile"; tile.className = "tile yt";
+    tile.innerHTML = `<div id="ytFrame"></div><div class="yt-bar"><span>▶ Birlikte YouTube</span><button id="ytClose" title="Herkes için kapat">✕</button></div>`;
+    $("videos").prepend(tile);
+    $("ytClose").onclick = () => { ytSend({ act: "close" }); ytClose(); };
+    layout?.();
+  }
+  if (YT.p && YT.id === id) { ytSet(t, playing); return; }
+  YT.id = id;
+  if (YT.p) { YT.apply = Date.now(); YT.p.loadVideoById({ videoId: id, startSeconds: t }); if (!playing) setTimeout(() => YT.p.pauseVideo(), 600); return; }
+  YT.p = new window.YT.Player("ytFrame", { videoId: id, playerVars: { autoplay: playing ? 1 : 0, start: Math.floor(t), playsinline: 1, rel: 0 },
+    events: { onStateChange: ytState, onReady: () => { YT.apply = Date.now(); if (t) YT.p.seekTo(t, true); if (playing) YT.p.playVideo(); } } });
+}
+function ytClose() { try { YT.p?.destroy(); } catch { /* yok */ } YT.p = null; YT.id = ""; clearInterval(YT.beat); $("ytTile")?.remove(); layout?.(); }
+function ytSend(m) { S.core?.broadcast({ k: "yt", ...m, at: Date.now() }); }
+function ytState(ev) {
+  if (Date.now() - YT.apply < 900) return;   // uzaktan gelen komutun yankisi
+  const st = ev.data;   // 1 oynuyor, 2 durdu, 3 tamponda
+  if (st !== 1 && st !== 2) return;
+  YT.lead = true;
+  ytSend({ act: "state", id: YT.id, t: YT.p.getCurrentTime(), playing: st === 1 });
+  clearInterval(YT.beat);
+  YT.beat = setInterval(() => { if (YT.p && YT.lead && YT.p.getPlayerState?.() === 1) ytSend({ act: "beat", id: YT.id, t: YT.p.getCurrentTime(), playing: true }); }, 5000);
+}
+function ytSet(t, playing) {
+  if (!YT.p?.getCurrentTime) return;
+  YT.apply = Date.now();
+  if (Math.abs(YT.p.getCurrentTime() - t) > 1.2) YT.p.seekTo(t, true);
+  if (playing && YT.p.getPlayerState() !== 1) YT.p.playVideo();
+  if (!playing && YT.p.getPlayerState() === 1) YT.p.pauseVideo();
+}
+function ytIn(from, m) {
+  if (m.act === "close") return ytClose();
+  if (m.act === "req") { if (YT.p && YT.id) S.core.send(from, { k: "yt", act: "state", id: YT.id, t: YT.p.getCurrentTime(), playing: YT.p.getPlayerState() === 1, at: Date.now() }); return; }
+  const lag = Math.max(0, (Date.now() - (m.at || Date.now())) / 1000);
+  const t = (m.t || 0) + (m.playing ? lag : 0);
+  if (m.act === "beat" && YT.id === m.id) { YT.lead = false; if (YT.p && Math.abs(YT.p.getCurrentTime() - t) > 1.5) ytSet(t, true); return; }
+  YT.lead = false;
+  ytOpen(m.id, t, !!m.playing);
+}
+function ytStart() {
+  const id = ytId(prompt("YouTube linki (herkes aynı anda izler):") || "");
+  if (!id) return;
+  YT.lead = true;
+  ytOpen(id, 0, true);
+  ytSend({ act: "state", id, t: 0, playing: true });
+}
+(function ytButton() {
+  const dock = document.querySelector(".rm-dock"); if (!dock || $("bYt")) return;
+  const b = document.createElement("button"); b.id = "bYt"; b.title = "Birlikte YouTube izle";
+  b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 6h18v12H3zM10 9l5 3-5 3z"/></svg>';
+  b.onclick = ytStart;
+  dock.insertBefore(b, $("bSet"));
+})();
