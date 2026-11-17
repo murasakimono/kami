@@ -71,3 +71,41 @@ def test_series_folder_new_chapters(tmp_path, monkeypatch):
     reader.series_seen(s["id"])
     assert reader.series_list()[0]["new"] == []
     assert not reader.series_add("bos-sey")["ok"]
+
+
+def test_lens_table_from_words_and_values():
+    from app.core.lens_tools import table_from_words, _cell_value, _num
+    W = []
+    rows = [["Ürün", "Adet", "Fiyat"], ["Kalem mavi", "3", "12,50"], ["Defter", "10", "1.250"]]
+    for r, row in enumerate(rows):
+        x = 10
+        for c, cell in enumerate(row):
+            for word in cell.split():
+                W.append({"t": word, "x": x, "y": 20 + r * 30, "w": len(word) * 8, "h": 14})
+                x += len(word) * 8 + 5
+            x = 10 + (c + 1) * 200
+    t = table_from_words(W)
+    assert t == rows
+    assert _cell_value("12,50") == 12.5 and _cell_value("1.250") == 1250 and _cell_value("Defter") == "Defter"
+    assert _num("7.739,10 TL") == 7739.1 and _num("689") == 689
+
+
+def test_lens_barcodes_qr(tmp_path):
+    zx = pytest.importorskip("zxingcpp")
+    from app.core.lens_tools import barcodes
+    img = zx.write_barcode(zx.BarcodeFormat.QRCode, "https://kami.local/deneme", width=300, height=300)
+    from PIL import Image
+    p = tmp_path / "qr.png"
+    Image.fromarray(img).save(p) if not hasattr(img, "save") else img.save(p)
+    r = barcodes(str(p))
+    assert r["codes"] and r["codes"][0]["text"] == "https://kami.local/deneme" and r["codes"][0]["kind"] == "url"
+
+
+def test_price_search_filters_and_sorts(monkeypatch):
+    from app.core import lens_tools as lt
+    monkeypatch.setattr(lt, "akakce", lambda q, n: [{"src": "Akakçe", "name": "Logitech G102 Lightsync Mouse", "price": 720.0, "url": "u1", "img": "", "note": ""},
+                                                    {"src": "Akakçe", "name": "Mouse pad kırmızı", "price": 50.0, "url": "u2", "img": "", "note": ""}])
+    monkeypatch.setattr(lt, "trendyol", lambda q, n: [{"src": "Trendyol", "name": "Logitech G G102 Lightsync RGB Oyuncu Mouse", "price": 689.0, "url": "u3", "img": "", "note": ""}])
+    r = lt.price_search("logitech g102 lightsync")
+    assert [i["url"] for i in r["items"]] == ["u3", "u1"] and r["min"] == 689.0
+    assert lt.product_query({"tags": ["kablosuz mouse"], "sites": [{"title": "Logitech G102 fiyatı - Akakçe"}, {"title": "Logitech G102 Lightsync | Trendyol"}]}) == "logitech g102"

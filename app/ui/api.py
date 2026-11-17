@@ -100,7 +100,7 @@ class Api(StudioMixin):
         "editor_vectorize", "editor_gif", "room_open", "room_relink", "editor_export", "editor_project_save", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
-        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "reader_series_add", "reader_series_check", "reader_epub_font", "rss_add", "rss_check", "rss_preview", "subtitle_translate", "subtitle_sync", "player_open_url",
+        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "reader_series_add", "reader_series_check", "reader_epub_font", "lens_price", "lens_text", "lens_table", "lens_codes", "rss_add", "rss_check", "rss_preview", "subtitle_translate", "subtitle_sync", "player_open_url",
         "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "library_meta", "tmdb_set_key", "iptv_load", "iptv_epg", "cast_devices", "cast_play", "cast_control", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     }) | STUDIO_JOBS
@@ -2498,9 +2498,47 @@ class Api(StudioMixin):
         if not os.path.isfile(str(path or "")):
             return {"ok": False, "error": "no_file"}
         try:
-            return lens.search(str(path))
+            r = lens.search(str(path))
+            self._lens_last = {str(path): r}   # fiyat sorgusu onerisi icin
+            return r
         except Exception as exc:
             log.exception("Kami Lens")
+            return {"ok": False, "error": str(exc)[:160]}
+
+    # ---- v1.30 Lens araclari: fiyat, metin, tablo -> Excel, QR/barkod
+    def lens_price(self, query: str = "", path: str = "") -> dict[str, Any]:
+        from app.core import lens_tools
+        q = str(query or "").strip()
+        if not q and path:
+            lr = getattr(self, "_lens_last", {}).get(str(path)) or {}
+            q = lens_tools.product_query(lr, lens_tools.ocr_text(str(path)).get("text", "") if os.name == "nt" else "")
+        if not q:
+            return {"ok": False, "error": "sorgu", "query": ""}
+        return lens_tools.price_search(q)
+
+    def lens_text(self, path: str) -> dict[str, Any]:
+        from app.core import lens_tools
+        try:
+            return lens_tools.ocr_text(str(path))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def lens_table(self, path: str) -> dict[str, Any]:
+        from app.core import lens_tools
+        p = str(path)
+        out = os.path.join(self._manager.settings.get("download_dir") or os.path.dirname(p),
+                           os.path.splitext(os.path.basename(p))[0].replace("kami_lens_", "lens_") + "_tablo.xlsx")
+        try:
+            return lens_tools.table_to_xlsx(p, out)
+        except Exception as exc:
+            log.exception("Lens tablo")
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def lens_codes(self, path: str) -> dict[str, Any]:
+        from app.core import lens_tools
+        try:
+            return lens_tools.barcodes(str(path))
+        except Exception as exc:
             return {"ok": False, "error": str(exc)[:160]}
 
     def lens_download(self, url: str, near: str = "") -> dict[str, Any]:
