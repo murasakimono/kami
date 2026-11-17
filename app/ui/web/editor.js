@@ -60,12 +60,7 @@ function edDraw() {
   // seffaflik damali
   g.fillStyle = edChecker(g); g.fillRect(0, 0, ED.W, ED.H);
   g.imageSmoothingEnabled = ED.z < 2; g.imageSmoothingQuality = "high";
-  for (const l of ED.layers) {
-    if (!l.vis) continue;
-    g.globalAlpha = l.op; g.globalCompositeOperation = l.blend;
-    g.drawImage(l === ED.stroke?.layer ? ED.stroke.preview : ED.preview && l === cl() ? ED.preview : l.c, l.x, l.y);
-  }
-  g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
+  edComposite(g, true);
   if (ED.overlay) { g.globalAlpha = 0.55; g.drawImage(ED.overlay, 0, 0); g.globalAlpha = 1; }
   // belge kenari
   g.lineWidth = 1 / ED.z; g.strokeStyle = "rgba(139,92,246,.5)"; g.strokeRect(0, 0, ED.W, ED.H);
@@ -97,19 +92,23 @@ function edChecker(g) { if (checkerPat) return checkerPat; const c = document.cr
 
 // ---------------------------------------------------------------- geri al
 function edSnap(label, layers = [ED.cur]) {
-  const snap = { label, cur: ED.cur, W: ED.W, H: ED.H, items: layers.map((i) => { const l = ED.layers[i]; return { id: l.id, data: l.c.getContext("2d").getImageData(0, 0, l.c.width, l.c.height), x: l.x, y: l.y, w: l.c.width, h: l.c.height }; }) };
-  ED.undo.push(snap); if (ED.undo.length > 80) ED.undo.shift(); ED.redo = []; ED.dirty = true;
+  const snap = { label, cur: ED.cur, W: ED.W, H: ED.H, items: layers.map((i) => { const l = ED.layers[i]; return { id: l.id, m: !!l._swapped, adj: l.adj ? JSON.parse(JSON.stringify(l.adj)) : null, data: l.c.getContext("2d").getImageData(0, 0, l.c.width, l.c.height), x: l.x, y: l.y, w: l.c.width, h: l.c.height }; }) };
+  ED.undo.push(snap); if (ED.undo.length > 80) ED.undo.shift(); ED.redo = []; ED.dirty = true; edBump();
 }
 function edSnapAll(label) {   // katman ekleme/silme/kirpma: tum belge
-  ED.undo.push({ label, full: edSerialize(true) }); if (ED.undo.length > 40) ED.undo.shift(); ED.redo = []; ED.dirty = true;
+  ED.undo.push({ label, full: edSerialize(true) }); if (ED.undo.length > 40) ED.undo.shift(); ED.redo = []; ED.dirty = true; edBump();
 }
 function edApplySnap(s, into) {
   if (s.full) { into.push({ label: s.label, full: edSerialize(true) }); edDeserialize(s.full); return; }
-  into.push({ label: s.label, cur: ED.cur, items: s.items.map((it) => { const l = ED.layers.find((x) => x.id === it.id); return l && { id: l.id, data: l.c.getContext("2d").getImageData(0, 0, l.c.width, l.c.height), x: l.x, y: l.y, w: l.c.width, h: l.c.height }; }).filter(Boolean) });
+  edBump();
+  into.push({ label: s.label, cur: ED.cur, items: s.items.map((it) => { const l = ED.layers.find((x) => x.id === it.id); if (!l) return null; const tc = !!it.m === !!l._swapped ? l.c : (l.mask || l.c); return { id: l.id, m: it.m, adj: l.adj ? JSON.parse(JSON.stringify(l.adj)) : null, data: tc.getContext("2d").getImageData(0, 0, tc.width, tc.height), x: l.x, y: l.y, w: tc.width, h: tc.height }; }).filter(Boolean) });
   for (const it of s.items) {
     const l = ED.layers.find((x) => x.id === it.id); if (!l) continue;
-    if (l.c.width !== it.w || l.c.height !== it.h) { l.c.width = it.w; l.c.height = it.h; }
-    l.c.getContext("2d").putImageData(it.data, 0, 0); l.x = it.x; l.y = it.y;
+    const tc = !!it.m === !!l._swapped ? l.c : (l.mask || l.c);   // maske duzenlemesi ile goruntu karismasin
+    if (tc.width !== it.w || tc.height !== it.h) { tc.width = it.w; tc.height = it.h; }
+    tc.getContext("2d").putImageData(it.data, 0, 0); l.x = it.x; l.y = it.y;
+    if (it.adj !== undefined && l.adj) l.adj = it.adj;
+    if (tc === l.mask || (l._swapped && tc === l.c)) l._maskV = (l._maskV || 0) + 1;
   }
 }
 function edUndo() { const s = ED.undo.pop(); if (!s) return; edApplySnap(s, ED.redo); edRender(); edLayersUi(); }
@@ -164,7 +163,8 @@ function edStrokeCompose() {
 function edStrokeEnd() {
   const s = ED.stroke; if (!s) return;
   const g = s.layer.c.getContext("2d"); g.clearRect(0, 0, s.layer.c.width, s.layer.c.height); g.drawImage(s.preview, 0, 0);
-  ED.stroke = null; edRender(); edLayerThumb(ED.cur);
+  if (s.layer._swapped) s.layer._maskV = (s.layer._maskV || 0) + 1;
+  ED.stroke = null; edBump(); edRender(); edLayerThumb(ED.cur);
 }
 
 // ---------------------------------------------------------------- isaretci
@@ -485,8 +485,52 @@ function edFillSel() { const l = cl(); edSnap(edL("Doldur", "Fill")); const g = 
 function edFlipLayer(h) { const l = cl(); edSnap(edL("Çevir", "Flip")); const c = document.createElement("canvas"); c.width = l.c.width; c.height = l.c.height; const g = c.getContext("2d"); g.translate(h ? c.width : 0, h ? 0 : c.height); g.scale(h ? -1 : 1, h ? 1 : -1); g.drawImage(l.c, 0, 0); const lg = l.c.getContext("2d"); lg.clearRect(0, 0, c.width, c.height); lg.drawImage(c, 0, 0); edRender(); edLayerThumb(ED.cur); }
 function edFlatten() {
   const c = document.createElement("canvas"); c.width = ED.W; c.height = ED.H; const g = c.getContext("2d");
-  for (const l of ED.layers) { if (!l.vis) continue; g.globalAlpha = l.op; g.globalCompositeOperation = l.blend; g.drawImage(l.c, l.x, l.y); }
+  edComposite(g, false);
   return c;
+}
+// v1.30: katman maskesi (l.mask: beyaz=gorunur, siyah=gizli; l.c ile ayni boyut) ve ayar katmani (l.adj: altindakilere
+// egriler/seviyeler/renk tahribatsiz uygulanir). live=true: ekrandaki onizleme (firca/ayar onizlemesi dahil).
+ED.ver = 0;
+function edBump() { ED.ver++; }
+function edMaskAlpha(l) {   // gri maske -> alfa maske (onbellekli)
+  if (l._mA && l._mAv === l._maskV) return l._mA;
+  const w = l.mask.width, h = l.mask.height, src = l.mask.getContext("2d").getImageData(0, 0, w, h), d = src.data;
+  for (let i = 0; i < d.length; i += 4) { d[i + 3] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) * (d[i + 3] / 255); d[i] = d[i + 1] = d[i + 2] = 0; }
+  const c = l._mA || document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").putImageData(src, 0, 0);
+  l._mA = c; l._mAv = l._maskV; return c;
+}
+function edMasked(l, src) {
+  if (!l.mask || l._swapped) return src;
+  const t = document.createElement("canvas"); t.width = src.width; t.height = src.height; const tg = t.getContext("2d");
+  tg.drawImage(src, 0, 0); tg.globalCompositeOperation = "destination-in"; tg.drawImage(edMaskAlpha(l), 0, 0);
+  return t;
+}
+function edAdjLayerSrc(l, idx, live) {   // altindaki birlesimin ayarlanmis hali (surum degismedikce onbellek)
+  const key = `${ED.ver}|${idx}|${JSON.stringify(l.adj)}|${live ? 1 : 0}`;
+  if (l._adjC && l._adjK === key) return l._adjC;
+  const below = document.createElement("canvas"); below.width = ED.W; below.height = ED.H;
+  edComposite(below.getContext("2d"), false, idx);
+  const sc = live ? Math.min(1, 1400 / Math.max(ED.W, ED.H)) : 1;   // ekranda hizli onizleme, disa aktarmada tam cozunurluk
+  const w = Math.max(1, Math.round(ED.W * sc)), h = Math.max(1, Math.round(ED.H * sc));
+  const sm = document.createElement("canvas"); sm.width = w; sm.height = h; const sg = sm.getContext("2d"); sg.drawImage(below, 0, 0, w, h);
+  const a = Object.assign({ bright: 0, contrast: 0, sat: 0, hue: 0, temp: 0, vib: 0, expo: 0, blur: 0, sharp: 0, grain: 0, vign: 0, lvIn0: 0, lvIn1: 255, lvGamma: 1 }, l.adj.a || {});
+  const cv = Object.assign({ rgb: [[0, 0], [255, 255]], r: [[0, 0], [255, 255]], g: [[0, 0], [255, 255]], b: [[0, 0], [255, 255]] }, l.adj.cv || {});
+  sg.putImageData(edAdjustData(sg.getImageData(0, 0, w, h), a, cv), 0, 0);
+  const out = document.createElement("canvas"); out.width = ED.W; out.height = ED.H; out.getContext("2d").drawImage(sm, 0, 0, ED.W, ED.H);
+  l._adjC = out; l._adjK = key; return out;
+}
+function edComposite(g, live, upto = ED.layers.length) {
+  for (let i = 0; i < upto; i++) {
+    const l = ED.layers[i];
+    if (!l.vis) continue;
+    let src;
+    if (l.adj) src = edAdjLayerSrc(l, i, live);
+    else src = live ? (l === ED.stroke?.layer ? ED.stroke.preview : ED.preview && l === cl() ? ED.preview : l.c) : l.c;
+    if (l.mask && !l._swapped) src = edMasked(l, src);
+    g.globalAlpha = l.op; g.globalCompositeOperation = l.adj ? "source-over" : l.blend;
+    g.drawImage(src, l.adj ? 0 : l.x, l.adj ? 0 : l.y);
+  }
+  g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
 }
 
 // ---------------------------------------------------------------- katman seridi
@@ -593,19 +637,32 @@ function edWheelClose() { $("#edWheel").classList.remove("on"); }
 
 // ---------------------------------------------------------------- kaydet / proje
 function edSerialize(raw) {
-  return { v: 1, W: ED.W, H: ED.H, cur: ED.cur, name: ED.name, layers: ED.layers.map((l) => ({ id: l.id, name: l.name, x: l.x, y: l.y, vis: l.vis, op: l.op, blend: l.blend, text: l.text,
-    w: l.c.width, h: l.c.height, png: raw ? l.c.getContext("2d").getImageData(0, 0, l.c.width, l.c.height) : l.c.toDataURL("image/png") })) };
+  return { v: 2, W: ED.W, H: ED.H, cur: ED.cur, name: ED.name, layers: ED.layers.map((l) => {
+    const img = l._swapped ? l.mask : l.c, msk = l._swapped ? l.c : l.mask;   // maske duzenlenirken kaydedilse de dogru yere
+    return { id: l.id, name: l.name, x: l.x, y: l.y, vis: l.vis, op: l.op, blend: l.blend, text: l.text, adj: l.adj || null,
+      w: img.width, h: img.height, png: raw ? img.getContext("2d").getImageData(0, 0, img.width, img.height) : img.toDataURL("image/png"),
+      mask: msk ? (raw ? msk.getContext("2d").getImageData(0, 0, msk.width, msk.height) : msk.toDataURL("image/png")) : null };
+  }) };
 }
-async function edDeserialize(s) {
-  ED.W = s.W; ED.H = s.H; ED.cur = s.cur || 0; ED.name = s.name || ED.name;
-  ED.layers = await Promise.all(s.layers.map(async (q) => {
-    const l = edLayer(q.name, q.w, q.h); Object.assign(l, { id: q.id, x: q.x, y: q.y, vis: q.vis, op: q.op, blend: q.blend, text: q.text });
-    if (q.png instanceof ImageData) l.c.getContext("2d").putImageData(q.png, 0, 0);
-    else { const img = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = q.png; }); l.c.getContext("2d").drawImage(img, 0, 0); }
-    return l;
-  }));
-  $("#edSize").textContent = `${ED.W}×${ED.H}`; $("#edName").textContent = ED.name;
-  edLayersUi(); edRender();
+function edDeserialize(s) {
+  // ham (ImageData) anlik goruntu = geri al/yinele: ESZAMANLI (art arda geri almada yaris olmasin); dosyadan: async
+  const raw = s.layers.every((q) => q.png instanceof ImageData && (!q.mask || q.mask instanceof ImageData));
+  const build = (q, put) => {
+    const l = edLayer(q.name, q.w, q.h); Object.assign(l, { id: q.id, x: q.x, y: q.y, vis: q.vis, op: q.op, blend: q.blend, text: q.text, adj: q.adj || null });
+    const a = put(l.c, q.png);
+    let b = null;
+    if (q.mask) { l.mask = document.createElement("canvas"); l.mask.width = q.w; l.mask.height = q.h; b = put(l.mask, q.mask); l._maskV = 1; }
+    return [l, a, b];
+  };
+  const finish = (layers) => {
+    ED.W = s.W; ED.H = s.H; ED.cur = Math.min(s.cur || 0, layers.length - 1); ED.name = s.name || ED.name; ED.layers = layers;
+    $("#edSize").textContent = `${ED.W}×${ED.H}`; $("#edName").textContent = ED.name;
+    edBump(); edLayersUi(); edRender();
+  };
+  if (raw) { finish(s.layers.map((q) => build(q, (cv, d) => cv.getContext("2d").putImageData(d, 0, 0))[0])); return Promise.resolve(); }
+  const load = (cv, data) => new Promise((ok) => { const i = new Image(); i.onload = () => { cv.getContext("2d").drawImage(i, 0, 0); ok(); }; i.onerror = ok; i.src = data; });
+  const parts = s.layers.map((q) => build(q, load));
+  return Promise.all(parts.flatMap(([, a, b]) => [a, b].filter(Boolean))).then(() => finish(parts.map(([l]) => l)));
 }
 async function edSaveProject() {
   const r = await api.editor_project_save(ED.projPath || "", ED.name, JSON.stringify(edSerialize(false)));

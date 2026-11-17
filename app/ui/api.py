@@ -2275,6 +2275,42 @@ class Api(StudioMixin):
             f.write(raw)
         return {"ok": True, "path": out}
 
+    # ---- v1.30 Picture toplu islem: dosya secimi + secilen klasore yazma (ad korunur, uzerine yazmaz)
+    def pic_batch_pick(self) -> list[str]:
+        import webview
+        w = getattr(self, "_picture_win", None) or self._window
+        if not w:
+            return []
+        r = w.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True, file_types=(
+            "Görseller (*.jpg;*.jpeg;*.png;*.webp;*.bmp;*.gif;*.tif;*.tiff;*.heic;*.avif)", "Tüm dosyalar (*.*)"))
+        return [str(x) for x in (r or [])][:500]
+
+    def pic_batch_dir(self) -> str:
+        import webview
+        w = getattr(self, "_picture_win", None) or self._window
+        r = w.create_file_dialog(webview.FileDialog.FOLDER) if w else None
+        return str(r[0]) if r else ""
+
+    def pic_batch_write(self, src: str, out_dir: str, suffix: str, fmt: str, data_url: str) -> dict[str, Any]:
+        import base64
+        fmt = fmt if fmt in ("png", "jpg", "webp") else "jpg"
+        try:
+            raw = base64.b64decode(str(data_url).split(",", 1)[1])
+        except Exception:
+            return {"ok": False, "error": "bad_data"}
+        d = str(out_dir or "") or os.path.join(os.path.dirname(str(src)), "Kami toplu")
+        os.makedirs(d, exist_ok=True)
+        base = re.sub(r'[\\/:*?"<>|]+', "_", os.path.splitext(os.path.basename(str(src)))[0])[:100] or "gorsel"
+        sfx = re.sub(r'[\\/:*?"<>|]+', "_", str(suffix or ""))[:40]
+        out = os.path.join(d, f"{base}{sfx}.{fmt}")
+        n = 2
+        while os.path.exists(out):
+            out = os.path.join(d, f"{base}{sfx} ({n}).{fmt}")
+            n += 1
+        with open(out, "wb") as f:
+            f.write(raw)
+        return {"ok": True, "path": out}
+
     def editor_vectorize(self, near: str, name: str, data_url: str, preset: str = "color") -> dict[str, Any]:
         """Bitmap -> SVG (vtracer). preset: color (logo/cizim, renkli) | bw (siyah-beyaz cizgi) | photo (ayrintili)."""
         import base64
