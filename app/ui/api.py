@@ -744,6 +744,72 @@ class Api(StudioMixin):
     def _rd_err(exc) -> dict[str, Any]:
         return {"ok": False, "error": exc.code, "detail": exc.detail}
 
+    def item_peek(self, item_id: int) -> dict[str, Any]:
+        """v1.32.1 Sunak kart onizlemesi: medya ozeti (+ video icin kucuk kare). Sonuc dosya+mtime ile onbellekli."""
+        import base64
+        d = next((x for x in self._manager.snapshot() if x.id == int(item_id)), None)
+        if d is None or d.status != "complete" or d.category not in ("video", "music"):
+            return {}
+        p = d.path
+        try:
+            key = (p, os.path.getmtime(p))
+        except OSError:
+            return {}
+        cache = self.__dict__.setdefault("_peek_cache", {})
+        if key in cache:
+            return cache[key]
+        from app.core.media_server import find_ffprobe, probe
+        from app.engines.ytdlp_engine import find_ffmpeg
+        ff = find_ffmpeg() or ""
+        info = probe(find_ffprobe(ff) if ff else "", p)
+        out: dict[str, Any] = {"duration": info.get("duration", 0), "w": info.get("width", 0), "h": info.get("height", 0),
+                               "vcodec": info.get("vcodec", ""), "acodec": (info.get("audio") or [{}])[0].get("codec", "")}
+        if d.category == "video" and ff:
+            try:
+                t = max(1.0, float(out["duration"] or 0) * 0.2)
+                r = subprocess.run([ff, "-v", "error", "-ss", f"{t:.1f}", "-i", p, "-frames:v", "1", "-vf", "scale=320:-2",
+                                    "-q:v", "6", "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
+                                   capture_output=True, timeout=12, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                if r.stdout:
+                    out["thumb"] = "data:image/jpeg;base64," + base64.b64encode(r.stdout).decode()
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if len(cache) > 80:
+            cache.clear()
+        cache[key] = out
+        return out
+
+    def dash_stats(self) -> dict[str, Any]:
+        """v1.32.1 Sunak gosterge paneli: disk, bugun inenler, RD (5 dk onbellekli), haftalik."""
+        import shutil as _sh
+        out: dict[str, Any] = {}
+        try:
+            u = _sh.disk_usage(self._manager.base_dir())
+            out["disk_free"], out["disk_total"] = u.free, u.total
+        except OSError:
+            pass
+        day0 = time.time() - (time.time() - time.timezone) % 86400   # yerel gun baslangici (kabaca)
+        week0 = time.time() - 7 * 86400
+        today = week = 0
+        n_today = 0
+        for it in self._manager.snapshot():
+            if getattr(it, "status", "") != "complete":
+                continue
+            fa, size = float(getattr(it, "finished_at", 0) or 0), int(getattr(it, "size", 0) or 0)
+            if fa >= week0:
+                week += size
+                if fa >= day0:
+                    today += size
+                    n_today += 1
+        out.update(today=today, today_n=n_today, week=week)
+        try:
+            rd = self._rd.status() if self._rd is not None and self._rd.has_token() else {}
+            if rd.get("ok"):
+                out["rd_days"] = rd.get("premium_days", 0)
+        except Exception:
+            pass
+        return out
+
     def rd_status(self) -> dict[str, Any]:
         if self._rd is None:
             return {"has_token": False, "available": False}

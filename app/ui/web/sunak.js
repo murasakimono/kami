@@ -58,6 +58,7 @@ function skBuild() {
         <canvas class="sk-spark" id="skSpark" width="640" height="128"></canvas>
         <div class="sk-mood" id="skMood"></div>
       </div>
+      <div class="sk-gauges" id="skGauges"></div>
     </div>
     <div class="sk-strips">
       <button class="sk-arrow prev" id="skPrev" aria-label="${skL("önceki", "previous")}"></button>
@@ -199,6 +200,18 @@ function skBind() {
       peekEl.style.top = Math.max(12, r.top - 72) + "px";
       peekEl.dataset.id = st.dataset.id;
       peekEl.classList.add("on");
+      if (d.status === "complete" && ["video", "music"].includes(d.category)) {   // medya ozeti (+ video karesi)
+        const id = st.dataset.id;
+        api.item_peek(d.id).then((m) => {
+          if (!m || !peekEl.classList.contains("on") || peekEl.dataset.id !== id) return;
+          const res = m.h ? (m.h >= 2100 ? "4K" : m.h >= 1400 ? "1440p" : m.h >= 1000 ? "1080p" : m.h >= 700 ? "720p" : m.h + "p") : "";
+          const bits = [res, m.duration ? fmtEta(m.duration) : "", [m.vcodec, m.acodec].filter(Boolean).join(" / ").toUpperCase()].filter(Boolean);
+          peekEl.insertAdjacentHTML("afterbegin", m.thumb ? `<img class="sk-peek-th" src="${m.thumb}" alt="">` : "");
+          if (bits.length) peekEl.insertAdjacentHTML("beforeend", `<small class="sk-peek-m">${escapeHtml(bits.join(" · "))}</small>`);
+          const r2 = st.getBoundingClientRect();
+          peekEl.style.top = Math.max(12, r2.top - peekEl.offsetHeight - 8) + "px";
+        }).catch(() => {});
+      }
     }, 360);
   });
   $("#skTrack")?.addEventListener("mouseout", (e) => {   // seritler her yenilemede yeniden cizilir: ayni seride gecis kapatmasin
@@ -677,3 +690,73 @@ function fxToggle(on) { FX.on = on; window.KamiSunakGPU?.setFx?.(on); document.b
 skBuild();
 fxInit();
 STATE_HOOKS.push(skState);
+
+// v1.32.1 Sag ray sadelestirme: 12 dugme -> ana isler + "Araclar" izgarasi + Ayarlar.
+// Orijinal dugmeler DOM'da (gizli) kalir; dosemeler onlara tiklatir -> tum mevcut isleyiciler aynen calisir.
+(() => {
+  const CORE = ["library", "list", "history", "pano"];
+  const isTool = (b) => b.id !== "skToolsBtn" && !CORE.includes(b.dataset.sk) && b.dataset.sk !== "settings";
+  let pop = null;
+  const SHORT = { fx: ["Efektler", "Effects"], ai: ["AI altyazı · vokal", "AI subs · vocals"], kfDockBtn: ["Akış & Copilot", "Flow & Copilot"] };
+  const label = (b) => { const s = SHORT[b.dataset.sk] || SHORT[b.id]; return s ? skL(s[0], s[1]) : (b.dataset.tip || b.title || b.getAttribute("aria-label") || ""); };
+  function arrange() {
+    const dock = $("#skDock"); if (!dock) return;
+    let tb = $("#skToolsBtn");
+    if (!tb) {
+      tb = document.createElement("button");
+      tb.id = "skToolsBtn"; tb.dataset.sk = "tools"; tb.title = skL("Araçlar", "Tools");
+      tb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><b id="skToolsN" hidden></b>';
+      dock.appendChild(tb);
+    }
+    const btns = [...dock.querySelectorAll(":scope > button")];
+    const lib = btns.filter((b) => b.dataset.sk === "library");
+    lib.slice(1).forEach((b) => b.remove());   // iki yerden eklenen Kutuphane dugmesi tekille
+    const order = [...CORE.map((k) => btns.find((b) => b.dataset.sk === k || (k === "pano" && b.dataset.sk === "pano"))), tb, btns.find((b) => b.dataset.sk === "settings")].filter(Boolean);
+    order.forEach((b) => dock.appendChild(b));
+    btns.forEach((b) => b.classList.toggle("sk-intool", isTool(b)));
+    const fn = $("#skFollowN"), tn = $("#skToolsN");   // Takip rozetini Araclar dugmesine tasi
+    if (tn) { tn.hidden = !fn || fn.hidden; tn.textContent = fn?.textContent || ""; }
+  }
+  function openTools() {
+    const dock = $("#skDock"), tb = $("#skToolsBtn");
+    if (pop?.classList.contains("on")) { pop.classList.remove("on"); tb.classList.remove("on"); return; }
+    if (!pop) { pop = document.createElement("div"); pop.className = "sk-tools"; document.body.appendChild(pop); }
+    const tools = [...dock.querySelectorAll(":scope > button.sk-intool")];
+    pop.innerHTML = `<b class="sk-tools-h">${skL("Araçlar", "Tools")}</b><div class="sk-tools-g">${tools.map((b, i) => `<button type="button" data-i="${i}" class="${b.classList.contains("ai") ? "ai" : ""}">${b.querySelector("svg")?.outerHTML || ""}<span>${escapeHtml(label(b).replace(/\s*\(.*\)\s*$/, ""))}</span>${b.querySelector("b:not([hidden])") ? `<i>${escapeHtml(b.querySelector("b").textContent)}</i>` : ""}</button>`).join("")}</div>`;
+    pop.querySelectorAll("[data-i]").forEach((x) => x.onclick = (e) => { e.stopPropagation(); pop.classList.remove("on"); tb.classList.remove("on"); tools[+x.dataset.i].click(); });
+    const r = tb.getBoundingClientRect();
+    pop.style.right = (innerWidth - r.left + 10) + "px";
+    pop.style.top = Math.max(12, Math.min(innerHeight - 330, r.top - 120)) + "px";
+    pop.classList.add("on"); tb.classList.add("on");
+  }
+  document.addEventListener("click", (e) => {
+    if (e.target.closest?.("#skToolsBtn")) { e.stopImmediatePropagation(); openTools(); return; }
+    if (pop?.classList.contains("on") && !e.target.closest?.(".sk-tools")) { pop.classList.remove("on"); $("#skToolsBtn")?.classList.remove("on"); }
+  }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pop?.classList.contains("on")) { pop.classList.remove("on"); $("#skToolsBtn")?.classList.remove("on"); } });
+  const boot = () => {
+    const dock = $("#skDock"); if (!dock) return setTimeout(boot, 300);
+    arrange();
+    let t = 0;
+    new MutationObserver(() => { clearTimeout(t); t = setTimeout(arrange, 50); }).observe(dock, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
+  };
+  boot();
+})();
+
+// v1.32.1 ust alan gosterge paneli (disk / bugun / hafta / RD) — 20 sn'de bir, ucuz
+(() => {
+  const g = (ic, v, t, warn) => `<div class="sk-g${warn ? " warn" : ""}"><i>${ic}</i><b>${v}</b><span>${t}</span></div>`;
+  async function upd() {
+    const box = $("#skGauges"); if (!box || document.hidden) return;
+    let d; try { d = await api.dash_stats(); } catch { return; }
+    const free = d.disk_free ?? null, pct = d.disk_total ? free / d.disk_total : 1;
+    box.innerHTML = [
+      free != null ? g(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="16" cy="12" r="2"/><path d="M7 9h4"/></svg>`, fmtBytes(free), skL("boş disk", "free disk"), pct < 0.08) : "",
+      g(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>`, d.today ? fmtBytes(d.today) : "0", skL(`bugün · ${d.today_n || 0} dosya`, `today · ${d.today_n || 0} files`)),
+      g(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18l5-6 4 3 7-8M15 7h5v5"/></svg>`, d.week ? fmtBytes(d.week) : "0", skL("son 7 gün", "last 7 days")),
+      d.rd_days != null ? g(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>`, `${d.rd_days} ${skL("gün", "d")}`, "Real-Debrid", d.rd_days < 5) : "",
+    ].join("");
+  }
+  setTimeout(upd, 1200); setInterval(upd, 20000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) upd(); });
+})();
