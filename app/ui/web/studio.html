@@ -124,6 +124,7 @@
   <!-- Sayfa doku (DaVinci mantigi): sol proje, orta sayfalar, sag islemler -->
   <nav id="dock">
     <div class="dk-l">
+      <canvas id="stEye" width="34" height="52" title="Kami Studio Tılsımı" style="cursor:pointer;flex:none;margin:-4px 2px -4px -2px"></canvas>
       <span class="logo">KAMI<b>STUDIO</b></span>
       <input id="pname" value="Yeni proje" spellcheck="false" title="Proje adı">
       <span id="saved"></span>
@@ -159,5 +160,18 @@
 <script src="studio-ux.js"></script>
 <script src="studio-finish.js"></script>
 <script src="studio-extra30.js"></script>
+<script src="eye/kami_eye.js"></script>
+<script>
+(() => {
+  const cv = document.getElementById("stEye");
+  if (!cv || !window.KamiEye) return;
+  const eye = new KamiEye(cv, { assets: "eye/char/", eyeY: 0.38, mirrorFrame: true });
+  eye.set({ costume: "studio" });
+  eye.ready.then(() => eye.start()).catch(() => {});
+  document.addEventListener("mousemove", (e) => eye.lookAt(e.clientX, e.clientY));
+  cv.addEventListener("click", () => eye.poke?.());
+  window.ST_EYE = eye;
+})();
+</script>
 </body>
 </html>

@@ -934,7 +934,10 @@ async function sbPlay(id) {
   try { await S.ctx.resume(); } catch { /* yok */ }
   const buf = await sbBuffer(id); if (!buf) return;
   const src = S.ctx.createBufferSource(), g = S.ctx.createGain();
-  g.gain.value = PREF.sbVol ?? 0.6; src.buffer = buf; src.connect(g); g.connect(S.ctx.destination); src.start();
+  g.gain.value = PREF.sbVol ?? 0.6; src.buffer = buf; src.connect(g); g.connect(S.ctx.destination);
+  (SB.playing ||= new Set()).add(src);
+  src.onended = () => SB.playing.delete(src);
+  src.start(0);
 }
 function sbToast(t) {
   let e = document.querySelector(".sb-toast");

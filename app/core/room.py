@@ -234,7 +234,7 @@ def soundboard_file(key: str) -> bytes | None:
     from app.engines.ytdlp_engine import find_ffmpeg
     got = studio.ensure_sfx(find_ffmpeg() or "", key)
     f = got.get(key)
-    if not f or not os.path.isfile(f) or os.path.getsize(f) > 3_000_000:
+    if not f or not os.path.isfile(f) or os.path.getsize(f) > 10_000_000:
         return None
     with open(f, "rb") as fh:
         data = fh.read()
