@@ -179,3 +179,20 @@ def test_litedb_reader_follows_extend_pages(tmp_path):
         assert r["ok"] and r["count"] == 2   # gizli olan alinmaz
     finally:
         paths.DATA_DIR = old
+
+
+def test_closing_handlers_never_invoke_ui_thread():
+    """v1.35.3: pywebview closing isleyicisini ayri is parcaciginda calistirip arayuzde join ile bekler;
+    isleyici icinde w.hide()/run_js/evaluate_js (arayuza Invoke) Kami'yi 'Yanit Vermiyor'a dusuruyordu."""
+    import ast, pathlib
+    src = pathlib.Path("app/main.py").read_text(encoding="utf-8")
+    bad = []
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.FunctionDef) and node.name in ("closing", "on_closing"):
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.FunctionDef) and sub is not node:
+                    break
+                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) and sub.func.attr in ("hide", "run_js", "evaluate_js", "destroy", "show"):
+                    if not (isinstance(sub.func.value, ast.Name) and sub.func.value.id == "winwin"):
+                        bad.append((node.lineno, sub.func.attr))
+    assert not bad, bad

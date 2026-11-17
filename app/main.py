@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import time
 import threading
 
 from app import paths
@@ -412,20 +413,27 @@ def main() -> int:
     # ---- Kami Player: ayri pencere (ayni surec, ayni api); kapaninca yok olur, istekte yeniden kurulur
     # v1.35.2 "sicak tut": modul penceresi kapatilinca yok edilmez, gizlenir. Her acilista sifirdan WebView2
     # motoru kurmak 2-5 sn surdugu icin "bin saatte aciliyor"du; ikinci ve sonraki acilislar artik aninda.
-    # closing arayuz is parcaciginda calisir: evaluate_js (bekler) YOK, yalniz run_js (beklemez) + hide.
+    # closing isleyicisinde arayuz is parcacigina Invoke eden HICBIR cagri yapilmaz (bkz. keep_warm).
     # Uygulama gercekten kapanirken (quit_app -> quitting) normal kapanir.
     def keep_warm(w, on_hide_js: str = "") -> None:
-        def closing():
-            if quitting["v"]:
-                return None
+        # v1.35.3: pywebview closing isleyicisini AYRI is parcaciginda calistirir ve arayuz is parcacigi
+        # onun bitmesini bekler (Event.set -> join). w.hide()/run_js arayuz is parcacigina Invoke eder ->
+        # birbirini bekleyip kilitlenir ("Yanit Vermiyor"). Bu yuzden burada yalniz kapatmayi iptal edip
+        # donuyoruz; gizleme isleyici dondukten sonra ayri is parcaciginda yapilir.
+        def _hide_later():
+            time.sleep(0.05)
             try:
                 if on_hide_js:
                     w.run_js(on_hide_js)
                 w.hide()
-                return False   # kapatmayi iptal et: gizlendi
             except Exception:
-                log.debug("pencere gizlenemedi; normal kapaniyor", exc_info=True)
+                log.debug("pencere gizlenemedi", exc_info=True)
+
+        def closing():
+            if quitting["v"]:
                 return None
+            threading.Thread(target=_hide_later, name="kami-keepwarm-hide", daemon=True).start()
+            return False   # kapatmayi iptal et; pencere hemen ardindan gizlenir
         w.events.closing += closing
 
     player_front = WindowFront("Kami Player")
