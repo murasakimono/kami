@@ -642,6 +642,7 @@ P.fx = () => {
     pb.innerHTML = tabs + `<div class="hint">${c && ["video", "image"].includes(clipKind(c)) ? "Tıkla: seçili klibe hareket animasyonu uygula / kaldır (Salıncak, Nabız, Rage…)." : "Önce zaman çizelgesinden bir video veya görsel klibi seç."}</div>` +
       `<div class="catpills">${acats.map(([k, l]) => `<button class="${ac === k ? "on" : ""}" data-ancat="${k}">${l}</button>`).join("")}</div>` +
       `<input class="in" id="fxQ" placeholder="Salıncak, sarsıntı, 3B, nabız ara…" value="${esc(P.fx.q || "")}" style="width:100%;margin-bottom:6px">` +
+      animTune(c, an) +
       mk("loop", "Sürekli Hareket (Salıncak · Nabız · Sarsıntı · Oyun)", ca.loop) +
       mk("in", "Giriş Animasyonları", ca.in) +
       mk("out", "Çıkış Animasyonları", ca.out);
@@ -666,6 +667,24 @@ P.fx = () => {
   $("#addAdjBtn").onclick = () => { snap(); const cl = placeAt({ mode: "adjustment", dur: 5, adj: {}, opacity: 1, blend: "normal" }, "fx", ST.t); ST.sel = new Set([cl.id]); changed(); };
   const qi = $("#fxQ"); qi.oninput = () => { P.fx.q = qi.value; clearTimeout(P.fx.t); P.fx.t = setTimeout(() => { P.fx(); const n = $("#fxQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 180); };
 };
+function animTune(c, an) {
+  if (!c || !["video", "image"].includes(clipKind(c)) || !(an.loop || an.in || an.out)) return "";
+  const row = (lbl, key, min, max, step, val, unit) => `<label class="antune"><span>${lbl}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${val}" data-anprm="${key}"><output>${(+val).toFixed(2)}${unit}</output></label>`;
+  let h = "";
+  if (an.loop) h += row("Şiddet", "loopAmt", .1, 4, .05, an.loopAmt ?? 1, "×") + row("Hız", "loopSpeed", .1, 4, .05, an.loopSpeed ?? 1, "×");
+  if (an.in) h += row("Giriş süresi", "inDur", .05, 3, .05, an.inDur ?? .5, " sn");
+  if (an.out) h += row("Çıkış süresi", "outDur", .05, 3, .05, an.outDur ?? .5, " sn");
+  return `<div class="antunebox"><div class="antunehd">Seçili klibin hareket ayarı</div>${h}</div>`;
+}
+pb.addEventListener("input", e => {
+  const el = e.target.closest?.("[data-anprm]"); if (!el || panel !== "fx") return;
+  const c = firstSel(); if (!c) return;
+  if (!P.fx.tuneSnap) { snap(); P.fx.tuneSnap = true; }
+  c.anim = { ...(c.anim || {}), [el.dataset.anprm]: +el.value };
+  const o = el.nextElementSibling; if (o) o.textContent = (+el.value).toFixed(2) + (el.dataset.anprm.endsWith("Dur") ? " sn" : "×");
+  draw();
+  clearTimeout(P.fx.tt); P.fx.tt = setTimeout(() => { P.fx.tuneSnap = false; changed(false); }, 220);
+});
 pb.addEventListener("click", e => {
   if (panel !== "fx") return;
   const tb = e.target.closest("[data-fxtab]");
