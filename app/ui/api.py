@@ -1026,7 +1026,8 @@ class Api(StudioMixin):
     # ---------- guncelleme / sorun bildir / masaustu ----------
     def check_update(self) -> dict[str, Any]:
         from app.core import extras
-        res = extras.check_update()
+        ch = str(self._manager.settings.get("update_channel") or "stable")
+        res = extras.check_update(channel=ch)
         self._manager.settings.set("update_last", int(__import__("time").time()))
         if res.get("available"):
             with self._inbox_lock:
@@ -1040,7 +1041,8 @@ class Api(StudioMixin):
         Ayarlar ve gecmis %LOCALAPPDATA%\\Kami\\data'da: kurulum onlara dokunmaz."""
         from app import paths
         from app.core import extras
-        info = self._update_info or extras.check_update()
+        ch = str(self._manager.settings.get("update_channel") or "stable")
+        info = self._update_info or extras.check_update(channel=ch)
         if not info.get("available") or not info.get("asset"):
             return {"ok": False, "error": "no_update"}
         try:

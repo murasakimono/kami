@@ -161,7 +161,7 @@ def _gh() -> str:
     return shutil.which("gh") or ""
 
 
-def _gh_latest(repo: str) -> dict | None:
+def _gh_latest(repo: str, endpoint: str | None = None) -> Any:
     """Ozel repo: anonim API 404 verir -> girisli GitHub CLI (gh) ile oku. Yoksa None."""
     import json as _json
     import subprocess
@@ -169,27 +169,37 @@ def _gh_latest(repo: str) -> dict | None:
     if not gh:
         return None
     try:
-        r = subprocess.run([gh, "api", f"repos/{repo}/releases/latest"], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        ep = endpoint or f"repos/{repo}/releases/latest"
+        r = subprocess.run([gh, "api", ep], capture_output=True, text=True, encoding="utf-8", errors="replace",
                            timeout=20, creationflags=0x08000000)
         return _json.loads(r.stdout) if r.returncode == 0 else None
     except (OSError, ValueError, subprocess.SubprocessError):
         return None
 
 
-def check_update(current: str = APP_VERSION, repo: str = GITHUB_REPO) -> dict[str, Any]:
-    """GitHub Releases'taki son surum. {'available': bool, 'version', 'url', 'notes', 'asset'} ya da {'error'}.
+def check_update(current: str = APP_VERSION, repo: str = GITHUB_REPO, channel: str = "stable") -> dict[str, Any]:
+    """GitHub Releases'taki son surum. channel='beta' -> prerelease dahil en yuksek surum; 'stable' -> sadece kararli.
     Repo ozelse (anonim 404) girisli `gh` ile denenir."""
     import requests
+    ch = "beta" if str(channel or "").lower() in ("beta", "deneme", "prerelease") else "stable"
+    ep = f"repos/{repo}/releases?per_page=10" if ch == "beta" else f"repos/{repo}/releases/latest"
     try:
-        r = requests.get(f"https://api.github.com/repos/{repo}/releases/latest", timeout=10,
+        r = requests.get(f"https://api.github.com/{ep}", timeout=10,
                          headers={"Accept": "application/vnd.github+json", "User-Agent": "Kami-updater"})
     except requests.RequestException as exc:
         return {"available": False, "error": type(exc).__name__}
-    j = r.json() if r.status_code == 200 else (_gh_latest(repo) if r.status_code == 404 else None)
-    if j is None and r.status_code == 404:
-        return {"available": False, "version": "", "none": True}
-    if j is None:
-        return {"available": False, "error": f"http_{r.status_code}"}
+    raw = r.json() if r.status_code == 200 else (_gh_latest(repo, ep) if r.status_code == 404 else None)
+    if raw is None and r.status_code == 404:
+        return {"available": False, "version": "", "none": True, "channel": ch}
+    if raw is None:
+        return {"available": False, "error": f"http_{r.status_code}", "channel": ch}
+    if isinstance(raw, list):
+        cands = [x for x in raw if not x.get("draft") and (ch == "beta" or not x.get("prerelease"))]
+        if not cands:
+            return {"available": False, "version": "", "none": True, "channel": ch}
+        j = max(cands, key=lambda x: _ver(str(x.get("tag_name") or "")))
+    else:
+        j = raw
     tag = str(j.get("tag_name") or "")
     url = str(j.get("html_url") or "")
     if not url.startswith(f"https://github.com/{repo}/"):
@@ -197,7 +207,8 @@ def check_update(current: str = APP_VERSION, repo: str = GITHUB_REPO) -> dict[st
     asset = next((a for a in j.get("assets") or [] if re.fullmatch(r"Kami-Setup-[\d.]+\.exe", a.get("name", ""))), {})
     return {"available": _ver(tag) > _ver(current), "version": tag.lstrip("v"), "url": url,
             "notes": str(j.get("body") or "")[:600], "asset": asset.get("name", ""), "tag": tag,
-            "asset_url": asset.get("browser_download_url", "")}
+            "asset_url": asset.get("browser_download_url", ""), "prerelease": bool(j.get("prerelease")),
+            "channel": ch}
 
 
 def download_update(info: dict[str, Any], dest_dir: Path, repo: str = GITHUB_REPO) -> Path:
