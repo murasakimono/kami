@@ -4,8 +4,24 @@ const PANELS = {
   media: "Proje", sound: "Ses & Meme", text: "Metin", graphics: "Grafik", stickers: "Çıkartma", captions: "Altyazı", fx: "Efektler", trans: "Geçişler",
   zoom: "Zoom", subscribe: "Abone ol", templates: "Şablonlar", ai: "Akıllı araçlar", plugins: "Eklentiler & Claude",
 };
-const PANEL_IC = { media: "▦", sound: "♪", text: "T", graphics: "◆", stickers: "🎭", captions: "≡", fx: "✦", trans: "⇋", zoom: "⊕", subscribe: "🔔", templates: "❖", ai: "✧", plugins: "⧉" };
-$("#libtabs").innerHTML = Object.entries(PANELS).map(([k, v]) => `<button data-panel="${k}" title="${v}"><i>${PANEL_IC[k]}</i>${v.split(" ")[0]}</button>`).join("");
+const _sv = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const PANEL_IC = {   // v1.32.1: tek tip cizgi simgeler (emoji karisikligi yok)
+  media: _sv('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/>'),
+  sound: _sv('<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'),
+  text: _sv('<path d="M5 6V4h14v2M12 4v16M9 20h6"/>'),
+  graphics: _sv('<path d="m12 3 9 9-9 9-9-9z"/>'),
+  stickers: _sv('<path d="M15 3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h7l8-8V6a3 3 0 0 0-3-3z"/><path d="M13 21v-5a3 3 0 0 1 3-3h5"/>'),
+  captions: _sv('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h4m2 0h4M7 11h10"/>'),
+  fx: _sv('<path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/>'),
+  trans: _sv('<rect x="3" y="6" width="8" height="12" rx="1"/><rect x="13" y="6" width="8" height="12" rx="1"/>'),
+  zoom: _sv('<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6M8 11h6"/>'),
+  subscribe: _sv('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/>'),
+  templates: _sv('<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>'),
+  ai: _sv('<path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2"/><circle cx="12" cy="12" r="3"/>'),
+  plugins: _sv('<path d="M10 3H5v5a2 2 0 0 1 0 4v5h5a2 2 0 0 1 4 0h5v-5a2 2 0 0 0 0-4V3h-5a2 2 0 0 1-4 0z"/>'),
+};
+const PANEL_SHORT = { sound: "Ses", subscribe: "Abone", ai: "Akıllı", plugins: "Eklenti", templates: "Şablon", stickers: "Çıkartma", trans: "Geçiş", fx: "Efekt" };
+$("#libtabs").innerHTML = Object.entries(PANELS).map(([k, v]) => `<button data-panel="${k}" title="${v}"><i>${PANEL_IC[k]}</i><span>${PANEL_SHORT[k] || v.split(" ")[0]}</span></button>`).join("");
 let panel = "media";
 const pb = $("#panelBody");
 

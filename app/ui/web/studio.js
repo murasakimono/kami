@@ -1112,9 +1112,18 @@ function renderHandles2() { /* surukleme sirasinda kutu yeniden cizilmez; biraki
 
 // ---------------------------------------------------------------- zaman cizelgesi
 const lanes = $("#lanes"), heads = $("#tlHeads"), scroller = $("#tlScroll");
-function laneH(t) { return TRACK_H[t.kind] || 48; }
+// v1.32.1: izler ekrana sigsin (kucuk ekranda Ses izleri alta kacmasin); en fazla %40 kucultur, sonra kaydirir
+let _laneK = 1;
+function laneH(t) { return Math.round((TRACK_H[t.kind] || 48) * _laneK); }
+function laneFit() {
+  const tr = ST.p?.tracks || []; if (!tr.length) return;
+  const avail = scroller.clientHeight - ($("#ruler")?.offsetHeight || 24) - 6;
+  const need = tr.reduce((a, t) => a + (TRACK_H[t.kind] || 48), 0);
+  _laneK = need > 0 && avail > 0 ? Math.max(0.6, Math.min(1, avail / need)) : 1;
+}
 function renderTimeline() {
   if (!ST.p) return;
+  laneFit();
   const end = Math.max(projEnd() + 30, scroller.clientWidth / ST.px + 5);
   const width = end * ST.px;
   $("#tlInner").style.width = width + "px";
