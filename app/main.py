@@ -410,25 +410,55 @@ def main() -> int:
     main_win = {"w": window}   # ana pencere yok edilirse (beklenmedik kapanma) istekte yeniden kurulur
 
     # ---- Kami Player: ayri pencere (ayni surec, ayni api); kapaninca yok olur, istekte yeniden kurulur
+    # v1.35.2 "sicak tut": modul penceresi kapatilinca yok edilmez, gizlenir. Her acilista sifirdan WebView2
+    # motoru kurmak 2-5 sn surdugu icin "bin saatte aciliyor"du; ikinci ve sonraki acilislar artik aninda.
+    # closing arayuz is parcaciginda calisir: evaluate_js (bekler) YOK, yalniz run_js (beklemez) + hide.
+    # Uygulama gercekten kapanirken (quit_app -> quitting) normal kapanir.
+    def keep_warm(w, on_hide_js: str = "") -> None:
+        def closing():
+            if quitting["v"]:
+                return None
+            try:
+                if on_hide_js:
+                    w.run_js(on_hide_js)
+                w.hide()
+                return False   # kapatmayi iptal et: gizlendi
+            except Exception:
+                log.debug("pencere gizlenemedi; normal kapaniyor", exc_info=True)
+                return None
+        w.events.closing += closing
+
     player_front = WindowFront("Kami Player")
 
-    def make_player_window():
+    def make_player_window(prewarm: bool = False):
         w = webview.create_window("Kami Player", url=str(paths.WEB_DIR / "player.html"), js_api=api,
                                   width=1280, height=760, min_size=(360, 150), background_color="#050408",
-                                  text_select=False)
+                                  text_select=False, hidden=prewarm)
+        state = {"prewarm": prewarm}
 
         def closed() -> None:
             api._player_win = None
         w.events.closed += closed
+        keep_warm(w, "try{var v=document.getElementById('plVideo');if(v)v.pause();if(document.fullscreenElement)document.exitFullscreen()}catch(e){}")
 
         def loaded() -> None:
             bind_drop(w)
+            if state.pop("prewarm", False):   # arka planda hazirlandi: one getirme, gizli kalsin
+                return
             # simge durumundaki / arka plandaki Kami'den acilinca da one gelsin (Gezgin ikinci ornegi izin verdi)
             player_front.request()
             threading.Timer(0.6, player_front.request).start()
         w.events.loaded += loaded
         return w
     api._make_player_window = make_player_window
+
+    def _prewarm_player() -> None:   # v1.35.2: ilk Player acilisi da aninda olsun (ayar: prewarm_player)
+        try:
+            if settings.get("prewarm_player", True) and api._player_win is None:
+                api._player_win = make_player_window(prewarm=True)
+        except Exception:
+            log.debug("Player on isitma", exc_info=True)
+    threading.Timer(8.0, _prewarm_player).start()
     api._front_player = player_front.request
 
     # ---- Kami Picture: fotograf goruntuleyici + Kami Lens (ayri pencere, ayni api)
@@ -441,6 +471,7 @@ def main() -> int:
         def closed() -> None:
             api._picture_win = None
         w.events.closed += closed
+        keep_warm(w)
         w.events.loaded += lambda: (picture_front.request(), threading.Timer(0.6, picture_front.request).start())
         return w
     api._make_picture_window = make_picture_window
@@ -458,6 +489,7 @@ def main() -> int:
                 w = webview.create_window(t, url=str(paths.WEB_DIR / f), js_api=api,
                                           width=ww, height=hh, min_size=(760, 520), background_color="#08070C", text_select=True)
                 w.events.closed += lambda: setattr(api, f"_{k}_win", None)
+                keep_warm(w)
                 w.events.loaded += lambda: (fr.request(), threading.Timer(0.5, fr.request).start())
                 return w
             setattr(api, f"_make_{k}_window", _make)
@@ -474,6 +506,7 @@ def main() -> int:
             api._reader_win = None
             api.reader_close()
         w.events.closed += closed
+        keep_warm(w)
         def loaded() -> None:
             reader_front.request(); threading.Timer(0.6, reader_front.request).start()
             try:
@@ -504,6 +537,7 @@ def main() -> int:
         def closed() -> None:
             api._studio_win = None
         w.events.closed += closed
+        keep_warm(w)
 
         def loaded() -> None:
             _set_hwnd_app_id("Kami Studio", "Murasakimono.Kami.Studio")
@@ -561,28 +595,31 @@ def main() -> int:
         w = webview.create_window("Kami Oda", url=url, js_api=api, width=1280, height=820, min_size=(420, 520),
                                   background_color="#07060B", text_select=True)
 
-        def closing() -> None:
-            try:
-                w.evaluate_js("window.__kamiRoomLeave && window.__kamiRoomLeave()")
-            except Exception:
-                pass
-            try:
-                api.room_island_push({"people": [], "left": True})
-            except Exception:
-                pass
-        w.events.closing += closing
-
-        def closed() -> None:
-            api._room_win = None
-            room_keys_on(False)
+        # v1.35.2: closing/closed arayuz is parcaciginda calisir. Burada evaluate_js (JS yanitini bekler) ya da
+        # baska pencereye dokunan cagri yapmak tum Kami'yi kilitliyordu (odadan cikip X'e basinca donma).
+        # Ayrilma sunucu tarafinda yapilir (leave_cid); is arka plan is parcacigina alinir, kapanis beklemez.
+        def _leave_bg() -> None:
             try:
                 from app.core import room as _room_mod
                 rm = _room_mod.SERVER.room
                 if rm is not None:
                     rm.leave_cid("kami-host")
+            except Exception:
+                log.debug("oda ayrilma", exc_info=True)
+            try:
                 api.room_island_push({"people": [], "left": True})
             except Exception:
-                pass
+                log.debug("ada guncelleme", exc_info=True)
+
+        def closed() -> None:
+            api._room_win = None
+            def _bg() -> None:
+                try:
+                    room_keys_on(False)   # HotKey.stop() is parcacigi basina 2 sn'ye kadar join eder: arayuzde olmasin
+                except Exception:
+                    pass
+                _leave_bg()
+            threading.Thread(target=_bg, name="kami-room-close", daemon=True).start()
         w.events.closed += closed
 
         def loaded() -> None:

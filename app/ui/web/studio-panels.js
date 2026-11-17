@@ -30,6 +30,7 @@ function renderPanel(name) {
   $$("#libtabs button").forEach(b => b.classList.toggle("on", b.dataset.panel === panel));
   $("#panelTitle").textContent = PANELS[panel];
   $("#panelTools").innerHTML = "";
+  if (!ST.p) { $("#panelBody").innerHTML = `<div class="hint">Proje yükleniyor…</div>`; setTimeout(() => ST.p && renderPanel(panel), 250); return; }   // v1.35.2: proje gelmeden cizilip hata veriyordu
   (P[panel] || (() => ""))();
 }
 $("#libtabs").addEventListener("click", e => {
