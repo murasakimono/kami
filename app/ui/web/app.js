@@ -104,6 +104,7 @@ function metaFor(d) {
   const parts = [];
   const st = `<span class="st-${d.status}">${d.status === "error" && d.error ? `${T("st_error")}: ${escapeHtml(d.error === "yt_bot" ? T("err_yt_bot") : d.error)}` : d.status === "confirm" ? T("confirm_q") : d.phase === "processing" ? T("phase_processing") : d.phase === "seeding" ? T("phase_seeding") : T("st_" + d.status)}</span>`;
   parts.push(st);
+  if (d.extra?.queue && window.kamiQueueName) parts.push(`<span class="qbadge${d.extra.qhold ? " hold" : ""}">⧉ ${escapeHtml(window.kamiQueueName(d.extra.queue))}${d.extra.qhold ? " · " + (state.lang === "en" ? "waiting" : "sırada") : ""}</span>`);
   if (d.status === "complete" || d.status === "confirm") {
     if (d.size) parts.push(`<span>${fmtBytes(d.size)}</span>`);
   } else if (d.size) {
@@ -130,7 +131,7 @@ const catVar = (c) => (["video", "music", "archive", "program", "document", "tor
 
 function render() {
   const list = $("#list");
-  const visible = state.items.filter((d) => matches(d, state.filter));
+  const visible = state.items.filter((d) => matches(d, state.filter) && (!window.kamiQueueFilter || window.kamiQueueFilter(d)));
   const existing = new Map($$(".item", list).map((li) => [Number(li.dataset.id), li]));
   const seen = new Set();
 

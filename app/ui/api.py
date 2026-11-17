@@ -59,6 +59,7 @@ class Api(StudioMixin):
         # Asama 6c (main baglar)
         self._history = None
         self._shutdown = None
+        self._queues = None
         self._watcher = None
         self._phone = None
         self._phone_key = None
@@ -496,7 +497,38 @@ class Api(StudioMixin):
 
     def resume_all(self) -> None:
         for d in self._manager.store.list([Status.PAUSED]):
+            if (d.extra or {}).get("qhold"):   # adli kuyrugun bekleyeni: kuyruk kendisi baslatir
+                continue
             self._manager.resume(d.id)
+
+    # ---------- v1.29 coklu kuyruk ----------
+    def queue_list(self) -> list[dict[str, Any]]:
+        q = getattr(self, "_queues", None)
+        return q.summary() if q else []
+
+    def queue_save(self, qs: list) -> list[dict[str, Any]]:
+        from app.core import queues
+        old = {x["id"]: x for x in queues.load()}
+        keep = [x for x in (qs or []) if isinstance(x, dict)]
+        for x in keep:   # 'running' arayuzden gelmez, korunur
+            if x.get("id") in old:
+                x["running"] = old[x["id"]]["running"]
+        out = queues.save(keep)
+        gone = set(old) - {x["id"] for x in out}
+        if gone and getattr(self, "_queues", None):   # silinen kuyrugun isleri ana kuyruga doner
+            for g in gone:
+                self._queues.assign([d.id for d in self._queues.members(g)], queues.MAIN)
+        return self.queue_list()
+
+    def queue_assign(self, ids: list, qid: str) -> dict[str, Any]:
+        q = getattr(self, "_queues", None)
+        if not q:
+            return {"ok": False}
+        return {"ok": True, "n": q.assign([int(i) for i in ids or []], str(qid))}
+
+    def queue_run(self, qid: str, on: bool) -> dict[str, Any]:
+        q = getattr(self, "_queues", None)
+        return {"ok": bool(q and q.set_running(str(qid), bool(on))), "queues": self.queue_list()}
 
     def clear_finished(self) -> None:
         self._manager.clear_finished()
@@ -2409,11 +2441,11 @@ class Api(StudioMixin):
         return {"ok": True, "has_key": bool(key)}
 
     def _page_title_for(self, path: str) -> str:
-        if not self.manager:
+        if not self._manager:
             return ""
         norm = os.path.normcase(os.path.abspath(path))
         base = os.path.basename(path)
-        items = self.manager.store.list()
+        items = self._manager.store.list()
         for d in items:
             full = os.path.join(d.directory, d.filename) if d.directory and d.filename else ""
             if full and os.path.normcase(os.path.abspath(full)) == norm:
@@ -3407,7 +3439,7 @@ class Api(StudioMixin):
 
     def links_check(self, urls: list[str]) -> dict[str, Any]:
         from app.core import link_check
-        return link_check.check_links(list(urls or []), cloud_service=getattr(self.manager, "cloud", None))
+        return link_check.check_links(list(urls or []), cloud_service=getattr(self._manager, "cloud", None))
 
     def reader_ocr_pdf(self, path: str) -> dict[str, Any]:
         from app.core import pdf_ocr

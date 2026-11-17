@@ -871,6 +871,16 @@ def main() -> int:
     shutdown = automate.ShutdownWatcher(
         manager, busy_extra=lambda: bool(ai._cancel), on_queue_done=queue_done)
     shutdown.start()
+    # v1.29 coklu kuyruk (adli kuyruklar: kendi esZamanli/hiz siniri, saat penceresi, bitince bildir/kapat)
+    from app.core.queues import QueueRunner
+
+    def _queue_done(q: dict) -> None:
+        tray.notify("Kami", f"Kuyruk bitti: {q['name']}") if tray.running else None
+        if q.get("on_done") == "shutdown":
+            settings.set("shutdown_when_done", True)   # 60 sn iptal edilebilir geri sayim (ShutdownWatcher)
+    queues = QueueRunner(manager, on_done=_queue_done)
+    queues.start()
+    api._queues = queues
     watcher = Watcher(manager, media_post.set_extra,
                       player=lambda p: _watch_play(p))
 
