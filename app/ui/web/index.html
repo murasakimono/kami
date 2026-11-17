@@ -285,14 +285,10 @@
         <label class="check"><input type="checkbox" name="autostart"><span data-i18n="s_autostart"></span></label>
         <label class="check"><input type="checkbox" name="notify_on_complete"><span data-i18n="s_notify_done"></span></label>
         <label class="check"><input type="checkbox" name="notify_on_error"><span data-i18n="s_notify_err"></span></label>
-        <label class="check"><input type="checkbox" name="hotkey_enabled"><span data-i18n="s_hotkey_on"></span></label>
-        <label class="row"><span data-i18n="s_hotkey"></span><input type="text" name="hotkey" spellcheck="false" style="width:140px"></label>
-        <label class="check"><input type="checkbox" name="song_hotkey_enabled"><span data-i18n="s_song_on"></span></label>
-        <label class="row"><span data-i18n="s_song_key"></span><input type="text" name="song_hotkey" spellcheck="false" style="width:140px"></label>
-        <label class="check"><input type="checkbox" name="lens_hotkey_enabled"><span data-i18n="s_lens_on"></span></label>
-        <label class="row"><span data-i18n="s_lens_key"></span><input type="text" name="lens_hotkey" spellcheck="false" style="width:140px"></label>
-        <label class="check"><input type="checkbox" name="rec_replay_enabled"><span data-i18n="s_rec_replay"></span></label>
-        <label class="row"><span data-i18n="s_rec_replay_key"></span><input type="text" name="rec_replay_hotkey" spellcheck="false" style="width:140px"></label>
+        <div class="st-hk"><label class="check"><input type="checkbox" name="hotkey_enabled"><span data-i18n="s_hotkey_on"></span></label><input type="text" name="hotkey" spellcheck="false" aria-label="Hotkey"></div>
+        <div class="st-hk"><label class="check"><input type="checkbox" name="song_hotkey_enabled"><span data-i18n="s_song_on"></span></label><input type="text" name="song_hotkey" spellcheck="false" aria-label="Song hotkey"></div>
+        <div class="st-hk"><label class="check"><input type="checkbox" name="lens_hotkey_enabled"><span data-i18n="s_lens_on"></span></label><input type="text" name="lens_hotkey" spellcheck="false" aria-label="Lens hotkey"></div>
+        <div class="st-hk"><label class="check"><input type="checkbox" name="rec_replay_enabled"><span data-i18n="s_rec_replay"></span></label><input type="text" name="rec_replay_hotkey" spellcheck="false" aria-label="Replay hotkey"></div>
         <label class="row"><span data-i18n="s_rec_record_key"></span><input type="text" name="rec_record_hotkey" spellcheck="false" style="width:140px"></label>
         <label class="row"><span data-i18n="s_rec_secs"></span><input type="number" name="rec_replay_seconds" min="10" max="50" step="5" style="width:90px"></label>
         <label class="row"><span data-i18n="s_rec_fps"></span><select name="rec_fps"><option value="60">60</option><option value="30">30</option></select></label>
