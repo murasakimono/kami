@@ -20,6 +20,52 @@ from app.ui.api import Api
 log = logging.getLogger("kami")
 
 
+def _set_app_id(app_id: str = "Murasakimono.Kami.App") -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except Exception:
+        pass
+
+
+def _set_hwnd_app_id(title: str, app_id: str) -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class PROPERTYKEY(ctypes.Structure):
+            _fields_ = [("fmtid", ctypes.c_byte * 16), ("pid", wintypes.DWORD)]
+
+        class PROPVARIANT(ctypes.Structure):
+            _fields_ = [("vt", ctypes.c_ushort), ("r1", ctypes.c_ushort), ("r2", ctypes.c_ushort),
+                        ("r3", ctypes.c_ushort), ("val", ctypes.c_wchar_p), ("pad", ctypes.c_void_p)]
+
+        hwnd = ctypes.windll.user32.FindWindowW(None, title)
+        if not hwnd:
+            return
+        iid = (ctypes.c_byte * 16).from_buffer_copy(bytes.fromhex("886d8eeb8cf244468d02cdba1dbdcf99"))
+        store = ctypes.c_void_p()
+        if ctypes.windll.shell32.SHGetPropertyStoreForWindow(hwnd, ctypes.byref(iid), ctypes.byref(store)) != 0 or not store:
+            return
+        vtbl = ctypes.cast(ctypes.cast(store, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+        set_val = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(PROPERTYKEY), ctypes.POINTER(PROPVARIANT))(vtbl[6])
+        commit = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p)(vtbl[7])
+        release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtbl[2])
+        # PKEY_AppUserModel_ID: {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, 5
+        import uuid
+        pkey = PROPERTYKEY((ctypes.c_byte * 16).from_buffer_copy(uuid.UUID("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3").bytes_le), 5)
+        pv = PROPVARIANT(31, 0, 0, 0, app_id, None)  # VT_LPWSTR = 31
+        set_val(store, ctypes.byref(pkey), ctypes.byref(pv))
+        commit(store)
+        release(store)
+    except Exception:
+        pass
+
+
 def _setup_logging() -> None:
     handler = logging.handlers.RotatingFileHandler(paths.LOG_PATH, maxBytes=2_000_000, backupCount=2,
                                                    encoding="utf-8")
@@ -97,6 +143,7 @@ def _already_running_mutex() -> bool:
 
 
 def main() -> int:
+    _set_app_id("Murasakimono.Kami.App")
     # Kami Oda / Player: ses kullanici tiklamasi beklemeden baslasin (oda otomatik girince AudioContext askida kaliyordu)
     # Kucultup/tepsiden geri acinca beyaz-siyah ekran: Chromium'un Windows pencere ortusme hesabi (native occlusion)
     # WebView2'yi "gorunmuyor" sanip cizimi durduruyor, geri gelince yeniden cizmiyor. Kapat; arka plana atma da
@@ -441,6 +488,7 @@ def main() -> int:
         w.events.closed += closed
 
         def loaded() -> None:
+            _set_hwnd_app_id("Kami Studio", "Murasakimono.Kami.Studio")
             studio_front.request(); threading.Timer(0.6, studio_front.request).start()
             try:
                 w.maximize()

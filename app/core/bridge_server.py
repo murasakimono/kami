@@ -191,6 +191,22 @@ class BridgeServer:
         if path == "/v1/capture":  # eklenti acilir penceresindeki "otomatik devral" anahtari
             self.manager.settings.set("capture_enabled", bool(body.get("enabled")))
             return 200, {"ok": True, "capture_enabled": bool(self.manager.settings.get("capture_enabled"))}
+        if path == "/v1/bypass":
+            from app.core.bypass import resolve_url
+            url = str(body.get("url") or "").strip()
+            if not url.lower().startswith(("http://", "https://")):
+                return 400, {"ok": False, "error": "bad_url"}
+            res = resolve_url(url)
+            if res.get("ok") and res.get("url") and body.get("add", True):
+                try:
+                    req = DownloadRequest(url=res["url"], source="browser", page_url=url)
+                    added = self.manager.add(req)
+                    res["accepted"] = True
+                    res["ids"] = [d.id for d in added]
+                except Exception as exc:
+                    res["accepted"] = False
+                    res["add_error"] = str(exc)[:120]
+            return 200, res
         if path == "/v1/add":
             url = str(body.get("url") or "").strip()
             if not url.lower().startswith(("http://", "https://", "ftp://")):

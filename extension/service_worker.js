@@ -131,6 +131,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg && msg.type === "page-add") {      // bulut sayfa butonu / popup "Bu sayfayi Kami ile indir"
     sendPage(msg.url || (sender.tab && sender.tab.url) || "").then(sendResponse);
     return true;
+  } else if (msg && msg.type === "bypass-add") {    // Kami Bypass: kisaltma/reklamli linki coz ve indir
+    native({ path: "/v1/bypass", body: { url: msg.url || "", add: true } }).then(sendResponse);
+    return true;
   } else if (msg && msg.type === "video-button") {   // video ustu buton
     onVideoButton(msg, sender).then(sendResponse);
     return true;

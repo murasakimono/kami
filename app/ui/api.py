@@ -2268,6 +2268,11 @@ class Api(StudioMixin):
             return {"ok": False, "error": "no_file"}
         try:
             from PIL import Image, ImageOps
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+            except Exception:
+                pass
             if path.lower().endswith(self.RAW_EXT):
                 try:
                     im = self._open_raw(path, half=max_side <= 3000)

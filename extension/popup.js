@@ -28,6 +28,20 @@ async function setupPage() {
   g.textContent = t("popup_grab_all") || "📥 Sayfadaki her şeyi listele";
   g.hidden = false; g.disabled = false;
   g.onclick = () => { chrome.tabs.create({ url: chrome.runtime.getURL("grab.html?tab=" + tab.id) }); window.close(); };
+  const byp = document.getElementById("bypassBtn");
+  const BYPASS_RE = /^https?:\/\/(www\.)?(ouo\.io|ouo\.press|tr\.link|ay\.link|linkvertise\.com|cuty\.io|bc\.vc|rentry\.co|rentry\.org|pastebin\.com|pastefy\.app)\//i;
+  if (byp && BYPASS_RE.test(tab.url || "")) {
+    byp.hidden = false;
+    byp.textContent = "⚡ Kami Bypass ile Çöz & İndir";
+    byp.onclick = async () => {
+      byp.disabled = true; byp.textContent = "⚡ Çözülüyor…";
+      const r = await chrome.runtime.sendMessage({ type: "bypass-add", url: tab.url }).catch(() => null);
+      const ok = !!(r && r.ok);
+      byp.classList.add(ok ? "ok" : "err");
+      byp.textContent = ok ? "✓ Çözüldü ve gönderildi" : "✕ Çözülemedi";
+      if (ok) setTimeout(() => window.close(), 900);
+    };
+  }
   const site = kamiCloudSite(tab.url);
   if (site && site.kind === "share") {
     // iki satir: ana metin + altta kucuk site adi (tek satirda tasiyordu)

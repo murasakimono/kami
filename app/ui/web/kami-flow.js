@@ -219,10 +219,17 @@
       const ov = document.createElement("div");
       ov.id = "kamiFlowModal";
       ov.style.cssText =
-        "position:fixed;inset:24px;z-index:9995;background:#0D0A13;border:1px solid #6D28D9;display:flex;flex-direction:column;color:#EDE9F6;font-family:'Chakra Petch',sans-serif;box-shadow:0 24px 80px rgba(0,0,0,.75);";
+        "position:fixed;inset:28px;z-index:9998;background:#0D0A13;border:1px solid #6D28D9;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;color:#EDE9F6;font-family:'Chakra Petch',sans-serif;box-shadow:0 28px 90px rgba(0,0,0,.8);";
       ov.innerHTML = `
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#16101F;border-bottom:1px solid #3A2E52;">
-          <strong style="color:#C4B5FD;letter-spacing:.5px;">KAMI AKIŞ & YEREL COPILOT</strong>
+        <style>
+          #kamiFlowModal[hidden],#kamiFlowModal [hidden]{display:none !important}
+          #kamiFlowModal .kf-hd{display:flex;align-items:center;gap:8px;padding:12px 16px;background:linear-gradient(90deg,#181126,#130E1D);border-bottom:1px solid #3A2E52;flex-wrap:wrap}
+          #kamiFlowModal .btn{border-radius:8px;padding:6px 12px;font-size:12.5px}
+          #kfToolsPane{flex:1;overflow:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px;background:#0B0910;align-content:start}
+          #kfToolsPane .kf-card{border:1px solid #3A2E52;border-radius:12px;padding:14px;background:#120E1C;display:grid;gap:8px;align-content:start}
+        </style>
+        <div class="kf-hd">
+          <strong style="color:#C4B5FD;letter-spacing:.6px;font-size:14px">KAMI AKIŞ &amp; YEREL COPILOT</strong>
           <button id="kfTabFlow" class="btn primary">Akış & Copilot</button>
           <button id="kfTabTools" class="btn">Araçlar (Faz 14–16)</button>
           <span id="kfCopilotBadge" style="font-size:12px;color:#A39BB5;">Ollama kontrol ediliyor…</span>
@@ -232,17 +239,17 @@
           <button id="kfAddOut" class="btn">+ Çıktı</button>
           <button id="kfSave" class="btn">Kaydet</button>
           <button id="kfRun" class="btn primary">Çalıştır</button>
-          <button id="kfClose" class="btn">Kapat</button>
+          <button id="kfClose" class="btn">✕ Kapat</button>
         </div>
         <div id="kfFlowPane" style="display:flex;flex-direction:column;flex:1;min-height:0;">
-          <div style="display:flex;gap:8px;padding:8px 14px;background:#110E17;border-bottom:1px solid #2A1F3B;">
-            <input id="kfPrompt" type="text" placeholder="Yerel Qwen2.5 Copilot'a Studio komutu yaz…" style="flex:1;background:#08070C;color:#EDE9F6;border:1px solid #4A3D63;padding:6px 10px;font:inherit;">
-            <button id="kfAsk" class="btn">Copilot</button>
+          <div style="display:flex;gap:8px;padding:10px 16px;background:#110E17;border-bottom:1px solid #2A1F3B;">
+            <input id="kfPrompt" type="text" placeholder="Yerel Qwen2.5 Copilot'a Studio komutu yaz…" style="flex:1;background:#08070C;color:#EDE9F6;border:1px solid #4A3D63;border-radius:8px;padding:7px 11px;font:inherit;">
+            <button id="kfAsk" class="btn primary">Copilot</button>
           </div>
           <canvas id="kfCanvas" width="960" height="460" style="flex:1;width:100%;height:100%;display:block;"></canvas>
         </div>
-        <div id="kfToolsPane" hidden style="flex:1;overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;background:#0B0910;">
-          <div style="border:1px solid #3A2E52;padding:10px;background:#110E17;display:grid;gap:6px;">
+        <div id="kfToolsPane" hidden>
+          <div class="kf-card">
             <strong style="color:#C4B5FD;">Faz 14 — Klip & Oyun Vurgu</strong>
             <input id="ktClipSrc" type="text" placeholder="Video yolu" style="background:#08070C;color:#EDE9F6;border:1px solid #4A3D63;padding:5px 8px;font:inherit;">
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
