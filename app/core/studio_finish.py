@@ -95,7 +95,7 @@ def risk_moments(loud: dict[str, Any], silences: list[list[float]], blacks: list
     cand: list[tuple[float, float, str]] = []
     mom = loud.get("mom") or []
     integ = loud.get("i")
-    for k in range(5, len(mom)):
+    for k in range(10, len(mom)):   # ilk 1 sn: sesin baslamasi sicrama sayilmaz
         t, m = mom[k]
         prev = max(-45.0, sum(x[1] for x in mom[k - 5:k]) / 5)   # sessizlikten giris sicrama sayilmasin diye taban
         if t > 0.6 and m - prev >= 10 and m > -30:
