@@ -780,7 +780,7 @@ pb.addEventListener("click", e => { const a = e.target.closest("[data-ai]"); if 
 
 async function needTool(r) {
   if (r?.error !== "need_tool") return false;
-  const big = r.tool === "whisper" ? "Whisper (~3 GB, model ilk kullanımda iner)" : "IOPaint ortamı (Kami Picture ile ortak, ~4 GB)";
+  const big = r.tool === "whisper" ? "Whisper (~3 GB, model ilk kullanımda iner)" : r.tool === "track" ? "takip ortamı (OpenCV, ~150 MB)" : "IOPaint ortamı (Kami Picture ile ortak, ~4 GB)";
   if (await ask("Araç kurulsun mu?", `Bunun için ${big} gerekli. Şimdi kurulsun mu? Bir kez kurulur.`, "Kur")) {
     const j = await api.studio_ai_install(r.tool);
     try { await waitStudioJob(j.job, "Kuruluyor"); toast("Kuruldu, tekrar dene"); } catch (e) { toast("Kurulamadı: " + e.message, 5000); }

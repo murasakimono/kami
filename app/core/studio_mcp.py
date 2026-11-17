@@ -863,7 +863,7 @@ def _io():
       {"media_path": STR, "interval_s": N}, ["media_path"])
 def t_inspect_video_for_ai(media_path: str, interval_s: float = 2.0) -> Any:
     from app.core.studio_pro_v26 import inspect_video_for_ai
-    return inspect_video_for_ai(_ffmpeg(), media_path, S.media_dir() / "Inspect", float(interval_s or 2.0))
+    return inspect_video_for_ai(_ffmpeg(), media_path, S.home_dir() / "Inspect", float(interval_s or 2.0))
 
 
 @tool("apply_audio_reactive", "Ses/bas enerjisine göre klibe otomatik nabız zoom anahtar kareleri (aeon-music-video / Araba-Futbol edit) yazar.",
@@ -871,7 +871,7 @@ def t_inspect_video_for_ai(media_path: str, interval_s: float = 2.0) -> Any:
 def t_apply_audio_reactive(clip: str, strength: float = 0.14, path: str = "") -> Any:
     from app.core.studio_pro_v26 import build_audio_reactive_kf
     p, pr = load(path)
-    c = find_clip(pr, clip)
+    c = S.find_clip(pr, clip)
     src = pr["assets"][c["asset"]]["path"]
     sp = float(c.get("speed") or 1.0)
     kf = build_audio_reactive_kf(_ffmpeg(), src, float(c.get("in") or 0.0), float(c["dur"]) * sp, float(c["dur"]), float(strength or 0.14))
@@ -882,18 +882,37 @@ def t_apply_audio_reactive(clip: str, strength: float = 0.14, path: str = "") ->
     return {"ok": True, "clip": clip, "keyframes": len(kf)}
 
 
-@tool("auto_reframe_clip", "16:9 klibi yüz/özne merkezli dinamik 9:16 dikey kadraja otomatik odaklar.",
-      {"clip": STR, "path": PATH}, ["clip"])
-def t_auto_reframe_clip(clip: str, path: str = "") -> Any:
-    from app.core.studio_pro_v26 import auto_reframe_plan
+@tool("auto_reframe_clip", "Yatay klibi dikey kadraja çevirir: konuşan yüzü (yoksa hareketi) izleyip kadrajı onunla kaydırır (Studio'daki "
+      "'Dikey çerçeve' ile aynı motor, küçük OpenCV ortamı). vertical=true projeyi 1080x1920 yapar.",
+      {"clip": STR, "vertical": {"type": "boolean"}, "path": PATH}, ["clip"])
+def t_auto_reframe_clip(clip: str, vertical: bool = True, path: str = "") -> Any:
+    import threading as _th
+    from app.core import aitools
     p, pr = load(path)
-    c = find_clip(pr, clip)
-    src = pr["assets"][c["asset"]]["path"]
-    res = auto_reframe_plan(src, float(c.get("in") or 0.0), float(c["dur"]) * float(c.get("speed") or 1.0))
-    if res.get("ok") and res.get("kf"):
-        c["kf"] = res["kf"]
-        save(p, pr)
-    return res
+    c = S.find_clip(pr, clip)
+    if vertical and int(pr.get("w", 1920)) > int(pr.get("h", 1080)):
+        pr["w"], pr["h"] = 1080, 1920
+    env = "track" if aitools.installed("track") or not aitools.installed("iopaint") else "iopaint"
+    if not aitools.installed(env):
+        aitools.install(env, lambda s: None)
+    sp = float(c.get("speed") or 1.0)
+    fd, out = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    try:
+        res = aitools._run_once(["app.tools.studio_face_run", pr["assets"][c["asset"]]["path"], out, f"{float(c.get('in') or 0):.3f}",
+                                 f"{float(c['dur']) * sp:.3f}", str(int(pr["w"]) / int(pr["h"]))], lambda m: None, _th.Event(), env, {})
+        if "done" not in res:
+            return {"ok": False, "error": str(res.get("error", "takip olmadı"))}
+        kf = json.loads(Path(out).read_text("utf-8")).get("kf") or []
+    finally:
+        os.remove(out)
+    if not kf:
+        return {"ok": False, "error": "yüz/hareket bulunamadı"}
+    for x in pr["clips"]:
+        if x.get("asset") == c.get("asset"):
+            x["reframe"], x["fit"] = kf, "cover"
+    save(p, pr)
+    return {"ok": True, "keyframes": len(kf), "size": [pr["w"], pr["h"]]}
 
 
 @tool("apply_speed_ramp", "CapCut Pro hız eğrisi (montage, hero, bullet, jump_cut, flash_in, flash_out, car_velocity) uygular.",
@@ -902,11 +921,8 @@ def t_apply_speed_ramp(clip: str, preset: str, path: str = "") -> Any:
     from app.core.studio_pro_v26 import SPEED_RAMP_PRESETS
     if preset not in SPEED_RAMP_PRESETS:
         return {"ok": False, "error": f"unknown_preset:{preset}", "available": list(SPEED_RAMP_PRESETS)}
-    p, pr = load(path)
-    c = find_clip(pr, clip)
-    c["ramp"] = SPEED_RAMP_PRESETS[preset]["pts"]
-    save(p, pr)
-    return {"ok": True, "clip": clip, "preset": preset}
+    r = t_ramp(clip, SPEED_RAMP_PRESETS[preset]["pts"], path)   # srcLen + sure guncellenir
+    return {"ok": True, "clip": clip, "preset": preset, "dur": r["dur"]}
 
 
 def handle(msg: dict) -> dict | None:

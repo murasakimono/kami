@@ -263,8 +263,8 @@
       <div class="row">${c.ramp ? `<button class="tb" data-v="__off">Eğriyi kaldır</button>` : ""}<button class="tb" data-v="">Vazgeç</button></div>`);
     if (!pick) return;
     snap();
-    if (pick === "__off") { delete c.ramp; changed(); toast("Hız eğrisi kaldırıldı"); return; }
-    if (pre?.[pick]?.pts) { c.ramp = pre[pick].pts; changed(); toast("Hız eğrisi uygulandı: " + pre[pick].name); }
+    if (pick === "__off") { snap(); rampApply(c, null); changed(); toast("Hız eğrisi kaldırıldı"); return; }
+    if (pre?.[pick]?.pts) { snap(); rampApply(c, pre[pick].pts); changed(); toast("Hız eğrisi uygulandı: " + pre[pick].name); }
   }
 
   async function audioreact(c) {
@@ -282,16 +282,10 @@
     toast(`${r.kf.length} ses-tepkili zoom anahtar karesi eklendi`);
   }
 
-  async function reframe916(c) {
-    c = c && clipKind(c) === "video" ? c : needSel(["video"]); if (!c) return;
-    const a = assetOf(c); if (!a?.path) return;
-    busy("Özne / yüz konumu izleniyor…");
-    let r;
-    try { r = await api.studio_auto_reframe(a.path, c.in || 0, c.dur * (c.speed || 1)); } finally { busy(null); }
-    if (!r?.ok || !r.kf?.length) { toast("Oto-Reframe başarısız"); return; }
-    snap(); c.kf = r.kf; changed();
-    toast(`Oto-Reframe (${r.method}) uygulandı: ${r.kf.length} nokta`);
+  async function reframe916(c) {   // ispatli "Dikey çerçeve" motoruna gider (yüz takibi -> klip.reframe, küçük OpenCV ortamı)
+    return _ai("reframe", c && clipKind(c) === "video" ? c : needSel(["video"]));
   }
+
 
   async function aivision(c) {
     c = c && clipKind(c) === "video" ? c : (selClips()[0] || ST.p.clips.find(x => clipKind(x) === "video"));

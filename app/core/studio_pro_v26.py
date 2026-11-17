@@ -10,7 +10,6 @@ Ozellikler:
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 import os
 import re
@@ -55,6 +54,9 @@ SPEED_RAMP_PRESETS: dict[str, dict[str, Any]] = {
         "pts": [[0.0, 2.6], [0.22, 0.4], [0.45, 0.4], [0.62, 2.8], [0.82, 0.5], [1.0, 2.2]],
     },
 }
+# Studio'nun rampa bicimi [{p, s}] (ramp_speed/rampTable); listeyle yazilan on ayarlari donustur
+for _v in SPEED_RAMP_PRESETS.values():
+    _v["pts"] = [{"p": float(q[0]), "s": float(q[1])} if isinstance(q, (list, tuple)) else q for q in _v["pts"]]
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +276,6 @@ def auto_reframe_plan(path: str, start: float = 0.0, dur: float = 10.0,
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         return {"ok": False, "error": "video_open_failed"}
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     cascade_path = getattr(cv2.data, "haarcascades", "") + "haarcascade_frontalface_default.xml"
     face_det = cv2.CascadeClassifier(cascade_path) if os.path.isfile(cascade_path) else None
 

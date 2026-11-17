@@ -183,19 +183,15 @@ class StudioMixin:
     def studio_inspect_ai(self, path: str, interval_s: float = 2.0) -> dict[str, Any]:
         from app.core import studio
         from app.core.studio_pro_v26 import inspect_video_for_ai
-        r = inspect_video_for_ai(self._st().ffmpeg(), str(path), studio.media_dir() / "Inspect", float(interval_s or 2.0))
-        if r.get("contact_sheet"):
-            r["sheet_url"] = self._media_url(r["contact_sheet"])
+        r = inspect_video_for_ai(self._st().ffmpeg(), str(path), studio.home_dir() / "Inspect", float(interval_s or 2.0))
+        if r.get("contact_sheet") and self._media:
+            r["sheet_url"] = self._media.asset_url(r["contact_sheet"])
         return r
 
     def studio_audio_reactive(self, path: str, start: float = 0.0, dur: float = 10.0, clip_dur: float = 10.0, strength: float = 0.14) -> dict[str, Any]:
         from app.core.studio_pro_v26 import build_audio_reactive_kf
         kf = build_audio_reactive_kf(self._st().ffmpeg(), str(path), float(start or 0), float(dur or 10), float(clip_dur or 10), float(strength or 0.14))
         return {"ok": bool(kf), "kf": kf}
-
-    def studio_auto_reframe(self, path: str, start: float = 0.0, dur: float = 10.0) -> dict[str, Any]:
-        from app.core.studio_pro_v26 import auto_reframe_plan
-        return auto_reframe_plan(str(path), float(start or 0), float(dur or 10))
 
     def studio_speed_ramp_presets(self) -> dict[str, Any]:
         from app.core.studio_pro_v26 import SPEED_RAMP_PRESETS
@@ -657,9 +653,11 @@ class StudioMixin:
     def studio_ai(self, kind: str, path: str, start: float, dur: float, opts: dict | None = None) -> dict[str, Any]:
         """captions | reframe. Arka planda; durum studio_job ile."""
         from app.core import aitools
-        tool = {"captions": "whisper", "reframe": "iopaint"}.get(str(kind))
+        tool = {"captions": "whisper", "reframe": "track"}.get(str(kind))
         if not tool:
             return {"ok": False, "error": "bad_kind"}
+        if tool == "track" and not aitools.installed("track") and aitools.installed("iopaint"):
+            tool = "iopaint"   # eski kurulum: OpenCV IOPaint ortaminda da var
         if not aitools.installed(tool):
             return {"ok": False, "error": "need_tool", "tool": tool}
         st = self._st()
@@ -679,7 +677,7 @@ class StudioMixin:
                     res = aitools._run_json(args, lambda m: job.update(p=float(m.get("p", job["p"]))), job["cancel"], "whisper")
                 else:
                     args = ["app.tools.studio_face_run", str(path), out, f"{float(start):.3f}", f"{float(dur):.3f}", str(o.get("ratio", 9 / 16))]
-                    res = aitools._run_once(args, lambda m: job.update(p=float(m.get("p", job["p"]))), job["cancel"], "iopaint", {})
+                    res = aitools._run_once(args, lambda m: job.update(p=float(m.get("p", job["p"]))), job["cancel"], tool, {})
                 if "done" in res:
                     job.update(state="done", p=1.0, result=json.loads(Path(out).read_text("utf-8")))
                 else:
@@ -840,7 +838,7 @@ class StudioMixin:
 
     def studio_ai_install(self, tool: str) -> dict[str, Any]:
         from app.core import aitools
-        tool = "whisper" if tool == "whisper" else "iopaint"
+        tool = tool if tool in ("whisper", "track") else "iopaint"
         st = self._st()
         jid = "i" + str(int(time.time() * 1000))
         job = {"id": jid, "state": "running", "p": 0.0, "error": "", "cancel": threading.Event(), "line": ""}
