@@ -415,8 +415,42 @@ def convert_one(src: str, target: str, opts: dict, tools: dict, on_p: Callable[[
     if k in ("audio", "video") and (target in AUDIO_OUT or target in VIDEO_OUT):
         return _media(src, target, opts, tools, on_p, cancel)
     if k == "office":
+        if Path(src).suffix.lower() == ".txt" and target in ("html", "pdf"):
+            return _txt_convert(src, target, opts)
         return _office(src, target, opts, cancel)
     raise RuntimeError("desteklenmiyor")
+
+
+def _txt_convert(src: str, target: str, opts: dict) -> Path:
+    """Metin dosyasini LibreOffice olmadan dogrudan HTML veya PDF'e cevirir."""
+    import html as _html
+    raw = Path(src).read_text(encoding="utf-8", errors="replace")
+    out = out_path(src, target, folder=opts.get("folder", ""))
+    if target == "html":
+        escaped = _html.escape(raw)
+        doc = (
+            "<!doctype html><html lang='tr'><head><meta charset='utf-8'>"
+            f"<title>{_html.escape(Path(src).stem)}</title>"
+            "<style>body{font:14px/1.6 system-ui,sans-serif;max-width:860px;margin:32px auto;padding:0 20px;"
+            "background:#0e0b16;color:#ede9f6;white-space:pre-wrap;word-break:break-word}</style>"
+            f"</head><body>{escaped}</body></html>"
+        )
+        out.write_text(doc, encoding="utf-8")
+        return out
+    import pymupdf
+    body = raw if raw.strip() else "(Boş metin dosyası)"
+    story = pymupdf.Story(html=f"<pre style='font-family:sans-serif;font-size:11pt;white-space:pre-wrap;word-break:break-word'>{_html.escape(body)}</pre>")
+    mediabox = pymupdf.paper_rect("a4")
+    where = mediabox + (40, 40, -40, -40)
+    writer = pymupdf.DocumentWriter(str(out))
+    more = True
+    while more:
+        dev = writer.begin_page(mediabox)
+        more, _ = story.place(where)
+        story.draw(dev, None)
+        writer.end_page()
+    writer.close()
+    return out
 
 
 def safe_name(s: str) -> str:

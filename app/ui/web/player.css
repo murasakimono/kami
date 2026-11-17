@@ -402,6 +402,9 @@ body.pl-open #sunak { visibility: hidden; }
 .pe-shelf { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
 .pe-cont { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px 10px 12px; border: 0; border-radius: 6px; background: #17111F; color: #EDE9F6; text-align: left; cursor: pointer; overflow: hidden; font-family: "Segoe UI", system-ui, sans-serif; }
 .pe-cont:hover { background: #221932; }
+.pe-cont-x { position: absolute; top: 4px; right: 5px; width: 18px; height: 18px; border-radius: 4px; display: grid; place-items: center; font-size: 13px; line-height: 1; color: #9E96B8; opacity: 0; transition: opacity .15s, background .15s, color .15s; }
+.pe-cont:hover .pe-cont-x { opacity: 1; }
+.pe-cont-x:hover { background: rgba(255, 92, 138, .22); color: #FF5C8A; }
 .pe-cont b { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pe-cont small { font-size: 11px; color: #8E86A3; }
 .pe-cont i { position: absolute; left: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, #6D28D9, #2EE6A6); }

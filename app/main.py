@@ -487,9 +487,9 @@ def main() -> int:
 
     # ---- Kami Oyun / Muzik / Suzgec (her biri kendi ayri penceresinde) ----
     for _mkey, _mtitle, _mfile, _mw, _mh in (
-        ("games", "Kami Oyun", "games.html", 1320, 840),
-        ("music", "Kami Müzik", "music.html", 1240, 800),
-        ("cleaner", "Kami Süzgeç", "cleaner.html", 1220, 780),
+        ("games", "Kami Games", "games.html", 1320, 840),
+        ("music", "Kamify", "music.html", 1240, 800),
+        ("cleaner", "Kami Cleaner", "cleaner.html", 1220, 780),
     ):
         def _bind_mod(k=_mkey, t=_mtitle, f=_mfile, ww=_mw, hh=_mh):
             fr = WindowFront(t)

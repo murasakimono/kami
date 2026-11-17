@@ -4538,9 +4538,29 @@ class Api(StudioMixin):
         from app.core.music_hub import ytm_saved_playlists
         return ytm_saved_playlists()
 
-    def music_ytm_playlist(self, url_or_id: str, limit: int = 200) -> dict[str, Any]:
+    def music_ytm_playlist(self, url_or_id: str, limit: int = 2000) -> dict[str, Any]:
         from app.core.music_hub import ytm_get_playlist
         return ytm_get_playlist(url_or_id, limit=limit, save=True)
+
+    def music_play_url(self, url: str) -> dict[str, Any]:
+        """YT Music / web akisini Kami Player penceresinde acar ve calar."""
+        u = str(url or "").strip()
+        if not u:
+            return {"ok": False, "error": "empty_url"}
+        return self.player_show({"url": u})
+
+    def music_download(self, url: str, title: str = "", fmt: str = "mp3") -> dict[str, Any]:
+        """Kamify'dan dogrudan ses (MP3) indirmesi baslatir ve hedef klasoru doner."""
+        u = str(url or "").strip()
+        if not u:
+            return {"ok": False, "error": "empty_url"}
+        d = self._manager.add_media(
+            u,
+            options={"format": "mp3", "audio_kbps": "320", "no_playlist": True},
+            title=str(title or ""),
+            source="music",
+        )
+        return {"ok": True, "id": d.id, "dir": d.directory or str(self._manager.base_dir())}
 
     def music_ytm_to_spotify(self, url_or_id: str, new_name: str = "") -> dict[str, Any]:
         from app.core.music_hub import ytm_to_spotify_playlist
@@ -4557,6 +4577,32 @@ class Api(StudioMixin):
     def music_librespot_reset(self) -> dict[str, Any]:
         from app.core.librespot_host import reset_credentials
         return reset_credentials()
+
+    def acoustid_test(self, key: str = "") -> dict[str, Any]:
+        """AcoustID API anahtarini gercek lookup ucunda dogrular (code 3=anahtar gecerli, code 4=gecersiz)."""
+        import json as _json
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+        k = str(key or self._manager.settings.get("acoustid_key") or "").strip()
+        if not k:
+            return {"ok": False, "error": "empty_key"}
+        qs = urllib.parse.urlencode({"client": k, "duration": "120", "fingerprint": "AQAA", "meta": "recordings"})
+        try:
+            with urllib.request.urlopen(f"https://api.acoustid.org/v2/lookup?{qs}", timeout=6) as resp:
+                data = _json.loads(resp.read().decode("utf-8", "replace"))
+                return {"ok": data.get("status") == "ok"}
+        except urllib.error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", "replace")
+            try:
+                err = (_json.loads(raw).get("error") or {})
+                if err.get("code") == 3:
+                    return {"ok": True}
+                return {"ok": False, "error": err.get("message") or f"HTTP {exc.code}"}
+            except Exception:
+                return {"ok": False, "error": f"HTTP {exc.code}"}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:100]}
 
     def cleaner_search(self, query: str, root: str = "", limit: int = 80) -> dict[str, Any]:
         from app.core.cleaner import search_files

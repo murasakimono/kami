@@ -558,12 +558,21 @@ def spotify_playlist_modify(playlist_id: str, uris: list[str], remove: bool = Fa
 
 def spotify_devices() -> dict[str, Any]:
     r = _sp_api("GET", "/me/player/devices")
-    if not r.get("ok"):
-        return {**r, "devices": []}
     devs = [{
         "id": d.get("id", ""), "name": d.get("name", ""), "type": d.get("type", ""),
         "active": bool(d.get("is_active")), "volume": int(d.get("volume_percent") or 100),
-    } for d in ((r.get("data") or {}).get("devices") or []) if d.get("id")]
+    } for d in (((r.get("data") or {}).get("devices") or []) if r.get("ok") else []) if d.get("id")]
+    try:
+        from app.core import librespot_host
+        if librespot_host.is_running():
+            st = librespot_host.status()
+            if st.get("paired") and not any(str(x.get("name") or "").lower() == "kami" for x in devs):
+                d_id = st.get("device_id") or "kami-local"
+                devs.insert(0, {"id": d_id, "name": "Kami (Dahili)", "type": "Computer", "active": bool(st.get("active")), "volume": 100})
+    except Exception:
+        pass
+    if not r.get("ok") and not devs:
+        return {**r, "devices": []}
     return {"ok": True, "devices": devs}
 
 
@@ -746,7 +755,7 @@ def ytm_extract_playlist_id(url_or_id: str) -> str:
     return m.group(1) if m else s
 
 
-def ytm_get_playlist(url_or_id: str, limit: int = 200, save: bool = True) -> dict[str, Any]:
+def ytm_get_playlist(url_or_id: str, limit: int = 2000, save: bool = True) -> dict[str, Any]:
     pid = ytm_extract_playlist_id(url_or_id)
     if not pid:
         return {"ok": False, "error": "empty_id", "items": []}
@@ -757,11 +766,12 @@ def ytm_get_playlist(url_or_id: str, limit: int = 200, save: bool = True) -> dic
         title = str(pl.get("title") or pid)
         for t in (pl.get("tracks") or []):
             vid = t.get("videoId")
-            if not vid:
+            nm = str(t.get("title") or "").strip()
+            if not vid or not nm or nm in ("[Deleted video]", "[Private video]"):
                 continue
             items.append({
                 "id": vid,
-                "title": str(t.get("title") or ""),
+                "title": nm,
                 "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])),
                 "dur": str(t.get("duration") or ""),
                 "url": f"https://music.youtube.com/watch?v={vid}",
@@ -771,20 +781,20 @@ def ytm_get_playlist(url_or_id: str, limit: int = 200, save: bool = True) -> dic
 
     if not items:
         try:
-            if True:
-                d = _ytdlp_flat(f"https://www.youtube.com/playlist?list={pid}", 35)
-                title = str(d.get("title") or pid)
-                for e in (d.get("entries") or [])[:int(limit)]:
-                    vid = e.get("id") or ""
-                    if not vid:
-                        continue
-                    items.append({
-                        "id": vid,
-                        "title": str(e.get("title") or ""),
-                        "artist": str(e.get("uploader") or e.get("channel") or ""),
-                        "dur": str(e.get("duration_string") or ""),
-                        "url": f"https://music.youtube.com/watch?v={vid}",
-                    })
+            d = _ytdlp_flat(f"https://www.youtube.com/playlist?list={pid}", 60)
+            title = str(d.get("title") or pid)
+            for e in (d.get("entries") or [])[:int(limit)]:
+                vid = e.get("id") or ""
+                nm = str(e.get("title") or "").strip()
+                if not vid or not nm or nm in ("[Deleted video]", "[Private video]"):
+                    continue
+                items.append({
+                    "id": vid,
+                    "title": nm,
+                    "artist": str(e.get("uploader") or e.get("channel") or ""),
+                    "dur": str(e.get("duration_string") or ""),
+                    "url": f"https://music.youtube.com/watch?v={vid}",
+                })
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:120], "items": []}
 

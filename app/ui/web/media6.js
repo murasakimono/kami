@@ -188,6 +188,9 @@ async function refreshMediaSettings() {
   $("#geniusState").textContent = T(g.has_token ? "s_genius_ok" : "s_genius_none");
   $("#geniusClear").hidden = !g.has_token;
   $("#musicDir").textContent = state.settings.music_dir || T("reset_dir");
+  const ak = String(state.settings.acoustid_key || "").trim();
+  const ast = $("#acoustidState");
+  if (ast) { ast.textContent = ak ? "kayıtlı ✓" : ""; ast.style.color = ak ? "#2EE6A6" : ""; }
 }
 
 function bindMediaSettings() {
@@ -206,6 +209,18 @@ function bindMediaSettings() {
     if (dir) { await setSetting("music_dir", dir); refreshMediaSettings(); }
   });
   $("#musicDirReset").addEventListener("click", async () => { await setSetting("music_dir", ""); refreshMediaSettings(); });
+  $("#acoustidTest")?.addEventListener("click", async () => {
+    const inp = document.querySelector('#settingsModal input[name="acoustid_key"]');
+    const ast = $("#acoustidState");
+    const k = (inp?.value || "").trim();
+    if (ast) { ast.textContent = "test ediliyor…"; ast.style.color = ""; }
+    if (k) await setSetting("acoustid_key", k);
+    const r = await api.acoustid_test?.(k).catch(() => null);
+    if (ast) {
+      ast.textContent = r?.ok ? "✓ Geçerli" : `✗ ${r?.error || "Geçersiz"}`;
+      ast.style.color = r?.ok ? "#2EE6A6" : "#FF5C8A";
+    }
+  });
 }
 
 // ---------- get_state: AI olaylari + kurulum durumu ----------

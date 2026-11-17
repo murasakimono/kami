@@ -126,8 +126,20 @@ window.pxDrawerRender = async (...a) => {
       if (sh && h?.tagName === "H4" && body.firstElementChild !== h) { body.prepend(sh); body.prepend(h); }
     };
     setTimeout(peTop, 0); setTimeout(peTop, 300);
-    body.insertAdjacentHTML("afterbegin", `<h4>${plL("İzlemeye devam", "Continue watching")}</h4><div class="pe-shelf">${rec.map((x, i) => `<button class="pe-cont" data-cont="${i}"><b>${escapeHtml(pxBase(x.p))}</b><small>${fmtT(x.t)} / ${fmtT(x.d)}</small><i style="width:${Math.min(100, x.t / x.d * 100).toFixed(1)}%"></i></button>`).join("")}</div>`);
-    body.querySelectorAll("[data-cont]").forEach((b) => b.onclick = (ev) => { ev.stopPropagation(); const x = rec[+b.dataset.cont]; playerOpenPath(x.p); $("#plDrawer").hidden = true; });
+    body.insertAdjacentHTML("afterbegin", `<h4>${plL("İzlemeye devam", "Continue watching")}</h4><div class="pe-shelf">${rec.map((x, i) => `<button class="pe-cont" data-cont="${i}"><span class="pe-cont-x" data-contdel="${i}" title="${plL("Listeden kaldır", "Remove")}">×</span><b>${escapeHtml(pxBase(x.p))}</b><small>${fmtT(x.t)} / ${fmtT(x.d)}</small><i style="width:${Math.min(100, x.t / x.d * 100).toFixed(1)}%"></i></button>`).join("")}</div>`);
+    body.querySelectorAll("[data-cont]").forEach((b) => b.onclick = (ev) => {
+      const del = ev.target.closest("[data-contdel]");
+      if (del) {
+        ev.stopPropagation();
+        const x = rec[+del.dataset.contdel];
+        const all = peLS("kami.recent", []).filter((r) => r.p !== x?.p);
+        try { localStorage.setItem("kami.recent", JSON.stringify(all)); } catch {}
+        b.remove();
+        if (!body.querySelector(".pe-cont")) body.querySelector(".pe-shelf")?.previousElementSibling?.remove(), body.querySelector(".pe-shelf")?.remove();
+        return;
+      }
+      ev.stopPropagation(); const x = rec[+b.dataset.cont]; playerOpenPath(x.p); $("#plDrawer").hidden = true;
+    });
   }
   // dizi posterleri (AniList, onbellekli)
   const cards = [...body.querySelectorAll(".px-series[data-series]")];

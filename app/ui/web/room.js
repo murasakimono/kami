@@ -1095,9 +1095,9 @@ function spShowBar(title, artist, isLead) {
   }
   bar.innerHTML = `<span style="color:#2EE6A6;font-weight:700">🎧 ${isLead ? "Yayınlıyorsun" : "Birlikte Dinleme"}:</span>` +
     `<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(artist ? artist + " — " + title : title)}</b>` +
-    `<button class="rm-ib" id="spJamQ" style="padding:3px 9px">+ Sıraya Ekle</button>` +
-    (isLead ? `<button class="rm-ib" id="spStopLead" style="padding:3px 9px">Yayını Durdur</button>`
-      : `<button class="rm-ib" id="spToggleFollow" style="padding:3px 9px">${SP_SYNC.follow ? "✓ Senkrondasın" : "Katıl"}</button>`);
+    `<button class="rm-txtbtn" id="spJamQ">+ Sıraya Ekle</button>` +
+    (isLead ? `<button class="rm-txtbtn" id="spStopLead">Yayını Durdur</button>`
+      : `<button class="rm-txtbtn" id="spToggleFollow">${SP_SYNC.follow ? "✓ Senkrondasın" : "Katıl"}</button>`);
   $("spJamQ").onclick = () => {
     const q = prompt("Oda Jam sırasına eklenecek şarkı (ad / sanatçı):");
     if (q && q.trim()) S.core?.broadcast({ k: "sp", act: "q", query: q.trim() });
