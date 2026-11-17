@@ -60,6 +60,7 @@ class Api(StudioMixin):
         self._history = None
         self._shutdown = None
         self._queues = None
+        self._rss = None
         self._watcher = None
         self._phone = None
         self._phone_key = None
@@ -99,7 +100,7 @@ class Api(StudioMixin):
         "editor_vectorize", "editor_gif", "room_open", "room_relink", "editor_export", "editor_project_save", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
-        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "subtitle_translate", "subtitle_sync", "player_open_url",
+        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "rss_add", "rss_check", "rss_preview", "subtitle_translate", "subtitle_sync", "player_open_url",
         "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "library_meta", "tmdb_set_key", "iptv_load", "iptv_epg", "cast_devices", "cast_play", "cast_control", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     }) | STUDIO_JOBS
@@ -500,6 +501,59 @@ class Api(StudioMixin):
             if (d.extra or {}).get("qhold"):   # adli kuyrugun bekleyeni: kuyruk kendisi baslatir
                 continue
             self._manager.resume(d.id)
+
+    # ---------- v1.29 RSS otomatik indirme ----------
+    def _rss_add(self, it: dict, feed: dict) -> bool:
+        """RSS girdisi -> torrent (RD ayarina gore; yerelde tum dosyalar) ya da duz dosya. Sormadan."""
+        from app.core.debrid import is_magnet, is_torrent_url
+        link = str(it.get("dl") or "")
+        qid = str(feed.get("queue") or "")
+        added_ids: list[int] = []
+        if is_magnet(link) or is_torrent_url(link):
+            if self._torrent_route() == "rd":
+                r = self.rd_add(link)
+                return bool(r.get("ok"))
+            svc = self._manager.torrents
+            if is_magnet(link):
+                token, meta = svc.from_magnet(link, timeout=120)
+            else:
+                token, meta = svc.from_bytes(self._fetch_torrent(link))
+            n = len([f for f in meta.files if not f.get("pad")])
+            d = self._manager.add_torrent(token, list(range(n)))
+            added_ids = [d.id]
+        else:
+            added_ids = [d.id for d in self._manager.add(DownloadRequest(url=link, source="plugin:rss"), confirm=False)]
+        q = getattr(self, "_queues", None)
+        if qid and q and added_ids:
+            q.assign(added_ids, qid)
+        return bool(added_ids)
+
+    def rss_list(self) -> list[dict[str, Any]]:
+        return self._rss.public() if getattr(self, "_rss", None) else []
+
+    def rss_add(self, url: str, opts: dict | None = None) -> dict[str, Any]:
+        if not getattr(self, "_rss", None):
+            return {"ok": False, "error": "rss_off"}
+        return self._rss.add_feed(str(url), **(opts if isinstance(opts, dict) else {}))
+
+    def rss_update(self, fid: str, opts: dict) -> dict[str, Any]:
+        return {"ok": bool(getattr(self, "_rss", None) and self._rss.update(str(fid), **(opts or {}))), "feeds": self.rss_list()}
+
+    def rss_remove(self, fid: str) -> list[dict[str, Any]]:
+        if getattr(self, "_rss", None):
+            self._rss.remove(str(fid))
+        return self.rss_list()
+
+    def rss_preview(self, fid: str) -> dict[str, Any]:
+        try:
+            return {"ok": True, "items": self._rss.preview(str(fid))}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def rss_check(self, fid: str = "") -> dict[str, Any]:
+        if not getattr(self, "_rss", None):
+            return {"ok": False}
+        return {"ok": True, "new": self._rss.check(str(fid) or None, force=True), "feeds": self.rss_list()}
 
     # ---------- v1.29 coklu kuyruk ----------
     def queue_list(self) -> list[dict[str, Any]]:

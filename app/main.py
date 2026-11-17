@@ -881,6 +881,17 @@ def main() -> int:
     queues = QueueRunner(manager, on_done=_queue_done)
     queues.start()
     api._queues = queues
+    # v1.29 RSS otomatik indirme (torrent akislari / podcast)
+    from app.core.rss import RssService
+
+    def _rss_fetch(url: str) -> bytes:
+        import requests
+        r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 Kami-RSS"})
+        r.raise_for_status()
+        return r.content[:8 * 1024 * 1024]
+    rss = RssService(_rss_fetch, api._rss_add, notify=lambda t, msg: tray.notify(t, msg) if tray.running else None)
+    rss.start()
+    api._rss = rss
     watcher = Watcher(manager, media_post.set_extra,
                       player=lambda p: _watch_play(p))
 

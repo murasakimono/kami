@@ -126,3 +126,47 @@ def test_schedule_transition_runs_queue(tmp_path, monkeypatch):
     assert sum(m.store.get(i).status in (Status.ACTIVE, Status.WAITING) for i in ids[:2]) == 1
     r.tick(dt.datetime(2026, 11, 17, 3, 0))
     assert not queues.load()[0]["running"] and all(m.store.get(i).status == Status.PAUSED for i in ids[:2])
+
+
+NYAA = b"""<?xml version="1.0" encoding="UTF-8"?><rss xmlns:nyaa="https://nyaa.si/xmlns/nyaa" version="2.0"><channel>
+<title>Nyaa - Home - Torrent File RSS</title>
+<item><title>[SubsPlease] Dandadan - 07 (1080p) [ABCD1234].mkv</title><link>https://nyaa.si/download/1.torrent</link>
+<guid isPermaLink="true">https://nyaa.si/view/1</guid><nyaa:infoHash>aaaabbbbccccddddeeeeffff0000111122223333</nyaa:infoHash><nyaa:size>1.4 GiB</nyaa:size></item>
+<item><title>[SubsPlease] Dandadan - 07 (720p) [EF01].mkv</title><link>https://nyaa.si/download/2.torrent</link>
+<guid isPermaLink="true">https://nyaa.si/view/2</guid><nyaa:size>700.5 MiB</nyaa:size></item>
+<item><title>[Other] Baska Dizi - 03 (1080p).mkv</title><link>https://nyaa.si/download/3.torrent</link><guid>https://nyaa.si/view/3</guid><nyaa:size>1.0 GiB</nyaa:size></item>
+</channel></rss>"""
+
+ATOM = b"""<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Podcast</title>
+<entry><title>Bolum 12</title><id>tag:x,12</id><link rel="enclosure" href="https://cdn.ornek.com/b12.mp3"/></entry></feed>"""
+
+
+def test_rss_parse_and_episode_key():
+    from app.core import rss
+    title, items = rss.parse_feed(NYAA)
+    assert title.startswith("Nyaa") and len(items) == 3
+    assert items[0]["dl"].startswith("magnet:?xt=urn:btih:aaaa") and items[0]["size"] == int(1.4 * (1 << 30))
+    assert items[1]["dl"] == "https://nyaa.si/download/2.torrent"
+    assert rss.episode_key(items[0]["title"]) == rss.episode_key(items[1]["title"]) == "dandadan|e007"
+    assert rss.episode_key("The.Show.S02E05.1080p.WEB.x265") == "the show|s02e05"
+    assert rss.episode_key("Belgesel 2024") == ""
+    t2, a = rss.parse_feed(ATOM)
+    assert t2 == "Podcast" and a[0]["dl"] == "https://cdn.ornek.com/b12.mp3"
+    f = {"include": "1080p", "exclude": "Baska", "max_mb": 2000}
+    assert [rss.matches(f, it) for it in items] == [True, False, False]
+    assert rss.matches({"include": "/dandadan.*(720|1080)p/"}, items[1])
+
+
+def test_rss_service_smart_episode_dedupe(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.paths.DATA_DIR", tmp_path)
+    from app.core import rss
+    feed = {"x": NYAA}
+    got = []
+    svc = rss.RssService(lambda u: feed["x"], lambda it, f: got.append(it["title"]) or True)
+    r = svc.add_feed("https://nyaa.si/?page=rss", include="Dandadan")
+    assert r["ok"] and r["items"] == 3 and got == []                 # geriye donuk indirme yok
+    feed["x"] = NYAA.replace(b"view/1<", b"view/9<").replace(b"view/2<", b"view/8<").replace(b"- 07", b"- 08")
+    assert svc.check(force=True) == 1                                  # 08'in yalniz ilk surumu (720p ve 1080p ayni bolum)
+    assert len(got) == 1 and "- 08" in got[0]
+    assert svc.check(force=True) == 0
+    assert svc.public()[0]["seen_n"] >= 5 and "seen" not in svc.public()[0]
