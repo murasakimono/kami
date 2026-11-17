@@ -147,6 +147,7 @@ function onWarns(ws) {
       const when = w.when ? new Date(w.when * 1000).toLocaleDateString(state.lang) : "";
       toast(T("warn_dup", w.name, when) + (w.exists ? "" : T("warn_dup_gone")), true);
     } else if (w.kind === "disk") toast(T("warn_disk", w.name, fmtBytes(w.need), fmtBytes(w.free)), true);
+    else if (w.text) toast(w.text);
   }
 }
 

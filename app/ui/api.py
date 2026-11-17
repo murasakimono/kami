@@ -100,7 +100,7 @@ class Api(StudioMixin):
         "editor_vectorize", "editor_gif", "room_open", "room_relink", "editor_export", "editor_project_save", "room_turn_set", "reader_open", "reader_page", "reader_thumb", "reader_search", "reader_speak", "reader_text", "rec_save_replay", "rec_toggle", "rec_replay", "media_probe", "cloud_list", "add_cloud", "rd_add", "torrent_choose", "torrent_open",
         "torrent_source", "rd_lists", "rd_status", "rd_set_token", "rd_queue_torrent", "rd_queue_download",
         "rd_delete", "check_update", "install_update", "hash_file", "make_report", "firewall_allow",
-        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "rss_add", "rss_check", "rss_preview", "subtitle_translate", "subtitle_sync", "player_open_url",
+        "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "reader_series_add", "reader_series_check", "reader_epub_font", "rss_add", "rss_check", "rss_preview", "subtitle_translate", "subtitle_sync", "player_open_url",
         "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "library_meta", "tmdb_set_key", "iptv_load", "iptv_epg", "cast_devices", "cast_play", "cast_control", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
     }) | STUDIO_JOBS
@@ -1691,7 +1691,7 @@ class Api(StudioMixin):
         st = reader.load_state(doc.key)
         st["count"] = doc.count
         reader.save_state(doc.key, st, doc.path, doc.title)
-        return {"ok": True, "kind": doc.kind, "count": doc.count, "title": doc.title, "path": doc.path,
+        return {"ok": True, "kind": doc.kind, "count": doc.count, "title": doc.title, "path": doc.path, "ebook": bool(getattr(doc, "ebook", False)),
                 "state": st, "outline": doc.outline()}
 
     def reader_page(self, i: int, width: int = 1400, words: bool = False) -> dict[str, Any]:
@@ -1742,6 +1742,69 @@ class Api(StudioMixin):
         from app.core import reader
         return reader.recent()
 
+    # ---- v1.30 Reader: istatistik, seri/yeni bolum takibi, e-kitap punto
+    def reader_stats(self) -> dict[str, Any]:
+        from app.core import reader
+        return reader.stats()
+
+    def reader_series(self) -> list[dict[str, Any]]:
+        from app.core import reader
+        return reader.series_list()
+
+    def reader_series_add(self, src: str) -> dict[str, Any]:
+        from app.core import reader
+        try:
+            return reader.series_add(str(src or ""))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:160]}
+
+    def reader_series_remove(self, sid: str) -> list[dict[str, Any]]:
+        from app.core import reader
+        reader.series_remove(str(sid))
+        return reader.series_list()
+
+    def reader_series_seen(self, sid: str) -> bool:
+        from app.core import reader
+        reader.series_seen(str(sid))
+        return True
+
+    def reader_series_check(self) -> dict[str, Any]:
+        from app.core import reader
+        found = reader.series_check()
+        self._reader_notify_new(found)
+        return {"ok": True, "found": found, "series": reader.series_list()}
+
+    def _reader_notify_new(self, found: list) -> None:
+        if not found:
+            return
+        try:
+            from app.core import desktop
+            msg = "; ".join(f"{f['title']}: {len(f['new'])} yeni" for f in found[:3])
+            desktop.toast("Kami Reader — yeni bölüm", msg)
+        except Exception:
+            log.debug("Reader bildirimi gosterilemedi")
+        with self._inbox_lock:
+            self._warns.append({"kind": "reader_new", "text": "Yeni bölüm: " + ", ".join(f["title"] for f in found[:3])})
+
+    def reader_epub_font(self, size: float) -> dict[str, Any]:
+        """E-kitap puntosu: belge yeniden dizilir ve yeniden acilir (sayfa yuzdesi korunur)."""
+        from app.core import reader
+        d = self._rdoc
+        if not d or not getattr(d, "ebook", False):
+            return {"ok": False}
+        st = reader.load_state(d.key)
+        frac = (st.get("page", 0) + 0.5) / max(1, d.count)
+        st.setdefault("settings", {})["epub_font"] = max(7.0, min(24.0, float(size)))
+        reader.save_state(d.key, st, d.path, d.title)
+        path = d.path
+        r = self.reader_open(path)
+        if r.get("ok"):
+            st2 = reader.load_state(self._rdoc.key)
+            st2["page"] = min(r["count"] - 1, int(frac * r["count"]))
+            reader.save_state(self._rdoc.key, st2, path, self._rdoc.title)
+            r["state"] = st2
+        return r
+
     def reader_pick(self, folder: bool = False) -> str:
         import webview
         w = getattr(self, "_reader_win", None) or (webview.windows[0] if webview.windows else None)
@@ -1751,7 +1814,7 @@ class Api(StudioMixin):
             r = w.create_file_dialog(webview.FOLDER_DIALOG)
         else:
             r = w.create_file_dialog(webview.OPEN_DIALOG, file_types=(
-                "Kitap ve çizgi roman (*.pdf;*.cbz;*.cbr;*.cb7;*.zip;*.rar;*.7z)", "Tüm dosyalar (*.*)"))
+                "Kitap ve çizgi roman (*.pdf;*.epub;*.mobi;*.fb2;*.azw3;*.cbz;*.cbr;*.cb7;*.zip;*.rar;*.7z)", "Tüm dosyalar (*.*)"))
         return str(r[0]) if r else ""
 
     def reader_speak(self, text: str, lang: str = "", rate: float = 1.0) -> dict[str, Any]:

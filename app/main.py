@@ -892,6 +892,17 @@ def main() -> int:
     rss = RssService(_rss_fetch, api._rss_add, notify=lambda t, msg: tray.notify(t, msg) if tray.running else None)
     rss.start()
     api._rss = rss
+
+    def _reader_series_loop() -> None:   # v1.30 Reader yeni bolum takibi: 30 dk'da bir (ilk yoklama 2 dk sonra)
+        import time as _t
+        _t.sleep(120)
+        while True:
+            try:
+                api.reader_series_check()
+            except Exception:
+                log.exception("Reader seri yoklamasi")
+            _t.sleep(1800)
+    threading.Thread(target=_reader_series_loop, name="kami-reader-series", daemon=True).start()
     watcher = Watcher(manager, media_post.set_extra,
                       player=lambda p: _watch_play(p))
 

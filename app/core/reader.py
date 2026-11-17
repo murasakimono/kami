@@ -30,7 +30,8 @@ NOWIN = 0x08000000 if os.name == "nt" else 0
 IMG = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".jfif")
 COMIC = (".cbz", ".cbr", ".cb7", ".cbt", ".zip", ".rar", ".7z")
 BOOK = (".pdf",)
-READ_EXT = COMIC + BOOK
+EBOOK = (".epub", ".mobi", ".fb2", ".xps", ".oxps", ".azw3")   # v1.30: PyMuPDF ile PDF'e dizilir (vurgu/arama/TTS ayni hat)
+READ_EXT = COMIC + BOOK + EBOOK
 ROOT = paths.DATA_DIR / "reader"
 
 
@@ -54,7 +55,8 @@ class Doc:
         self.path = os.path.abspath(path)
         self.key = _key(self.path)
         ext = os.path.splitext(self.path)[1].lower()
-        self.kind = "pdf" if ext == ".pdf" else "comic"
+        self.kind = "pdf" if ext in BOOK + EBOOK else "comic"
+        self.ebook = ext in EBOOK
         self.pages: list[str] = []          # comic: dosya yollari / zip uyeleri
         self._zip: zipfile.ZipFile | None = None
         self._pdf = None
@@ -63,7 +65,7 @@ class Doc:
             self.pages = sorted((str(p) for p in Path(self.path).rglob("*") if p.suffix.lower() in IMG), key=_natkey)
         elif self.kind == "pdf":
             import pypdfium2 as pdfium
-            self._pdf = pdfium.PdfDocument(self.path)
+            self._pdf = pdfium.PdfDocument(ebook_pdf(self.path) if self.ebook else self.path)
         elif zipfile.is_zipfile(self.path):
             self._zip = zipfile.ZipFile(self.path)
             self.pages = sorted((n for n in self._zip.namelist() if n.lower().endswith(IMG) and "__MACOSX" not in n), key=_natkey)
@@ -192,6 +194,27 @@ class Doc:
 
 
 # ---------------------------------------------------------------- not defteri
+def ebook_pdf(path: str, font_size: float = 0) -> str:
+    """EPUB/MOBI/FB2 -> sayfalanmis PDF (onbellek: reader/conv/<anahtar>_<punto>.pdf). Punto ayardan."""
+    import pymupdf
+    fs = float(font_size or load_state(_key(path)).get("settings", {}).get("epub_font") or 11)
+    out = ROOT / "conv" / f"{_key(path)}_{fs:g}.pdf"
+    if out.exists() and out.stat().st_mtime >= os.path.getmtime(path):
+        return str(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    src = pymupdf.open(path)
+    try:
+        if src.is_reflowable:
+            src.layout(width=420, height=620, fontsize=fs)   # A5'e yakin; ekran sigdirma Reader'da
+        data = src.convert_to_pdf()
+    finally:
+        src.close()
+    tmp = out.with_suffix(".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(out)
+    return str(out)
+
+
 def state_path(key: str) -> Path:
     ROOT.mkdir(parents=True, exist_ok=True)
     return ROOT / f"{key}.json"
@@ -224,6 +247,155 @@ def recent(limit: int = 30) -> list[dict[str, Any]]:
             out.append({"path": d["path"], "title": d.get("title", ""), "page": d.get("page", 0),
                         "count": d.get("count", 0), "opened": d.get("opened", 0), "hl": len(d.get("hl", []))})
     return sorted(out, key=lambda x: -x["opened"])[:limit]
+
+
+def stats() -> dict[str, Any]:
+    """Okuma istatistigi: belgelerin st.stats {secs, pages, days{YYYY-MM-DD: secs}} toplamlari + seri (gun ust uste)."""
+    import datetime as dt
+    days: dict[str, float] = {}
+    total = pages = 0.0
+    books = []
+    for f in (ROOT.glob("*.json") if ROOT.exists() else []):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        stt = d.get("stats") or {}
+        total += float(stt.get("secs") or 0)
+        pages += float(stt.get("pages") or 0)
+        for k, v in (stt.get("days") or {}).items():
+            days[k] = days.get(k, 0) + float(v or 0)
+        if stt.get("secs"):
+            books.append({"title": d.get("title", ""), "secs": stt["secs"], "done": bool(d.get("count") and d.get("page", 0) + 1 >= d["count"])})
+    today = dt.date.today()
+    streak = 0
+    while days.get((today - dt.timedelta(days=streak)).isoformat(), 0) >= 60:
+        streak += 1
+    week = sum(days.get((today - dt.timedelta(days=i)).isoformat(), 0) for i in range(7))
+    last14 = [{"d": (today - dt.timedelta(days=i)).isoformat(), "s": round(days.get((today - dt.timedelta(days=i)).isoformat(), 0))} for i in range(13, -1, -1)]
+    return {"total": round(total), "pages": int(pages), "today": round(days.get(today.isoformat(), 0)), "week": round(week),
+            "streak": streak, "finished": sum(b["done"] for b in books), "days": last14,
+            "top": sorted(books, key=lambda b: -b["secs"])[:5]}
+
+
+# ---------------------------------------------------------------- seri / yeni bolum takibi
+SERIES_FILE = ROOT / "series.json"
+
+
+def _series_load() -> list[dict[str, Any]]:
+    try:
+        return json.loads(SERIES_FILE.read_text("utf-8"))
+    except (OSError, ValueError):
+        return []
+
+
+def _series_save(items: list[dict[str, Any]]) -> None:
+    ROOT.mkdir(parents=True, exist_ok=True)
+    tmp = SERIES_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(items, ensure_ascii=False), "utf-8")
+    tmp.replace(SERIES_FILE)
+
+
+def _chap_num(name: str) -> float:
+    m = re.findall(r"(?:ch(?:apter)?|b[oö]l[uü]m|c|#|vol\.?\s*\d+\s*ch)?[ ._-]*(\d+(?:\.\d+)?)", os.path.splitext(name)[0], re.I)
+    return float(m[-1]) if m else -1.0
+
+
+def series_scan_folder(folder: str) -> list[dict[str, Any]]:
+    """Klasordeki bolumler (arsiv ya da resim klasoru), bolum numarasina gore."""
+    out = []
+    for p in sorted(Path(folder).iterdir(), key=lambda x: _natkey(x.name)) if os.path.isdir(folder) else []:
+        if (p.is_file() and p.suffix.lower() in READ_EXT) or (p.is_dir() and any(c.suffix.lower() in IMG for c in p.iterdir())):
+            out.append({"name": p.name, "path": str(p), "n": _chap_num(p.name)})
+    return out
+
+
+def mangadex_feed(manga_id: str, langs: list[str], limit: int = 30) -> list[dict[str, Any]]:
+    """MangaDex resmi API: son bolumler (salt okuma, anahtarsiz)."""
+    import requests
+    q = [("limit", str(limit)), ("order[readableAt]", "desc"), ("includeExternalUrl", "0")] + [("translatedLanguage[]", lg) for lg in langs]
+    r = requests.get(f"https://api.mangadex.org/manga/{manga_id}/feed", params=q, timeout=15, headers={"User-Agent": "Kami-Reader/1.30"})
+    r.raise_for_status()
+    out = []
+    for c in r.json().get("data", []):
+        a = c.get("attributes", {})
+        out.append({"id": c["id"], "n": float(a["chapter"]) if (a.get("chapter") or "").replace(".", "", 1).isdigit() else -1.0,
+                    "title": a.get("title") or "", "lang": a.get("translatedLanguage", ""), "url": f"https://mangadex.org/chapter/{c['id']}"})
+    return out
+
+
+def mangadex_title(manga_id: str) -> str:
+    import requests
+    r = requests.get(f"https://api.mangadex.org/manga/{manga_id}", timeout=15, headers={"User-Agent": "Kami-Reader/1.30"})
+    r.raise_for_status()
+    t = r.json()["data"]["attributes"]["title"]
+    return t.get("en") or t.get("tr") or next(iter(t.values()), manga_id)
+
+
+def series_list() -> list[dict[str, Any]]:
+    return _series_load()
+
+
+def series_add(src: str, langs: list[str] | None = None) -> dict[str, Any]:
+    """src: klasor yolu (yerel seri) ya da mangadex.org/title/<id> linki."""
+    import uuid
+    src = (src or "").strip()
+    items = _series_load()
+    m = re.search(r"mangadex\.org/title/([0-9a-f-]{36})", src)
+    if m:
+        mid = m.group(1)
+        langs = langs or ["tr", "en"]
+        feed = mangadex_feed(mid, langs)
+        it = {"id": uuid.uuid4().hex[:8], "kind": "mangadex", "src": mid, "title": mangadex_title(mid), "langs": langs,
+              "known": [c["id"] for c in feed], "last_n": max([c["n"] for c in feed] or [-1]), "new": [], "checked": time.time()}
+    elif os.path.isdir(src):
+        ch = series_scan_folder(src)
+        it = {"id": uuid.uuid4().hex[:8], "kind": "folder", "src": src, "title": os.path.basename(src.rstrip("\\/")),
+              "known": [c["name"] for c in ch], "last_n": max([c["n"] for c in ch] or [-1]), "new": [], "checked": time.time()}
+    else:
+        return {"ok": False, "error": "kaynak"}
+    items.append(it)
+    _series_save(items)
+    return {"ok": True, "series": it}
+
+
+def series_remove(sid: str) -> None:
+    _series_save([x for x in _series_load() if x["id"] != sid])
+
+
+def series_seen(sid: str) -> None:
+    items = _series_load()
+    for x in items:
+        if x["id"] == sid:
+            x["new"] = []
+    _series_save(items)
+
+
+def series_check() -> list[dict[str, Any]]:
+    """Tum serileri yoklar; yeni bolum bulunanlari doner [{title, new:[...]}]. Bildirimi cagiran yapar."""
+    items = _series_load()
+    found = []
+    for x in items:
+        try:
+            if x["kind"] == "folder":
+                ch = series_scan_folder(x["src"])
+                fresh = [c for c in ch if c["name"] not in x["known"]]
+                x["known"] = [c["name"] for c in ch]
+                news = [{"name": c["name"], "path": c["path"], "n": c["n"]} for c in fresh]
+            else:
+                feed = mangadex_feed(x["src"], x.get("langs") or ["tr", "en"])
+                fresh = [c for c in feed if c["id"] not in x["known"]]
+                x["known"] = (x["known"] + [c["id"] for c in fresh])[-500:]
+                news = [{"name": f"Bölüm {c['n']:g}" + (f" — {c['title']}" if c["title"] else "") + f" [{c['lang']}]", "url": c["url"], "n": c["n"]} for c in fresh]
+            x["checked"], x["error"] = time.time(), ""
+            if news:
+                x["new"] = (x.get("new", []) + news)[-50:]
+                x["last_n"] = max([x.get("last_n", -1)] + [c["n"] for c in news])
+                found.append({"title": x["title"], "new": news})
+        except Exception as exc:
+            x["error"] = str(exc)[:120]
+    _series_save(items)
+    return found
 
 
 def cover(path: str) -> str:
