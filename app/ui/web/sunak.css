@@ -380,4 +380,6 @@ body.sunak.fx-off canvas.sk-fx-gpu { display: none; }
 #sunak .sk-roompill .sk-dot { width: 7px; height: 7px; border-radius: 50%; background: #4A4160; font-style: normal; }
 #sunak .sk-roompill.live { border-color: rgba(46, 230, 166, .55); color: #fff; box-shadow: none; }
 #sunak .sk-roompill.live .sk-dot { background: var(--sk-em); box-shadow: 0 0 8px var(--sk-em); }
+#sunak .sk-docdot { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 0; background: #FF6B81; box-shadow: 0 0 8px #FF6B81; cursor: pointer; flex: 0 0 auto; }
+#sunak .sk-docdot[hidden] { display: none; }
 @media (max-width: 1250px) { #sunak .sk-tab span { display: none; } #sunak .sk-tab { padding: 6px 9px; } }

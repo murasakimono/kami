@@ -1085,11 +1085,17 @@ class Api(StudioMixin):
         from app.core import doctor
         wd = getattr(self, "_watchdog", None)
         return doctor.run_all(self._engine, list(getattr(self, "_ui_errors", []) or []),
-                              getattr(wd, "recoveries", 0), self._manager.base_dir())
+                              getattr(wd, "recoveries", 0), self._manager.base_dir(),
+                              media=getattr(self, "_media", None),
+                              bridge=getattr(self, "_bridge", None),
+                              api=self)
 
     def doctor_fix(self, fix_id: str) -> dict[str, Any]:
         from app.core import doctor
         fix_id = str(fix_id or "")
+        if fix_id == "restart_aria2":
+            self._engine.start_service(timeout=8.0)
+            return {"ok": bool(self._engine.running)}
         if fix_id == "room_relink":
             return {"ok": True, **self.room_relink()}
         if fix_id == "open_wv2":

@@ -52,6 +52,7 @@
           <button class="eco-tab" data-tab="hunter">Kami Hunter</button>
           <button class="eco-tab" data-tab="mod">Kami Mod</button>
           <button class="eco-tab" data-tab="bridge">Köprü & Sunak</button>
+          <button class="eco-tab" data-tab="doctor">Kami Doktor</button>
           <button class="eco-tab" data-tab="jobs">İşler</button>
         </div>
         <div class="eco-bd"></div>
@@ -70,6 +71,7 @@
       hunter: [I('<circle cx="11" cy="11" r="6"/><path d="m20 20-4-4"/>'), "Kayıp medya ve arşiv arama"],
       mod: [I('<path d="M14 4l6 6-10 10H4v-6z"/>'), "Tek tık mod / Türkçe yama, geri al"],
       bridge: [I('<path d="M4 15c4-6 12-6 16 0M4 15v4m16-4v4M12 11v8"/>'), "iPhone/iPad köprüsü, kostüm, sesler"],
+      doctor: [I('<path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="9"/>'), "Sağlık kontrolleri ve tek tık onarım"],
       jobs: [I('<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>'), "Süren arka plan işleri"],
     };
     root.querySelectorAll(".eco-tab").forEach((b) => { const m = META[b.dataset.tab]; if (m) b.innerHTML = `${m[0]}<span><b>${b.textContent}</b><small>${m[1]}</small></span>`; });
@@ -104,6 +106,12 @@
     const bd = root.querySelector(".eco-bd");
     root.querySelectorAll(".eco-tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === activeTab));
     bd.innerHTML = `<div class="eco-card"><div class="eco-hint">Yükleniyor…</div></div>`;   // v1.35.4: eski sekme takili kalmasin
+
+    if (activeTab === "doctor") {
+      bd.innerHTML = `<div class="eco-card" id="ecoDocHost"><div class="eco-hint">Kontrol ediliyor…</div></div>`;
+      window.KamiDoctor?.renderInto?.(bd.querySelector("#ecoDocHost"));
+      return;
+    }
 
     if (activeTab === "rec") {
       const [st, ch] = await Promise.all([ld(api.rec_status?.(), {}), ld(api.chain_get?.(), {})]);

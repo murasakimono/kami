@@ -208,7 +208,9 @@ def check_engine(engine: Any) -> dict[str, Any]:
         ok = bool(engine and engine.running)
     except Exception:
         ok = False
-    return _r("aria2", "Indirme motoru (aria2)", "ok" if ok else "fail", "Calisiyor" if ok else "Calismiyor: indirmeler baslamaz")
+    return _r("aria2", "Indirme motoru (aria2)", "ok" if ok else "fail",
+              "Calisiyor" if ok else "Calismiyor: indirmeler baslamaz",
+              "" if ok else "restart_aria2")
 
 
 def check_native_host() -> dict[str, Any]:
@@ -285,13 +287,124 @@ def check_log_errors() -> dict[str, Any]:
     return _r("log", "Son hatalar (24 sa)", "warn", f"{len(errs)} hata · son: {last}")
 
 
+def check_spotify() -> dict[str, Any]:
+    try:
+        from app.core import music_hub
+        st = music_hub.spotify_status()
+        if not st.get("logged_in"):
+            return _r("spotify", "Spotify PKCE", "info", "Oturum acilmamis")
+        devs = []
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(music_hub.spotify_devices)
+            devs = fut.result(timeout=3.0) or []
+        active = sum(1 for d in devs if d.get("is_active"))
+        return _r("spotify", "Spotify PKCE", "ok", f"Bagli · {len(devs)} cihaz ({active} aktif)")
+    except Exception as exc:
+        return _r("spotify", "Spotify PKCE", "warn", f"Durum alinamadi: {type(exc).__name__}")
+
+
+def check_librespot() -> dict[str, Any]:
+    try:
+        from app.core import librespot_host
+        st = librespot_host.status()
+        if not st.get("has_bin"):
+            return _r("librespot", "Dahili oynatici (go-librespot)", "info", "Binary yok (Kamify acilinca indirilir)")
+        if st.get("running"):
+            return _r("librespot", "Dahili oynatici (go-librespot)", "ok",
+                      "Calisiyor" + (" · eslesmis" if st.get("paired") else " · eslesme bekliyor"))
+        return _r("librespot", "Dahili oynatici (go-librespot)", "info",
+                  "Hazir (kapali)" + (" · eslesmis" if st.get("paired") else ""))
+    except Exception as exc:
+        return _r("librespot", "Dahili oynatici (go-librespot)", "warn", f"Durum okunamadi: {type(exc).__name__}")
+
+
+def check_playnite() -> dict[str, Any]:
+    try:
+        db = Path(os.environ.get("APPDATA", "")) / "Playnite" / "library" / "games.db"
+        imp = paths.DATA_DIR / "playnite_import.json"
+        parts = []
+        if db.is_file():
+            parts.append("games.db var")
+        else:
+            parts.append("Playnite games.db yok")
+        if imp.is_file():
+            try:
+                data = json.loads(imp.read_text("utf-8"))
+                cnt = len(data.get("games") or data) if isinstance(data, (dict, list)) else 0
+                ts = time.strftime("%d.%m %H:%M", time.localtime(imp.stat().st_mtime))
+                parts.append(f"son ice aktarma: {ts} ({cnt} kayit)")
+            except Exception:
+                parts.append("playnite_import.json okunamadi")
+        else:
+            parts.append("ice aktarma yok")
+        st = "ok" if db.is_file() else "info"
+        return _r("playnite", "Playnite kutuphanesi", st, " · ".join(parts))
+    except Exception as exc:
+        return _r("playnite", "Playnite kutuphanesi", "warn", f"Okunamadi: {type(exc).__name__}")
+
+
+def check_media_server(media: Any = None) -> dict[str, Any]:
+    port = int(getattr(media, "port", 0) or 0)
+    if not port:
+        return _r("media", "Medya sunucusu", "fail" if media is not None else "info",
+                  "Medya sunucusu kapali" if media is not None else "Baslatilmadi")
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=2.0):
+            return _r("media", "Medya sunucusu", "ok", f"127.0.0.1:{port} dinliyor")
+    except OSError:
+        return _r("media", "Medya sunucusu", "fail", f"127.0.0.1:{port} yanit vermiyor")
+
+
+def check_bridge_server(bridge: Any = None) -> dict[str, Any]:
+    port = int(getattr(bridge, "port", 0) or 0)
+    if not port and paths.BRIDGE_INFO_PATH.is_file():
+        try:
+            port = int(json.loads(paths.BRIDGE_INFO_PATH.read_text("utf-8")).get("port") or 0)
+        except Exception:
+            port = 0
+    if not port:
+        return _r("bridge", "Tarayici koprusu", "fail" if bridge is not None else "info", "Port yok")
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=2.0):
+            return _r("bridge", "Tarayici koprusu", "ok", f"127.0.0.1:{port} dinliyor")
+    except OSError:
+        return _r("bridge", "Tarayici koprusu", "fail", f"127.0.0.1:{port} yanit vermiyor")
+
+
+def check_module_windows(api: Any = None) -> dict[str, Any]:
+    if api is None:
+        return _r("modwins", "Modul pencereleri", "info", "Kontrol disi")
+    mods = ("player", "studio", "picture", "reader", "games", "music", "cleaner")
+    open_ok, bad = [], []
+    for m in mods:
+        w = getattr(api, f"_{m}_win", None)
+        if w is None:
+            continue
+        try:
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                res = ex.submit(w.evaluate_js, "1+1").result(timeout=2.5)
+            if res == 2:
+                open_ok.append(m)
+            else:
+                bad.append(m)
+        except Exception:
+            bad.append(m)
+    if bad:
+        return _r("modwins", "Modul pencereleri", "fail", "Yanit vermeyen: " + ", ".join(bad))
+    if open_ok:
+        return _r("modwins", "Modul pencereleri", "ok", "Acik & saglam: " + ", ".join(open_ok))
+    return _r("modwins", "Modul pencereleri", "info", "Acik modul penceresi yok")
+
+
 # ---------------------------------------------------------------- calistirici
 def run_all(engine: Any = None, ui_errors: list[dict[str, Any]] | None = None, recoveries: int = 0,
-            download_dir: str = "") -> dict[str, Any]:
+            download_dir: str = "", media: Any = None, bridge: Any = None, api: Any = None) -> dict[str, Any]:
     checks: list[Callable[[], dict[str, Any]]] = [
         check_webview2, check_gpu, lambda: check_disk(download_dir), check_data_dir, check_virtual_copies, check_keys,
         check_ffmpeg, check_ytdlp, check_bins, lambda: check_engine(engine), check_native_host, check_ollama,
-        check_network, check_room, check_log_errors,
+        check_network, check_room, check_spotify, check_librespot, check_playnite,
+        lambda: check_media_server(media), lambda: check_bridge_server(bridge),
+        lambda: check_module_windows(api), check_log_errors,
     ]
 
     def safe(fn):

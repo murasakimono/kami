@@ -1202,6 +1202,7 @@ def main() -> int:
     manager.start()
     debrid.start()
     bridge.start()
+    api._bridge = bridge
     api._start_clipboard()
     if magnet:   # Kami kapaliyken magnet linkine tiklandi
         threading.Thread(target=bridge.handle, args=("/v1/rd", {"url": magnet, "source": "magnet"}),
