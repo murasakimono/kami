@@ -100,7 +100,8 @@ class Room:
             p = self.peers.get(to)
             if not p:
                 return False
-            p["q"].append({"from": frm, "data": data})
+            p["sq"] = p.get("sq", 0) + 1   # onayli teslim: istemci aldigi son sirayi (a=) bildirene kadar tutulur
+            p["q"].append({"s": p["sq"], "from": frm, "data": data})
             p["q"] = p["q"][-400:]
             self.cv.notify_all()
             return True
@@ -109,9 +110,14 @@ class Room:
         return [{"id": k, "name": p["name"], "kind": p["kind"], "muted": p["muted"], "deaf": p["deaf"],
                  "sharing": p["sharing"], "bg": p.get("bg", False)} for k, p in sorted(self.peers.items(), key=lambda kv: kv[1]["joined"])]
 
-    def poll(self, pid: str, since_n: int, roster_v: str, wait: float) -> dict[str, Any]:
+    def poll(self, pid: str, since_n: int, roster_v: str, wait: float, ack: int = -1) -> dict[str, Any]:
+        """ack >= 0: istemci o siraya kadar sinyalleri aldi; kalanlar (tunelde kaybolan yanit dahil) yeniden gonderilir.
+        ack < 0 (eski istemci): gonderilen sinyaller hemen silinir."""
         end = time.time() + wait
         with self.cv:
+            me0 = self.peers.get(pid)
+            if me0 and ack >= 0:
+                me0["q"] = [x for x in me0["q"] if x.get("s", 0) > ack]
             while True:
                 me = self.peers.get(pid)
                 sig = me["q"] if me else []
@@ -121,7 +127,8 @@ class Room:
                     break
                 self.cv.wait(max(0.05, end - time.time()))
             if me:
-                me["q"] = []
+                if ack < 0:
+                    me["q"] = []
                 me["seen"] = time.time()
             now = time.time()
             for k in [k for k, p in self.peers.items() if now - p["seen"] > 40]:   # kopanlar
@@ -452,7 +459,11 @@ def _handler(srv: RoomServer):
                     if not pid:
                         return self._err(400)
                     r.touch(pid, (q.get("name") or ["Misafir"])[0], (q.get("kind") or ["user"])[0][:10])
-                    self._json(r.poll(pid, int((q.get("n") or ["0"])[0] or 0), (q.get("rv") or [""])[0], 20.0))
+                    try:
+                        ack = int((q.get("a") or ["-1"])[0])
+                    except ValueError:
+                        ack = -1
+                    self._json(r.poll(pid, int((q.get("n") or ["0"])[0] or 0), (q.get("rv") or [""])[0], 20.0, ack))
                 elif rest[0] == "bridge":
                     from app.core.phone import _BRIDGE_HTML
                     self._send(_BRIDGE_HTML.encode("utf-8"), MIME[".html"])

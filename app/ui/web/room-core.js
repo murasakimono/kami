@@ -30,6 +30,7 @@
       this.peers = new Map();                     // id -> {pc, polite, making, ignore, meta:{streamId:kind}, q}
       this.local = new Map();                     // streamId -> {kind, stream}
       this.roster = []; this.n = 0; this.rv = ""; this.alive = false; this.ice = [];
+      this.sack = 0;                              // aldigim son sinyal sirasi (sunucu kalanlari yeniden yollar)
       this.myQ = o.quality || "src";              // aldigim yayinlar icin istedigim kalite
       this.key = o.key || "";                     // oda sifresi ozeti (sha256 hex); sifresiz odada bos
     }
@@ -57,12 +58,16 @@
       let fails = 0;
       while (this.alive) {
         try {
-          const q = `poll?id=${this.id}&name=${encodeURIComponent(this.name)}&kind=${this.kind}&n=${this.n}&rv=${this.rv}`;
+          const q = `poll?id=${this.id}&name=${encodeURIComponent(this.name)}&kind=${this.kind}&n=${this.n}&rv=${this.rv}&a=${this.sack}`;
           const r = await (await fetch(this.url(q), { cache: "no-store" })).json();
           fails = 0;
           if (r.rv !== this.rv) { this.rv = r.rv; this.roster = r.roster; this._sync(); this.on.roster?.(r.roster, r.host); }
           if (r.events?.length) { this.n = Math.max(this.n, ...r.events.map((e) => e.n)); this.on.events?.(r.events); }
-          for (const s of r.signals || []) await this._signal(s.from, s.data);
+          for (const s of r.signals || []) {
+            if (s.s && s.s <= this.sack) continue;   // tekrar gelen (onay ulasmadan once)
+            await this._signal(s.from, s.data);
+            if (s.s) this.sack = Math.max(this.sack, s.s);
+          }
         } catch (e) {
           if (++fails > 3) this.on.error?.("offline");
           await new Promise((ok) => setTimeout(ok, Math.min(5000, 600 * fails)));
@@ -112,19 +117,40 @@
       };
       pc.onconnectionstatechange = () => {
         this.on.peerstate?.(id, pc.connectionState);
-        if (pc.connectionState === "failed") pc.restartIce?.();
+        const st = pc.connectionState;
+        clearTimeout(P.heal);
+        if (st === "failed") { pc.restartIce?.(); P.heal = setTimeout(() => this._reset(id, true), 9000); }
+        else if (st === "disconnected") P.heal = setTimeout(() => { if (pc.connectionState === "disconnected") pc.restartIce?.(); }, 4000);
       };
       for (const [sid, L] of this.local) this._addTo(P, sid, L);
       return P;
     }
+    // ICE yeniden baslatma yetmediyse baglantiyi iki tarafta birden sifirdan kur (eski pc'ye yeni teklif gitmesin)
+    async _reset(id, tell) {
+      const P = this.peers.get(id);
+      if (!P || !this.alive || ["connected", "connecting"].includes(P.pc.connectionState)) return;
+      const now = Date.now();
+      if (P.lastReset && now - P.lastReset < 15000) return;
+      P.lastReset = now;
+      this._drop(id);
+      if (tell) await this.post("sig", { to: id, data: { t: "reset" } });   // once sifirla mesaji ulassin, sonra yeni teklif
+      if (this.roster.find((p) => p.id === id) && this._wants(this.roster.find((p) => p.id === id))) this._peer(id).lastReset = now;
+    }
     _drop(id) {
       const P = this.peers.get(id); if (!P) return;
+      clearTimeout(P.heal);
       try { P.pc.close(); } catch { /* kapali */ }
       this.peers.delete(id);
       this.on.peergone?.(id);
     }
     _meta() { const m = {}; for (const [sid, L] of this.local) m[sid] = L.kind; return m; }
     async _signal(from, d) {
+      if (d.t === "reset") {   // karsi taraf baglantiyi sifirliyor: ben de eski pc'yi birakayim
+        const O = this.peers.get(from);
+        if (O) { O.lastReset = 0; this._drop(from); }
+        if (this.roster.find((p) => p.id === from)) this._peer(from).lastReset = Date.now();
+        return;
+      }
       let P = this.peers.get(from);
       if (!P) { if (!this.roster.find((p) => p.id === from)) return; P = this._peer(from); }
       const pc = P.pc;

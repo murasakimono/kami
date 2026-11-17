@@ -75,3 +75,21 @@ def test_pack_phrases_and_turkish_gate():
     p = S.new_project("t", 640, 360, 30)
     p["clips"] = [{"id": "t", "track": "tx", "start": 0, "dur": 1, "text": "İSTANBUl'a gelIyoruz"}]
     assert any("I/İ" in g for g in P.gate_check(p))
+
+
+def test_room_signals_redelivered_until_ack():
+    from app.core.room import Room
+    r = Room("h")
+    r.touch("a", "A")
+    r.touch("b", "B")
+    r.signal("a", "b", {"t": "sdp"})
+    r.signal("a", "b", {"t": "ice"})
+    first = r.poll("b", 0, "", 0.0, ack=0)
+    assert [s["s"] for s in first["signals"]] == [1, 2]
+    again = r.poll("b", 0, first["rv"], 0.0, ack=0)          # yanit tunelde kayboldu: onay gelmedi -> tekrar
+    assert [s["s"] for s in again["signals"]] == [1, 2]
+    done = r.poll("b", 0, first["rv"], 0.0, ack=2)
+    assert done["signals"] == []
+    r.signal("a", "b", {"t": "x"})
+    assert [s["s"] for s in r.poll("b", 0, "", 0.0)["signals"]] == [3]   # eski istemci (ack yok): bir kez
+    assert r.poll("b", 0, "", 0.0)["signals"] == []
