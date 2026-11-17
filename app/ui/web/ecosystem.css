@@ -22,3 +22,19 @@
 .eco-err { color: #F0626F; }
 .eco-hint { font-size: 12px; color: #9D8EC7; line-height: 1.45; }
 .eco-tail { margin-top: 6px; padding: 6px 8px; background: #0B0812; border: 1px solid #261D3D; font-family: monospace; font-size: 11px; color: #C4B5FD; max-height: 110px; overflow: auto; }
+/* v1.32.1: buyuk pencere + solda dikey modul menusu */
+.eco-box { width: min(1180px, 94vw); height: min(780px, 88vh); max-height: none; display: grid; grid-template-columns: 270px 1fr; grid-template-rows: auto 1fr; clip-path: none; border-radius: 16px; overflow: hidden; }
+.eco-hd { grid-column: 1 / -1; }
+.eco-tabs { flex-direction: column; flex-wrap: nowrap; gap: 4px; padding: 12px 10px; border-bottom: 0; border-right: 1px solid #231A38; overflow: auto; }
+.eco-tab { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 10px; clip-path: none; }
+.eco-tab svg { flex: 0 0 20px; width: 20px; height: 20px; color: #A78BFA; }
+.eco-tab span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.eco-tab b { font-weight: 600; font-size: 13px; }
+.eco-tab small { font-size: 11px; color: #8F86A8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.eco-tab.on { background: #241840; box-shadow: inset 3px 0 0 #2EE6A6; }
+.eco-tab.on svg { color: #2EE6A6; }
+.eco-bd { min-height: 0; padding: 20px 24px; }
+@media (max-width: 900px) { .eco-box { grid-template-columns: 1fr; } .eco-tabs { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid #231A38; } .eco-tab small { display: none; } }
+.eco-tabs .eco-tab { background: transparent; border: 1px solid transparent; }
+.eco-tabs .eco-tab:hover { background: #1B1430; }
+.eco-tabs .eco-tab.on { background: #241840; border-color: #3C2A66; }

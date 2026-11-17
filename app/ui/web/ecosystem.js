@@ -57,6 +57,22 @@
         <div class="eco-bd"></div>
       </div>`;
     document.body.appendChild(root);
+    // v1.32.1: dikey menu — her modulde simge + tek satir aciklama
+    const I = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${d}</svg>`;
+    const META = {
+      rec: [I('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/>'), "Ekranı kaydet, son 30 sn'yi klip yap"],
+      bypass: [I('<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>'), "Kısaltma / reklamlı linki çöz"],
+      season: [I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 3v4m8-4v4M3 10h18"/>'), "Bir dizinin tüm bölümlerini bul"],
+      grab: [I('<path d="M4 6h16M4 12h16M4 18h10"/>'), "Sayfadaki tüm dosyaları listele"],
+      hardsub: [I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h4m2 0h4"/>'), "Gömülü altyazıyı oku, Türkçeye çevir"],
+      ghost: [I('<path d="M6 20V10a6 6 0 0 1 12 0v10l-3-2-3 2-3-2z"/><circle cx="10" cy="10" r="1"/><circle cx="14" cy="10" r="1"/>'), "Metadata temizle, Content-ID kalkanı"],
+      beat: [I('<path d="M3 12h3l3-7 4 14 3-7h5"/>'), "Vokal ayır, BPM/ton, mashup"],
+      hunter: [I('<circle cx="11" cy="11" r="6"/><path d="m20 20-4-4"/>'), "Kayıp medya ve arşiv arama"],
+      mod: [I('<path d="M14 4l6 6-10 10H4v-6z"/>'), "Tek tık mod / Türkçe yama, geri al"],
+      bridge: [I('<path d="M4 15c4-6 12-6 16 0M4 15v4m16-4v4M12 11v8"/>'), "iPhone/iPad köprüsü, kostüm, sesler"],
+      jobs: [I('<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>'), "Süren arka plan işleri"],
+    };
+    root.querySelectorAll(".eco-tab").forEach((b) => { const m = META[b.dataset.tab]; if (m) b.innerHTML = `${m[0]}<span><b>${b.textContent}</b><small>${m[1]}</small></span>`; });
     root.addEventListener("click", (e) => {
       if (e.target === root || e.target.closest("[data-close]")) closeModal();
       const tb = e.target.closest("[data-tab]");
