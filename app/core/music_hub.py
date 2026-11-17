@@ -29,7 +29,7 @@ def get_spotify_token(fallback: str = "") -> str:
 
 
 # ---------- Kalici Spotify girisi: Authorization Code + PKCE (istemci sirri yok) ----------
-SP_PORT = 47395
+SP_PORT = 47361   # 47395 web_isolation sunucusunda
 SP_REDIRECT = f"http://127.0.0.1:{SP_PORT}/callback"   # Spotify: localhost yasak, loopback IP serbest
 SP_SCOPES = "user-read-currently-playing user-read-playback-state user-modify-playback-state"
 _SP_CACHE: dict[str, Any] = {"token": "", "exp": 0.0}
