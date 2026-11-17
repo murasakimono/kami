@@ -15,6 +15,7 @@
 (function (global) {
   'use strict';
   const FRAMES = ['idle', 'down', 'speed', 'done', 'error', 'sleep', 'alert', 'lock'];
+  const COSTUMES = ['studio', 'player', 'reader', 'chill'];
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const loadImage = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('yuklenemedi: ' + src)); i.src = src; });
 
@@ -32,7 +33,11 @@
       const names = FRAMES.concat(opts.mirrorFrame ? ['alertL'] : []);   // alertL: sola bakis icin ayri kare (tam boy karakterde ayna yerine)
       this.ready = Promise.all(names.map((n) => loadImage(this.base + n + '.webp'))).then((imgs) => {
         this.img = {}; names.forEach((n, i) => { this.img[n] = imgs[i]; });
-        this.fw = imgs[0].naturalWidth; this.fh = imgs[0].naturalHeight; this.draw(); return this;
+        this.fw = imgs[0].naturalWidth; this.fh = imgs[0].naturalHeight; this.draw();
+        if (opts.mirrorFrame) {   // kostum kareleri arka planda yuklenir (uygulama acilisini bekletmez)
+          COSTUMES.forEach((cn) => loadImage(this.base + cn + '.webp').then((im) => { this.img[cn] = im; }).catch(() => {}));
+        }
+        return this;
       });
     }
     set(v) { Object.assign(this.target, v); return this; }
@@ -57,6 +62,7 @@
       if (T.mood === 'alert') return { name: 'alert', flip: T.mouseX < 0 };
       if ((T.downloadSpeed || 0) > 0.85) return { name: 'speed', flip: false };
       if (T.isDownloading) return { name: 'down', flip: false };
+      if (T.costume && this.img?.[T.costume]) return { name: T.costume, flip: false };
       // bakis: imlec belirgin yana gidince yan bakis karesi (sola bakarken ayna)
       if (Math.abs(T.mouseX) > 0.55) return { name: 'alert', flip: T.mouseX < 0 };
       if (this.glance.t > 0) return { name: 'alert', flip: this.glance.side < 0 };

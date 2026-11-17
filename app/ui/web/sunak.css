@@ -23,7 +23,14 @@ body.sunak.sk-drawer > .layout {
   display: flex; position: fixed; z-index: 40; inset: 44px 100px 36px 44px;
   background: rgba(13, 10, 19, .97); box-shadow: 0 0 0 1px var(--sk-line), 0 24px 70px rgba(0, 0, 0, .6);
   clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+  animation: skDrawerIn .16s cubic-bezier(.22, 1, .36, 1);
 }
+@keyframes skDrawerIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: scale(1); } }
+body.sunak.sk-drawer > .layout > .main { width: 100%; overflow-y: auto; }
+body.sunak.sk-drawer:not(.sk-list) > .layout > .main > section {
+  width: 100%; max-width: 820px; margin: 0 auto; padding: 22px 26px 32px; box-sizing: border-box;
+}
+#sunak .sk-bar { flex-wrap: wrap; row-gap: 6px; }
 body.sunak.sk-drawer:not(.sk-list) > .layout > .sidebar { display: none; }
 body.sunak.sk-drawer .speed { display: none; }
 .sk-drawer-close { display: none; }

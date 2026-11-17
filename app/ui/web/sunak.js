@@ -159,8 +159,18 @@ function skBind() {
   $("#skEye")?.addEventListener("click", () => {
     SK.eye?.poke?.();
     const act = (state.items || []).filter((x) => x.status === "active").length;
-    toast(act ? skL(`🔥 ${act} aktif indirme işleniyor`, `🔥 ${act} active downloads`) : skL("👁 Kami Tılsım Ruhu hazır", "👁 Kami Talisman Spirit ready"));
+    toast(act ? skL(`🔥 ${act} aktif indirme işleniyor`, `🔥 ${act} active downloads`) : skL("👁 Kami Tılsım Ruhu hazır · Çift tıkla: kostüm", "👁 Kami Spirit ready · Double-click: costume"));
   });
+  const COSTUME_CYCLE = ["", "studio", "player", "reader", "chill"];
+  const COSTUME_NAMES = { "": "Normal", studio: "Studio", player: "Player", reader: "Reader", chill: "Gece / Dinlenme" };
+  $("#skEye")?.addEventListener("dblclick", () => {
+    const cur = SK.eye?.target?.costume || "";
+    const next = COSTUME_CYCLE[(COSTUME_CYCLE.indexOf(cur) + 1) % COSTUME_CYCLE.length];
+    SK.eye?.set({ costume: next });
+    try { localStorage.setItem("kami.costume", next); } catch {}
+    toast(`🎭 Kostüm: ${COSTUME_NAMES[next] || next}`);
+  });
+  try { const savedC = localStorage.getItem("kami.costume"); if (savedC) SK.eye?.set({ costume: savedC }); } catch {}
   let tipEl = null;   // sag ray etiketi (title -> data-tip; yerel ipucu ile cift cikmasin)
   $("#skDock")?.addEventListener("mouseover", (e) => {
     const b = e.target.closest("button"); if (!b) return;

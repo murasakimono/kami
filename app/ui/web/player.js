@@ -118,6 +118,7 @@ function plBuild() {
   plSetVol(PL.vol);
   if (window.KamiEye) {
     PL.big = new KamiEye($("#plBig"), { assets: "eye/char/", eyeY: 0.38, mirrorFrame: true });
+    PL.big.set({ costume: "player" });
   }
 }
 
