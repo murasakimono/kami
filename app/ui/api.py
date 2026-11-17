@@ -1081,6 +1081,10 @@ class Api(StudioMixin):
         return {"ok": True, "path": str(out)}
 
     # ---------- Kami Doktor ----------
+    def ping(self) -> dict[str, Any]:
+        from app.core.extras import APP_VERSION
+        return {"ok": True, "version": APP_VERSION}
+
     def doctor_run(self) -> dict[str, Any]:
         from app.core import doctor
         wd = getattr(self, "_watchdog", None)

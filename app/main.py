@@ -524,6 +524,25 @@ def main() -> int:
     threading.Timer(8.0, _prewarm_player).start()
     api._front_player = player_front.request
 
+    def _startup_selftest() -> None:
+        try:
+            from app.core import extras, selftest
+            if not selftest.should_run(extras.APP_VERSION):
+                return
+            def _notify(msg: str) -> None:
+                mw = main_win.get("w")
+                if mw is not None:
+                    mw.evaluate_js(f"try{{if(typeof toast==='function')toast({json.dumps(msg)},true,true)}}catch(e){{}}")
+            selftest.run_selftest(
+                api,
+                extras.APP_VERSION,
+                lambda mod, title, html, to: selftest.probe_pywebview_window(webview, api, mod, title, html, to),
+                notify_fn=_notify,
+            )
+        except Exception:
+            log.debug("Acilis kendini sinamasi", exc_info=True)
+    threading.Timer(15.0, _startup_selftest).start()
+
     # ---- Kami Picture: fotograf goruntuleyici + Kami Lens (ayri pencere, ayni api)
     picture_front = WindowFront("Kami Picture")
 
