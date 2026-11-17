@@ -90,3 +90,13 @@ def test_not_found_is_not_retried(tmp_path):
     [d] = mgr.add(DownloadRequest(url="http://x/a.bin"))
     d = _poll_until(mgr, d.id, Status.ERROR)
     assert eng.started == [0] and "Resource not found" in d.error
+
+
+def test_network_drop_keeps_connections_and_retries_longer(tmp_path, monkeypatch):
+    monkeypatch.setattr(DownloadManager, "_MAX_NET_RETRIES", 2)
+    eng = FakeEngine(fail_times=2, code="6", msg="Network problem")
+    mgr, seen = _mgr(tmp_path, eng)
+    [d] = mgr.add(DownloadRequest(url="http://x/a.bin"))
+    d = _poll_until(mgr, d.id, Status.COMPLETE, timeout=20)
+    assert eng.started == [0, 0, 0] or len(set(eng.started)) == 1   # ag kopmasinda baglanti azaltilmaz
+    assert "download.failed" not in seen

@@ -740,22 +740,26 @@ class DownloadManager:
     # aria2 hata kodlari: 1 bilinmeyen ("No URI available" dahil), 2 zaman asimi, 6 ag sorunu,
     # 22 beklenmeyen HTTP durumu (429/503 gibi), 29 sunucu asiri yuklu
     _RETRYABLE_CODES = {"1", "2", "6", "22", "29"}
-    _MAX_AUTO_RETRIES = 3
+    _NET_CODES = {"2", "6"}            # zaman asimi / ag yok: baglanti sayisi sorun degil, internet gelene kadar bekle
+    _MAX_AUTO_RETRIES = 3              # sunucu reddi (22/29/1): baglanti azaltarak
+    _MAX_NET_RETRIES = 14              # ag kopmasi: ustel bekleme 2..60 sn, toplam ~10 dk (Wi-Fi/modem yeniden baglanma)
 
     def _auto_retry(self, d: Download, s: dict[str, Any]) -> bool:
-        """Sunucu cok baglantiyi reddedince (429 vb.) baglanti sayisini dusurup kaldigi yerden devam et."""
+        """Sunucu cok baglantiyi reddedince (429 vb.) baglanti sayisini dusurup, ag kopunca bekleyip kaldigi yerden devam et."""
         code = str(s.get("error_code") or "")
         if code not in self._RETRYABLE_CODES and "No URI available" not in (s.get("error") or ""):
             return False
+        net = code in self._NET_CODES
         with self._lock:
             n = self._retries.get(d.id, 0)
-            if n >= self._MAX_AUTO_RETRIES:
+            if n >= (self._MAX_NET_RETRIES if net else self._MAX_AUTO_RETRIES):
                 return False
             self._retries[d.id] = n + 1
         current = d.max_conn or int(getattr(self.engine, "connections", 16))
-        next_conn = 4 if current > 4 else 1
-        log.info("Otomatik yeniden deneme %s/%s (%s, kod %s): baglanti %s -> %s",
-                 n + 1, self._MAX_AUTO_RETRIES, d.filename or d.url, code, current, next_conn)
+        next_conn = d.max_conn if net else (4 if current > 4 else 1)   # 0 = ayardaki varsayilan
+        delay = min(60.0, 2.0 ** min(n + 1, 6)) if net else 1.5 * (n + 1)
+        log.info("Otomatik yeniden deneme %s (%s, kod %s, %s sn sonra): baglanti %s -> %s",
+                 n + 1, d.filename or d.url, code, delay, current, next_conn)
         try:
             self.engine.remove(d.gid)
         except Exception:
@@ -770,7 +774,7 @@ class DownloadManager:
                 if cur and cur.status == Status.QUEUED and not cur.gid:
                     self._start_engine(cur)
 
-        t = threading.Timer(1.5 * (n + 1), restart)
+        t = threading.Timer(delay, restart)
         t.daemon = True
         t.start()
         return True
@@ -873,7 +877,11 @@ class DownloadManager:
             while os.path.exists(target):
                 target = os.path.join(target_dir, f"{base} ({n}){ext}")
                 n += 1
-            os.replace(d.path, target)
+            try:
+                os.replace(d.path, target)
+            except OSError:   # farkli surucu: kopyala + sil
+                import shutil
+                shutil.move(d.path, target)
             return os.path.basename(target)
         except OSError:
             log.exception("Dosya kategori klasorune tasinamadi: %s", d.path)
