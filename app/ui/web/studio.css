@@ -605,3 +605,27 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .tv-doom-melt::after { animation-name: tvSlideD; }
 .tv-cross-hatch::after { animation-name: tvGlitch; }
 .tv-circle-open::after { animation-name: tvIris; }
+
+/* ---- Parca 6: Akilli araclar kategorileri, Seslendirme HUD, Bolum uyarisi, Coklu kamera ---- */
+.ai-tools-bar { display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; }
+.ai-tools-bar input { width: 100%; box-sizing: border-box; }
+.ai-cats { display: flex; flex-wrap: wrap; gap: 5px; }
+.ai-cat { border: 1px solid var(--line); background: #130F1E; color: #B6AECB; border-radius: 999px; padding: 3px 9px; font-size: 11px; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
+.ai-cat:hover { border-color: var(--violet); color: #fff; }
+.ai-cat.on { background: #2A1650; border-color: #9D6BFF; color: #EDE9F6; font-weight: 600; }
+.ai-recents { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 6px 8px; background: rgba(157, 107, 255, .07); border: 1px solid rgba(157, 107, 255, .22); border-radius: 8px; }
+.ai-recents small { font-size: 10px; color: var(--mute); text-transform: uppercase; letter-spacing: .5px; margin-right: 2px; }
+.ai-recent-chip { border: 1px solid #3B2D5E; background: #171126; color: #E2D9F3; border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer; }
+.ai-recent-chip:hover { border-color: var(--em); color: var(--em); }
+.ai-group-h { font-size: 10px; text-transform: uppercase; letter-spacing: 1.4px; color: #9D6BFF; margin: 10px 2px 5px; font-weight: 700; display: flex; justify-content: space-between; }
+.card[data-ai] { transition: border-color .15s, transform .1s, background .15s; }
+.card[data-ai]:hover { border-color: #9D6BFF; background: #191229; transform: translateY(-1px); }
+.ai-tag { float: right; font-size: 9.5px; padding: 1px 6px; border-radius: 999px; background: rgba(157, 107, 255, .14); color: #C4B5FD; border: 1px solid rgba(157, 107, 255, .28); font-weight: 600; }
+.vr-hud { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); z-index: 999; background: rgba(18, 8, 14, .94); border: 1px solid #EF4444; box-shadow: 0 12px 32px rgba(239, 68, 68, .3); color: #fff; font-weight: 700; padding: 8px 14px; border-radius: 999px; display: flex; gap: 10px; align-items: center; backdrop-filter: blur(8px); }
+.vr-dot { width: 9px; height: 9px; border-radius: 50%; background: #EF4444; box-shadow: 0 0 8px #EF4444; animation: vrPulse 1s infinite; }
+@keyframes vrPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.ch-warn { font-size: 11.5px; padding: 6px 10px; border-radius: 7px; margin: 6px 0; border: 1px solid rgba(245, 185, 74, .4); background: rgba(245, 185, 74, .1); color: #FCD34D; }
+.ch-warn.ok { border-color: rgba(46, 230, 166, .35); background: rgba(46, 230, 166, .08); color: #2EE6A6; }
+.mc-cam-tag { position: absolute; left: 8px; top: 8px; background: rgba(0, 0, 0, .75); color: #fff; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+.mc-cam-live { font-size: 9.5px; background: #2EE6A6; color: #051610; padding: 1px 5px; border-radius: 4px; letter-spacing: .4px; }
+.sf-short-dur { font-size: 10.5px; padding: 2px 6px; border-radius: 999px; background: rgba(46, 230, 166, .12); color: #2EE6A6; border: 1px solid rgba(46, 230, 166, .3); font-weight: 600; white-space: nowrap; }

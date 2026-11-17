@@ -798,11 +798,66 @@ const AI_TOOLS = [
   ["userPresets", "💾 Kişisel Önayar Paketlerim", "Özelleştirilmiş efekt, grade ve animasyon setlerini paket olarak kaydedip tek tıkla uygular."],
   ["soundlyPro", "🔊 Soundly Pro DSP + Perfect Pitch", "FFT gürültü silme, yankı azaltma, -14/-16 LUFS ses eşitleme ve perde kaydırma uygular."],
 ];
-P.ai = () => {
-  pb.innerHTML = `<div class="hint">Önce zaman çizelgesinde klibi seç. Hepsi geri alınabilir (Ctrl+Z).</div>` +
-    AI_TOOLS.map(([k, n, d]) => `<div class="card" data-ai="${k}" style="margin-bottom:7px"><b>${n}</b><small>${d}</small></div>`).join("");
+const AI_CAT_MAP = {
+  silence: "Kurgu", fillers: "Kurgu", freeze: "Kurgu", scenes: "Kurgu", transcriptCut: "Kurgu",
+  multicam: "Kurgu", multicamcut: "Kurgu", layoutLoop: "Kurgu", adaptiveTime: "Kurgu",
+  beats: "Ses", cutbeats: "Ses", montage: "Ses", beatzoom: "Ses", beatshiftPro: "Ses",
+  audioreact: "Ses", soundlyPro: "Ses", voiceiso: "Ses", voicerec: "Ses", speech: "Ses",
+  matte: "Görüntü", splitscreen: "Görüntü", reframe: "Görüntü", reframe916: "Görüntü",
+  cursorZoom: "Görüntü", parallax: "Görüntü", pixelSort: "Görüntü", datamosh: "Görüntü",
+  upscale: "Görüntü", interp: "Görüntü", speedramp: "Görüntü", track: "Görüntü",
+  captions: "Yapay zekâ", aivision: "Yapay zekâ", refstyle: "Yapay zekâ", shorts: "Yapay zekâ",
+  qc: "Yayın", poster: "Yayın", chapters: "Yayın", brand: "Yayın", dataGfx: "Yayın",
+  automation: "Otomasyon", userPresets: "Otomasyon", ptemplates: "Otomasyon", motionStatus: "Otomasyon",
 };
-pb.addEventListener("click", e => { const a = e.target.closest("[data-ai]"); if (a) aiAction(a.dataset.ai, firstSel()); });
+const AI_CATS = ["Tümü", "Kurgu", "Ses", "Görüntü", "Yapay zekâ", "Yayın", "Otomasyon"];
+let aiCatCur = "Tümü", aiQueryCur = "";
+function aiRecentList() {
+  try { return JSON.parse(localStorage.getItem("kami_ai_recent") || "[]").slice(0, 4); } catch (_) { return []; }
+}
+function aiPushRecent(id) {
+  try {
+    const next = [id, ...aiRecentList().filter((x) => x !== id)].slice(0, 4);
+    localStorage.setItem("kami_ai_recent", JSON.stringify(next));
+  } catch (_) {}
+}
+P.ai = () => {
+  const q = aiQueryCur.trim().toLocaleLowerCase("tr");
+  const recIds = !q && aiCatCur === "Tümü" ? aiRecentList() : [];
+  const recMap = new Map(AI_TOOLS.map((t) => [t[0], t]));
+  const recHtml = recIds.map((id) => recMap.get(id)).filter(Boolean)
+    .map(([k, n]) => `<button class="ai-recent-chip" data-ai="${k}">${n}</button>`).join("");
+  const items = AI_TOOLS.filter(([k, n, d]) => {
+    const cat = AI_CAT_MAP[k] || "Kurgu";
+    if (aiCatCur !== "Tümü" && cat !== aiCatCur) return false;
+    if (q && !(n + " " + d + " " + cat).toLocaleLowerCase("tr").includes(q)) return false;
+    return true;
+  });
+  let cardsHtml = "";
+  if (!q && aiCatCur === "Tümü") {
+    for (const cat of AI_CATS.slice(1)) {
+      const grp = items.filter(([k]) => (AI_CAT_MAP[k] || "Kurgu") === cat);
+      if (!grp.length) continue;
+      cardsHtml += `<div class="ai-group-h"><span>${cat}</span><span>${grp.length}</span></div>` +
+        grp.map(([k, n, d]) => `<div class="card" data-ai="${k}" style="margin-bottom:7px"><b>${n}</b><small>${d}</small></div>`).join("");
+    }
+  } else {
+    cardsHtml = items.map(([k, n, d]) => `<div class="card" data-ai="${k}" style="margin-bottom:7px"><span class="ai-tag">${AI_CAT_MAP[k] || "Kurgu"}</span><b>${n}</b><small>${d}</small></div>`).join("")
+      || `<div class="hint">Eşleşen araç bulunamadı.</div>`;
+  }
+  pb.innerHTML = `<div class="hint">Önce zaman çizelgesinde klibi seç. Hepsi geri alınabilir (Ctrl+Z).</div>
+    <div class="ai-tools-bar">
+      <input class="in" id="aiSearch" placeholder="Araç ara… (örn. altyazı, ses, hız, klip)" value="${esc(aiQueryCur)}">
+      <div class="ai-cats">${AI_CATS.map((c) => `<button class="ai-cat${c === aiCatCur ? " on" : ""}" data-aicat="${c}">${c}</button>`).join("")}</div>
+      ${recHtml ? `<div class="ai-recents"><small>Son:</small>${recHtml}</div>` : ""}
+    </div>${cardsHtml}`;
+  const sr = pb.querySelector("#aiSearch");
+  if (sr) {
+    sr.oninput = () => { aiQueryCur = sr.value; P.ai(); const s2 = pb.querySelector("#aiSearch"); if (s2) { s2.focus(); s2.setSelectionRange(aiQueryCur.length, aiQueryCur.length); } };
+  }
+  pb.querySelectorAll("[data-aicat]").forEach((b) => b.onclick = () => { aiCatCur = b.dataset.aicat; P.ai(); });
+};
+pb.addEventListener("click", e => { const a = e.target.closest("[data-ai]"); if (a) { aiPushRecent(a.dataset.ai); aiAction(a.dataset.ai, firstSel()); } });
 
 async function needTool(r) {
   if (r?.error !== "need_tool") return false;

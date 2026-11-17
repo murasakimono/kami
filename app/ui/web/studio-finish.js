@@ -112,7 +112,7 @@
     busy(null);
     if (!r?.ok || !r.shorts?.length) { toast("Olmadı: " + (r?.error || "uygun an bulunamadı"), 5000); return; }
     const pick = await modal(`<h3>✂️ ${r.shorts.length} kısa klip hazır <small>(${r.mode})</small></h3><div class="sf-list">${r.shorts.map((s, i) =>
-      `<div class="sf-item"><b>${i + 1}.</b> ${fmt(s.start)}–${fmt(s.end)} <span style="color:#8E86A3">${esc(s.hook || "")}</span> <button class="tb" data-v="${i}">Aç</button></div>`).join("")}</div>
+      `<div class="sf-item"><b>${i + 1}.</b> <span class="sf-short-dur">${Math.max(1, Math.round((s.end || 0) - (s.start || 0)))} sn</span> <span>${fmt(s.start)}–${fmt(s.end)}</span> <span style="color:#8E86A3;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.hook || "")}</span> <button class="tb pri" data-v="${i}">Projeyi aç</button></div>`).join("")}</div>
       <div class="row"><button class="tb" data-v="">Kapat</button></div>`);
     if (pick !== null && pick !== "" && r.shorts[+pick]) openProject(r.shorts[+pick].project);
   }

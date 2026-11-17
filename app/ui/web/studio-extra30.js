@@ -31,9 +31,27 @@
     const oldVol = ST.p.masterVol;
     if (mute) { ST.muteRec = true; document.querySelectorAll("video, audio").forEach((m) => { m.dataset.vrv = m.volume; m.volume = 0; }); }
     const hud = document.createElement("div");
-    hud.style.cssText = "position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:999;background:#B91C1C;color:#fff;font-weight:700;padding:8px 16px;border-radius:999px;display:flex;gap:10px;align-items:center";
-    hud.innerHTML = `● KAYIT <span id="vrT">0:00</span> <button class="tb" id="vrStop">Durdur</button>`;
+    hud.className = "vr-hud";
+    hud.innerHTML = `<i class="vr-dot"></i><span>ON AIR</span><span id="vrT">0:00</span><canvas id="vrMeter" width="48" height="14" style="border-radius:4px;background:#1d0a0f"></canvas><button class="tb" id="vrStop">Durdur</button>`;
     document.body.appendChild(hud);
+    let actx = null, meterRaf = 0;
+    try {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = actx.createMediaStreamSource(stream), an = actx.createAnalyser();
+      an.fftSize = 64; src.connect(an);
+      const buf = new Uint8Array(an.frequencyBinCount), cv = hud.querySelector("#vrMeter"), gx = cv?.getContext("2d");
+      const drawM = () => {
+        if (gx) {
+          an.getByteTimeDomainData(buf);
+          let peak = 0; for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128) / 128);
+          gx.clearRect(0, 0, 48, 14);
+          gx.fillStyle = peak > 0.7 ? "#F59E0B" : "#2EE6A6";
+          gx.fillRect(0, 2, Math.max(2, Math.min(48, Math.round(peak * 70))), 10);
+        }
+        meterRaf = requestAnimationFrame(drawM);
+      };
+      drawM();
+    } catch (_) {}
     const start = performance.now();
     const timer = setInterval(() => { const s = (performance.now() - start) / 1000; document.getElementById("vrT").textContent = `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; }, 250);
     rec.start(500); if (!ST.playing) play(true);
@@ -45,6 +63,7 @@
     });
     const dur = (performance.now() - start) / 1000;
     await new Promise((res) => { rec.onstop = res; rec.stop(); });
+    cancelAnimationFrame(meterRaf); actx?.close().catch(() => {});
     clearInterval(timer); hud.remove(); stream.getTracks().forEach((t) => t.stop());
     if (ST.playing) play(false);
     if (mute) { document.querySelectorAll("video, audio").forEach((m) => { if (m.dataset.vrv) m.volume = +m.dataset.vrv; }); ST.muteRec = false; ST.p.masterVol = oldVol; }
@@ -78,13 +97,21 @@
     const parse = (s) => s.split(":").map(Number).reduce((a, b) => a * 60 + b, 0);
     const collect = () => { document.querySelectorAll("#chL [data-ct]").forEach((el) => { const i = +el.dataset.ct; list[i].t = parse(el.value) || 0; list[i].title = document.querySelector(`#chL [data-cn="${i}"]`).value.trim(); }); list.sort((a, b) => a.t - b.t); };
     const desc = () => { collect(); const title = ST.p.name || ""; return `${title}\n\n${list.map((c) => `${hms(c.t)} ${c.title}`).join("\n")}\n`; };
-    const v = await modal(`<h3>📑 Bölümler</h3><div class="hint">YouTube için ilk bölüm 00:00 olmalı, en az 3 bölüm ve her biri en az 10 sn. Oynatma kafasındaki anı eklemek için “+ Şu an”.</div>${draw()}
+    const v = await modal(`<h3>📑 Bölümler</h3><div class="hint">YouTube için ilk bölüm 00:00 olmalı, en az 3 bölüm ve her biri en az 10 sn. Oynatma kafasındaki anı eklemek için “+ Şu an”.</div><div id="chWarn" class="ch-warn"></div>${draw()}
       <div class="row"><button class="tb" data-v="add">+ Şu an (${fmt(ST.t)})</button></div>
       <textarea class="in" id="chDesc" style="width:100%;min-height:110px;margin-top:8px" readonly></textarea>
       <label><input type="checkbox" id="chGfx"> Her bölüme bölüm başlığı grafiği ekle</label>
       <div class="row"><button class="tb" data-v="no">Kapat</button><button class="tb" data-v="copy">Açıklamayı kopyala</button><button class="tb pri" data-v="ok">İşaretlere kaydet</button></div>`, {
       init: (m) => {
-        const upd = () => { const t = document.getElementById("chDesc"); if (t) t.value = desc(); };
+        const upd = () => {
+          const t = document.getElementById("chDesc"); if (t) t.value = desc();
+          const w = document.getElementById("chWarn");
+          if (w) {
+            const badNow = list.length < 3 || list[0]?.t !== 0 || list.some((c, i) => i && c.t - list[i - 1].t < 10);
+            w.className = "ch-warn" + (badNow ? "" : " ok");
+            w.textContent = badNow ? "⚠ YouTube kuralı eksik: ilk bölüm 00:00, en az 3 bölüm ve her biri ≥10 sn olmalı." : "✓ YouTube bölüm kurallarına uygun.";
+          }
+        };
         upd(); m.addEventListener("input", upd);
         m.addEventListener("click", (e) => {
           const x = e.target.closest("[data-cx]"); if (x) { e.stopPropagation(); collect(); list.splice(+x.dataset.cx, 1); document.getElementById("chL").outerHTML = draw(); upd(); }
@@ -104,7 +131,7 @@
   async function ptemplates() {
     const list = (await api.studio_ptpl_list()) || [];
     const v = await modal(`<h3>🧩 Kanal / proje şablonları</h3><div class="hint">Şablon; boyut, izler, intro/outro görselleri, logo, alt bant, yazılar, altyazı stili, müzik yatağı ve markayı saklar. Ana video izindeki videolar şablona girmez (her bölümde değişen içerik).</div>
-      <div class="sf-list">${list.map((t) => `<div class="sf-item"><b>${esc(t.name)}</b> <small>${t.w}×${t.h} · ${t.clips} öğe</small> <button class="tb pri" data-v="new:${esc(t.id)}">Yeni proje</button> <button class="tb" data-v="del:${esc(t.id)}">Sil</button></div>`).join("") || `<div class="hint">Henüz şablon yok.</div>`}</div>
+      <div class="sf-list">${list.map((t) => `<div class="sf-item"><b style="flex:1">${esc(t.name)}</b> <span class="sf-short-dur">${t.w}×${t.h}</span> <small style="color:#8E86A3">${t.clips} öğe</small> <button class="tb pri" data-v="new:${esc(t.id)}">Yeni proje</button> <button class="tb" data-v="del:${esc(t.id)}">Sil</button></div>`).join("") || `<div class="hint">Henüz şablon yok.</div>`}</div>
       <div class="row"><button class="tb" data-v="no">Kapat</button><button class="tb" data-v="save">Bu projeyi şablon yap</button></div>`);
     if (!v) return;
     if (v === "save") {
@@ -130,10 +157,10 @@
     const box = document.createElement("div");
     box.style.cssText = "position:fixed;inset:0;z-index:998;background:#07060Bf2;display:flex;flex-direction:column;padding:16px;gap:10px";
     const cols = cams.length <= 4 ? 2 : 3;
-    box.innerHTML = `<div style="display:flex;gap:10px;align-items:center;color:#EDE9F6"><b>🎥 Çoklu kamera</b><span style="color:#8E86A3">Boşluk oynat/duraklat · 1-${cams.length} kamera değiştir (kesim yazılır) · Enter bitir · Esc vazgeç</span><span style="flex:1"></span><span id="mcT"></span><button class="tb" id="mcPlay">⏯</button><button class="tb pri" id="mcDone">Bitir ve uygula</button><button class="tb" id="mcX">Vazgeç</button></div>
-      <div id="mcG" style="flex:1;display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px;min-height:0">${cams.map((c, i) => `<div data-cam="${i}" style="position:relative;background:#000;border:3px solid ${i ? "#2A2140" : "#2EE6A6"};border-radius:8px;overflow:hidden;cursor:pointer">
-        <video muted playsinline style="width:100%;height:100%;object-fit:contain"></video><b style="position:absolute;left:8px;top:6px;background:#000a;color:#fff;padding:2px 8px;border-radius:6px">${i + 1}</b></div>`).join("")}</div>
-      <div id="mcBar" style="height:26px;position:relative;background:#110D19;border-radius:6px"></div>`;
+    box.innerHTML = `<div style="display:flex;gap:10px;align-items:center;color:#EDE9F6"><b>🎥 Çoklu kamera</b><span style="color:#8E86A3">Boşluk oynat/duraklat · 1-${cams.length} kamera değiştir (kesim yazılır) · Enter bitir · Esc vazgeç</span><span style="flex:1"></span><span id="mcT" style="font-variant-numeric:tabular-nums;font-weight:700;color:#2EE6A6"></span><button class="tb" id="mcPlay">⏯</button><button class="tb pri" id="mcDone">Bitir ve uygula</button><button class="tb" id="mcX">Vazgeç</button></div>
+      <div id="mcG" style="flex:1;display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px;min-height:0">${cams.map((c, i) => `<div data-cam="${i}" style="position:relative;background:#000;border:3px solid ${i ? "#2A2140" : "#2EE6A6"};border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .12s">
+        <video muted playsinline style="width:100%;height:100%;object-fit:contain"></video><div class="mc-cam-tag"><span>CAM ${i + 1}</span>${i === 0 ? `<span class="mc-cam-live">PGM</span>` : ""}</div></div>`).join("")}</div>
+      <div id="mcBar" style="height:28px;position:relative;background:#110D19;border:1px solid #2A2140;border-radius:8px;cursor:pointer;overflow:hidden"></div>`;
     document.body.appendChild(box);
     const vids = [...box.querySelectorAll("video")];
     vids.forEach((v, i) => { v.src = ST.p.assets[cams[i].asset]?.url || ""; });
@@ -148,7 +175,12 @@
     };
     const setCam = (i) => {
       if (i >= cams.length) return;
-      cur = i; box.querySelectorAll("[data-cam]").forEach((d, k) => d.style.borderColor = k === i ? colors[i] : "#2A2140");
+      cur = i;
+      box.querySelectorAll("[data-cam]").forEach((d, k) => {
+        d.style.borderColor = k === i ? colors[i] : "#2A2140";
+        const tag = d.querySelector(".mc-cam-tag");
+        if (tag) tag.innerHTML = `<span>CAM ${k + 1}</span>${k === i ? `<span class="mc-cam-live">PGM</span>` : ""}`;
+      });
       while (cuts.length > 1 && cuts[cuts.length - 1].t > t) cuts.pop();   // geri sarip yeniden kesince sonrasi silinir
       const lc = cuts[cuts.length - 1];
       if (Math.abs(lc.t - t) < 0.15) lc.cam = i; else if (lc.cam !== i) cuts.push({ t, cam: i });
