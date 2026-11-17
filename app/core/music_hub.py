@@ -558,6 +558,111 @@ def local_scan_folder(folder: str = "", query: str = "", limit: int = 500) -> di
     return {"ok": True, "folders": local_folders_list(), "items": items}
 
 
+# ---------- YouTube Music Playlist & Spotify <-> YTM Gecis ----------
+def _ytm_playlists_file():
+    from app import paths
+    return paths.DATA_DIR / "ytm_playlists.json"
+
+
+def ytm_saved_playlists() -> list[dict[str, str]]:
+    p = _ytm_playlists_file()
+    try:
+        if p.is_file():
+            return list(json.loads(p.read_text(encoding="utf-8")))
+    except Exception:
+        pass
+    return []
+
+
+def ytm_extract_playlist_id(url_or_id: str) -> str:
+    import re
+    s = str(url_or_id or "").strip()
+    m = re.search(r"[?&]list=([A-Za-z0-9_-]+)", s)
+    return m.group(1) if m else s
+
+
+def ytm_get_playlist(url_or_id: str, limit: int = 200, save: bool = True) -> dict[str, Any]:
+    pid = ytm_extract_playlist_id(url_or_id)
+    if not pid:
+        return {"ok": False, "error": "empty_id", "items": []}
+    title, items = "", []
+    try:
+        from ytmusicapi import YTMusic  # type: ignore
+        pl = YTMusic().get_playlist(pid, limit=int(limit))
+        title = str(pl.get("title") or pid)
+        for t in (pl.get("tracks") or []):
+            vid = t.get("videoId")
+            if not vid:
+                continue
+            items.append({
+                "id": vid,
+                "title": str(t.get("title") or ""),
+                "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])),
+                "dur": str(t.get("duration") or ""),
+                "url": f"https://music.youtube.com/watch?v={vid}",
+            })
+    except Exception:
+        items = []
+
+    if not items:
+        try:
+            from app.engines.ytdlp_engine import find_ytdlp
+            exe = find_ytdlp()
+            if exe:
+                r = subprocess.run([exe, "--dump-single-json", "--flat-playlist",
+                                    f"https://www.youtube.com/playlist?list={pid}"],
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=35,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                d = json.loads(r.stdout or "{}")
+                title = str(d.get("title") or pid)
+                for e in (d.get("entries") or [])[:int(limit)]:
+                    vid = e.get("id") or ""
+                    if not vid:
+                        continue
+                    items.append({
+                        "id": vid,
+                        "title": str(e.get("title") or ""),
+                        "artist": str(e.get("uploader") or e.get("channel") or ""),
+                        "dur": str(e.get("duration_string") or ""),
+                        "url": f"https://music.youtube.com/watch?v={vid}",
+                    })
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120], "items": []}
+
+    if not items:
+        return {"ok": False, "error": "playlist_empty_or_private", "items": []}
+
+    if save:
+        cur = [x for x in ytm_saved_playlists() if x.get("id") != pid]
+        cur.insert(0, {"id": pid, "title": title or pid})
+        _ytm_playlists_file().parent.mkdir(parents=True, exist_ok=True)
+        _ytm_playlists_file().write_text(json.dumps(cur[:30], ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "id": pid, "title": title or pid, "items": items}
+
+
+def ytm_to_spotify_playlist(url_or_id: str, new_name: str = "") -> dict[str, Any]:
+    pl = ytm_get_playlist(url_or_id, limit=100, save=True)
+    if not pl.get("ok"):
+        return pl
+    name = (new_name or "").strip() or f"{pl['title']} (YTM)"
+    cr = spotify_playlist_create(name, description="Kami ile YouTube Music'ten aktarıldı")
+    if not cr.get("ok"):
+        return cr
+    sp_pid = ((cr.get("data") or {}).get("id") or "")
+    if not sp_pid:
+        return {"ok": False, "error": "no_playlist_id"}
+    uris: list[str] = []
+    for it in pl["items"]:
+        q = f"{it['artist']} {it['title']}".strip()
+        sr = spotify_search(q, kind="track", limit=1)
+        tr = (sr.get("tracks") or [None])[0]
+        if tr and tr.get("uri"):
+            uris.append(tr["uri"])
+    for i in range(0, len(uris), 50):
+        spotify_playlist_modify(sp_pid, uris[i:i + 50], remove=False)
+    return {"ok": True, "playlist_id": sp_pid, "name": name, "matched": len(uris), "total": len(pl["items"])}
+
+
 def spotify_control(token: str, action: str) -> dict[str, Any]:
     tok = get_spotify_token(token)
     if not tok:

@@ -4471,6 +4471,18 @@ class Api(StudioMixin):
                 pass
         return self.player_show({"path": path})
 
+    def music_ytm_saved(self) -> list[dict[str, str]]:
+        from app.core.music_hub import ytm_saved_playlists
+        return ytm_saved_playlists()
+
+    def music_ytm_playlist(self, url_or_id: str, limit: int = 200) -> dict[str, Any]:
+        from app.core.music_hub import ytm_get_playlist
+        return ytm_get_playlist(url_or_id, limit=limit, save=True)
+
+    def music_ytm_to_spotify(self, url_or_id: str, new_name: str = "") -> dict[str, Any]:
+        from app.core.music_hub import ytm_to_spotify_playlist
+        return ytm_to_spotify_playlist(url_or_id, new_name=new_name)
+
     def cleaner_search(self, query: str, root: str = "", limit: int = 80) -> dict[str, Any]:
         from app.core.cleaner import search_files
         return search_files(query, root=root, limit=limit)

@@ -82,6 +82,7 @@
         <button class="btn" data-sp="next" title="Sonraki">⏭</button>
         <button class="btn" id="spRep" title="Tekrarla">🔁</button>
         <button class="btn" id="spLike" title="Beğen / Kaldır">🤍</button>
+        <button class="btn" id="spYtNow" title="Tek tıkla YouTube Music / Kami Player'a geç">▶ YT</button>
         <button class="btn" id="spDlNow" title="YouTube Music üzerinden MP3/FLAC indir">⬇</button>
         <select id="spDev" title="Çalma cihazı"><option value="">Cihaz…</option></select>
         <input id="spVol" type="range" min="0" max="100" value="100" style="width:74px;padding:0;accent-color:#9D6BFF" title="Ses">
@@ -111,8 +112,22 @@
       if (t === "sp_lib") loadLib();
       else if (t === "sp_queue") loadQueue();
       else if (t === "local") loadLocal();
-      else if ((t === "sp_search" || t === "ytm") && q.value.trim()) search();
-      else list.innerHTML = `<div style="color:var(--mut);padding:14px">${t === "sp_search" ? "Spotify kataloğunda şarkı, albüm veya liste ara." : "YouTube Music'te ara ve Kami Player'da çal / indir."}</div>`;
+      else if (t === "ytm") loadYtmBar();
+      else if (t === "sp_search" && q.value.trim()) search();
+      else list.innerHTML = `<div style="color:var(--mut);padding:14px">Spotify kataloğunda şarkı, albüm veya liste ara.</div>`;
+    }
+
+    async function loadYtmBar() {
+      subBar.hidden = false; folderChips.hidden = false;
+      subBar.innerHTML = `
+        <input id="ytPlIn" style="flex:1;min-width:220px" placeholder="YouTube Music Playlist URL veya ID (liste dışı/herkese açık)…">
+        <button class="btn pri" id="ytPlOpen">Playlist Aç</button>
+        <button class="btn" id="ytPlToSp">🟢 Spotify'a Aktar</button>`;
+      const saved = await api()?.music_ytm_saved?.().catch(() => []);
+      folderChips.innerHTML = (saved || []).map((p) => `
+        <span class="chip" data-ytpl="${esc(p.id)}" style="cursor:pointer">📜 ${esc(p.title)}</span>`).join("");
+      if (q.value.trim()) search();
+      else if (!ITEMS.length) list.innerHTML = `<div style="color:var(--mut);padding:14px">YouTube Music'te şarkı ara ya da yukarıya playlist linkini yapıştırıp aç / Spotify'a aktar.</div>`;
     }
 
     async function loadPlaylistsCache() {
@@ -337,6 +352,11 @@
       SP_LIKED = !SP_LIKED; spLike.textContent = SP_LIKED ? "❤️" : "🤍";
     };
     spDlNow.onclick = () => { if (CUR_TRACK?.title) ytBridgeAction(CUR_TRACK.title, CUR_TRACK.artist, "dl"); };
+    spYtNow.onclick = async () => {
+      if (!CUR_TRACK?.title) return;
+      await api()?.music_spotify_control?.("pause").catch(() => {});
+      await ytBridgeAction(CUR_TRACK.title, CUR_TRACK.artist, "play");
+    };
     spDev.onchange = () => { if (spDev.value) api()?.music_spotify_transfer?.(spDev.value); };
     spVol.onchange = () => api()?.music_spotify_volume?.(+spVol.value);
     spSeek.onmousedown = () => { SEEK_LOCK = true; };
@@ -354,8 +374,32 @@
         loadLib();
       } else if (e.target.id === "locAddPath") { await api()?.music_local_add?.(locPath.value.trim()); loadLocal(); }
       else if (e.target.id === "locPick") { await api()?.music_local_add?.(""); loadLocal(); }
+      else if (e.target.id === "ytPlOpen") {
+        const u = ytPlIn.value.trim(); if (!u) return;
+        list.innerHTML = `<div style="color:var(--mut);padding:12px">Playlist çekiliyor…</div>`;
+        const r = await api()?.music_ytm_playlist?.(u, 200).catch(() => null);
+        if (!r?.ok) { list.innerHTML = `<div style="color:var(--mut);padding:12px">Açılamadı (${esc(r?.error || "gizli veya geçersiz link")}).</div>`; return; }
+        ITEMS = r.items || [];
+        list.innerHTML = `<div class="sec-h">${esc(r.title)} · ${ITEMS.length} şarkı <button class="btn" id="ytPlDlAll" style="margin-left:8px;padding:3px 9px">⬇ Tümünü İndir</button></div>` +
+          ITEMS.map((it, i) => `
+          <div class="row">
+            <div class="meta"><b>${esc(it.title)}</b><small>${esc(it.artist)}${it.dur ? " · " + esc(it.dur) : ""}</small></div>
+            <button class="btn pri" data-ytplay="${i}">▶ Çal</button>
+            <button class="btn" data-ytdl="${i}">⬇ İndir</button>
+          </div>`).join("");
+        const dlAll = document.getElementById("ytPlDlAll");
+        if (dlAll) dlAll.onclick = async () => { for (const it of ITEMS) await api()?.add_url?.(it.url); dlAll.textContent = "✓ Kuyruğa Eklendi"; };
+      } else if (e.target.id === "ytPlToSp") {
+        const u = ytPlIn.value.trim(); if (!u) return alert("Önce YT Music Playlist linkini yapıştır.");
+        e.target.textContent = "Aktarılıyor…";
+        const r = await api()?.music_ytm_to_spotify?.(u, "").catch(() => null);
+        e.target.textContent = "🟢 Spotify'a Aktar";
+        alert(r?.ok ? `"${r.name}" listesine ${r.matched}/${r.total} şarkı Spotify'a aktarıldı!` : `Hata: ${r?.error || "aktarılamadı"}`);
+      }
     };
     folderChips.onclick = async (e) => {
+      const ytp = e.target.closest("[data-ytpl]");
+      if (ytp) { ytPlIn.value = ytp.dataset.ytpl; document.getElementById("ytPlOpen")?.click(); return; }
       const d = e.target.closest("[data-locdel]");
       if (d) { await api()?.music_local_remove?.(d.dataset.locdel); loadLocal(); return; }
       const p = e.target.closest("[data-locplaydir]");
