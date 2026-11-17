@@ -51,3 +51,19 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 9px 14px; border-radius: 10px; background: #1C1228; border: 1px solid var(--line); font-size: 13px; z-index: 50; }
 
 .pc-top button.edit { background: #6D28D9; color: #fff; }
+/* v1.32.1 bos ekran */
+.pc-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.pc-empty .pce-ic svg { width: 64px; height: 64px; color: #8B5CF6; opacity: .8; }
+.pc-empty b { font-size: 18px; color: #EDE9F6; font-weight: 600; }
+.pc-empty small { color: var(--mute); font-size: 12.5px; }
+.pc-empty .pce-acts { display: flex; gap: 10px; margin: 10px 0 6px; }
+.pc-empty .pce-rc-h { margin-top: 18px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); }
+.pc-empty .pce-rc { display: grid; grid-template-columns: repeat(4, 132px); gap: 10px; }
+.pc-empty .pce-rc button { padding: 0; border: 1px solid rgba(139, 92, 246, .2); border-radius: 10px; overflow: hidden; background: #120E1A; cursor: pointer; display: flex; flex-direction: column; }
+.pc-empty .pce-rc button:hover { border-color: #8B5CF6; }
+.pc-empty .pce-rc img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #0B0910; }
+.pc-empty .pce-rc i { font-style: normal; font-size: 10.5px; color: #B5ACCB; padding: 5px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.pc-empty .pce-acts button { border: 0; background: #1C1528; color: var(--text); font: 600 13px "Chakra Petch"; padding: 9px 16px; border-radius: 9px; cursor: pointer; }
+.pc-empty .pce-acts button:hover { background: #2A1F3B; }
+.pc-empty .pce-acts button.primary { background: var(--royal); color: #fff; box-shadow: 0 0 14px rgba(139, 92, 246, .4); }
+.pc-empty .pce-rc { grid-template-columns: repeat(auto-fit, 132px); justify-content: center; max-width: 600px; width: 600px; }

@@ -483,7 +483,7 @@ body.pl-open #sunak { visibility: hidden; }
 .pp-groups button:hover { border-color: #9D6BFF; color: #fff; }
 .pp-groups button.on { background: #6D28D9; border-color: #9D6BFF; color: #fff; font-weight: 600; }
 .pp-ch img { width: 28px; height: 28px; object-fit: contain; margin-right: 8px; border-radius: 4px; background: rgba(255,255,255,.05); }
-.pl-waveseek { display: none; position: absolute; left: 0; right: 0; bottom: 5px; width: 100%; height: 20px; pointer-events: none; opacity: .9; }
+.pl-waveseek { display: none; position: absolute; left: 0; right: 0; bottom: 5px; width: 100%; height: 26px; pointer-events: none; opacity: .9; }
 #player.is-audio .pl-waveseek { display: block; }
 .pl-synchud { position: absolute; left: 50%; top: 56px; transform: translate(-50%, -6px); z-index: 35; padding: 7px 16px; border-radius: 999px;
   background: rgba(13,10,20,.88); backdrop-filter: blur(10px); border: 1px solid rgba(157,107,255,.55); color: #EDE9F6; font: 600 13px "Chakra Petch", sans-serif;
@@ -493,3 +493,4 @@ body.pl-open #sunak { visibility: hidden; }
 .pl-lyr .pm-list:not(.synced) { scrollbar-width: thin; scrollbar-color: rgba(157, 107, 255, .45) transparent; }
 .pl-lyr .pm-list:not(.synced)::-webkit-scrollbar { display: block; width: 6px; }
 .pl-lyr .pm-list:not(.synced)::-webkit-scrollbar-thumb { background: rgba(157, 107, 255, .45); border-radius: 3px; }
+#player.is-audio .pl-seek .pl-fill, #player.is-audio .pl-seek .pl-buf { opacity: .25; }

@@ -10,6 +10,7 @@ function toast(t) { const el = document.createElement("div"); el.className = "to
 function i18n() { document.querySelectorAll("[data-tr]").forEach((e) => (e.textContent = L(e.dataset.tr, e.dataset.en))); }
 
 async function open(path, lens) {
+  try { const rc = JSON.parse(localStorage.getItem("kami.picRecent") || "[]").filter((x) => x !== path); rc.unshift(path); localStorage.setItem("kami.picRecent", JSON.stringify(rc.slice(0, 8))); } catch { /* depolama yok */ }
   PC.list = (await api.image_siblings(path)) || [path];
   if (!PC.list.includes(path)) PC.list.unshift(path);
   PC.i = PC.list.indexOf(path);
@@ -105,3 +106,21 @@ window.addEventListener("pywebviewready", async () => {
   const poll = async () => { try { for (const it of (await api.picture_poll()) || []) { if (it.edit) { if (it.path) await open(it.path, false); window.kamiEditor.open(it.path || ""); } else await open(it.path, it.lens); } } catch { /* yok */ } };
   poll(); setInterval(poll, 700);
 });
+
+// v1.32.1 bos ekran: ac / yeni tuval / son acilanlar (eskiden tek satir yazi)
+async function pcEmptyRender() {
+  const box = $("#pcEmpty"); if (!box || box.hidden) return;
+  let rc = []; try { rc = JSON.parse(localStorage.getItem("kami.picRecent") || "[]"); } catch { /* yok */ }
+  box.innerHTML = `<span class="pce-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></span>
+    <b>${L("Bir görseli buraya bırak", "Drop an image here")}</b><small>${L("JPG, PNG, WebP, HEIC, GIF, AVIF…", "JPG, PNG, WebP, HEIC, GIF, AVIF…")}</small>
+    <span class="pce-acts"><button type="button" class="btn primary" data-pce="open">${L("Görsel aç", "Open image")}</button><button type="button" class="btn" data-pce="new">${L("Yeni tuval", "New canvas")}</button></span>
+    ${rc.length ? `<span class="pce-rc-h">${L("Son açılanlar", "Recent")}</span><span class="pce-rc">${rc.map((p, i) => `<button type="button" data-pr="${i}" title="${esc(p)}"><img alt=""><i>${esc(p.split(/[\\/]/).pop())}</i></button>`).join("")}</span>` : ""}`;
+  box.querySelector('[data-pce="open"]').onclick = async () => { const f = (await api.pic_batch_pick()) || []; if (f[0]) open(f[0]); };
+  box.querySelector('[data-pce="new"]').onclick = () => window.kamiEditor?.open("");
+  box.querySelectorAll("[data-pr]").forEach(async (b) => {
+    const p = rc[+b.dataset.pr];
+    b.onclick = () => open(p);
+    try { const r = await api.image_data(p); if (r?.ok) b.querySelector("img").src = r.url; else b.remove(); } catch { b.remove(); }
+  });
+}
+(function pceBoot() { if (api) pcEmptyRender(); else setTimeout(pceBoot, 300); })();

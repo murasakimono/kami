@@ -779,6 +779,39 @@ class Api(StudioMixin):
         cache[key] = out
         return out
 
+    def audio_peaks(self, path: str, n: int = 600) -> dict[str, Any]:
+        """v1.32.1 Player muzik modu: gercek dalga formu (0..1 tepe dizisi). ffmpeg 8 kHz mono; dosya+mtime onbellekli."""
+        import array
+        p = str(path or "")
+        try:
+            key = (p, os.path.getmtime(p), int(n))
+        except OSError:
+            return {"ok": False}
+        cache = self.__dict__.setdefault("_peaks_cache", {})
+        if key in cache:
+            return cache[key]
+        from app.engines.ytdlp_engine import find_ffmpeg
+        ff = find_ffmpeg()
+        if not ff:
+            return {"ok": False, "error": "ffmpeg"}
+        try:
+            r = subprocess.run([ff, "-v", "error", "-i", p, "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-"],
+                               capture_output=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except (OSError, subprocess.SubprocessError):
+            return {"ok": False}
+        a = array.array("h"); a.frombytes(r.stdout[: len(r.stdout) // 2 * 2])
+        n = max(50, min(2000, int(n)))
+        if len(a) < n:
+            return {"ok": False}
+        step = len(a) // n
+        peaks = [max(abs(min(a[i * step:(i + 1) * step])), abs(max(a[i * step:(i + 1) * step]))) for i in range(n)]
+        top = max(peaks) or 1
+        out = {"ok": True, "peaks": [round(x / top, 3) for x in peaks]}
+        if len(cache) > 40:
+            cache.clear()
+        cache[key] = out
+        return out
+
     def dash_stats(self) -> dict[str, Any]:
         """v1.32.1 Sunak gosterge paneli: disk, bugun inenler, RD (5 dk onbellekli), haftalik."""
         import shutil as _sh
