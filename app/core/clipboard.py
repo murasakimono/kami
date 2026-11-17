@@ -48,6 +48,41 @@ def get_text() -> str:
         _user32.CloseClipboard()
 
 
+_user32.RegisterClipboardFormatW.restype = wintypes.UINT
+_user32.RegisterClipboardFormatW.argtypes = [wintypes.LPCWSTR]
+_user32.IsClipboardFormatAvailable.argtypes = [wintypes.UINT]
+
+
+def is_private() -> bool:
+    """Parola yoneticileri (Bitwarden, 1Password, KeePass, tarayicilar) kopyaladiklarini bu bicimlerle isaretler:
+    Windows pano gecmisine / izleyicilere alinmasin. Kami de rafa yazmaz."""
+    for name in ("ExcludeClipboardContentFromMonitorProcessing", "Clipboard Viewer Ignore"):
+        f = _user32.RegisterClipboardFormatW(name)
+        if f and _user32.IsClipboardFormatAvailable(f):
+            return True
+    for name in ("CanIncludeInClipboardHistory", "CanUploadToCloudClipboard"):
+        f = _user32.RegisterClipboardFormatW(name)
+        if f and _user32.IsClipboardFormatAvailable(f) and _read_dword(f) == 0:
+            return True
+    return False
+
+
+def _read_dword(fmt: int) -> int:
+    if not _user32.OpenClipboard(None):
+        return -1
+    try:
+        h = _user32.GetClipboardData(fmt)
+        p = _kernel32.GlobalLock(h) if h else None
+        if not p:
+            return -1
+        try:
+            return ctypes.c_uint32.from_address(p).value
+        finally:
+            _kernel32.GlobalUnlock(h)
+    finally:
+        _user32.CloseClipboard()
+
+
 def first_url(text: str) -> str:
     m = URL_RE.search(text or "")
     return m.group(0).rstrip(").,;]") if m else ""
@@ -55,7 +90,9 @@ def first_url(text: str) -> str:
 
 class ClipboardWatcher:
     def __init__(self, is_supported: Callable[[str], bool], on_link: Callable[[str], None],
-                 enabled: Callable[[], bool], interval: float = 1.0) -> None:
+                 enabled: Callable[[], bool], interval: float = 1.0,
+                 on_text: Callable[[str], None] | None = None) -> None:
+        self.on_text = on_text          # v1.31.2: Pano rafi (kopyalanan her metin/link; gizli kopyalar haric)
         self.is_supported = is_supported
         self.on_link = on_link
         self.enabled = enabled
@@ -81,9 +118,18 @@ class ClipboardWatcher:
                 if self.ignore_next:
                     self.ignore_next = False
                     continue
+                text = ""
+                if self.on_text:
+                    try:
+                        if not is_private():
+                            text = get_text()[:4000]
+                            if text.strip():
+                                self.on_text(text)
+                    except Exception:
+                        log.debug("Pano rafi kaydi", exc_info=True)
                 if not self.enabled():
                     continue
-                url = first_url(get_text()[:4000])
+                url = first_url(text or get_text()[:4000])
                 if not url or url == self._last_url:
                     continue
                 if self.is_supported(url):

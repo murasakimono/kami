@@ -75,7 +75,9 @@ function plBuild() {
     if (x < 0.3) plSeek(plNow() - 10); else if (x > 0.7) plSeek(plNow() + 10); else plFull();
   });
   el.addEventListener("wheel", (e) => {
-    if (e.target.closest(".pl-panel, .pl-deck select, #plDrawer")) return;
+    if (e.target.closest(".pl-panel, .pl-deck select, #plDrawer, #pmEmpty")) return;
+    const lyr = e.target.closest("#pmList");   // sozler kayabiliyorsa tekerlek sozleri kaydirsin (ses degil)
+    if (lyr && lyr.scrollHeight > lyr.clientHeight + 4) return;
     e.preventDefault(); plSetVol((PL.vol ?? 1) + (e.deltaY < 0 ? 0.05 : -0.05)); plWake();
     toast(plL("Ses ", "Volume ") + Math.round(PL.vol * 100) + "%");
   }, { passive: false });
@@ -498,7 +500,6 @@ function plShift(d) {
   plAssSync(); plSubDraw(plNow());
   const msg = plL("Altyazı ", "Subtitles ") + (PL.subShift > 0 ? "+" : "") + PL.subShift.toFixed(1) + " sn";
   plSyncHud("💬 " + msg);
-  toast(msg);
   window.plOnShift?.();
 }
 // dil kodlari: tur/tr/Turkish -> tr

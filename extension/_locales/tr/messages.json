@@ -193,5 +193,11 @@
   },
   "popup_grab_all": {
     "message": "📥 Sayfadaki her şeyi listele (Tümünü indir)"
+  },
+  "popup_files": {
+    "message": "Bu sayfadaki dosyalar"
+  },
+  "popup_send": {
+    "message": "Kami'ye"
   }
 }

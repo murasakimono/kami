@@ -106,6 +106,7 @@ function pmShow(res) {
     list.classList.remove("synced");
     list.innerHTML = PM.plain.split(/\r?\n/).map((x) => `<p class="pm-l plain">${escapeHtml(x) || "&nbsp;"}</p>`).join("") + `<p class="pm-src">${pmSrcName(PM.src)} · ${plL("zamanlama yok", "not synced")}</p>`;
     list.scrollTop = 0;
+    pmPlainLoop();
   } else {
     list.innerHTML = "";
     const L = PM.links;
@@ -181,9 +182,25 @@ function pmLoop() {
   };
   PM.raf = requestAnimationFrame(step);
 }
+// Zamanlamasiz sozler: calma ilerlemesine orantili yumusak kaydirma (giris/cikis payi ile); elle kaydirinca durur
+function pmPlainLoop() {
+  const tok = PM.token;
+  const step = () => {
+    const list = $("#pmList"), v = $("#plVideo");
+    if (tok !== PM.token || !list || PM.lines.length || !PM.plain) return;
+    const max = list.scrollHeight - list.clientHeight;
+    if (max > 4 && !PM.userScroll && v && !v.paused && v.duration > 0) {
+      const f = Math.min(1, Math.max(0, (v.currentTime / v.duration - 0.06) / 0.86));   // ilk %6 giris, son %8 cikis
+      const want = f * max;
+      list.scrollTop += (want - list.scrollTop) * 0.06;
+    }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
 // kullanici elle kaydirirsa 4 sn otomatik kaydirma durur
-document.addEventListener("wheel", (e) => {
-  if (!e.target.closest?.("#pmList")) return;
+for (const ev of ["wheel", "touchmove", "keydown"]) document.addEventListener(ev, (e) => {
+  if (ev === "keydown" ? !["PageDown", "PageUp", "ArrowDown", "ArrowUp"].includes(e.key) || !document.activeElement?.closest?.("#pmList") : !e.target.closest?.("#pmList")) return;
   PM.userScroll = true; clearTimeout(PM.usT); PM.usT = setTimeout(() => { PM.userScroll = false; }, 4000);
 }, { passive: true });
 document.addEventListener("play", (e) => { if (e.target.id === "plVideo" && PM.lines.length) pmLoop(); }, true);

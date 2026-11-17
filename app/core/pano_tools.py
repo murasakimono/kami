@@ -31,12 +31,12 @@ def list_shelf(data_dir: Path | None = None) -> list[dict[str, Any]]:
 
 
 def add_shelf_item(kind: str, value: str, label: str = "", data_dir: Path | None = None) -> dict[str, Any]:
-    items = list_shelf(data_dir)
+    items = [it for it in list_shelf(data_dir) if it.get("value") != value]   # ayni sey tekrar kopyalanirsa en uste cikar
     entry = {
         "id": f"p_{int(time.time() * 1000)}_{len(items)}",
         "kind": kind,
         "value": value,
-        "label": label or (Path(value).name if kind == "file" else value[:48]),
+        "label": label or (Path(value).name if kind == "file" else " ".join(value.split())[:80]),
         "ts": int(time.time()),
     }
     items.insert(0, entry)
@@ -45,6 +45,13 @@ def add_shelf_item(kind: str, value: str, label: str = "", data_dir: Path | None
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"ok": True, "item": entry, "count": len(items)}
+
+
+def clear_shelf(data_dir: Path | None = None) -> dict[str, Any]:
+    p = _shelf_path(data_dir)
+    if p.exists():
+        p.write_text("[]", encoding="utf-8")
+    return {"ok": True, "count": 0}
 
 
 def remove_shelf_item(item_id: str, data_dir: Path | None = None) -> dict[str, Any]:

@@ -142,8 +142,8 @@ body.sunak.sk-drawer .sk-backdrop { display: block; position: fixed; inset: 0; z
 #sunak .sk-dock { flex: 0 0 64px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
 #sunak .sk-dock button { position: relative; width: 60px; height: 56px; border: 0; background: #120E19; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--sk-lav); transition: background .16s, color .16s, transform .14s; overflow: visible; }
 #sunak .sk-dock button:hover, #sunak .sk-dock button.on { background: #2A1650; color: #fff; transform: translateX(-2px); }
-#sunak .sk-dock button[title]::after { content: attr(title); position: absolute; right: 68px; top: 50%; transform: translateY(-50%) translateX(6px); background: rgba(14,10,22,.95); border: 1px solid rgba(157,107,255,.45); color: #EDE9F6; padding: 5px 10px; border-radius: 8px; font: 600 11.5px var(--font); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; box-shadow: 0 8px 20px rgba(0,0,0,.5); z-index: 60; }
-#sunak .sk-dock button[title]:hover::after { opacity: 1; transform: translateY(-50%) translateX(0); }
+.sk-tip { position: fixed; z-index: 80; pointer-events: none; background: rgba(14,10,22,.95); border: 1px solid rgba(157,107,255,.45); color: #EDE9F6; padding: 5px 10px; border-radius: 8px; font: 600 11.5px var(--font, "Segoe UI"), sans-serif; white-space: nowrap; box-shadow: 0 8px 20px rgba(0,0,0,.5); opacity: 0; transform: translate(calc(-100% + 6px), -50%); transition: opacity .15s, transform .15s; }
+.sk-tip.on { opacity: 1; transform: translate(-100%, -50%); }   /* dok dugmeleri clip-path'li: ::after kirpiliyordu, etiket ayri oge */
 #sunak .sk-dock button.ai { color: var(--sk-em); }
 #sunak .sk-dock svg { width: 22px; height: 22px; }
 #sunak .sk-dock b { position: absolute; top: 6px; right: 9px; min-width: 16px; height: 16px; font: 700 10px var(--font); background: var(--sk-em); color: #08070C; display: flex; align-items: center; justify-content: center; border-radius: 8px; }

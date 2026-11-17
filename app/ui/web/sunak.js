@@ -158,25 +158,44 @@ function skBind() {
   altar.addEventListener("mouseleave", () => SK.eye?.set({ lid: 0 }));
   $("#skEye")?.addEventListener("click", () => {
     SK.eye?.poke?.();
-    const act = (window.S?.items || []).filter((x) => x.status === "active").length;
+    const act = (state.items || []).filter((x) => x.status === "active").length;
     toast(act ? skL(`🔥 ${act} aktif indirme işleniyor`, `🔥 ${act} active downloads`) : skL("👁 Kami Tılsım Ruhu hazır", "👁 Kami Talisman Spirit ready"));
   });
+  let tipEl = null;   // sag ray etiketi (title -> data-tip; yerel ipucu ile cift cikmasin)
+  $("#skDock")?.addEventListener("mouseover", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.title) { b.dataset.tip = b.title; b.setAttribute("aria-label", b.title); b.removeAttribute("title"); }
+    if (!b.dataset.tip) return;
+    if (!tipEl) { tipEl = document.createElement("div"); tipEl.className = "sk-tip"; document.body.appendChild(tipEl); }
+    const r = b.getBoundingClientRect();
+    tipEl.textContent = b.dataset.tip;
+    tipEl.style.left = (r.left - 8) + "px"; tipEl.style.top = (r.top + r.height / 2) + "px";
+    tipEl.classList.add("on");
+  });
+  $("#skDock")?.addEventListener("mouseout", (e) => { if (!e.relatedTarget?.closest?.("#skDock button") || e.relatedTarget.closest("button") !== e.target.closest("button")) tipEl?.classList.remove("on"); });
   let peekT = 0, peekEl = null;
   const hidePeek = () => { clearTimeout(peekT); peekEl?.classList.remove("on"); };
   $("#skTrack")?.addEventListener("mouseover", (e) => {
     const st = e.target.closest(".sk-strip"); if (!st) return;
+    if (st.title) st.removeAttribute("title");   // onizleme karti var; yerel ipucu ustune binmesin
+    if (peekEl?.classList.contains("on") && peekEl.dataset.id === st.dataset.id) return;
     clearTimeout(peekT);
     peekT = setTimeout(() => {
-      const d = (window.S?.items || []).find((x) => String(x.id) === st.dataset.id); if (!d) return;
+      const d = (state.items || []).find((x) => String(x.id) === st.dataset.id); if (!d) return;
       if (!peekEl) { peekEl = document.createElement("div"); peekEl.className = "sk-peek"; document.body.appendChild(peekEl); }
       const r = st.getBoundingClientRect();
-      peekEl.innerHTML = `<b>${esc(d.name || d.url || "")}</b><small>${esc(d.category || "dosya")} · ${fmtBytes(d.total || d.done || 0)} · %${Math.round(d.progress || 0)}</small>`;
+      peekEl.innerHTML = `<b>${escapeHtml(d.filename || d.url || "")}</b><small>${(skKind[d.category] || skKind.other)[skTr() ? 0 : 1]} · ${d.size ? fmtBytes(d.size) : "?"} · %${skPct(d)}</small>`;
       peekEl.style.left = Math.max(12, Math.min(window.innerWidth - 292, r.left)) + "px";
       peekEl.style.top = Math.max(12, r.top - 72) + "px";
+      peekEl.dataset.id = st.dataset.id;
       peekEl.classList.add("on");
     }, 360);
   });
-  $("#skTrack")?.addEventListener("mouseout", (e) => { if (e.target.closest(".sk-strip")) hidePeek(); });
+  $("#skTrack")?.addEventListener("mouseout", (e) => {   // seritler her yenilemede yeniden cizilir: ayni seride gecis kapatmasin
+    const st = e.target.closest(".sk-strip"); if (!st) return;
+    if (e.relatedTarget?.closest?.(".sk-strip")?.dataset.id === st.dataset.id) return;
+    hidePeek();
+  });
   document.addEventListener("mousemove", (e) => SK.eye?.lookAt(e.clientX, e.clientY));
   // dosya surukleme: ruh uyanir, birakinca yutar (asil ekleme extras.js'teki drop dinleyicisinde)
   let depth = 0;

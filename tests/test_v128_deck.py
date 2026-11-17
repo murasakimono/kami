@@ -54,7 +54,7 @@ def test_phone_deck_routes(tmp_path, monkeypatch):
     port = srv._srv.server_address[1]
     try:
         page = urllib.request.urlopen(f"http://127.0.0.1:{port}/deck").read().decode()
-        assert "Kami <b>Deck</b>" in page and "/deck/run" in page
+        assert "Kami <b>Deck</b>" in page and "deck/run" in page
         req = urllib.request.Request(f"http://127.0.0.1:{port}/deck/run", data=json.dumps({"a": "player:toggle"}).encode(),
                                      headers={"Content-Type": "application/json", "X-Kami-Key": "anahtar123"})
         assert json.loads(urllib.request.urlopen(req).read())["p"] == "/deck/run"

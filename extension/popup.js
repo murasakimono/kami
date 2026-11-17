@@ -124,6 +124,34 @@ async function showMedia(online) {
 }
 
 // sayfadaki magnet / .torrent linkleri -> Real-Debrid (Kami uzerinden)
+// Bu sayfadaki dosyalar (GitHub surum dosyalari, .exe/.zip/.mp4 linkleri...): medya yakalama sadece akan videolari gorur
+async function showFiles(online) {
+  if (!pageTab) return;
+  let r; try { r = await kamiGrabTab(pageTab.id); } catch (_) { return; }
+  const files = kamiFileLinks(r.links).filter((f) => !/^magnet:/i.test(f.url));   // magnetler zaten Torrent bolumunde
+  if (!files.length) return;
+  const box = document.getElementById("files");
+  box.hidden = false;
+  document.getElementById("filesTitle").textContent = `${t("popup_files") || "Bu sayfadaki dosyalar"} (${files.length})`;
+  const ul = document.getElementById("fileList");
+  ul.innerHTML = "";
+  for (const f of files.slice(0, 40)) {
+    const li = document.createElement("li");
+    const nm = document.createElement("div"); nm.className = "nm"; nm.textContent = f.name; nm.title = f.url;
+    const acts = document.createElement("div"); acts.className = "acts";
+    const b = document.createElement("button");
+    b.textContent = t("popup_send") || "Kami"; b.disabled = !online;
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      const res = await chrome.runtime.sendMessage({ type: "grab-send", links: [{ url: f.url }], pageUrl: pageTab.url, title: pageTab.title }).catch(() => null);
+      b.textContent = res && res.ok ? "✓" : "✕";
+    });
+    acts.appendChild(b);
+    li.append(nm, acts);
+    ul.appendChild(li);
+  }
+}
+
 async function showTorrents(online) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
@@ -190,7 +218,7 @@ function rdResultText(res) {
   return code === "rd_failed" && res.detail ? `${msg} (${res.detail})` : msg;
 }
 
-setupPage().catch(() => {}).then(refresh).then((online) => { showMedia(online); showTorrents(online); });
+setupPage().catch(() => {}).then(refresh).then((online) => { showMedia(online); showFiles(online); showTorrents(online); });
 
 // ---------- suren indirmeler (Kami /v1/ping -> active) ----------
 function fmtSpeed(b) { if (!b) return ""; const u = ["B/sn", "KB/sn", "MB/sn", "GB/sn"]; let i = 0; while (b >= 1024 && i < 3) { b /= 1024; i++; } return b.toFixed(i ? 1 : 0).replace(".", ",") + " " + u[i]; }

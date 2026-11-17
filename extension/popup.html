@@ -61,6 +61,7 @@
     .act-i .as { color: var(--muted); font-variant-numeric: tabular-nums; }
     .act-i .ab { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: #241B33; overflow: hidden; }
     .act-i .ab i { display: block; height: 100%; background: linear-gradient(90deg, #7C3AED, #2EE6A6); border-radius: 3px; transition: width .4s; }
+      #fileList li { padding: 6px 8px 6px 12px; } #fileList .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -79,6 +80,10 @@
       <ul id="mediaList"></ul>
       <p class="empty" id="mediaEmpty" hidden></p>
     </div>
+    <div class="media" id="files" hidden>
+      <h3 id="filesTitle"></h3>
+      <ul id="fileList"></ul>
+    </div>
     <div class="media" id="torrents" hidden>
       <h3 id="torrentsTitle"></h3>
       <ul id="torrentList"></ul>
@@ -91,6 +96,7 @@
     <p class="hint" id="hint"></p>
   </div>
   <script src="cloud_sites.js"></script>
+  <script src="grab_lib.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

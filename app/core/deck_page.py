@@ -65,13 +65,13 @@ h3{margin:14px 0 6px;font-size:12px;color:var(--mut);text-transform:uppercase;le
 const $=i=>document.getElementById(i);let D=null,P=0,EDIT=false,tmr=0;
 const EN=(navigator.language||'tr').startsWith('en');
 const L=(tr,en)=>EN?en:tr;
-const key=()=>localStorage.kamiKey||new URLSearchParams(location.search).get('k')||'';
+const key=()=>new URLSearchParams(location.search).get('k')||localStorage.kamiKey||'';   // linkteki taze anahtar eski kayitli anahtardan once
 if(new URLSearchParams(location.search).get('k'))localStorage.kamiKey=new URLSearchParams(location.search).get('k');
 const msg=(t,ms=1600)=>{const m=$('msg');m.textContent=t;m.style.display='block';clearTimeout(m._t);m._t=setTimeout(()=>m.style.display='none',ms)};
 async function post(path,body={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Kami-Key':key()},body:JSON.stringify(body)});
  if(r.status===401){$('keyBox').style.display='flex';throw new Error(L('anahtar','key'))}return r.json()}
 const catOf=a=>D.catalog.find(c=>c.id===a)||{label:a,icon:'•'};
-function save(){post('/deck/save',{profiles:D.profiles,cols:D.cols}).then(r=>{D.profiles=r.profiles;D.cols=r.cols}).catch(()=>{})}
+function save(){post('deck/save',{profiles:D.profiles,cols:D.cols}).then(r=>{D.profiles=r.profiles;D.cols=r.cols}).catch(()=>{})}
 function render(){
  const t=$('tabs');t.innerHTML='';D.profiles.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.name;b.className=i===P?'on':'';
   b.onclick=()=>{if(!EDIT||i!==P){P=i;render();return}const n=prompt(L('Profil adı','Profile name'),p.name);if(n===null)return;if(!n){if(D.profiles.length>1&&confirm(L('Profili sil?','Delete profile?'))){D.profiles.splice(i,1);P=0}}else p.name=n;save();render()};t.appendChild(b)});
@@ -90,7 +90,7 @@ function render(){
  if(EDIT){const a=document.createElement('button');a.type='button';a.className='key add';a.innerHTML='<i>＋</i><span>'+L('Tuş ekle','Add key')+'</span>';a.onclick=()=>pick(-1);g.appendChild(a)}
 }
 async function fire(b,el){navigator.vibrate?.(15);
- try{const r=await post('/deck/run',{a:b.a,arg:b.arg||''});el.classList.add(r.ok?'ok':'err');if(!r.ok)msg('✕ '+(r.error||L('olmadı','failed')),2600)}
+ try{const r=await post('deck/run',{a:b.a,arg:b.arg||''});el.classList.add(r.ok?'ok':'err');if(!r.ok)msg('✕ '+(r.error||L('olmadı','failed')),2600)}
  catch(e){el.classList.add('err');msg('✕ '+e.message)}setTimeout(()=>el.classList.remove('ok','err'),500)}
 function pick(i){const prof=D.profiles[P],cur=i>=0?prof.buttons[i]:null,groups={};D.catalog.forEach(c=>(groups[c.group]=groups[c.group]||[]).push(c));
  let h='';for(const[g,list]of Object.entries(groups)){h+=`<h3>${g}</h3><div class="cat">`+list.map(c=>`<button type="button" class="key" data-a="${c.id}"><i>${c.icon}</i><span>${c.label}</span></button>`).join('')+'</div>'}
@@ -114,15 +114,15 @@ function renderDl(list){$('dls').innerHTML='';if(!list.length){$('dls').innerHTM
   e.innerHTML=`<div class="dl-top">${dlRing(pct)}<div class="dl-meta"><div class="t"></div><div class="m"></div></div></div><div class="b"></div>`;
   e.querySelector('.t').textContent=d.name||('#'+d.id);e.querySelector('.m').textContent=d.label||'';
   const B=e.querySelector('.b'),btn=(t,a,x={})=>{const b=document.createElement('button');b.textContent=t;b.onclick=async()=>{
-   if(a==='remove'&&!confirm(L('Listeden kaldırılsın mı?','Remove from list?')))return;const r=await post('/dl/action',{id:d.id,action:a,...x});if(r.downloads)renderDl(r.downloads);else msg(r.ok?'✓':'✕')};B.appendChild(b)};
+   if(a==='remove'&&!confirm(L('Listeden kaldırılsın mı?','Remove from list?')))return;const r=await post('dl/action',{id:d.id,action:a,...x});if(r.downloads)renderDl(r.downloads);else msg(r.ok?'✓':'✕')};B.appendChild(b)};
   if(d.can_pause)btn('⏸','pause');if(d.can_resume)btn('▶','resume');if(d.can_top)btn('⇡ '+L('Öne','Top'),'top');btn('✕','remove');$('dls').appendChild(e)}}
-async function load(){try{D=await post('/deck/data');if(!D||!D.profiles)throw new Error(L('Deck verisi boş','Empty deck data'));if(P>=D.profiles.length)P=0;render();renderDl(D.downloads||[]);$('lim').value=String(D.limit||0)}catch(e){msg('✕ '+(e.message||L('Bağlantı hatası','Connection error')),4000)}}
-async function pollDl(){if($('pDl').hidden)return;try{const r=await post('/deck/data');renderDl(r.downloads||[])}catch(e){}}
+async function load(){try{D=await post('deck/data');if(!D||!D.profiles)throw new Error(L('Deck verisi boş','Empty deck data'));if(P>=D.profiles.length)P=0;render();renderDl(D.downloads||[]);$('lim').value=String(D.limit||0)}catch(e){msg('✕ '+(e.message||L('Bağlantı hatası','Connection error')),4000)}}
+async function pollDl(){if($('pDl').hidden)return;try{const r=await post('deck/data');renderDl(r.downloads||[])}catch(e){}}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
  ['pDeck','pDl'].forEach(p=>$(p).hidden=p!==b.dataset.p);clearInterval(tmr);if(b.dataset.p==='pDl'){pollDl();tmr=setInterval(pollDl,2000)}});
-$('pa').onclick=()=>post('/deck/run',{a:'dl:pause_all'}).then(pollDl);$('ra').onclick=()=>post('/deck/run',{a:'dl:resume_all'}).then(pollDl);
-$('lim').onchange=()=>post('/deck/run',{a:'dl:limit',arg:$('lim').value}).then(r=>msg(r.ok?'✓ '+L('Hız sınırı','Speed limit'):'✕'));
-$('addUrl').onclick=async()=>{const u=$('url').value.trim();if(!u)return;const r=await fetch('/send',{method:'POST',headers:{'Content-Type':'application/json','X-Kami-Key':key()},body:JSON.stringify({text:u})}).then(r=>r.json());
+$('pa').onclick=()=>post('deck/run',{a:'dl:pause_all'}).then(pollDl);$('ra').onclick=()=>post('deck/run',{a:'dl:resume_all'}).then(pollDl);
+$('lim').onchange=()=>post('deck/run',{a:'dl:limit',arg:$('lim').value}).then(r=>msg(r.ok?'✓ '+L('Hız sınırı','Speed limit'):'✕'));
+$('addUrl').onclick=async()=>{const u=$('url').value.trim();if(!u)return;const r=await fetch('send',{method:'POST',headers:{'Content-Type':'application/json','X-Kami-Key':key()},body:JSON.stringify({text:u})}).then(r=>r.json());
  msg(r.message||(r.ok?'✓':'✕'),2600);if(r.ok){$('url').value='';setTimeout(pollDl,800)}};
 if(!key())$('keyBox').style.display='flex';else load();
 </script></body></html>"""

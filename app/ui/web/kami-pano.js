@@ -101,7 +101,7 @@
     const drawer = document.createElement("div");
     drawer.id = "kamiPanoDrawer";
     drawer.style.cssText = "position:fixed;z-index:56;width:280px;max-height:340px;overflow:auto;background:rgba(13,10,20,.96);border:1px solid rgba(139,92,246,.5);padding:10px;color:#EDE9F6;font:12px 'Chakra Petch',sans-serif;display:none;gap:8px;clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);box-shadow:0 12px 32px rgba(0,0,0,.6)";
-    drawer.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(139,92,246,.25);padding-bottom:6px"><b style="color:#C4B5FD;letter-spacing:.05em">PANO RAFI</b><button id="kpClose" type="button" style="background:none;border:none;color:#A39BB5;cursor:pointer;font-size:13px">✕</button></div><div id="kpList" style="display:grid;gap:5px"></div>`;
+    drawer.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(139,92,246,.25);padding-bottom:6px"><b style="color:#C4B5FD;letter-spacing:.05em">PANO RAFI</b><span style="flex:1"></span><button id="kpClear" type="button" title="Rafı temizle" style="background:none;border:1px solid rgba(139,92,246,.35);color:#A39BB5;cursor:pointer;font-size:10px;padding:1px 6px;margin-right:6px">Temizle</button><button id="kpClose" type="button" style="background:none;border:none;color:#A39BB5;cursor:pointer;font-size:13px">✕</button></div><div id="kpList" style="display:grid;gap:5px"></div>`;
     const place = () => {   // dugmenin soluna, ekrandan tasmadan
       const r = dock.getBoundingClientRect();
       drawer.style.right = Math.max(8, innerWidth - r.left + 10) + "px";
@@ -117,6 +117,8 @@
     };
     document.body.appendChild(drawer);
     document.getElementById("kpClose")?.addEventListener("click", close);
+    document.getElementById("kpClear")?.addEventListener("click", async (e) => { e.stopPropagation(); await api?.pano_shelf_clear?.().catch(() => {}); refresh(); });
+    setInterval(() => { if (PANO.open) refresh(); }, 2500);   // acikken yeni kopyalar canli gelsin
     document.addEventListener("click", (e) => { if (PANO.open && !drawer.contains(e.target) && e.target !== dock) close(); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && PANO.open) close(); });
     addEventListener("resize", () => PANO.open && place());

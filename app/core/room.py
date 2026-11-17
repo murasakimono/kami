@@ -536,6 +536,9 @@ def _handler(srv: RoomServer):
                 elif rest[0] == "bridge":
                     from app.core.phone import _BRIDGE_HTML
                     self._send(_BRIDGE_HTML.encode("utf-8"), MIME[".html"])
+                elif rest[0] == "deck" and len(rest) == 1:   # v1.31.2: Kami Deck tunel (trycloudflare) uzerinden de
+                    from app.core.deck_page import DECK_HTML
+                    self._send(DECK_HTML.encode("utf-8"), MIME[".html"])
                 elif rest[0] == "s" and len(rest) == 2 and rest[1] in STATIC:
                     f = paths.WEB_DIR / STATIC[rest[1]]
                     self._send(f.read_bytes(), MIME.get(f.suffix, "application/octet-stream"), "max-age=300")
@@ -561,6 +564,36 @@ def _handler(srv: RoomServer):
                     return self._err(400)
                 return kapsul.serve_post(self, u.path.strip("/").split("/")[1:], parse_qs(u.query), body if isinstance(body, dict) else {})
             r, rest = self._room()
+            if r and ((len(rest) == 2 and rest[0] in ("deck", "dl")) or rest == ["send"]):   # Deck + uzaktan indirme (tunel)
+                ph = getattr(srv, "phone_srv", None)
+                if not ph:
+                    return self._json({"ok": False, "error": "phone_off"}, 503)
+                if not ph._rate_ok():
+                    return self._json({"ok": False, "error": "rate"}, 429)
+                n = int(self.headers.get("Content-Length") or 0)
+                if n < 0 or n > 200000:
+                    return self._json({"ok": False, "error": "size"}, 413)
+                raw = self.rfile.read(n).decode("utf-8", "replace") if n else ""
+                given = str(self.headers.get("X-Kami-Key") or "")
+                if rest == ["send"]:
+                    code, obj = ph.handle_send(raw, self.headers.get("Content-Type") or "", given, "tunnel")
+                    return self._json(obj, code)
+                import hmac
+                expected = ph.key()
+                if not expected or not hmac.compare_digest(given.encode(), expected.encode()):
+                    return self._json({"ok": False, "error": "key"}, 401)
+                if not ph.on_deck:
+                    return self._json({"ok": False, "error": "deck_off"}, 503)
+                try:
+                    b = json.loads(raw or "{}")
+                except ValueError:
+                    b = {}
+                try:
+                    code, obj = ph.on_deck("/" + "/".join(rest), b if isinstance(b, dict) else {})
+                except Exception as exc:
+                    log.exception("Deck (tunel)")
+                    code, obj = 500, {"ok": False, "error": str(exc)[:120]}
+                return self._json(obj, code)
             if not r or len(rest) != 1:
                 return self._err(404)
             k = rest[0]

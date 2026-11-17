@@ -489,3 +489,7 @@ body.pl-open #sunak { visibility: hidden; }
   background: rgba(13,10,20,.88); backdrop-filter: blur(10px); border: 1px solid rgba(157,107,255,.55); color: #EDE9F6; font: 600 13px "Chakra Petch", sans-serif;
   box-shadow: 0 10px 26px rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .16s, transform .16s; }
 .pl-synchud.on { opacity: 1; transform: translate(-50%, 0); }
+/* v1.31.2: zamanlamasiz sozler kaydirilabilir oldugu belli olsun */
+.pl-lyr .pm-list:not(.synced) { scrollbar-width: thin; scrollbar-color: rgba(157, 107, 255, .45) transparent; }
+.pl-lyr .pm-list:not(.synced)::-webkit-scrollbar { display: block; width: 6px; }
+.pl-lyr .pm-list:not(.synced)::-webkit-scrollbar-thumb { background: rgba(157, 107, 255, .45); border-radius: 3px; }

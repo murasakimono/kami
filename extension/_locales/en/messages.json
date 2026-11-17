@@ -193,5 +193,11 @@
   },
   "popup_grab_all": {
     "message": "📥 List everything on this page (Download all)"
+  },
+  "popup_files": {
+    "message": "Files on this page"
+  },
+  "popup_send": {
+    "message": "Send"
   }
 }

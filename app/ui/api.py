@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import re
 import logging
 import os
@@ -226,8 +227,17 @@ class Api(StudioMixin):
             with self._inbox_lock:
                 self._clip_offers.append(url)
 
+        def shelf(text: str) -> None:   # Pano rafi: kopyalanan metin/link (ayar pano_shelf_record, varsayilan acik)
+            if not self._manager.settings.get("pano_shelf_record", True):
+                return
+            from app.core.clipboard import first_url
+            from app.core.pano_tools import add_shelf_item
+            t = text.strip()
+            u = first_url(t)
+            add_shelf_item("url" if u and len(t) <= len(u) + 2 else "text", t)
+
         self._clip_watcher = ClipboardWatcher(
-            self.link_supported, offer, lambda: bool(self._manager.settings.get("clipboard_watch")))
+            self.link_supported, offer, lambda: bool(self._manager.settings.get("clipboard_watch")), on_text=shelf)
         self._clip_watcher.start()
 
     def read_clipboard(self) -> str:
@@ -1698,10 +1708,20 @@ class Api(StudioMixin):
                 lv.build(job, path, lines, title, "", ff, style if style in ("kinetic", "simple", "karaoke") else "kinetic",
                          vertical, start, length)
                 self._lv["stage"] = "render"
+                self._lv["t0"] = time.time()
+
                 def _ln(ln: str) -> None:
-                    m = re.search(r'@hf-progress .*"pct":\s*(\d+)', ln)
+                    m = re.search(r'@hf-progress\s*(\{.*\})', ln)
                     if m:
-                        self._lv.update(p=int(m.group(1)) / 100)
+                        try:
+                            d = json.loads(m.group(1))
+                        except ValueError:
+                            return
+                        pct = int(d.get("pct") or 0) / 100
+                        t0 = self._lv.setdefault("t0", time.time())
+                        el = time.time() - t0
+                        eta = int(el / pct - el) if pct >= 0.05 else 0   # kalan sn (kabaca)
+                        self._lv.update(p=pct, code=str(d.get("code") or ""), eta=eta)
 
                 res = lv.render(job, out, _ln, self._lv_cancel)
             except Exception as exc:
@@ -4103,6 +4123,10 @@ class Api(StudioMixin):
     def pano_shelf_add(self, kind: str, value: str, label: str = "") -> dict[str, Any]:
         from app.core.pano_tools import add_shelf_item
         return add_shelf_item(kind, value, label)
+
+    def pano_shelf_clear(self) -> dict[str, Any]:
+        from app.core.pano_tools import clear_shelf
+        return clear_shelf()
 
     def pano_shelf_remove(self, item_id: str) -> dict[str, Any]:
         from app.core.pano_tools import remove_shelf_item

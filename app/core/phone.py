@@ -434,13 +434,13 @@ button{background:#7c4dff;border-color:#9d6bff;cursor:pointer;font-weight:600}
 <button onclick="padAct('studio')">🎬 Studio</button>
 <button onclick="padAct('picture')">🖼 Picture</button>
 </div><div id="padSt" style="margin-top:6px;font-size:13px;color:#2ee6a6"></div>
-<a id="deckGo" href="/deck" style="display:block;margin-top:10px;color:#C9B3FF">🎛 Kami Deck: özelleştirilebilir tuşlar + uzaktan indirme yönetimi →</a></div>
+<a id="deckGo" href="deck" style="display:block;margin-top:10px;color:#C9B3FF">🎛 Kami Deck: özelleştirilebilir tuşlar + uzaktan indirme yönetimi →</a></div>
 <script>
 const qp=new URLSearchParams(location.search).get('k');
 const kEl=document.getElementById('key');
 kEl.value=qp||localStorage.getItem('kamiKey')||'';
 if(qp)localStorage.setItem('kamiKey',qp);
-const syncDeckHref=()=>{const dk=document.getElementById('deckGo'),kv=kEl.value.trim();if(dk)dk.href=kv?('/deck?k='+encodeURIComponent(kv)):'/deck';};
+const syncDeckHref=()=>{const dk=document.getElementById('deckGo'),kv=kEl.value.trim();if(dk)dk.href=kv?('deck?k='+encodeURIComponent(kv)):'deck';};
 syncDeckHref();
 kEl.oninput=()=>{localStorage.setItem('kamiKey',kEl.value.trim());syncDeckHref();};
 async function uploadBlob(name,kind,blob){

@@ -431,22 +431,30 @@ if (!PL_KEYS_DEFAULT.u) PL_KEYS_DEFAULT.u = "a4k";
 // ---------- Kami Cinema Shader (WebGL2 Live-Action: CAS + Deband + Denoise) ----------
 const CIN = { on: false, canvas: null, gl: null, prog: null, tex: null, raf: 0, uSize: null, uStr: null };
 const CIN_VS = `attribute vec2 p; varying vec2 v; void main(){ v = vec2(p.x*0.5+0.5, 0.5-p.y*0.5); gl_Position = vec4(p,0.0,1.0); }`;
-const CIN_FS = `precision mediump float;
-uniform sampler2D uTex; uniform vec2 uSize; uniform float uStr; varying vec2 v;
-vec3 samplePx(vec2 off){ return texture2D(uTex, clamp(v + off / uSize, 0.0, 1.0)).rgb; }
+const CIN_FS = `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uTex; uniform vec2 uSize; uniform float uStr; uniform float uDeb; varying vec2 v;
+vec3 px(float x, float y){ return texture2D(uTex, clamp(v + vec2(x, y) / uSize, 0.0, 1.0)).rgb; }
 void main(){
-  vec3 c = samplePx(vec2(0.0));
-  vec3 n = samplePx(vec2(0.0,-1.0)), s = samplePx(vec2(0.0,1.0)), w = samplePx(vec2(-1.0,0.0)), e = samplePx(vec2(1.0,0.0));
-  vec3 blur = (n + s + w + e + c) * 0.2;
-  float diff = length(c - blur);
-  // Hafif deband + denoise: cok kucuk farklari yumusat, detaylari CAS ile keskinlestir
-  vec3 clean = mix(blur, c, smoothstep(0.015, 0.08, diff));
-  vec3 mn = min(min(n, s), min(w, e)), mx = max(max(n, s), max(w, e));
-  float amp = clamp(min(mn.g, 1.0 - mx.g) / max(mx.g, 1e-4), 0.0, 1.0);
-  // 1 + 4*k daima >= 0.20 kalmali; aksinde bolme patlamasi renkleri tersine cevirir
-  float k = max(-0.20, -uStr * mix(0.08, 0.18, sqrt(amp)));
-  vec3 sharp = clamp((clean + (n + s + w + e) * k) / max(0.20, 1.0 + 4.0 * k), 0.0, 1.0);
-  gl_FragColor = vec4(sharp, 1.0);
+  // AMD FidelityFX CAS (v1.31.2): agirlik yerel kontrasta gore uyarlanir -> keskin kenarlarda ~0 (hale/cizgi yok),
+  // dusuk kontrastli dokuda en fazla. Merkez ve komsular AYNI (ham) kaynaktan; eski surum karisik oldugu icin eskiz gibi cizgi ciziyordu.
+  vec3 a = px(-1.0,-1.0), b = px(0.0,-1.0), c = px(1.0,-1.0);
+  vec3 d = px(-1.0, 0.0), e = px(0.0, 0.0), f = px(1.0, 0.0);
+  vec3 g = px(-1.0, 1.0), h = px(0.0, 1.0), i = px(1.0, 1.0);
+  vec3 mnC = min(min(min(d, e), min(f, b)), h), mxC = max(max(max(d, e), max(f, b)), h);
+  vec3 mn = mnC + min(mnC, min(min(a, c), min(g, i)));
+  vec3 mx = mxC + max(mxC, max(max(a, c), max(g, i)));
+  vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
+  vec3 w = amp * (-1.0 / mix(8.0, 5.0, uStr));              // [-0.2, 0]
+  vec3 o = clamp(((b + d + f + h) * w + e) / (1.0 + 4.0 * w), 0.0, 1.0);
+  // Deband: yalnizca neredeyse duz alanlarda (gok, duvar, gradyan) 3x3 ortalamaya yasla; doku/kenara dokunmaz
+  float r = (mx.g - mn.g) * 0.5;
+  vec3 avg = (a + b + c + d + e + f + g + h + i) / 9.0;
+  o = mix(o, avg, (1.0 - smoothstep(0.006, 0.03, r)) * uDeb);
+  gl_FragColor = vec4(o, 1.0);
 }`;
 function cinPlace() {
   if (!CIN.canvas) return;
@@ -488,16 +496,20 @@ function cinStart() {
   CIN.gl = gl; CIN.prog = pr; CIN.tex = tex;
   CIN.uSize = gl.getUniformLocation(pr, "uSize");
   CIN.uStr = gl.getUniformLocation(pr, "uStr");
+  CIN.uDeb = gl.getUniformLocation(pr, "uDeb");
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) { console.warn(gl.getProgramInfoLog(pr)); cinStop(); toast(plL("Sinema HD shader derlenemedi", "Cinema HD shader failed"), true); return; }
   CIN.on = true;
   const draw = () => {
     if (!CIN.on || !CIN.gl) return;
     const mode = peCfg().cinema || "balanced";
-    const str = mode === "strong" ? 1.35 : (mode === "light" ? 0.55 : 0.95);
+    const str = mode === "strong" ? 0.85 : (mode === "light" ? 0.25 : 0.55);   // CAS keskinlik 0..1
+    const deb = mode === "strong" ? 0.75 : (mode === "light" ? 0.35 : 0.55);
     gl.viewport(0, 0, c.width, c.height);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v);
     gl.uniform2f(CIN.uSize, c.width, c.height);
     gl.uniform1f(CIN.uStr, str);
+    gl.uniform1f(CIN.uDeb, deb);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     CIN.raf = requestAnimationFrame(draw);
   };
@@ -591,7 +603,13 @@ document.addEventListener("click", async (e) => {
   e.stopPropagation();
   const box = $("#peSongRes"); box.innerHTML = `<p class="px-hint">${plL("Dinleniyor… (ilk seferde araç kurulur)", "Listening… (first time installs a helper)")}</p>`;
   let r; try { r = await slow("song_identify", PL.info?.path || "", plNow()); } catch { r = { ok: false }; }
-  if (!r?.ok) { box.innerHTML = `<p class="px-hint">${plL("Tanınamadı", "Not recognized")}${r?.error && r.error !== "not_found" ? ": " + escapeHtml(r.error) : ""}</p>`; return; }
+  if (!r?.ok) {
+    const em = { tool_missing: plL("Önce Ayarlar › AI araçları'ndan Whisper ortamını kur (şarkı tanıma onu kullanır)", "Install the Whisper environment first (Settings › AI tools)"),
+      shazamio_install_failed: plL("Tanıma aracı kurulamadı (internet?)", "Couldn't install the recognizer (internet?)"),
+      soundcard_install_failed: plL("Ses yakalama aracı kurulamadı", "Couldn't install audio capture"),
+      not_found: plL("Tanınamadı — başka bir anda tekrar dene", "Not recognized — try another moment") };
+    box.innerHTML = `<p class="px-hint">${em[r?.error] || plL("Tanınamadı", "Not recognized") + (r?.error ? ": " + escapeHtml(r.error) : "")}</p>`; return;
+  }
   const s = r.song, q = encodeURIComponent(`${s.artist} ${s.title}`);
   box.innerHTML = `<div class="pe-song">${s.cover ? `<img src="${escapeHtml(s.cover)}" alt="">` : ""}<div><b>${escapeHtml(s.title)}</b><span>${escapeHtml(s.artist)}${s.album ? " · " + escapeHtml(s.album) : ""}</span>
     <div><button class="pl-b" data-u="https://www.youtube.com/results?search_query=${q}">YouTube</button><button class="pl-b" data-u="https://open.spotify.com/search/${q}">Spotify</button></div></div></div>`;
@@ -731,8 +749,13 @@ function lvPill(j) {
     document.body.appendChild(pill);
   }
   if (j.state === "running") {
-    const pct = j.p ? ` %${Math.round(j.p * 100)}` : "";
-    pill.innerHTML = `<span>🎬 Lyric video${pct}</span><button class="pl-b" data-xa="lvstop">${plL("İptal", "Cancel")}</button>`;
+    const st = j.stage !== "render" ? plL("Hazırlanıyor…", "Preparing…")
+      : ({ capture: plL("Kareler çiziliyor", "Drawing frames"), encode: plL("Kodlanıyor", "Encoding"), assemble: plL("Birleştiriliyor", "Assembling") })[j.code] || plL("Başlatılıyor (ilk seferde HyperFrames iner)", "Starting (first run downloads HyperFrames)");
+    const pct = Math.round((j.p || 0) * 100), eta = j.eta > 0 ? ` · ~${j.eta >= 60 ? Math.ceil(j.eta / 60) + plL(" dk", " min") : j.eta + plL(" sn", " s")}` : "";
+    pill.innerHTML = `<span style="display:flex;flex-direction:column;gap:4px;min-width:170px"><span>🎬 ${st}${j.p ? ` · %${pct}` : ""}${eta}</span>
+      <i style="display:block;height:3px;background:rgba(157,107,255,.2);border-radius:2px;overflow:hidden"><b style="display:block;height:100%;width:${j.p ? pct : 8}%;background:#9D6BFF;transition:width .6s${j.p ? "" : ";animation:peLvInd 1.2s ease-in-out infinite alternate"}"></b></i></span>
+      <button class="pl-b" data-xa="lvstop">${plL("İptal", "Cancel")}</button>`;
+    if (!document.getElementById("peLvKf")) document.head.insertAdjacentHTML("beforeend", `<style id="peLvKf">@keyframes peLvInd{from{margin-left:0}to{margin-left:92%}}</style>`);
   } else if (j.state === "done") {
     pill.innerHTML = `<span style="color:#2EE6A6">✓ ${plL("Lyric video hazır", "Lyric video ready")}</span><button class="pl-b" data-xa="lvplay">${plL("Oynat", "Play")}</button><button class="pl-b" data-xa="lvfolder">${plL("Klasör", "Folder")}</button><button class="pl-b" id="peLvDismiss">✕</button>`;
     pill.querySelector("#peLvDismiss").onclick = () => pill.remove();
@@ -767,13 +790,14 @@ document.addEventListener("click", async (e) => {
     const v = (c.lvAspect || "h") === "v";
     const r = await api.lyricvideo_start(PL.info.path, c.lvStyle || "kinetic", v, v ? plNow() : 0, v ? (c.lvLen || 30) : 0, window.pmSyncedLrc?.() || "");
     if (!r?.ok) { lvDraw({ state: "error", error: r?.error }); return; }
-    toast(plL("Lyric video başladı; bitince bildirim gelir", "Lyric video started; you'll be notified")); lvPoll();
+    toast(plL("Lyric video başladı — ilerleme sağ altta, bitince bildirim de gelir", "Lyric video started — progress bottom-right, you'll be notified when done")); lvPoll();
   }
   if (a === "lvstop") { await api.lyricvideo_cancel(); setTimeout(lvPoll, 600); }
   if (a === "lvplay") api.lyricvideo_open("play");
   if (a === "lvfolder") api.lyricvideo_open("folder");
 }, true);
 document.addEventListener("click", (e) => { if (e.target.closest?.("#plPanel .px-ptabs button")) setTimeout(lvPoll, 60); }, true);
+setTimeout(() => api?.lyricvideo_status?.().then((j) => { if (j?.state === "running") lvPoll(); }).catch(() => {}), 2000);   // sayfa yenilense de suren render pili geri gelsin
 
 // ---------- altyazi fontu: aile, kalinlik, kenar cizgisi ----------
 const SUBF = { list: null };
