@@ -124,9 +124,9 @@
       const pt = fmtPt(pick.playtime_sec), ago = fmtAgo(pick.last_played);
       heroEl.hidden = false;
       heroEl.innerHTML = `
-        ${pick.cover ? `<img class="hero-bg" src="${esc(pick.cover)}" alt="" onerror="this.remove()">` : ""}
+        ${pick.cover ? `<img class="hero-bg" src="${esc(pick.cover)}" alt="" onerror="kgCovErr(this)">` : ""}
         <div class="hero-in">
-          ${pick.cover ? `<img class="hero-cov" src="${esc(pick.cover)}" alt="" onerror="this.remove()">` : ""}
+          ${pick.cover ? `<img class="hero-cov" src="${esc(pick.cover)}" alt="" onerror="kgCovErr(this)">` : ""}
           <div class="hero-meta">
             <span class="hero-tag">${ago ? `▶ Devam Et · Son oynanan: ${esc(ago)}` : "▶ Hızlı Başlat · Öne Çıkan Oyun"}</span>
             <h2>${esc(pick.title)}</h2>
@@ -169,7 +169,7 @@
         const gn = (g.genres || []).slice(0, 2).join(" · ");
         return `
         <div class="gcard ${g.installed ? "" : "uninst"}" data-key="${esc(g.key)}">
-          <div class="cov">${g.cover ? `<img src="${esc(g.cover)}" loading="lazy" onerror="this.remove()">` : ""}<span class="fb">🎮</span>
+          <div class="cov">${g.cover ? `<img src="${esc(g.cover)}" loading="lazy" onerror="kgCovErr(this)">` : ""}<span class="fb">🎮</span>
             <button class="fav-b ${g.favorite ? "on" : ""}" data-fav="${esc(g.key)}" title="Favori">${g.favorite ? "★" : "☆"}</button>
             <div class="badges">${g.stores.map((s) => `<span class="bdg">${esc(s.store)}</span>`).join("")}${g.installed ? "" : `<span class="bdg em">Kütüphane</span>`}</div>
             <div class="cov-ov">
@@ -247,8 +247,29 @@
     };
     cfgBtn.onclick = () => { cfgBox.hidden = !cfgBox.hidden; };
     autoReplay.onchange = (e) => api()?.games_set_auto_replay?.(e.target.checked);
-    sgdbSave.onclick = async () => { await api()?.games_set_sgdb_key?.(sgdbIn.value); sgdbIn.value = ""; load(); };
-    swSave.onclick = async () => { await api()?.games_set_steam_web?.(swKey.value, swId.value); swKey.value = ""; setMode("all", fAll); load(); };
+    // v1.35.1: anahtar durumu gorunsun (sifreli saklandigi icin alan temizlenir; eskiden "kaydedildi mi?" anlasilmiyordu)
+    const keyNote = (t) => { const c = document.getElementById("cnt"); if (c) { c.textContent = t; setTimeout(() => { c.textContent = GAMES.length + " oyun"; }, 5000); } };
+    async function keyStatus() {
+      const st = await api()?.games_keys_status?.().catch(() => null); if (!st) return;
+      sgdbIn.placeholder = st.sgdb ? "✓ SteamGridDB anahtarı kayıtlı (değiştirmek için yenisini yaz)" : "SteamGridDB API anahtarı (kapaklar için)";
+      sgdbSave.textContent = st.sgdb ? "✓ Kayıtlı" : "Kaydet";
+      swKey.placeholder = st.steam_web?.configured ? "✓ Steam Web anahtarı kayıtlı" : "Steam Web API anahtarı";
+      if (st.steam_web?.steam_id) swId.value = st.steam_web.steam_id;
+      swSave.textContent = st.steam_web?.configured ? "✓ Steam bağlı" : "Steam Bağla";
+    }
+    sgdbSave.onclick = async () => {
+      if (!sgdbIn.value.trim()) return keyNote("Önce anahtarı yapıştır");
+      const r = await api()?.games_set_sgdb_key?.(sgdbIn.value).catch(() => null); sgdbIn.value = "";
+      keyNote(r?.ok ? "✓ SteamGridDB anahtarı kaydedildi — kapaklar aranıyor…" : "Anahtar kaydedilemedi"); await keyStatus(); load();
+    };
+    swSave.onclick = async () => {
+      if (!swKey.value.trim() || !swId.value.trim()) return keyNote("Steam Web anahtarı ve 17 haneli Steam ID gerekli");
+      const r = await api()?.games_set_steam_web?.(swKey.value, swId.value).catch(() => null); swKey.value = "";
+      keyNote(r?.configured ? "✓ Steam bağlandı — sahip olduğun oyunlar ekleniyor…" : "Steam bağlanamadı"); await keyStatus(); setMode("all", fAll); load();
+    };
+    window.addEventListener("pywebviewready", keyStatus); setTimeout(keyStatus, 600);
+    // dikey kapagi olmayan Steam oyunlari (demolar, eski oyunlar): yatay basliga dus
+    window.kgCovErr = (im) => { if (/library_600x900/.test(im.src)) { im.src = im.src.replace("library_600x900.jpg", "header.jpg"); im.classList.add("wide"); } else im.remove(); };
     custAdd.onclick = async () => {
       const r = await api()?.games_add_custom?.(custTitle.value, custExe.value).catch(() => null);
       if (r?.ok) { custTitle.value = ""; custExe.value = ""; load(); } else alert(r?.error || "Eklenemedi");

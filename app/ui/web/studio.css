@@ -646,3 +646,10 @@ body[data-page]:not([data-page=edit]) #panel, body.nopanel #panel { display: non
 #tlbar input[type=range] { width: 72px; }
 #tlbar select { max-width: 92px; }
 #tlbar .sp { min-width: 0; flex: 1 1 0; } #tlbar { gap: 4px; }
+/* v1.35.1: iz basliginda gorunmez sil dugmesi kilidin ustundeydi (kilidi acayim derken iz siliniyordu) */
+.th .thdel { right: auto; left: 0; top: 0; pointer-events: none; }
+.th:hover .thdel { pointer-events: auto; }
+/* v1.35.1: sol simge seridi panelin icinde kaysin (alttaki sekmeler zaman cizelgesinin altinda kaliyordu) */
+#panel { overflow: hidden; min-height: 0; }
+#libtabs { min-height: 0; max-height: 100%; }
+#libtabs { scrollbar-width: thin; scrollbar-color: rgba(139, 92, 246, .4) transparent; }

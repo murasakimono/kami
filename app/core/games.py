@@ -517,6 +517,11 @@ def add_custom_game(title: str, exe_path: str, store: str = "Özel") -> dict[str
     return {"ok": True, "count": len(cur)}
 
 
+_NOT_GAME = re.compile(r"\b(test server|experimental server|public test|dedicated server|sdk|redistributables?|benchmark)\b|\(test\)$", re.I)
+# arka planda surekli acik duran uygulamalar oynama suresi saymasin
+_TRACK_IGNORE = re.compile(r"^(wallpaper engine|steamvr|soundpad|blender|obs studio|aseprite|fpsvr|lossless scaling)\b", re.I)
+
+
 def list_games(include_owned: bool = True) -> dict[str, Any]:
     raw = _scan_steam() + _scan_epic() + _scan_gog() + _scan_riot()
     raw += (_load_json(_custom_games_path()).get("items") or [])
@@ -606,7 +611,9 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
     if cov_dirty:
         _save_json(_covers_cache_path(), cov_cache)
 
-    games = sorted(merged.values(), key=lambda x: (not x["installed"], x["title"].lower()))
+    # v1.35.1: test sunuculari / SDK / dedicated server oyun degil
+    games = sorted((g for g in merged.values() if not _NOT_GAME.search(g["title"])),
+                   key=lambda x: (not x["installed"], x["title"].lower()))
     return {"ok": True, "games": games, "count": len(games)}
 
 
@@ -719,6 +726,8 @@ class GamePlayTracker:
                     if not exe:
                         continue
                     for pfx, k, title in path_map:
+                        if _TRACK_IGNORE.match(title):
+                            continue
                         if exe.startswith(pfx):
                             found_key, found_title = k, title
                             break

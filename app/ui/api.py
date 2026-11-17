@@ -4362,6 +4362,10 @@ class Api(StudioMixin):
         from app.core.games import set_sgdb_key
         return set_sgdb_key(key)
 
+    def games_keys_status(self) -> dict[str, Any]:
+        from app.core.games import has_sgdb_key, has_steam_web
+        return {"sgdb": has_sgdb_key(), "steam_web": has_steam_web()}
+
     def games_set_steam_web(self, api_key: str, steam_id: str) -> dict[str, Any]:
         from app.core.games import set_steam_web
         return set_steam_web(api_key, steam_id)
