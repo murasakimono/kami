@@ -7,7 +7,7 @@
     ["speech", "🧹 Konuşma Temizliği (onaylı)", "Dolgu, tekrar (“ben ben”), yarım başlangıç ve uzun duraklamaları listeler; sen işaretlersin, keser. Güvenli olanlar hazır işaretli."],
     ["refstyle", "🎯 Referans Videodan Stil", "Beğendiğin bir videonun kesim temposunu, ses yüksekliğini, BPM'ini ve renk karakterini ölçer; rengi LUT olarak kliplerine uygular."],
     ["upscale", "🔍 Netleştir / Büyüt (Real-ESRGAN)", "Düşük çözünürlüklü veya bulanık klibi yapay zekayla 2-4x netleştirir (ekran kartı, ilk kullanımda ~45 MB iner)."],
-    ["interp", "🐢 Akıcı Ağır Çekim (RIFE)", "Ara kare üretir: 2x/4x pürüzsüz ağır çekim ya da 60 fps akıcılık (ilk kullanımda ~60 MB iner)."],
+    ["interp", "🐢 Akıcı Ağır Çekim (RIFE)", "Ara kare üretir: 2x/4x pürüzsüz ağır çekim ya da 60 fps akıcılık (ilk kullanımda bir kez indirilir)."],
     ["track", "📍 Hareket Takibi", "Yazı/çıkartma/görseli videodaki bir nesneye yapıştırır: kutuyu çiz, nesne nereye giderse o da gider."],
     ["poster", "🖼 Kapak Karesini Göm", "Dışa aktardığın videonun 0. karesine en canlı kareyi (ya da oynatma kafasını) yazar; akışta siyah kapak çıkmaz."],
   );
@@ -23,7 +23,7 @@
 
   async function sjob(r, label) {
     if (r?.error === "need_tool") {
-      const nm = { esrgan: "Real-ESRGAN (~45 MB)", rife: "RIFE (~60 MB)", track: "hareket takibi ortamı (OpenCV, ~150 MB)" }[r.tool] || r.tool;
+      const nm = { esrgan: "Real-ESRGAN (~45 MB)", rife: "RIFE (~430 MB indirilir, açılınca ~30 MB kalır)", track: "hareket takibi ortamı (OpenCV, ~150 MB)" }[r.tool] || r.tool;
       if (!await ask("Araç kurulsun mu?", `Bunun için ${nm} gerekli. Bir kez kurulur.`, "Kur")) return null;
       const j = await api.studio_ncnn_install(r.tool);
       try { await waitStudioJob(j.job, "Kuruluyor"); toast("Kuruldu, tekrar başlatıyorum"); } catch (e) { toast("Kurulamadı: " + e.message, 5000); return null; }

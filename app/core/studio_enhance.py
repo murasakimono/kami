@@ -1,7 +1,7 @@
 """Kami Studio: yapay zeka ile netlestirme (Real-ESRGAN) ve akici agir cekim / kare cogaltma (RIFE).
 
 Ikisi de ncnn-vulkan ikilisi: Python ortami gerekmez, NVIDIA/AMD/Intel ekran kartinda calisir,
-ilk kullanimda GitHub surumunden indirilir (~45 MB + ~60 MB). Kare kare: ffmpeg cikarir -> arac -> ffmpeg birlestirir.
+ilk kullanimda GitHub surumunden indirilir (~45 MB + ~430 MB, acilinca RIFE'nin kullanilmayan modelleri silinir). Kare kare: ffmpeg cikarir -> arac -> ffmpeg birlestirir.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from app.paths import MEDIA_ENV
 
 NO_WINDOW = 0x08000000 if hasattr(subprocess, "STARTUPINFO") else 0
 ROOT = MEDIA_ENV / "ncnn"
+RIFE_MODEL = "rife-v4.6"
 
 TOOLS: dict[str, dict[str, str]] = {
     "esrgan": {"url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip",
@@ -62,6 +63,10 @@ def install(tool: str, progress: Callable[[str], None] = lambda s: None) -> bool
                 raise RuntimeError("guvensiz zip")
         zf.extractall(d)
     z.unlink(missing_ok=True)
+    if tool == "rife":   # zip ~430 MB, 20+ model: yalniz kullandigimiz kalsin (~25 MB)
+        for m in d.rglob("rife*"):
+            if m.is_dir() and m.name != RIFE_MODEL and (m / "flownet.param").is_file():
+                shutil.rmtree(m, ignore_errors=True)
     return installed(tool)
 
 
@@ -92,7 +97,7 @@ def esrgan_args(exe_path: str, src: Path, dst: Path, model: str, scale: int) -> 
     return [exe_path, "-i", str(src), "-o", str(dst), "-n", model, "-s", str(scale), "-f", "png"]
 
 
-def rife_args(exe_path: str, src: Path, dst: Path, frames: int, model: str = "rife-v4.6") -> list[str]:
+def rife_args(exe_path: str, src: Path, dst: Path, frames: int, model: str = RIFE_MODEL) -> list[str]:
     return [exe_path, "-i", str(src), "-o", str(dst), "-m", model, "-n", str(frames), "-f", "%08d.png"]
 
 
