@@ -21,6 +21,9 @@
   .sub { font: 600 12px "Chakra Petch", sans-serif; color: #F5A65B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .x { position: absolute; top: 4px; right: 6px; width: 20px; height: 20px; border: 0; border-radius: 6px; background: none; color: #6B6280; font-size: 12px; cursor: pointer; }
   .x:hover { background: rgba(255,255,255,.08); color: #fff; }
+  .mini-acts { display: flex; gap: 4px; margin-left: auto; margin-right: 18px; }
+  .mini-acts button { border: 1px solid #3A2E52; background: #1B142B; color: #C4B5FD; border-radius: 7px; padding: 2px 7px; font: 600 11px "Chakra Petch", sans-serif; cursor: pointer; }
+  .mini-acts button:hover { border-color: #2EE6A6; color: #fff; }
   .card.drop { border-color: #2EE6A6; box-shadow: 0 0 22px rgba(46,230,166,.5); }
 </style>
 </head>
@@ -28,7 +31,7 @@
 <div class="card" id="card" title="Kami'yi aç · link sürükleyip bırakabilirsin">
   <div class="av" id="av"></div>
   <div class="info">
-    <div class="top"><span class="name">KAMI</span><span class="spd" id="spd">0<small>Mbit/sn</small></span></div>
+    <div class="top"><span class="name">KAMI</span><span class="mini-acts"><button id="mRec" title="Ekran Kaydı">🎥</button><button id="mMic" title="Oda Mikrofon">🎙</button></span><span class="spd" id="spd">0<small>Mbit/sn</small></span></div>
     <div class="bar"><i id="bar"></i></div>
     <div class="sub" id="sub">…</div>
   </div>
@@ -52,6 +55,8 @@
   }
   window.addEventListener("pywebviewready", () => { tick(); setInterval(tick, 1000); });
   $("#x").addEventListener("click", (e) => { e.stopPropagation(); api().card_close(); });
+  $("#mRec").addEventListener("click", (e) => { e.stopPropagation(); api().rec_toggle?.(); });
+  $("#mMic").addEventListener("click", (e) => { e.stopPropagation(); api().room_mic_toggle?.(); });
   $("#card").addEventListener("click", () => api().card_open());
   const card = $("#card");
   card.addEventListener("dragover", (e) => { e.preventDefault(); card.classList.add("drop"); });

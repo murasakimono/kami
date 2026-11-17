@@ -53,6 +53,16 @@ body.sunak.sk-drawer .sk-backdrop { display: block; position: fixed; inset: 0; z
 #sunak { position: fixed; inset: 0; display: flex; gap: 16px; padding: 12px 18px 16px; box-sizing: border-box; }
 #sunak .sk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 #sunak .sk-head { display: flex; align-items: center; gap: 12px; height: 52px; flex: 0 0 52px; }
+#sunak .sk-tabs { display: flex; align-items: center; gap: 4px; margin-left: 8px; padding: 3px; background: rgba(18, 14, 25, .85); border: 1px solid #2A2140; border-radius: 10px; }
+#sunak .sk-tab { border: 0; background: transparent; color: var(--sk-mute); font: 600 12.5px var(--font); padding: 5px 11px; border-radius: 7px; cursor: pointer; transition: background .15s, color .15s; }
+#sunak .sk-tab:hover { color: #fff; background: rgba(157, 107, 255, .14); }
+#sunak .sk-tab.on { background: #3B1580; color: #fff; box-shadow: inset 0 -2px 0 var(--sk-em); }
+#sunak .sk-tab-acts { display: inline-flex; gap: 3px; margin-left: 4px; padding-left: 6px; border-left: 1px solid #2A2140; }
+#sunak .sk-tab-ico { border: 0; background: rgba(255,255,255,.06); color: #C4B5FD; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+#sunak .sk-tab-ico:hover { background: #6D28D9; color: #fff; }
+.sk-tabhost { flex: 1; min-height: 0; border: 1px solid #2A2140; border-radius: 12px; overflow: hidden; background: #07060B; }
+.sk-tabhost iframe { width: 100%; height: 100%; border: 0; display: block; }
+body.sk-in-tab #sunak .sk-top, body.sk-in-tab #sunak .sk-strips, body.sk-in-tab #sunak .sk-dots, body.sk-in-tab #sunak .sk-bar, body.sk-in-tab #sunak .sk-detail, body.sk-in-tab #sunak .sk-cmd { display: none; }
 #sunak .sk-logo {
   font-family: "Damnation", serif; font-size: 38px; line-height: 1.3; padding-top: 4px; letter-spacing: 1px;
   background: linear-gradient(180deg, #fff 0%, #E4DBFF 30%, #7C4DFF 52%, #2A1650 58%, #D9CCFF 74%, #9D7BFF 100%);

@@ -39,7 +39,19 @@ function skBuild() {
   root.innerHTML = `
   <div class="sk-main">
     <div class="sk-head"><span class="sk-logo">KAMI</span>
+      <nav class="sk-tabs" id="skTabs">
+        <button type="button" class="sk-tab on" data-mod="home">${skL("İndirmeler", "Downloads")}</button>
+        <button type="button" class="sk-tab" data-mod="player">Player</button>
+        <button type="button" class="sk-tab" data-mod="studio">Studio</button>
+        <button type="button" class="sk-tab" data-mod="picture">Picture</button>
+        <button type="button" class="sk-tab" data-mod="reader">Reader</button>
+        <span class="sk-tab-acts" id="skTabActs" hidden>
+          <button type="button" class="sk-tab-ico" id="skTabPop" title="${skL("Ayrı pencerede aç", "Open in separate window")}">↗</button>
+          <button type="button" class="sk-tab-ico" id="skTabKill" title="${skL("Sekmeyi kapat (RAM boşalt)", "Close tab")}">✕</button>
+        </span>
+      </nav>
       <div class="sk-status"><span>${skL("motor", "engine")} <b id="skEngine">…</b></span><span>${skL("köprü", "bridge")} <b id="skBridge">…</b></span></div></div>
+    <div id="skTabHost" class="sk-tabhost" hidden></div>
     <div class="sk-top">
       <div class="sk-altar" id="skAltar">
         <svg class="sk-ring" viewBox="0 0 300 300">
@@ -220,6 +232,56 @@ function skBind() {
     hidePeek();
   });
   document.addEventListener("mousemove", (e) => SK.eye?.lookAt(e.clientX, e.clientY));
+  // Tek pencere sekme yoneticisi (tembel yukleme + postMessage API koprusu)
+  const MOD_URL = { player: "player.html", studio: "studio.html", picture: "picture.html", reader: "reader.html" };
+  let curMod = "home";
+  const openTab = (mod) => {
+    curMod = mod;
+    const host = $("#skTabHost"), acts = $("#skTabActs");
+    $$("#skTabs .sk-tab").forEach((b) => b.classList.toggle("on", b.dataset.mod === mod));
+    document.body.classList.toggle("sk-in-tab", mod !== "home");
+    if (mod === "home") { if (host) host.hidden = true; if (acts) acts.hidden = true; return; }
+    if (host) {
+      host.hidden = false;
+      [...host.children].forEach((f) => { f.hidden = f.dataset.mod !== mod; });
+      if (!host.querySelector(`iframe[data-mod="${mod}"]`)) {
+        const fr = document.createElement("iframe");
+        fr.dataset.mod = mod;
+        fr.src = MOD_URL[mod];
+        fr.allow = "microphone; camera; clipboard-read; clipboard-write";
+        host.appendChild(fr);
+      }
+    }
+    if (acts) acts.hidden = false;
+  };
+  $("#skTabs")?.addEventListener("click", (e) => {
+    const b = e.target.closest(".sk-tab[data-mod]");
+    if (b) openTab(b.dataset.mod);
+  });
+  $("#skTabPop")?.addEventListener("click", () => {
+    const fn = { player: () => api?.player_show?.({}), studio: () => api?.studio_open?.(""), picture: () => api?.picture_open?.(""), reader: () => api?.reader_open?.("") }[curMod];
+    fn?.();
+  });
+  $("#skTabKill")?.addEventListener("click", () => {
+    const host = $("#skTabHost"), fr = host?.querySelector(`iframe[data-mod="${curMod}"]`);
+    fr?.remove();
+    openTab("home");
+  });
+  if (!window._kamiMsgBridge) {
+    window._kamiMsgBridge = true;
+    window.addEventListener("message", async (e) => {
+      const d = e.data;
+      if (!d || typeof d.__kamiApi !== "number" || !e.source) return;
+      try {
+        const fn = window.pywebview?.api?.[d.fn];
+        if (typeof fn !== "function") throw new Error("no_api:" + d.fn);
+        const data = await fn(...(d.args || []));
+        e.source.postMessage({ __kamiRes: d.__kamiApi, ok: true, data }, "*");
+      } catch (err) {
+        e.source.postMessage({ __kamiRes: d.__kamiApi, ok: false, error: String(err?.message || err) }, "*");
+      }
+    });
+  }
   // dosya surukleme: ruh uyanir, birakinca yutar (asil ekleme extras.js'teki drop dinleyicisinde)
   let depth = 0;
   document.addEventListener("dragenter", () => { depth++; altar.classList.add("drop"); SK.eye?.set({ mood: "alert" }); window.KamiSunakGPU?.setState?.({ drop: true, mood: "alert" }); });
