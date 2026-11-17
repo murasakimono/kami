@@ -60,3 +60,29 @@ def test_deck_through_room_tunnel():
     finally:
         srv.stop()
         srv.phone_srv = None
+
+
+def test_dash_and_peaks(tmp_path):
+    import shutil
+    import subprocess
+    import types
+
+    import pytest
+
+    from app.core.models import Download, Status
+    from app.ui.api import Api
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg yok")
+    wav = tmp_path / "s.wav"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=440:d=3", str(wav)], check=True)
+    import time
+    d = Download(id=1, url="x", filename="s.wav", directory=str(tmp_path), category="music", status=Status.COMPLETE,
+                 size=1000, finished_at=time.time())
+    a = Api.__new__(Api)
+    a._manager = types.SimpleNamespace(snapshot=lambda: [d], base_dir=lambda: str(tmp_path))
+    st = a.dash_stats()
+    assert st["today"] == 1000 and st["today_n"] == 1 and st["disk_free"] > 0
+    pk = a.audio_peaks(str(wav), 100)
+    assert pk["ok"] and len(pk["peaks"]) == 100 and max(pk["peaks"]) == 1.0
+    m = a.item_peek(1)
+    assert round(m["duration"]) == 3 and m["acodec"]
