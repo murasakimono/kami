@@ -7,14 +7,21 @@
 
   const css = document.createElement("style");
   css.textContent = `
-  #rpHud{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#110D19ee;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:13px;z-index:30;display:flex;gap:10px;align-items:center}
+  #rpHud{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(17,13,25,.94);border:1px solid rgba(157,107,255,.4);border-radius:999px;padding:6px 14px;font-size:12.5px;z-index:30;display:flex;gap:10px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   #rpHud[hidden]{display:none}#rpHud b{color:var(--em)}
+  #rpHud button{background:rgba(157,107,255,.18);border:1px solid rgba(157,107,255,.35);color:#EDE9F6;border-radius:6px;padding:2px 8px;font:600 12px inherit;cursor:pointer}
+  #rpHud button:hover{background:var(--violet);color:#fff}
+  #rpHud .rp-spd{width:54px;height:5px;background:#241B33;border-radius:3px;overflow:hidden;display:inline-block}
+  #rpHud .rp-spd i{display:block;height:100%;background:linear-gradient(90deg,#9D6BFF,#2EE6A6)}
   .rp-panels{display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,1.4fr);gap:22px;margin:0 0 34px}
-  .rp-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
-  .rp-card h4{margin:0 0 10px;font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
-  .rp-nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.rp-nums div{font-size:22px;font-weight:700}.rp-nums small{display:block;font-size:11px;color:var(--mute);font-weight:400}
-  .rp-bars{display:flex;gap:4px;align-items:flex-end;height:46px;margin-top:12px}.rp-bars i{flex:1;background:var(--violet);border-radius:3px 3px 0 0;min-height:2px;opacity:.85}
-  .rp-bars i.t{background:var(--em)}
+  .rp-card{background:linear-gradient(180deg,rgba(28,21,42,.95),var(--panel));border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:0 8px 28px rgba(0,0,0,.28)}
+  .rp-card h4{margin:0 0 12px;font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--mute);display:flex;align-items:center;gap:8px}
+  .rp-hero{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .rp-hero strong{font-size:28px;font-weight:700;color:#EDE9F6}.rp-hero small{display:block;font-size:11px;color:var(--mute)}
+  .rp-streak{padding:4px 10px;border-radius:999px;background:rgba(46,230,166,.12);border:1px solid rgba(46,230,166,.35);color:var(--em);font-size:12px;font-weight:600}
+  .rp-nums{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.rp-nums div{font-size:16px;font-weight:700}.rp-nums small{display:block;font-size:10.5px;color:var(--mute);font-weight:400}
+  .rp-bars{display:flex;gap:4px;align-items:flex-end;height:48px;margin-top:14px}.rp-bars i{flex:1;background:var(--violet);border-radius:3px 3px 0 0;min-height:3px;opacity:.82;transition:opacity .15s}
+  .rp-bars i:hover{opacity:1}.rp-bars i.t{background:var(--em);box-shadow:0 0 8px rgba(46,230,166,.4)}
   .rp-ser{display:grid;gap:8px;max-height:260px;overflow:auto}.rp-ser .s{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
   .rp-ser .s small{color:var(--mute);font-size:11px}.rp-ser .s .nw{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
   .rp-ser .s .nw button{font-size:12px;padding:3px 8px;border:1px solid var(--em);background:transparent;color:var(--em);border-radius:6px;cursor:pointer}
@@ -43,11 +50,22 @@
 
   // ---------------------------------------------------------------- otomatik kaydirma / cevirme
   function showHud() {
-    hud.hidden = !RP.auto;
-    if (RP.auto) hud.innerHTML = RD.set.mode === "scroll"
-      ? `⏬ ${L("Otomatik kaydırma", "Auto-scroll")} <b>${RP.speed}</b> px/sn · [ ] ${L("hız", "speed")} · A ${L("dur", "stop")}`
-      : `⏭ ${L("Otomatik sayfa", "Auto page")} <b>${Math.max(2, Math.round(1200 / RP.speed))}</b> ${L("sn", "s")} · [ ] ${L("hız", "speed")} · A ${L("dur", "stop")}`;
+    const isEbook = Boolean(RD.doc?.ebook);
+    hud.hidden = !RP.auto && !isEbook;
+    if (hud.hidden) return;
+    const pct = Math.min(100, Math.round((RP.speed / 300) * 100));
+    const autoPart = RP.auto ? (RD.set.mode === "scroll"
+      ? `⏬ <b>${RP.speed}</b> px/s <span class="rp-spd"><i style="width:${pct}%"></i></span> <button type="button" data-rph="stop">A</button>`
+      : `⏭ <b>${Math.max(2, Math.round(1200 / RP.speed))}</b>s <span class="rp-spd"><i style="width:${pct}%"></i></span> <button type="button" data-rph="stop">A</button>`) : "";
+    const ebPart = isEbook ? `<button type="button" data-rph="fm" title="${L("Yazıyı küçült (,)", "Smaller text (,)")}">A−</button><button type="button" data-rph="fp" title="${L("Yazıyı büyüt (.)", "Larger text (.)")}">A+</button>` : "";
+    hud.innerHTML = [autoPart, ebPart].filter(Boolean).join("<span>·</span>");
   }
+  hud.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-rph]"); if (!b) return;
+    if (b.dataset.rph === "stop") toggleAuto(false);
+    else if (b.dataset.rph === "fm") epubFont(-1);
+    else if (b.dataset.rph === "fp") epubFont(1);
+  });
   function tickAuto(t) {
     if (!RP.auto || !RD.doc) { RP.raf = 0; return; }
     const dt = RP.last ? (t - RP.last) / 1000 : 0; RP.last = t;
@@ -104,6 +122,7 @@
   window.openDoc = openDoc = async function (path) {
     toggleAuto(false); RP.seen = new Set();
     await _open(path);
+    showHud();
     if (RD.doc?.ebook) toast(L("E-kitap: , ve . ile yazı boyutu", "E-book: , and . change font size"));
   };
   const _close = closeDoc;
@@ -119,8 +138,9 @@
     const ns = ser.reduce((a, s) => a + (s.new?.length || 0), 0);
     box.innerHTML = `
       <div class="rp-card"><h4>${L("Okuma", "Reading")}</h4>
-        <div class="rp-nums"><div>${fmtDur(st.today)}<small>${L("bugün", "today")}</small></div><div>${fmtDur(st.week)}<small>${L("bu hafta", "this week")}</small></div>
-        <div>${st.streak}<small>${L("gün üst üste", "day streak")}</small></div><div>${st.pages}<small>${L("sayfa", "pages")}</small></div>
+        <div class="rp-hero"><div><strong>${fmtDur(st.today)}</strong><small>${L("bugün okunan", "read today")}</small></div><span class="rp-streak">🔥 ${st.streak} ${L("gün seri", "day streak")}</span></div>
+        <div class="rp-nums"><div>${fmtDur(st.week)}<small>${L("bu hafta", "this week")}</small></div>
+        <div>${st.pages}<small>${L("sayfa", "pages")}</small></div>
         <div>${st.finished}<small>${L("bitirilen", "finished")}</small></div><div>${fmtDur(st.total)}<small>${L("toplam", "total")}</small></div></div>
         <div class="rp-bars" title="${L("Son 14 gün", "Last 14 days")}">${st.days.map((d, i) => `<i class="${i === st.days.length - 1 ? "t" : ""}" style="height:${Math.round((d.s / mx) * 100)}%" title="${d.d}: ${fmtDur(d.s)}"></i>`).join("")}</div></div>
       <div class="rp-card"><h4>${L("Seriler", "Series")}${ns ? `<span class="rp-badge">${ns} ${L("yeni", "new")}</span>` : ""}</h4>
