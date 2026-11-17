@@ -762,6 +762,101 @@ class StudioMixin:
             items.append({"name": f.stem, "steps": len(sp.get("steps") or []), "size": sp.get("size"), "folder": str(d / f.stem)})
         return {"dir": str(d), "items": items}
 
+    # ---- v1.30 kanal/proje sablonlari (Kami Studio\\Şablonlar\\*.kamitpl.json)
+    def _ptpl_dir(self):
+        from app.core import studio as S
+        d = S.home_dir() / "Şablonlar"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def studio_ptpl_list(self) -> list[dict[str, Any]]:
+        out = []
+        for f in sorted(self._ptpl_dir().glob("*.kamitpl.json")):
+            try:
+                d = json.loads(f.read_text("utf-8"))
+                out.append({"id": f.name[:-len(".kamitpl.json")], "name": d.get("tpl_name") or f.stem, "w": d.get("w"), "h": d.get("h"),
+                            "clips": len(d.get("clips") or []), "note": d.get("tpl_note", "")})
+            except (OSError, ValueError):
+                continue
+        return out
+
+    def studio_ptpl_save(self, name: str, project: dict, note: str = "") -> list[dict[str, Any]]:
+        p = json.loads(json.dumps(project or {}))
+        for a in (p.get("assets") or {}).values():
+            a.pop("url", None)
+        # degisken icerik: ana video izindeki (v1) video klipleri sablona girmez; yazi/grafik/muzik/logo/efekt/marka kalir
+        main = {aid for aid, a in (p.get("assets") or {}).items() if a.get("kind") == "video"}
+        p["clips"] = [c for c in p.get("clips") or [] if not (c.get("track") == "v1" and c.get("asset") in main and not c.get("tplKeep"))]
+        used = {c.get("asset") for c in p["clips"]}
+        p["assets"] = {k: v for k, v in (p.get("assets") or {}).items() if k in used}
+        p["tpl_name"], p["tpl_note"] = str(name or "Şablon")[:60], str(note or "")[:200]
+        safe = re.sub(r'[<>:"/\\|?*]+', "_", p["tpl_name"]).strip() or "sablon"
+        (self._ptpl_dir() / f"{safe}.kamitpl.json").write_text(json.dumps(p, ensure_ascii=False), "utf-8")
+        return self.studio_ptpl_list()
+
+    def studio_ptpl_delete(self, tid: str) -> list[dict[str, Any]]:
+        f = self._ptpl_dir() / f"{os.path.basename(str(tid))}.kamitpl.json"
+        if f.is_file():
+            f.unlink()
+        return self.studio_ptpl_list()
+
+    def studio_ptpl_new(self, tid: str) -> dict[str, Any]:
+        """Sablondan yeni proje: varlik URL'leri yeniden uretilir (eksik dosya isaretlenir)."""
+        from app.core import studio
+        f = self._ptpl_dir() / f"{os.path.basename(str(tid))}.kamitpl.json"
+        if not f.is_file():
+            return {"ok": False, "error": "yok"}
+        p = json.loads(f.read_text("utf-8"))
+        for k in ("tpl_name", "tpl_note"):
+            p.pop(k, None)
+        base = studio.new_project()
+        p["name"] = f"{f.name[:-len('.kamitpl.json')]} - {base.get('name', 'Yeni')}"
+        for a in (p.get("assets") or {}).values():
+            if a.get("path") and os.path.isfile(a["path"]):
+                a["url"] = self._studio_url(a["path"], a)
+                a.pop("missing", None)
+            else:
+                a["missing"] = True
+        return {"ok": True, "project": p}
+
+    def studio_save_recording(self, data_b64: str, ext: str = "webm") -> dict[str, Any]:
+        """v1.30 Studio ici ses kaydi: MediaRecorder parcasi -> Kami Studio\\Kayıtlar\\ses-<zaman>.<ext> (sonra 48 kHz WAV'a cevrilir)."""
+        import base64
+        import subprocess
+        import time as _t
+        from app.core import studio as S
+        from app.core.studio_finish import NO_WINDOW
+        raw = base64.b64decode(str(data_b64).split(",", 1)[-1])
+        d = S.home_dir() / "Kayıtlar"
+        d.mkdir(parents=True, exist_ok=True)
+        stem = "ses-" + _t.strftime("%Y%m%d-%H%M%S")
+        src = d / f"{stem}.{re.sub(r'[^a-z0-9]', '', str(ext).lower())[:5] or 'webm'}"
+        src.write_bytes(raw)
+        wav = d / f"{stem}.wav"
+        try:   # kurgu icin sabit kare/ornek: 48 kHz PCM (webm/opus'ta degisken zaman damgasi kaymaya yol acar)
+            subprocess.run([self._media.ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-i", str(src), "-ar", "48000", "-c:a", "pcm_s16le", str(wav)],
+                           capture_output=True, timeout=300, creationflags=NO_WINDOW)
+            if wav.is_file() and wav.stat().st_size > 1000:
+                src.unlink(missing_ok=True)
+                return {"ok": True, "path": str(wav)}
+        except Exception:
+            log.exception("Kayit donusturulemedi")
+        return {"ok": True, "path": str(src)}
+
+    def studio_chapters(self, phrases: list, min_gap: float = 45) -> dict[str, Any]:
+        """Transkript ifadelerinden bolum onerisi: uzun duraklama + konu acan kelimeler, en az min_gap aralik."""
+        cue = re.compile(r"^(şimdi|simdi|peki|gelelim|bir de|ikinci|üçüncü|ucuncu|son olarak|ilk olarak|öncelikle|oncelikle|sonuç|sonuc|"
+                         r"now|next|so|first|second|third|finally|let's|lets)\b", re.I)
+        ph = [p for p in (phrases or []) if isinstance(p, dict) and p.get("text")]
+        out = [{"t": 0.0, "title": "Giriş"}]
+        for i, p in enumerate(ph[1:], 1):
+            gap = float(p["s"]) - float(ph[i - 1]["e"])
+            sc = (2 if gap >= 1.2 else 0) + (3 if cue.search(p["text"].strip()) else 0) + (1 if p["text"].strip().endswith("?") else 0)
+            if sc >= 3 and float(p["s"]) - out[-1]["t"] >= float(min_gap):
+                words = re.sub(r"[^\w\sçğıöşüÇĞİÖŞÜ'-]", "", p["text"]).split()
+                out.append({"t": round(float(p["s"]), 1), "title": " ".join(words[:6]).capitalize()})
+        return {"ok": True, "chapters": out}
+
     def studio_make_shorts(self, path: str, count: int = 3, min_sec: float = 20, max_sec: float = 60, captions: bool = True) -> dict[str, Any]:
         """v1.30 uzun videodan otomatik kisa klipler -> duzenlenebilir 9:16 projeler."""
         from app.core import studio_shorts as SH
