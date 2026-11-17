@@ -440,6 +440,7 @@ function skAutoSave() { try { localStorage.setItem("kami.autoplay", JSON.stringi
 
 function skDock(k) {
   if (k === "settings") { $("#settingsBtn")?.click(); return; }
+  if (k === "pano") return;   // kami-pano.js kendi cekmecesini acar
   if (k === "library") { playerLibrary(); return; }
   if (k === "fx") { fxToggle(!FX.on); toast(FX.on ? skL("Arka plan efektleri açık", "Background effects on") : skL("Arka plan efektleri kapalı", "Background effects off")); return; }
   if (k === "ai") { const d = state.items.find((x) => x.id === SK.sel); if (d) openMediaTools(d.id); else toast(skL("Önce bir video ya da şarkı seç", "Select a video or song first")); return; }
