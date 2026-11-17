@@ -55,6 +55,8 @@ DEFAULTS: dict[str, Any] = {
     "hotkey_enabled": True,
     "hotkey": "ctrl+alt+k",        # genel kisayol: Kami'yi one getir + panodaki linki sor
     "speed_limit_preset_kib": 2048,# arac cubugundaki "hiz siniri" dugmesinin degeri
+    "integrity_check": True,       # v1.29: bitince dosya saglam mi (arsiv test, video bas+son cozum, boyut)
+    "integrity_redownload": True,  # bozuksa bir kez otomatik yeniden indir
     "schedule_enabled": False,     # zamanlayici: baslangicta tumunu surdur, bitiste duraklat
     "schedule_start": "02:00",
     "schedule_stop": "08:00",

@@ -170,3 +170,53 @@ def test_rss_service_smart_episode_dedupe(tmp_path, monkeypatch):
     assert len(got) == 1 and "- 08" in got[0]
     assert svc.check(force=True) == 0
     assert svc.public()[0]["seen_n"] >= 5 and "seen" not in svc.public()[0]
+
+
+def test_integrity_checks(tmp_path):
+    import shutil
+    import subprocess
+    import zipfile as zf
+    from app.core import integrity
+    ff = shutil.which("ffmpeg")
+    good = tmp_path / "iyi.mp4"
+    subprocess.run([ff, "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25", "-f", "lavfi", "-i", "sine",
+                    "-t", "30", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", str(good)], check=True)
+    assert integrity.check(str(good), ffmpeg=ff)["state"] == "ok"
+    bad = tmp_path / "yarim.mp4"
+    bad.write_bytes(good.read_bytes()[: good.stat().st_size // 2])   # moov sonda (faststart yok) -> bozuk
+    r = integrity.check(str(bad), ffmpeg=ff)
+    assert r["state"] == "bad" and r["kind"] == "media"
+    assert integrity.check(str(good), expected_size=good.stat().st_size + 10, ffmpeg=ff)["kind"] == "size"
+    z = tmp_path / "a.zip"
+    with zf.ZipFile(z, "w") as w:
+        w.writestr("x.txt", "merhaba" * 1000)
+    assert integrity.check(str(z))["state"] == "ok"
+    raw = bytearray(z.read_bytes())
+    raw[40:60] = b"\x00" * 20
+    zb = tmp_path / "b.zip"
+    zb.write_bytes(bytes(raw))
+    assert integrity.check(str(zb))["state"] == "bad"
+    assert integrity.check(str(tmp_path / "yok.bin"))["state"] == "skip"
+
+
+def test_postcomplete_redownloads_corrupt_once(tmp_path, monkeypatch):
+    from app.core.postcomplete import PostComplete
+    m, eng, ids = _setup(tmp_path, monkeypatch)
+    did = ids[0]
+    d = m.store.get(did)
+    os_path = tmp_path / "dl"
+    os_path.mkdir(exist_ok=True)
+    m.store.update(did, status=Status.COMPLETE, directory=str(os_path), filename="k.zip", size=5000)
+    (os_path / "k.zip").write_bytes(b"PK\x03\x04" + b"\x00" * 100)   # beklenen 5000, gelen 104 -> boyut bozuk
+    notes = []
+    post = PostComplete(m, lambda t, msg: notes.append(msg) or True)
+    post.completed(did)
+    d = m.store.get(did)
+    assert d.extra["integrity"] == "bad" and d.extra["integrity_retry"] == 1
+    assert not (os_path / "k.zip").exists() and d.status in (Status.WAITING, Status.QUEUED, Status.ACTIVE)
+    assert any("yeniden" in n for n in notes)
+    # ikinci kez de bozuksa yalniz uyarir, dongu yok
+    m.store.update(did, status=Status.COMPLETE)
+    (os_path / "k.zip").write_bytes(b"x" * 10)
+    post.completed(did)
+    assert (os_path / "k.zip").exists() and any("bozuk" in n for n in notes)

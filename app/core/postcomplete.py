@@ -68,11 +68,55 @@ class PostComplete:
         if d and self.manager.settings.get("notify_on_error") and not self.focused():
             self.notify("Kami", self._t("Hata: ", "Failed: ") + (d.filename or d.url)[:120])
 
+    def _integrity(self, d) -> bool:
+        """v1.29: dosya saglam mi? Bozuksa bir kez otomatik yeniden indirir (False = bitis islerini atla)."""
+        s = self.manager.settings
+        if not s.get("integrity_check") or not d.path:
+            return True
+        from app.core import integrity
+        from app.core.automate import find_7z
+        try:
+            from app.engines.ytdlp_engine import find_ffmpeg
+            ff = find_ffmpeg()
+        except Exception:
+            ff = ""
+        res = integrity.check(d.path, d.size if d.kind != "media" else 0, ffmpeg=ff, sevenzip=find_7z())
+        if res["state"] in ("skip",):
+            return True
+        retried = int((d.extra or {}).get("integrity_retry") or 0)
+        self._set_extra(d.id, integrity=res["state"], integrity_detail=res.get("detail", ""))
+        if res["state"] != "bad":
+            return True
+        log.warning("Bozuk dosya: %s (%s)", d.filename, res.get("detail"))
+        name = (d.filename or d.url)[:100]
+        if s.get("integrity_redownload") and retried < 1:
+            self._set_extra(d.id, integrity_retry=retried + 1)
+            try:
+                os.remove(d.path)
+                for side in (d.path + ".aria2",):
+                    if os.path.exists(side):
+                        os.remove(side)
+            except OSError:
+                log.exception("Bozuk dosya silinemedi")
+                self.notify("Kami", self._t("Bozuk indi: ", "Corrupt download: ") + name)
+                return False
+            from app.core.models import Status
+            nd = self.manager.store.update(d.id, status=Status.ERROR, error="integrity", downloaded=0)
+            self.manager.events.emit("download.updated", download=nd)
+            self.manager.resume(d.id)
+            self.notify("Kami", self._t("Bozuk indi, yeniden indiriliyor: ", "Corrupt, downloading again: ") + name)
+            return False
+        self.notify("Kami", self._t("⚠ Dosya bozuk görünüyor: ", "⚠ File looks corrupt: ") + name + f"\n{res.get('detail', '')[:120]}")
+        return True
+
     def completed(self, did: int) -> None:
         s = self.manager.settings
         d = self.manager.store.get(did)
         if not d:
             return
+        if not self._integrity(d):
+            return
+        d = self.manager.store.get(did) or d
         path = d.path
         notes: list[str] = []
         expected = (d.extra or {}).get("checksum", "")
