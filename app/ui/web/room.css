@@ -206,18 +206,34 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .sb-list button.cool { opacity: .45; }
 .sb-toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: rgba(14,11,21,.92); border: 1px solid var(--line); padding: 6px 12px; z-index: 45; font-size: 12px; pointer-events: none; }
 #jnPw { width: 100%; }
-/* v1.28 sohbet: yanit, tepki, sabitleme, arama (temel; cila Antigravity) */
-.rm-chattools { padding: 6px 8px 0; } .rm-chattools input { width: 100%; box-sizing: border-box; background: #0D0A14; border: 1px solid #2A2236; color: var(--text); padding: 6px 8px; font: inherit; font-size: 12px; }
-.rm-pins { padding: 6px 10px; font-size: 12px; border-bottom: 1px solid #2A2236; color: var(--mute); cursor: pointer; } .rm-pins div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.msg { position: relative; } .msg .quote { border-left: 2px solid #7C3AED; padding-left: 6px; margin-bottom: 2px; font-size: 11.5px; color: var(--mute); }
-.msg .mact { display: none; position: absolute; right: 2px; top: -6px; background: #161124; border: 1px solid #2A2236; }
-.msg:hover .mact { display: flex; } .msg .mact button { background: none; border: 0; color: #C4B5FD; cursor: pointer; padding: 2px 5px; }
-.msg .rxs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; } .msg .rx { background: #1E1630; border: 1px solid #2A2236; color: var(--text); border-radius: 10px; padding: 0 6px; font-size: 11px; cursor: pointer; }
-.msg .rx.mine { border-color: #8B5CF6; } .rx-pick { position: absolute; right: 0; top: 14px; z-index: 5; display: flex; gap: 2px; background: #161124; border: 1px solid #7C3AED; padding: 3px; }
-.rx-pick button { background: none; border: 0; font-size: 16px; cursor: pointer; }
-.rm-reply { display: flex; justify-content: space-between; gap: 6px; padding: 4px 10px; font-size: 12px; color: var(--mute); border-top: 1px solid #2A2236; }
-.rm-reply button { background: none; border: 0; color: var(--mute); cursor: pointer; }
-.msg.act .mact { display: flex; }
-.tile.yt { position: relative; background: #000; aspect-ratio: 16/9; } .tile.yt #ytFrame, .tile.yt iframe { width: 100%; height: 100%; display: block; }
-.yt-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; padding: 4px 8px; font-size: 11px; background: linear-gradient(#000a, transparent); color: #fff; opacity: .0; transition: opacity .2s; }
-.tile.yt:hover .yt-bar { opacity: 1; } .yt-bar button { background: none; border: 0; color: #fff; cursor: pointer; }
+/* v1.28 sohbet: yanit, tepki, sabitleme, arama */
+.rm-chattools { padding: 8px 10px 4px; }
+.rm-chattools input { width: 100%; box-sizing: border-box; background: #0D0A14; border: 1px solid #2A2236; border-radius: 8px; color: var(--text); padding: 7px 10px; font: inherit; font-size: 12px; transition: border-color .15s; }
+.rm-chattools input:focus { outline: none; border-color: #9D6BFF; }
+.rm-pins { padding: 7px 10px; font-size: 12px; border-bottom: 1px solid #2A2236; background: rgba(157, 107, 255, .07); color: #C4B5FD; cursor: pointer; transition: background .15s; }
+.rm-pins:hover { background: rgba(157, 107, 255, .14); }
+.rm-pins div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msg { position: relative; border-radius: 8px; padding: 3px 6px; transition: background .12s; }
+.msg:hover { background: rgba(255, 255, 255, .03); }
+.msg .quote { border-left: 2px solid #9D6BFF; background: rgba(157, 107, 255, .08); border-radius: 0 6px 6px 0; padding: 3px 8px; margin-bottom: 4px; font-size: 11.5px; color: #B6AECB; }
+.msg .mact { display: none; position: absolute; right: 4px; top: -8px; background: #161124; border: 1px solid #3A2D55; border-radius: 8px; box-shadow: 0 6px 16px rgba(0,0,0,.45); overflow: hidden; }
+.msg:hover .mact, .msg.act .mact { display: flex; }
+.msg .mact button { background: none; border: 0; color: #C4B5FD; cursor: pointer; padding: 3px 7px; font-size: 12px; }
+.msg .mact button:hover { background: #261B40; color: #fff; }
+.msg .rxs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.msg .rx { background: #1A132B; border: 1px solid #2E2346; color: var(--text); border-radius: 999px; padding: 1px 8px; font-size: 11px; cursor: pointer; transition: border-color .12s, background .12s; }
+.msg .rx:hover { border-color: #9D6BFF; }
+.msg .rx.mine { border-color: #2EE6A6; background: rgba(46, 230, 166, .12); color: #2EE6A6; }
+.rx-pick { position: absolute; right: 0; top: 16px; z-index: 5; display: flex; gap: 3px; background: #161124; border: 1px solid #9D6BFF; border-radius: 10px; padding: 4px 6px; box-shadow: 0 10px 26px rgba(0,0,0,.55); }
+.rx-pick button { background: none; border: 0; font-size: 16px; cursor: pointer; padding: 2px 4px; border-radius: 6px; }
+.rx-pick button:hover { background: #261B40; transform: scale(1.15); }
+.rm-reply { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 6px 10px; font-size: 12px; color: #C4B5FD; background: rgba(157, 107, 255, .09); border-top: 1px solid #2A2236; }
+.rm-reply button { background: none; border: 0; color: var(--mute); cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.rm-reply button:hover { color: #fff; background: rgba(255,255,255,.08); }
+.tile.yt { position: relative; background: #000; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; } .tile.yt #ytFrame, .tile.yt iframe { width: 100%; height: 100%; display: block; }
+.yt-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; font-size: 11px; background: linear-gradient(rgba(0,0,0,.85), transparent); color: #fff; opacity: .0; transition: opacity .2s; }
+.tile.yt:hover .yt-bar { opacity: 1; }
+.yt-bar button { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); border-radius: 6px; padding: 2px 8px; color: #fff; cursor: pointer; }
+.yt-bar button:hover { background: #6D28D9; border-color: #9D6BFF; }
+.msg.file .fdl { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: #140F20; border: 1px solid #2E2346; border-radius: 8px; text-decoration: none; transition: border-color .15s; }
+.msg.file .fdl:hover { border-color: #2EE6A6; }

@@ -186,15 +186,17 @@ def page(cid: str, it: dict[str, Any], host: str = "") -> str:
 <title>{name} · Kami Kapsül</title><meta name="robots" content="noindex">
 <style>
 *{{box-sizing:border-box}}html,body{{margin:0;min-height:100%;background:#07060B;color:#EDE9F6;font:15px system-ui,-apple-system,"Segoe UI",sans-serif}}
-.w{{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse 60% 50% at 50% 30%,#1E1430,#07060B 72%)}}
-.c{{width:min(720px,100%);background:#100C17;border:1px solid #2A2140}}
-.pv{{background:#000;display:grid;place-items:center;max-height:62vh;overflow:hidden}}.pv img,.pv video{{max-width:100%;max-height:62vh;display:block}}.pv audio{{width:92%;margin:28px 0}}
-.b{{padding:18px 20px;display:grid;gap:10px}}h1{{margin:0;font-size:18px;word-break:break-word}}.m{{color:#8E86A3;font-size:13px}}
-a.dl,button{{display:inline-block;background:#6D28D9;color:#fff;text-decoration:none;border:0;padding:11px 18px;font:600 14px inherit;cursor:pointer}}
-input{{background:#07060B;border:1px solid #2A2140;color:inherit;padding:10px;font:inherit;width:100%}}.e{{color:#FF6B81;font-size:13px}}
-.k{{font:700 11px system-ui;letter-spacing:.3em;color:#C4B5FD}}
-.fl a{{display:flex;justify-content:space-between;gap:10px;color:#EDE9F6;text-decoration:none;padding:7px 0;border-bottom:1px solid #1E1730;font-size:14px}}
-.fl small{{color:#8E86A3}}.cm{{display:grid;gap:8px;margin-top:6px}}.cmi{{font-size:13px;border-left:2px solid #6D28D9;padding-left:8px}}.cmi b{{color:#C4B5FD;margin-right:6px}}
+.w{{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse 60% 50% at 50% 25%,#221538,#07060B 72%)}}
+.c{{width:min(720px,100%);background:#100C17;border:1px solid #2A2140;border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)}}
+.pv{{background:#000;display:grid;place-items:center;max-height:62vh;overflow:hidden;border-bottom:1px solid #201833}}.pv img,.pv video{{max-width:100%;max-height:62vh;display:block}}.pv audio{{width:92%;margin:28px 0}}
+.b{{padding:20px 22px;display:grid;gap:12px}}h1{{margin:0;font-size:19px;word-break:break-word;line-height:1.3}}.m{{color:#9E96B8;font-size:13px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}}
+a.dl,button{{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#6D28D9,#8B5CF6);color:#fff;text-decoration:none;border:0;border-radius:10px;padding:11px 20px;font:600 14px inherit;cursor:pointer;transition:filter .15s,transform .1s}}
+a.dl:hover,button:hover{{filter:brightness(1.1);transform:translateY(-1px)}}
+input{{background:#08060E;border:1px solid #2A2140;border-radius:9px;color:inherit;padding:10px 12px;font:inherit;width:100%;transition:border-color .15s}}input:focus{{outline:none;border-color:#9D6BFF}}.e{{color:#FF6B81;font-size:13px}}
+.k{{font:700 11px system-ui;letter-spacing:.26em;color:#9D6BFF}}
+.fl{{display:grid;gap:4px}}.fl a{{display:flex;justify-content:space-between;gap:10px;color:#EDE9F6;text-decoration:none;padding:9px 11px;border:1px solid #201833;background:#140F1F;border-radius:9px;font-size:13.5px;transition:border-color .15s}}
+.fl a:hover{{border-color:#9D6BFF}}.fl small{{color:#8E86A3}}
+.cm{{display:grid;gap:8px;margin-top:8px;padding-top:14px;border-top:1px solid #201833}}.cmi{{font-size:13px;border-left:2px solid #9D6BFF;background:#140F1F;border-radius:0 8px 8px 0;padding:7px 10px}}.cmi b{{color:#C4B5FD;margin-right:6px}}
 </style></head><body><div class="w"><div class="c">
 <div class="pv" id="pv"></div>
 <div class="b"><span class="k">KAMI KAPSÜL</span><h1>{name}</h1>
