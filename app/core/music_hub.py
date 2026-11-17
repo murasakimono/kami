@@ -330,13 +330,28 @@ def spotify_playlists(limit: int = 40) -> dict[str, Any]:
     r = _sp_api("GET", f"/me/playlists?limit={min(50, int(limit))}")
     if not r.get("ok"):
         return {**r, "items": []}
+    me = _sp_me_id()
     items = [{
         "id": p.get("id", ""), "uri": p.get("uri", ""), "title": p.get("name", ""),
         "owner": (p.get("owner") or {}).get("display_name", ""),
         "cover": (p.get("images") or [{}])[0].get("url", ""),
-        "total": (p.get("tracks") or {}).get("total", 0),
+        # Subat 2026: ozetteki sayi 'tracks' yerine 'items' alaninda
+        "total": (p.get("items") or p.get("tracks") or {}).get("total", 0),
+        # yalniz kendi / ortak listeler degistirilebilir (digerlerine ekleme 403)
+        "editable": bool(p.get("collaborative")) or (bool(me) and (p.get("owner") or {}).get("id") == me),
     } for p in ((r.get("data") or {}).get("items") or []) if p]
     return {"ok": True, "items": items}
+
+
+_SP_ME: dict[str, str] = {}
+
+
+def _sp_me_id() -> str:
+    if not _SP_ME.get("id"):
+        r = _sp_api("GET", "/me")
+        if r.get("ok"):
+            _SP_ME["id"] = str((r.get("data") or {}).get("id") or "")
+    return _SP_ME.get("id", "")
 
 
 def spotify_playlist_tracks(playlist_id: str, limit: int = 100) -> dict[str, Any]:
@@ -579,7 +594,7 @@ def local_scan_folder(folder: str = "", query: str = "", limit: int = 500) -> di
         if not root.is_dir():
             continue
         for f in sorted(root.rglob("*")):
-            if not f.is_file() or f.suffix.lower() not in AUDIO_EXT:
+            if not f.is_file() or f.suffix.lower() not in AUDIO_EXT or f.name.startswith("._") or "__MACOSX" in f.parts:
                 continue
             if q and q not in f.name.lower() and q not in f.parent.name.lower():
                 continue

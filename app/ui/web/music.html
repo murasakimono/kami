@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <title>Kami Müzik</title>
 <style>
+  /* v1.35.2: uygulamanin fontu (dosyasi bu sayfada yuklenmiyordu, sistem fontuna dusuyordu) */
+  @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-Regular.ttf");font-weight:400}
+  @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-Medium.ttf");font-weight:500}
+  @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-SemiBold.ttf");font-weight:600}
+  @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-Bold.ttf");font-weight:700}
   :root{--bg:#08070C;--side:#0C0913;--card:#141020;--line:#261D3D;--tx:#EDE9F6;--mut:#9E96B8;--ac:#9D6BFF;--em:#2EE6A6}
   *{box-sizing:border-box}
   html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--tx);font:13.5px "Chakra Petch","Segoe UI",sans-serif}
@@ -72,20 +77,53 @@
   .lyr-pop{position:fixed;right:20px;bottom:102px;width:min(380px,90vw);max-height:360px;background:rgba(13,10,20,.96);border:1px solid var(--ac);border-radius:14px;padding:12px 14px;overflow-y:auto;z-index:40;box-shadow:0 16px 40px rgba(0,0,0,.65);font-size:13px;line-height:1.75;color:var(--mut)}
   .lyr-pop[hidden]{display:none}
   .lyr-pop .on{color:var(--em);font-weight:700}
+
+  /* v1.35.2 arayuz: tek tip cizgi simgeler, yuvarlak calma dugmeleri, uyumlu giris alanlari */
+  .ico{width:17px;height:17px;flex:none;display:block}
+  .nav-b .ico{color:#8F7BC9}.nav-b.on .ico,.nav-b:hover .ico{color:var(--em)}
+  .brand .ico{width:20px;height:20px;color:var(--em)}
+  .bar{background:linear-gradient(180deg,#0E0A16,#0A0810);border-top:1px solid var(--line)}
+  .ib{width:36px;height:36px;display:inline-grid;place-items:center;border-radius:50%;border:1px solid transparent;background:transparent;color:#C9C0DD;cursor:pointer;transition:all .14s;padding:0}
+  .ib:hover{background:rgba(157,107,255,.14);color:#fff}
+  .ib.on{color:var(--em)}
+  .ib.on::after{content:"";position:absolute;width:4px;height:4px;border-radius:50%;background:var(--em);transform:translateY(14px)}
+  .ib{position:relative}
+  .ib.play{width:44px;height:44px;background:linear-gradient(135deg,#8B5CF6,#5B21B6);color:#fff;box-shadow:0 6px 18px rgba(124,58,237,.45)}
+  .ib.play:hover{transform:scale(1.06);background:linear-gradient(135deg,#9D6BFF,#6D28D9)}
+  .ib.play .ico{width:20px;height:20px}
+  .ib.sq{border-radius:9px;width:34px;height:34px;border-color:var(--line);background:#141020}
+  .ib.sq:hover{border-color:var(--ac)}
+  .sp-ctl{display:flex;align-items:center;justify-content:center;gap:10px}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:4px;background:#2A2140;outline:none;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#EDE9F6;box-shadow:0 0 0 3px rgba(157,107,255,.35);transition:transform .12s}
+  input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.25)}
+  select{background:#141020;border:1px solid var(--line);color:var(--tx);border-radius:9px;padding:7px 10px;font:500 12.5px inherit;outline:none;cursor:pointer}
+  select:focus{border-color:var(--ac)}
+  .field{display:flex;align-items:center;gap:8px;flex:1;min-width:240px;background:#110D1B;border:1px solid var(--line);border-radius:12px;padding:4px 4px 4px 12px;transition:border-color .14s}
+  .field:focus-within{border-color:var(--ac);box-shadow:0 0 0 3px rgba(157,107,255,.15)}
+  .field .ico{color:#8F7BC9}
+  .field input{flex:1;min-width:0;background:transparent;border:0;color:var(--tx);font:inherit;outline:none;padding:6px 0}
+  .pick{position:fixed;z-index:50;min-width:240px;max-height:320px;overflow:auto;background:rgba(18,13,28,.98);border:1px solid #3A2D55;border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.6);padding:6px}
+  .pick b{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);padding:6px 10px}
+  .pick button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;color:var(--tx);padding:8px 10px;border-radius:8px;cursor:pointer;font:500 13px inherit}
+  .pick button:hover{background:rgba(157,107,255,.16)}
+  .pick input{width:100%;background:#0A0810;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:7px 10px;font:inherit;outline:none;margin:4px 0}
+  .ib.liked{color:#FF5C8A}.ib.liked svg{fill:#FF5C8A}
+  #spRep[data-one="1"]::before{content:"1";position:absolute;top:4px;right:5px;font:700 8px sans-serif;color:var(--em)}
 </style>
 <script src="kami-embed.js"></script>
 </head>
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand">🎵 KAMI MÜZİK</div>
-    <button class="nav-b on" data-nav="sp_search">🔍 Ara (Spotify)</button>
-    <button class="nav-b" data-nav="playlists">📚 Çalma Listelerim</button>
-    <button class="nav-b" data-nav="saved">❤️ Beğenilenler</button>
-    <button class="nav-b" data-nav="recent">🕒 Son Çalınanlar</button>
-    <button class="nav-b" data-nav="sp_queue">📜 Çalma Sırası</button>
-    <button class="nav-b" data-nav="local">📁 Yerel Klasörler</button>
-    <button class="nav-b" data-nav="ytm">▶ YouTube Music</button>
+    <div class="brand"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>KAMI MÜZİK</div>
+    <button class="nav-b on" data-nav="sp_search"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>Ara (Spotify)</button>
+    <button class="nav-b" data-nav="playlists"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h12M3 12h12M3 18h8M17 18V8l4-1"/><circle cx="15" cy="18" r="2"/></svg>Çalma Listelerim</button>
+    <button class="nav-b" data-nav="saved"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>Beğenilenler</button>
+    <button class="nav-b" data-nav="recent"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Son Çalınanlar</button>
+    <button class="nav-b" data-nav="sp_queue"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h7M17 14l4 3-4 3z"/></svg>Çalma Sırası</button>
+    <button class="nav-b" data-nav="local"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Yerel Klasörler</button>
+    <button class="nav-b" data-nav="ytm"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg>YouTube Music</button>
     <div class="side-sp"></div>
     <div class="sp-card">
       <b id="spSideSt">Spotify: Bağlı değil</b>
@@ -117,15 +155,15 @@
         <b id="spTitle">Çalan parça yok</b>
         <small id="spArtist">Spotify cihazı açık değil veya yerel müzik çalabilirsin</small>
       </div>
-      <button class="btn" id="spLike" title="Beğen / Kaldır">🤍</button>
+      <button class="ib" id="spLike" title="Beğen / Kaldır"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg></button>
     </div>
     <div class="b-mid">
       <div class="sp-ctl">
-        <button class="btn" id="spShuf" title="Karıştır">🔀</button>
-        <button class="btn" data-sp="previous" title="Önceki">⏮</button>
-        <button class="btn pri" data-sp="toggle" id="spPlayBtn" title="Oynat / Duraklat">⏯</button>
-        <button class="btn" data-sp="next" title="Sonraki">⏭</button>
-        <button class="btn" id="spRep" title="Tekrarla">🔁</button>
+        <button class="ib" id="spShuf" title="Karıştır"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
+        <button class="ib" data-sp="previous" title="Önceki"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+        <button class="ib play" data-sp="toggle" id="spPlayBtn" title="Oynat / Duraklat"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+        <button class="ib" data-sp="next" title="Sonraki"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+        <button class="ib" id="spRep" title="Tekrarla"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg></button>
       </div>
       <div class="sp-seek">
         <span id="spPos">0:00</span>
@@ -134,9 +172,9 @@
       </div>
     </div>
     <div class="b-right">
-      <button class="btn" id="spLyrBtn" title="Şarkı sözleri">🎤</button>
-      <button class="btn" id="spYtNow" title="Tek tıkla YouTube Music / Kami Player'da çal">▶ YT</button>
-      <button class="btn" id="spDlNow" title="MP3/FLAC indir">⬇</button>
+      <button class="ib sq" id="spLyrBtn" title="Şarkı sözleri"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 10h16M4 14h10M4 18h7"/></svg></button>
+      <button class="ib sq" id="spYtNow" title="Bu şarkıyı YouTube Music üzerinden Kami Player'da çal"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/></svg></button>
+      <button class="ib sq" id="spDlNow" title="Bu şarkıyı indir (MP3/FLAC)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg></button>
       <select id="spDev" title="Çalma cihazı"><option value="">Cihaz…</option></select>
       <input id="spVol" type="range" min="0" max="100" value="100" style="width:70px;accent-color:#9D6BFF" title="Ses">
     </div>
@@ -186,13 +224,47 @@
     else renderHome();
   }
 
+  // v1.35.2 calma listesi secici: sarkiyi listeye ekle / yeni liste olustur (eskiden prompt ile numara yaziliyordu)
+  let PICK = null;
+  const closePick = () => { PICK?.remove(); PICK = null; };
+  document.addEventListener("mousedown", (e) => { if (PICK && !PICK.contains(e.target)) closePick(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePick(); });
+  async function plPicker(anchor, uri) {
+    closePick();
+    if (!PLAYLISTS.length) await loadPlaylistsCache();
+    const own = PLAYLISTS.filter((p) => p.editable !== false);
+    PICK = document.createElement("div"); PICK.className = "pick";
+    PICK.innerHTML = `<b>${uri ? "Listeye ekle" : "Yeni çalma listesi"}</b>
+      <input id="pkNew" placeholder="Yeni liste adı yaz, Enter">
+      ${uri ? own.map((p, i) => `<button data-pk="${i}">${esc(p.title)}<small style="margin-left:auto;color:var(--mut)">${p.total ?? ""}</small></button>`).join("") || `<div style="color:var(--mut);padding:8px 10px;font-size:12px">Düzenleyebileceğin liste yok — yukarıdan yeni bir tane oluştur.</div>` : ""}`;
+    document.body.appendChild(PICK);
+    const r = anchor.getBoundingClientRect();
+    PICK.style.left = Math.min(innerWidth - 260, Math.max(8, r.right - 250)) + "px";
+    PICK.style.top = (r.bottom + 6 + 320 > innerHeight ? Math.max(8, r.top - 326) : r.bottom + 6) + "px";
+    const inp = PICK.querySelector("#pkNew"); inp.focus();
+    const done = (t) => { anchor.textContent = t; closePick(); };
+    inp.onkeydown = async (ev) => {
+      if (ev.key !== "Enter" || !inp.value.trim()) return;
+      const c = await api()?.music_spotify_playlist_create?.(inp.value.trim()).catch(() => null);
+      const id = c?.id || c?.data?.id;
+      PLAYLISTS = []; await loadPlaylistsCache();
+      if (uri && id) { await api()?.music_spotify_playlist_modify?.(id, [uri], false); done("✓"); }
+      else { closePick(); if (NAV === "playlists") loadLib("playlists"); }
+    };
+    PICK.querySelectorAll("[data-pk]").forEach((b) => b.onclick = async () => {
+      const pl = own[+b.dataset.pk];
+      const res = await api()?.music_spotify_playlist_modify?.(pl.id, [uri], false).catch(() => null);
+      done(res && res.ok === false ? "!" : "✓");
+    });
+  }
+
   async function renderHome() {
-    list.innerHTML = `<div class="sec-h">⚡ Hızlı Erişim</div>
+    list.innerHTML = `<div class="sec-h">Hızlı Erişim</div>
       <div class="qa-grid">
-        <button class="qa-card" data-qnav="saved"><span class="qa-cov">❤️</span><b>Beğenilen Şarkılar</b></button>
-        <button class="qa-card" data-qnav="recent"><span class="qa-cov" style="background:linear-gradient(135deg,#1E1B4B,#6D28D9)">🕒</span><b>Son Çalınanlar</b></button>
-        <button class="qa-card" data-qnav="local"><span class="qa-cov" style="background:linear-gradient(135deg,#064E3B,#2EE6A6)">📁</span><b>Yerel Müzik Klasörleri</b></button>
-        <button class="qa-card" data-qnav="ytm"><span class="qa-cov" style="background:linear-gradient(135deg,#7F1D1D,#EF4444)">▶</span><b>YouTube Music</b></button>
+        <button class="qa-card" data-qnav="saved"><span class="qa-cov"><svg class="ico" style="width:24px;height:24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg></span><b>Beğenilen Şarkılar</b></button>
+        <button class="qa-card" data-qnav="recent"><span class="qa-cov" style="background:linear-gradient(135deg,#1E1B4B,#6D28D9)"><svg class="ico" style="width:24px;height:24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><b>Son Çalınanlar</b></button>
+        <button class="qa-card" data-qnav="local"><span class="qa-cov" style="background:linear-gradient(135deg,#064E3B,#2EE6A6)"><svg class="ico" style="width:24px;height:24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><b>Yerel Müzik Klasörleri</b></button>
+        <button class="qa-card" data-qnav="ytm"><span class="qa-cov" style="background:linear-gradient(135deg,#7F1D1D,#EF4444)"><svg class="ico" style="width:24px;height:24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/></svg></span><b>YouTube Music</b></button>
       </div>
       <div id="homePls"><div style="color:var(--mut);padding:8px">Çalma listeleri yükleniyor…</div></div>`;
     if (!PLAYLISTS.length) await loadPlaylistsCache();
@@ -310,16 +382,16 @@
 
   async function loadLocal() {
     subBar.hidden = false; folderChips.hidden = false;
-    subBar.innerHTML = `<input id="locPath" style="flex:1;min-width:220px" placeholder="Klasör yolu yapıştır (örn. C:\\Users\\...\\Contra) veya Gözat…"><button class="btn pri" id="locAddPath">+ Ekle</button><button class="btn" id="locPick">📂 Gözat</button>`;
+    subBar.innerHTML = `<label class="field"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><input id="locPath" placeholder="Müzik klasörünün yolunu yapıştır — örn. C:\\Users\\...\\Downloads\\Contra"><button class="btn" id="locPick">Gözat…</button><button class="btn pri" id="locAddPath">Ekle</button></label>`;
     const r = await api()?.music_local_scan?.("", q.value.trim()).catch(() => null);
     const folders = r?.folders || [], items = r?.items || [];
-    folderChips.innerHTML = folders.map((f) => `<span class="chip" title="${esc(f)}">📁 ${esc(f.split(/[\\/]/).pop() || f)}<button data-locplaydir="${esc(f)}">▶</button><button data-locdel="${esc(f)}">✕</button></span>`).join("");
+    folderChips.innerHTML = folders.map((f) => `<span class="chip" title="${esc(f)}">${esc(f.split(/[\\/]/).pop() || f)}<button data-locplaydir="${esc(f)}" title="Tümünü çal">▶</button><button data-locdel="${esc(f)}" title="Listeden kaldır (dosyalara dokunmaz)">✕</button></span>`).join("");
     list.innerHTML = items.length ? items.map((it) => `<div class="row"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.folder)} · ${esc(it.ext.toUpperCase())}</small></div><button class="btn pri" data-locplay="${esc(it.path)}" data-locroot="${esc(it.root)}">▶ Kami Player</button></div>`).join("") : `<div style="color:var(--mut);padding:14px">Henüz yerel klasör eklenmedi.</div>`;
   }
 
   async function loadYtmBar() {
     subBar.hidden = false; folderChips.hidden = false;
-    subBar.innerHTML = `<input id="ytPlIn" style="flex:1;min-width:220px" placeholder="YouTube Music Playlist URL veya ID (liste dışı/herkese açık)…"><button class="btn pri" id="ytPlOpen">Playlist Aç</button><button class="btn" id="ytPlToSp">🟢 Spotify'a Aktar</button>`;
+    subBar.innerHTML = `<label class="field"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/></svg><input id="ytPlIn" placeholder="YouTube Music çalma listesi linki ya da kimliği"><button class="btn pri" id="ytPlOpen">Aç</button></label><button class="btn" id="ytPlToSp" title="Açık listeyi Spotify'da yeni bir çalma listesine aktar">Spotify'a aktar</button>`;
     const saved = await api()?.music_ytm_saved?.().catch(() => []);
     folderChips.innerHTML = (saved || []).map((p) => `<span class="chip" data-ytpl="${esc(p.id)}">📜 ${esc(p.title)}</span>`).join("");
     if (q.value.trim()) search();
@@ -341,9 +413,9 @@
     if (!r?.ok) return;
     if (!r.title) { spTitle.textContent = "Çalan parça yok"; spArtist.textContent = "Spotify cihazı açık değil veya yerel çalabilirsin"; spCov.hidden = true; return; }
     CUR_TRACK = r; SP_PLAYING = !!r.playing; SP_SHUF = !!r.shuffle; SP_REP = r.repeat || "off";
-    spPlayBtn.textContent = SP_PLAYING ? "⏸" : "▶";
+    spPlayBtn.innerHTML = SP_PLAYING ? '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>' : '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
     spShuf.classList.toggle("on", SP_SHUF); spRep.classList.toggle("on", SP_REP !== "off");
-    spRep.textContent = SP_REP === "track" ? "🔂" : "🔁";
+    spRep.title = SP_REP === "track" ? "Tekrar: bu şarkı" : SP_REP === "context" ? "Tekrar: liste" : "Tekrarla"; spRep.dataset.one = SP_REP === "track" ? "1" : "";
     if (typeof r.volume === "number" && document.activeElement !== spVol) spVol.value = r.volume;
     spTitle.textContent = r.title;
     spArtist.textContent = `${r.artist || ""}${r.device_name ? " · 📱 " + r.device_name : ""}`;
@@ -355,7 +427,7 @@
       LAST_TRACK = key;
       if (r.uri || r.id) {
         const lk = await api()?.music_spotify_like_check?.(r.uri || r.id).catch(() => null);
-        SP_LIKED = !!lk?.liked; spLike.textContent = SP_LIKED ? "❤️" : "🤍";
+        SP_LIKED = !!lk?.liked; spLike.classList.toggle("liked", SP_LIKED);
       }
       const lr = await api()?.music_lyrics?.(r.title, r.artist).catch(() => null);
       LYRICS = lr?.lines || [];
@@ -396,7 +468,7 @@
   spLike.onclick = async () => {
     if (!CUR_TRACK?.uri && !CUR_TRACK?.id) return;
     await api()?.music_spotify_like_toggle?.(CUR_TRACK.uri || CUR_TRACK.id, !SP_LIKED);
-    SP_LIKED = !SP_LIKED; spLike.textContent = SP_LIKED ? "❤️" : "🤍";
+    SP_LIKED = !SP_LIKED; spLike.classList.toggle("liked", SP_LIKED);
   };
   spLyrBtn.onclick = () => { spLyr.hidden = !spLyr.hidden; spLyrBtn.classList.toggle("on", !spLyr.hidden); pollSpotify(); };
   spDlNow.onclick = () => { if (CUR_TRACK?.title) ytBridgeAction(CUR_TRACK.title, CUR_TRACK.artist, "dl"); };
@@ -407,7 +479,7 @@
   spSeek.onchange = async () => { SEEK_LOCK = false; if (CUR_TRACK?.duration_ms) await api()?.music_spotify_seek?.(Math.round((spSeek.value / 1000) * CUR_TRACK.duration_ms)); };
 
   subBar.onclick = async (e) => {
-    if (e.target.id === "newPlBtn") { const nm = prompt("Yeni çalma listesi adı:"); if (nm) { await api()?.music_spotify_playlist_create?.(nm); loadLib("playlists"); } }
+    if (e.target.id === "newPlBtn") { plPicker(e.target, ""); }
     else if (e.target.id === "locAddPath") { await api()?.music_local_add?.(locPath.value.trim()); loadLocal(); }
     else if (e.target.id === "locPick") { await api()?.music_local_add?.(""); loadLocal(); }
     else if (e.target.id === "ytPlOpen") {
@@ -423,7 +495,7 @@
       const u = ytPlIn.value.trim(); if (!u) return alert("Önce YT Music Playlist linkini yapıştır.");
       e.target.textContent = "Aktarılıyor…";
       const r = await api()?.music_ytm_to_spotify?.(u, "").catch(() => null);
-      e.target.textContent = "🟢 Spotify'a Aktar";
+      e.target.textContent = "Spotify'a aktar";
       alert(r?.ok ? `"${r.name}" listesine ${r.matched}/${r.total} şarkı Spotify'a aktarıldı!` : `Hata: ${r?.error || "aktarılamadı"}`);
     }
   };
@@ -476,11 +548,7 @@
     if (rem && CUR_PL?.id) { await api()?.music_spotify_playlist_modify?.(CUR_PL.id, [rem.dataset.sprem], true); rem.closest(".row")?.remove(); return; }
     const add = e.target.closest("[data-spadd]");
     if (add) {
-      if (!PLAYLISTS.length) await loadPlaylistsCache();
-      if (!PLAYLISTS.length) { alert("Önce Çalma Listelerim açılmalı."); return; }
-      const pick = prompt(`Hangi listeye eklensin? (numara yaz)\n` + PLAYLISTS.map((p, idx) => `${idx + 1}. ${p.title}`).join("\n"));
-      const pl = PLAYLISTS[parseInt(pick || "", 10) - 1];
-      if (pl) { await api()?.music_spotify_playlist_modify?.(pl.id, [add.dataset.spadd], false); add.textContent = "✓"; }
+      plPicker(add, add.dataset.spadd);   // v1.35.2: numarali prompt yerine liste secici
       return;
     }
     const lp = e.target.closest("[data-locplay]");
