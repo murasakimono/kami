@@ -4341,9 +4341,21 @@ class Api(StudioMixin):
         from app.core.music_hub import set_spotify_token
         return set_spotify_token(token)
 
+    def music_spotify_login(self, client_id: str) -> dict[str, Any]:
+        from app.core.music_hub import spotify_login
+        return spotify_login(client_id)
+
+    def music_spotify_status(self) -> dict[str, Any]:
+        from app.core.music_hub import spotify_oauth_status
+        return spotify_oauth_status()
+
+    def music_spotify_logout(self) -> dict[str, Any]:
+        from app.core.music_hub import spotify_logout
+        return spotify_logout()
+
     def music_spotify_control(self, action: str) -> dict[str, Any]:
         from app.core.music_hub import spotify_control
-        return spotify_control(str(self.settings.get("spotify_token") or ""), action)
+        return spotify_control(str(self._manager.settings.get("spotify_token") or ""), action)
 
     def music_lyrics(self, title: str, artist: str = "") -> dict[str, Any]:
         from app.core.music_hub import fetch_track_lyrics

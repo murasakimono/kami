@@ -97,3 +97,40 @@ def test_games_launch_guard_and_cleaner_guard(tmp_path):
     (tmp_path / "a" / "f.bin").write_bytes(b"x" * 5000)
     m = cleaner.disk_treemap(str(tmp_path))
     assert m["ok"] and m["items"][0]["size"] == 5000 and m["approx"] is False
+
+
+def test_spotify_pkce_login_and_refresh(tmp_path, monkeypatch):
+    import threading
+    import urllib.parse
+    import urllib.request
+    import webbrowser
+
+    from app import paths
+    from app.core import debrid
+    from app.core import music_hub as m
+    store: dict = {}
+
+    class TS:
+        def __init__(self, p): self.p = str(p)
+        def save(self, v): store[self.p] = v
+        def load(self): return store.get(self.p, "")
+        def clear(self): store.pop(self.p, None)
+    monkeypatch.setattr(paths, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(debrid, "TokenStore", TS)
+    monkeypatch.setattr(m, "_SP_CACHE", {"token": "", "exp": 0.0})
+    monkeypatch.setattr(m, "_sp_token_request", lambda f: {"access_token": "AT_" + f["grant_type"], "refresh_token": "RT", "expires_in": 3600})
+
+    def opener(state_override=None):
+        def _open(url):
+            q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
+            assert q["code_challenge_method"] == "S256" and q["redirect_uri"] == m.SP_REDIRECT
+            st = state_override or q["state"]
+            threading.Timer(0.2, lambda: urllib.request.urlopen(f"{m.SP_REDIRECT}?code=C&state={st}").read()).start()
+        return _open
+    monkeypatch.setattr(webbrowser, "open", opener())
+    assert m.spotify_login("CID", timeout=5)["ok"]
+    assert m.spotify_oauth_status()["connected"]
+    m._SP_CACHE["exp"] = 0
+    assert m.spotify_access_token() == "AT_refresh_token"
+    monkeypatch.setattr(webbrowser, "open", opener("SAHTE"))
+    assert m.spotify_login("CID", timeout=5)["error"] == "state_mismatch"

@@ -24,7 +24,131 @@ def set_spotify_token(token: str) -> dict[str, Any]:
 
 
 def get_spotify_token(fallback: str = "") -> str:
-    return (_sp_store().load() or str(fallback or "")).strip()
+    """Once kalici OAuth (PKCE, kendini yeniler), yoksa elle yapistirilan token."""
+    return (spotify_access_token() or _sp_store().load() or str(fallback or "")).strip()
+
+
+# ---------- Kalici Spotify girisi: Authorization Code + PKCE (istemci sirri yok) ----------
+SP_PORT = 47395
+SP_REDIRECT = f"http://127.0.0.1:{SP_PORT}/callback"   # Spotify: localhost yasak, loopback IP serbest
+SP_SCOPES = "user-read-currently-playing user-read-playback-state user-modify-playback-state"
+_SP_CACHE: dict[str, Any] = {"token": "", "exp": 0.0}
+
+
+def _sp_oauth_store():
+    from app import paths
+    from app.core.debrid import TokenStore
+    return TokenStore(paths.DATA_DIR / "spotify_oauth.bin")   # DPAPI: {client_id, refresh_token}
+
+
+def _sp_oauth() -> dict[str, Any]:
+    try:
+        return json.loads(_sp_oauth_store().load() or "{}")
+    except ValueError:
+        return {}
+
+
+def _sp_token_request(fields: dict[str, str]) -> dict[str, Any]:
+    import urllib.parse
+    req = urllib.request.Request("https://accounts.spotify.com/api/token", data=urllib.parse.urlencode(fields).encode(),
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _sp_keep(d: dict[str, Any], client_id: str) -> None:
+    import time
+    _SP_CACHE.update(token=d.get("access_token", ""), exp=time.time() + int(d.get("expires_in", 3600)) - 60)
+    old = _sp_oauth()
+    _sp_oauth_store().save(json.dumps({"client_id": client_id, "refresh_token": d.get("refresh_token") or old.get("refresh_token", "")}))
+
+
+def spotify_access_token() -> str:
+    """Gecerli erisim token'i; suresi dolmussa refresh token ile sessizce yeniler (her saat elle yapistirma yok)."""
+    import time
+    if _SP_CACHE["token"] and time.time() < _SP_CACHE["exp"]:
+        return _SP_CACHE["token"]
+    o = _sp_oauth()
+    if not o.get("refresh_token") or not o.get("client_id"):
+        return ""
+    try:
+        d = _sp_token_request({"grant_type": "refresh_token", "refresh_token": o["refresh_token"], "client_id": o["client_id"]})
+        _sp_keep(d, o["client_id"])
+        return _SP_CACHE["token"]
+    except Exception:
+        return ""
+
+
+def spotify_oauth_status() -> dict[str, Any]:
+    o = _sp_oauth()
+    return {"connected": bool(o.get("refresh_token")), "client_id": o.get("client_id", ""), "redirect": SP_REDIRECT}
+
+
+def spotify_logout() -> dict[str, Any]:
+    _sp_oauth_store().clear()
+    _SP_CACHE.update(token="", exp=0.0)
+    return {"ok": True}
+
+
+def spotify_login(client_id: str, timeout: float = 110.0) -> dict[str, Any]:
+    """Tarayicida Spotify izin sayfasini acar, 127.0.0.1 geri donusunu dinler, kodu PKCE ile token'a cevirir."""
+    import base64
+    import hashlib
+    import http.server
+    import secrets
+    import threading
+    import urllib.parse
+    import webbrowser
+    cid = str(client_id or "").strip()
+    if not cid:
+        return {"ok": False, "error": "no_client_id"}
+    verifier = secrets.token_urlsafe(64)[:96]
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    state = secrets.token_urlsafe(16)
+    got: dict[str, str] = {}
+    done = threading.Event()
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            u = urllib.parse.urlsplit(self.path)
+            q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
+            if u.path != "/callback":
+                self.send_response(404); self.end_headers(); return
+            ok = q.get("state") == state and "code" in q
+            got.update(q if ok else {"error": q.get("error", "state_mismatch")})
+            body = ("<h2 style='font-family:sans-serif;color:#2EE6A6'>Kami Spotify'a bağlandı. Bu sekmeyi kapatabilirsin.</h2>" if ok
+                    else f"<h2 style='font-family:sans-serif;color:#FF6B81'>Bağlanamadı: {got.get('error')}</h2>")
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.end_headers()
+            self.wfile.write(body.encode("utf-8"))
+            done.set()
+
+        def log_message(self, *a):
+            pass
+
+    try:
+        srv = http.server.HTTPServer(("127.0.0.1", SP_PORT), H)
+    except OSError:
+        return {"ok": False, "error": "port_busy"}
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        webbrowser.open("https://accounts.spotify.com/authorize?" + urllib.parse.urlencode({
+            "client_id": cid, "response_type": "code", "redirect_uri": SP_REDIRECT, "scope": SP_SCOPES,
+            "code_challenge_method": "S256", "code_challenge": challenge, "state": state}))
+        if not done.wait(timeout):
+            return {"ok": False, "error": "timeout"}
+    finally:
+        srv.shutdown(); srv.server_close()
+    if "code" not in got:
+        return {"ok": False, "error": got.get("error", "denied")}
+    try:
+        d = _sp_token_request({"grant_type": "authorization_code", "code": got["code"], "redirect_uri": SP_REDIRECT,
+                               "client_id": cid, "code_verifier": verifier})
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:160]}
+    if not d.get("access_token"):
+        return {"ok": False, "error": d.get("error_description") or "no_token"}
+    _sp_keep(d, cid)
+    return {"ok": True}
 
 
 def search_ytmusic(query: str, limit: int = 12) -> dict[str, Any]:

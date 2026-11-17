@@ -34,10 +34,21 @@
     <button class="btn" id="spCfgBtn">Spotify Bağla</button>
   </div>
   <div class="spbox" id="spTokBox" hidden>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <input id="spTok" type="password" style="flex:1;min-width:240px" placeholder="Spotify OAuth Bearer Token…">
-      <button class="btn pri" id="spSave">Kaydet</button>
-      <button class="btn" id="spClear">Temizle</button>
+    <div id="spConn" hidden style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="color:#2EE6A6;font-weight:600">✓ Spotify bağlı</span><span style="color:var(--mut);font-size:12px">Oturum kendiliğinden yenilenir.</span>
+      <span style="flex:1"></span><button class="btn" id="spOut">Bağlantıyı kes</button>
+    </div>
+    <div id="spSetup">
+      <ol style="margin:0 0 10px 18px;padding:0;font-size:12.5px;line-height:1.7;color:#C9C2DA">
+        <li><a href="#" data-ext="https://developer.spotify.com/dashboard" style="color:#A78BFA">developer.spotify.com/dashboard</a>'da <b>Create app</b> → ad: Kami, API: <b>Web API</b>.</li>
+        <li>Redirect URI'ye tam olarak şunu ekle: <code id="spRedir" style="color:#2EE6A6;user-select:all">http://127.0.0.1:47395/callback</code> <button class="btn" id="spCopy" style="padding:2px 8px;font-size:11px">Kopyala</button></li>
+        <li>Uygulamanın <b>Client ID</b>'sini aşağıya yapıştır ve giriş yap (gizli anahtar gerekmez).</li>
+      </ol>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="spCid" style="flex:1;min-width:240px" placeholder="Client ID">
+        <button class="btn pri" id="spLogin">Spotify ile giriş yap</button>
+      </div>
+      <div id="spMsg" style="font-size:12px;color:var(--mut);margin-top:8px"></div>
     </div>
   </div>
   <div class="spbox" id="spNowBox">
@@ -103,9 +114,27 @@
 
     document.getElementById("go").onclick = search;
     document.getElementById("q").onkeydown = (e) => { if (e.key === "Enter") search(); };
-    spCfgBtn.onclick = () => { spTokBox.hidden = !spTokBox.hidden; };
-    spSave.onclick = async () => { await api()?.music_set_spotify_token?.(spTok.value); spTok.value = ""; spTokBox.hidden = true; pollSpotify(); };
-    spClear.onclick = async () => { await api()?.music_set_spotify_token?.(""); spTok.value = ""; pollSpotify(); };
+    const SP_ERR = { timeout: "2 dk içinde giriş tamamlanmadı.", port_busy: "47395 portu başka bir uygulamada; onu kapatıp tekrar dene.", no_client_id: "Client ID boş.",
+      access_denied: "Spotify'da izin verilmedi.", state_mismatch: "Güvenlik denetimi tutmadı, tekrar dene." };
+    async function spStatus() {
+      const st = await api()?.music_spotify_status?.().catch(() => null) || {};
+      document.getElementById("spConn").hidden = !st.connected; document.getElementById("spSetup").hidden = !!st.connected;
+      if (st.client_id) document.getElementById("spCid").value = st.client_id;
+      if (st.redirect) document.getElementById("spRedir").textContent = st.redirect;
+      spCfgBtn.textContent = st.connected ? "Spotify ✓" : "Spotify Bağla";
+    }
+    spCfgBtn.onclick = () => { spTokBox.hidden = !spTokBox.hidden; spStatus(); };
+    document.getElementById("spCopy").onclick = () => navigator.clipboard?.writeText(document.getElementById("spRedir").textContent).catch(() => {});
+    spTokBox.addEventListener("click", (e) => { const a = e.target.closest("[data-ext]"); if (a) { e.preventDefault(); api()?.open_link?.(a.dataset.ext); } });
+    document.getElementById("spLogin").onclick = async () => {
+      const msg = document.getElementById("spMsg"), cid = document.getElementById("spCid").value.trim();
+      msg.textContent = "Tarayıcıda Spotify açıldı; izin verip bu sekmeye dön…";
+      const r = await api()?.music_spotify_login?.(cid).catch((e) => ({ error: String(e?.message || e) }));
+      msg.textContent = r?.ok ? "" : "Olmadı: " + (SP_ERR[r?.error] || r?.error || "?");
+      if (r?.ok) { await spStatus(); spTokBox.hidden = true; pollSpotify(); }
+    };
+    document.getElementById("spOut").onclick = async () => { await api()?.music_spotify_logout?.(); await api()?.music_set_spotify_token?.(""); spStatus(); pollSpotify(); };
+    window.addEventListener("pywebviewready", spStatus);
     document.querySelector(".sp-ctl").onclick = async (e) => {
       const b = e.target.closest("[data-sp]"); if (!b) return;
       const act = b.dataset.sp === "toggle" ? (SP_PLAYING ? "pause" : "play") : b.dataset.sp;
