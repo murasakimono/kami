@@ -160,18 +160,5 @@
 <script src="studio-ux.js"></script>
 <script src="studio-finish.js"></script>
 <script src="studio-extra30.js"></script>
-<script src="eye/kami_eye.js"></script>
-<script>
-(() => {
-  const cv = document.getElementById("stEye");
-  if (!cv || !window.KamiEye) return;
-  const eye = new KamiEye(cv, { assets: "eye/char/", eyeY: 0.38, mirrorFrame: true });
-  eye.set({ costume: "studio" });
-  eye.ready.then(() => eye.start()).catch(() => {});
-  document.addEventListener("mousemove", (e) => eye.lookAt(e.clientX, e.clientY));
-  cv.addEventListener("click", () => eye.poke?.());
-  window.ST_EYE = eye;
-})();
-</script>
 </body>
 </html>

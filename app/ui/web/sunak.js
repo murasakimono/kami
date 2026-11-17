@@ -240,7 +240,7 @@ function skBind() {
     music: () => api?.music_open?.(),
     cleaner: () => api?.cleaner_open?.(),
   };
-  const MOD_COSTUMES = { player: "player", studio: "studio", reader: "reader", music: "player", games: "speed", picture: "alert", cleaner: "" };
+  const MOD_COSTUMES = { player: "player", studio: "studio", reader: "reader", music: "player", games: "speed", picture: "done", cleaner: "" };
   $("#skTabs")?.addEventListener("click", (e) => {
     const b = e.target.closest(".sk-tab[data-mod], #skRoomPill");
     if (!b) return;
@@ -248,6 +248,9 @@ function skBind() {
     if (mod === "home") { skCloseDrawer?.(); return; }
     if (mod in MOD_COSTUMES) SK.eye?.set({ costume: MOD_COSTUMES[mod] });
     LAUNCHERS[mod]?.();
+  });
+  window.addEventListener("focus", () => {
+    try { SK.eye?.set({ costume: localStorage.getItem("kami.costume") || "" }); } catch {}
   });
   $("#skRoomPill")?.addEventListener("click", () => LAUNCHERS.room?.());
   // dosya surukleme: ruh uyanir, birakinca yutar (asil ekleme extras.js'teki drop dinleyicisinde)

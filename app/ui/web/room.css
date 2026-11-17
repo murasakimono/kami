@@ -39,7 +39,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .rm-invite input { width: 300px; min-width: 0; background: #0A0810; border: 1px solid var(--line); padding: 7px 9px; font-size: 12px; }
 .rm-invite button, .rm-send button { border: 0; background: var(--royal); padding: 0 12px; cursor: pointer; font-weight: 700; }
 .rm-ib { position: relative; border: 0; background: #1A1426; width: 38px; height: 34px; display: grid; place-items: center; cursor: pointer; clip-path: var(--cut); }
-.rm-txtbtn { border: 1px solid rgba(157,107,255,.32); background: #1A1426; color: #EDE9F6; height: 30px; padding: 0 11px; border-radius: 7px; font: 600 12px inherit; white-space: nowrap; cursor: pointer; flex: none; }
+.rm-txtbtn { border: 1px solid rgba(157,107,255,.32); background: #1A1426; color: #EDE9F6; height: 30px; padding: 0 11px; border-radius: 7px; font: 600 12px "Chakra Petch", sans-serif; white-space: nowrap; cursor: pointer; flex: none; }
 .rm-txtbtn:hover { border-color: #9D6BFF; background: #261C38; }
 .rm-ib em { position: absolute; right: 3px; top: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--em); }
 

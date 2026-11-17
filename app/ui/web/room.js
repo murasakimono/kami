@@ -1152,9 +1152,11 @@ async function spIn(from, m) {
   const dock = document.querySelector(".rm-dock"); if (!dock || $("bSpSync")) return;
   const b = document.createElement("button"); b.id = "bSpSync"; b.title = "Odada Spotify birlikte dinle";
   b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/></svg>';
-  b.onclick = () => {
+  b.onclick = async () => {
     if (SP_SYNC.lead) return spStopLead();
     if (!window.pywebview?.api?.music_spotify_now) { toast("Spotify yayını için masaüstü Kami penceresi gerekir."); return; }
+    const now = await window.pywebview.api.music_spotify_now().catch(() => null);
+    if (!now?.title) { toast("Önce Kamify veya Spotify'da bir şarkı başlat."); return; }
     SP_SYNC.lead = true; SP_SYNC.follow = false;
     spLeadTick();
     clearInterval(SP_SYNC.timer);

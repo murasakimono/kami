@@ -470,22 +470,23 @@ def spotify_play_uri(uri: str = "", context_uri: str = "", position_ms: int = 0)
             body["context_uri"] = uri
     if position_ms > 0:
         body["position_ms"] = int(position_ms)
-    # Dahili go-librespot: acik baska aktif cihaz yoksa harici Spotify acmadan dogrudan Kami icinden cal.
+    # Dahili go-librespot: acik baska aktif cihaz yoksa (veya secili cihaz Kami ise) dogrudan go-librespot calar.
+    from app.core import librespot_host
+    ls_st = librespot_host.status()
+    ls_id = str(ls_st.get("device_id") or "")
     dev = _sp_pick_device(launch=False)
+    if ls_st.get("paired") and (not dev or (ls_id and dev == ls_id)):
+        lr = librespot_host.play_uri(uri=uri, context_uri=context_uri, position_ms=position_ms)
+        if lr.get("ok"):
+            return lr
     if not dev:
-        from app.core import librespot_host
-        st = librespot_host.status()
-        if st.get("paired"):
-            lr = librespot_host.play_uri(uri=uri, context_uri=context_uri, position_ms=position_ms)
-            if lr.get("ok"):
-                return lr
-        elif st.get("running") and st.get("pair_url"):
+        if ls_st.get("running") and ls_st.get("pair_url") and not ls_st.get("paired"):
             return {
                 "ok": False,
                 "error": "librespot_pair",
-                "pair_url": st.get("pair_url", ""),
-                "pair_code": st.get("pair_code", ""),
-                "message": f"Dahili Spotify oynatıcıyı 1 kez eşleştir ({st.get('pair_code') or 'spotify.com/pair'}).",
+                "pair_url": ls_st.get("pair_url", ""),
+                "pair_code": ls_st.get("pair_code", ""),
+                "message": f"Dahili Spotify oynatıcıyı 1 kez eşleştir ({ls_st.get('pair_code') or 'spotify.com/pair'}).",
             }
         dev = _sp_pick_device(launch=True)
     if not dev:
@@ -566,8 +567,8 @@ def spotify_devices() -> dict[str, Any]:
         from app.core import librespot_host
         if librespot_host.is_running():
             st = librespot_host.status()
-            if st.get("paired") and not any(str(x.get("name") or "").lower() == "kami" for x in devs):
-                d_id = st.get("device_id") or "kami-local"
+            d_id = str(st.get("device_id") or "")
+            if st.get("paired") and d_id and not any(x.get("id") == d_id for x in devs):
                 devs.insert(0, {"id": d_id, "name": "Kami (Dahili)", "type": "Computer", "active": bool(st.get("active")), "volume": 100})
     except Exception:
         pass
@@ -855,21 +856,33 @@ def spotify_control(token: str, action: str) -> dict[str, Any]:
 
 
 def fetch_track_lyrics(title: str, artist: str = "") -> dict[str, Any]:
+    import re as _re
     t = str(title or "").strip()
     a = str(artist or "").strip()
     if not t:
         return {"ok": False, "lines": [], "plain": ""}
     try:
-        from app.core.lyrics import fetch_lyrics
-        res = fetch_lyrics(f"{a} - {t}" if a else t)
+        from app.core.lyrics import lrclib_find
+        res = lrclib_find(a, t)
         if not res:
             return {"ok": False, "lines": [], "plain": ""}
+        synced_raw = str(res.get("synced") or "").strip()
+        plain_raw = str(res.get("plain") or "").strip()
+        lines: list[dict[str, Any]] = []
+        if synced_raw:
+            for row in synced_raw.splitlines():
+                m = _re.match(r"\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)", row.strip())
+                if m:
+                    sec = int(m.group(1)) * 60 + float(m.group(2))
+                    tx = m.group(3).strip()
+                    if tx:
+                        lines.append({"t": sec, "text": tx})
         return {
-            "ok": True,
-            "synced": bool(res.get("synced")),
-            "lines": res.get("lines") or [],
-            "plain": res.get("plain") or "",
-            "source": res.get("source") or "",
+            "ok": bool(lines or plain_raw),
+            "synced": bool(lines),
+            "lines": lines,
+            "plain": plain_raw,
+            "source": "lrclib",
         }
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:120], "lines": [], "plain": ""}

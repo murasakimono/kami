@@ -67,6 +67,60 @@ def _set_hwnd_app_id(title: str, app_id: str) -> None:
         pass
 
 
+_MOD_ICONS_KEEP: list[int] = []
+
+
+def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int]) -> None:
+    """Modul penceresine kendine ozgu renkli/simgeli gorev cubugu ve baslik ikonu atar."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from PIL import Image, ImageDraw
+        icon_dir = paths.DATA_DIR / "icons"
+        icon_dir.mkdir(parents=True, exist_ok=True)
+        ico = icon_dir / f"{key}.ico"
+        if not ico.is_file():
+            im = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+            d = ImageDraw.Draw(im)
+            r, g, b = accent
+            d.rounded_rectangle([4, 4, 60, 60], radius=16, fill=(14, 10, 24, 255), outline=(r, g, b, 255), width=4)
+            if key == "player":
+                d.polygon([(24, 18), (48, 32), (24, 46)], fill=(r, g, b, 255))
+            elif key == "studio":
+                d.rounded_rectangle([18, 20, 46, 44], radius=4, outline=(r, g, b, 255), width=4)
+                d.line([(18, 27), (46, 27)], fill=(r, g, b, 255), width=3)
+            elif key == "picture":
+                d.rounded_rectangle([17, 19, 47, 45], radius=4, outline=(r, g, b, 255), width=4)
+                d.ellipse([22, 23, 29, 30], fill=(r, g, b, 255))
+                d.polygon([(19, 43), (33, 30), (45, 43)], fill=(r, g, b, 255))
+            elif key == "reader":
+                d.rounded_rectangle([19, 17, 45, 47], radius=3, outline=(r, g, b, 255), width=4)
+                d.line([(25, 25), (39, 25), (25, 32), (39, 32)], fill=(r, g, b, 255), width=3)
+            elif key == "music":
+                d.ellipse([19, 37, 29, 46], fill=(r, g, b, 255))
+                d.ellipse([36, 34, 46, 43], fill=(r, g, b, 255))
+                d.line([(28, 40), (28, 20), (45, 17), (45, 37)], fill=(r, g, b, 255), width=4)
+            elif key == "games":
+                d.rounded_rectangle([15, 24, 49, 42], radius=8, outline=(r, g, b, 255), width=4)
+                d.line([(24, 29), (24, 37)], fill=(r, g, b, 255), width=3)
+                d.line([(20, 33), (28, 33)], fill=(r, g, b, 255), width=3)
+                d.ellipse([37, 30, 42, 35], fill=(r, g, b, 255))
+            else:
+                d.polygon([(18, 20), (46, 20), (35, 34), (35, 46), (29, 46), (29, 34)], fill=(r, g, b, 255))
+            im.save(str(ico), format="ICO", sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
+        hwnd = ctypes.windll.user32.FindWindowW(None, title)
+        if not hwnd:
+            return
+        for idx, sz in ((0, 16), (1, 32)):
+            hi = ctypes.windll.user32.LoadImageW(0, str(ico), 1, sz, sz, 0x10)
+            if hi:
+                _MOD_ICONS_KEEP.append(hi)
+                ctypes.windll.user32.SendMessageW(hwnd, 0x0080, idx, hi)
+    except Exception:
+        pass
+
+
 def _setup_logging() -> None:
     handler = logging.handlers.RotatingFileHandler(paths.LOG_PATH, maxBytes=2_000_000, backupCount=2,
                                                    encoding="utf-8")
@@ -451,6 +505,7 @@ def main() -> int:
 
         def loaded() -> None:
             bind_drop(w)
+            _set_hwnd_icon("Kami Player", "player", (46, 230, 166))
             if state.pop("prewarm", False):   # arka planda hazirlandi: one getirme, gizli kalsin
                 return
             # simge durumundaki / arka plandaki Kami'den acilinca da one gelsin (Gezgin ikinci ornegi izin verdi)
@@ -480,25 +535,26 @@ def main() -> int:
             api._picture_win = None
         w.events.closed += closed
         keep_warm(w)
-        w.events.loaded += lambda: (picture_front.request(), threading.Timer(0.6, picture_front.request).start())
+        w.events.loaded += lambda: (_set_hwnd_icon("Kami Picture", "picture", (56, 189, 248)), picture_front.request(), threading.Timer(0.6, picture_front.request).start())
         return w
     api._make_picture_window = make_picture_window
     api._front_picture = picture_front.request
 
     # ---- Kami Oyun / Muzik / Suzgec (her biri kendi ayri penceresinde) ----
+    _MOD_ICON_COLORS = {"games": (129, 140, 248), "music": (46, 230, 166), "cleaner": (244, 114, 182)}
     for _mkey, _mtitle, _mfile, _mw, _mh in (
         ("games", "Kami Games", "games.html", 1320, 840),
         ("music", "Kamify", "music.html", 1240, 800),
         ("cleaner", "Kami Cleaner", "cleaner.html", 1220, 780),
     ):
-        def _bind_mod(k=_mkey, t=_mtitle, f=_mfile, ww=_mw, hh=_mh):
+        def _bind_mod(k=_mkey, t=_mtitle, f=_mfile, ww=_mw, hh=_mh, col=_MOD_ICON_COLORS[_mkey]):
             fr = WindowFront(t)
             def _make():
                 w = webview.create_window(t, url=str(paths.WEB_DIR / f), js_api=api,
                                           width=ww, height=hh, min_size=(760, 520), background_color="#08070C", text_select=True)
                 w.events.closed += lambda: setattr(api, f"_{k}_win", None)
                 keep_warm(w)
-                w.events.loaded += lambda: (fr.request(), threading.Timer(0.5, fr.request).start())
+                w.events.loaded += lambda: (_set_hwnd_icon(t, k, col), fr.request(), threading.Timer(0.5, fr.request).start())
                 return w
             setattr(api, f"_make_{k}_window", _make)
             setattr(api, f"_front_{k}", fr.request)
@@ -516,6 +572,7 @@ def main() -> int:
         w.events.closed += closed
         keep_warm(w)
         def loaded() -> None:
+            _set_hwnd_icon("Kami Reader", "reader", (245, 158, 11))
             reader_front.request(); threading.Timer(0.6, reader_front.request).start()
             try:
                 from webview.dom import DOMEventHandler
@@ -549,6 +606,7 @@ def main() -> int:
 
         def loaded() -> None:
             _set_hwnd_app_id("Kami Studio", "Murasakimono.Kami.Studio")
+            _set_hwnd_icon("Kami Studio", "studio", (167, 139, 250))
             studio_front.request(); threading.Timer(0.6, studio_front.request).start()
             try:
                 w.maximize()

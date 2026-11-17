@@ -21,7 +21,7 @@ from app import paths
 log = logging.getLogger(__name__)
 
 _LATEST_WIN_URL = (
-    "https://github.com/devgianlu/go-librespot/releases/latest/download/"
+    "https://github.com/devgianlu/go-librespot/releases/download/v0.10.6/"
     "go-librespot_windows_amd64.tar.gz"
 )
 _LOCK = threading.RLock()
@@ -108,17 +108,18 @@ def _pick_port() -> int:
     return 3678
 
 
-def _write_config(port: int) -> Path:
+def _write_config(port: int, zeroconf: bool = False) -> Path:
     cfg_dir = _config_dir()
     cfg_path = cfg_dir / "config.yml"
     # device_auth: tarayicida tek seferlik spotify.com/pair eslestirmesi -> state.json'a kalici yazilir;
-    # zeroconf_enabled: true ile ayni agdaki Spotify istemcileri de Kami hoparlorunu gorur.
+    # zeroconf varsayilan kapali: ortak agdaki baskalari hoparloru gormesin.
+    zc = "true" if zeroconf else "false"
     text = (
         'device_name: "Kami"\n'
         'device_type: "computer"\n'
         'audio_backend: "wasapi"\n'
         "bitrate: 320\n"
-        "zeroconf_enabled: true\n"
+        f"zeroconf_enabled: {zc}\n"
         'zeroconf_backend: "builtin"\n'
         "server:\n"
         "  enabled: true\n"
@@ -276,9 +277,8 @@ def status() -> dict[str, Any]:
             "expires_at": ac["data"].get("expires_at", ""),
         }
 
-    # Root (200/204) erisilebilir ve state.json varsa cihaz bagli ama henuz bos (stopped) olabilir
-    root_r = _api("GET", "/", timeout=1.0)
-    paired = has_credentials() or root_r.get("status") == 200
+    # state.json olmadan 'paired' sayma (HTTP / 200 donse bile eslesmemis olabilir)
+    paired = has_credentials()
     return {
         "ok": True,
         "installed": True,
