@@ -762,3 +762,4 @@ class DropWatcher:
                 finally:
                     self.busy = False
         return done
+from app.core import studio_shorts as _shorts  # noqa: E402,F401  (v1.30 otomatik kisa klipler)

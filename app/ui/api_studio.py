@@ -23,7 +23,7 @@ STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "
                "studio_gemini_models", "studio_lottie", "studio_catalog_fonts",
                "studio_multicam_sync", "studio_smart_cut", "studio_audio_enhance", "studio_audio_duck",
                "studio_clipboard_copy", "studio_open_icon_search", "studio_open_icon_fetch", "studio_export_gif", "studio_sound_similar",
-               "studio_qc", "studio_poster", "studio_ref_profile", "studio_ref_lut", "studio_pipeline_run"}
+               "studio_qc", "studio_poster", "studio_ref_profile", "studio_ref_lut", "studio_pipeline_run", "studio_make_shorts"}
 
 
 def _parse_myinstants(page_html: str, limit: int = 60) -> list[dict[str, Any]]:
@@ -761,6 +761,15 @@ class StudioMixin:
                 continue
             items.append({"name": f.stem, "steps": len(sp.get("steps") or []), "size": sp.get("size"), "folder": str(d / f.stem)})
         return {"dir": str(d), "items": items}
+
+    def studio_make_shorts(self, path: str, count: int = 3, min_sec: float = 20, max_sec: float = 60, captions: bool = True) -> dict[str, Any]:
+        """v1.30 uzun videodan otomatik kisa klipler -> duzenlenebilir 9:16 projeler."""
+        from app.core import studio_shorts as SH
+        try:
+            return {"ok": True, **SH.t_shorts(str(path), count=count, min_sec=min_sec, max_sec=max_sec, captions=bool(captions))}
+        except Exception as exc:
+            log.exception("Kisa klipler")
+            return {"ok": False, "error": str(exc)[:200]}
 
     def studio_pipeline_run(self, name: str, files: list) -> dict[str, Any]:
         from app.core import studio_mcp_pro as P

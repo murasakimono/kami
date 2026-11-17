@@ -15,11 +15,12 @@
     ["audioreact", "🔊 Ses-Tepkili Zoom (Audio-Reactive)", "Müzik/oyun bas ve tepe vuruşlarına göre klibe otomatik nabız zoom anahtar kareleri yazar."],
     ["reframe916", "📱 Akıllı Oto-Reframe (16:9 → 9:16)", "Yatay videodaki yüz/özneyi takip ederek dikey kadraja otomatik odaklar."],
     ["aivision", "👁️ AI Görüş Paketi (Kare Şeridi)", "Tasarımcı Dayı / Video Use yöntemi: 2 sn'de bir kare şeridi ve ses enerji haritası çıkarır."],
+    ["shorts", "✂️ Uzun Videodan Kısa Klipler", "Podcast/yayın/vlogdan en vurucu 20-60 sn anları (kanca, soru, temiz bitiş) bulur; her biri için kadrajı dolu, altyazılı 9:16 düzenlenebilir proje açar."],
     ["voiceiso", "🎙️ Ses İzolasyonu (Vokal Temizle)", "Oyun/ortam/klavye gürültüsünü bastırıp konuşmayı net izole sese ayırır."],
   );
   const _ai = aiAction;
   aiAction = async (kind, c) => {
-    const f = { qc, speech, refstyle, automation, upscale: c2 => enhance("upscale", c2), interp: c2 => enhance("interp", c2), track, poster, speedramp, audioreact, reframe916, aivision, voiceiso }[kind];
+    const f = { qc, speech, refstyle, automation, upscale: c2 => enhance("upscale", c2), interp: c2 => enhance("interp", c2), track, poster, speedramp, audioreact, reframe916, aivision, voiceiso, shorts }[kind];
     return f ? f(c) : _ai(kind, c);
   };
 
@@ -95,6 +96,25 @@
       <button class="tb pri" data-v="no">Tamam</button></div>`, { init: m => m.addEventListener("click", e => { const a = e.target.closest("[data-seek]"); if (a) { e.preventDefault(); seek(+a.dataset.seek); } }) });
     if (v === "poster") return poster(null, path);
     if (v === "loud") { snap(); ST.p.master = { ...(ST.p.master || {}), lufs: r.target.lufs }; changed(); toast("Ana çıkış hedefi ayarlandı; yeniden dışa aktar"); }
+  }
+
+  async function shorts(c) {
+    const a = c && ST.p.assets?.[c.asset];
+    const path = (a?.path && clipKind(c) === "video" ? a.path : "") || await pickOne(); if (!path) return;
+    const o = await modal(`<h3>✂️ Kısa klipler</h3><div class="hint">${esc(path.split(/[\\/]/).pop())}<br>Whisper kuruluysa konuşmaya göre (kanca, soru, temiz bitiş), değilse ses enerjisine göre seçer. Her biri ayrı Studio projesi olur; asıl proje değişmez.</div>
+      <label>Kaç klip <input id="shN" type="number" min="1" max="10" value="3"></label> <label>Süre <input id="shA" type="number" min="8" max="120" value="20"> – <input id="shB" type="number" min="10" max="180" value="60"> sn</label>
+      <label><input id="shC" type="checkbox" checked> Altyazı ekle</label>
+      <div class="row"><button class="tb" data-v="">Vazgeç</button><button class="tb pri" data-v="ok">Bul ve oluştur</button></div>`,
+      { collect: () => ({ n: +document.getElementById("shN").value || 3, a: +document.getElementById("shA").value || 20, b: +document.getElementById("shB").value || 60, c: document.getElementById("shC").checked }) });
+    if (!o || o === "") return;
+    busy("En vurucu anlar aranıyor… (uzun videoda birkaç dakika sürebilir)");
+    let r; try { r = await job("studio_make_shorts", [path, o.n, o.a, Math.max(o.a + 5, o.b), o.c]); } catch (e) { busy(null); toast("Olmadı: " + e.message, 5000); return; }
+    busy(null);
+    if (!r?.ok || !r.shorts?.length) { toast("Olmadı: " + (r?.error || "uygun an bulunamadı"), 5000); return; }
+    const pick = await modal(`<h3>✂️ ${r.shorts.length} kısa klip hazır <small>(${r.mode})</small></h3><div class="sf-list">${r.shorts.map((s, i) =>
+      `<div class="sf-item"><b>${i + 1}.</b> ${fmt(s.start)}–${fmt(s.end)} <span style="color:#8E86A3">${esc(s.hook || "")}</span> <button class="tb" data-v="${i}">Aç</button></div>`).join("")}</div>
+      <div class="row"><button class="tb" data-v="">Kapat</button></div>`);
+    if (pick !== null && pick !== "" && r.shorts[+pick]) openProject(r.shorts[+pick].project);
   }
 
   async function poster(_c, path) {
