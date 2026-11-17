@@ -4546,6 +4546,18 @@ class Api(StudioMixin):
         from app.core.music_hub import ytm_to_spotify_playlist
         return ytm_to_spotify_playlist(url_or_id, new_name=new_name)
 
+    def music_librespot_status(self) -> dict[str, Any]:
+        from app.core.librespot_host import status
+        return status()
+
+    def music_librespot_start(self) -> dict[str, Any]:
+        from app.core.librespot_host import ensure_started
+        return ensure_started(download=True)
+
+    def music_librespot_reset(self) -> dict[str, Any]:
+        from app.core.librespot_host import reset_credentials
+        return reset_credentials()
+
     def cleaner_search(self, query: str, root: str = "", limit: int = 80) -> dict[str, Any]:
         from app.core.cleaner import search_files
         return search_files(query, root=root, limit=limit)

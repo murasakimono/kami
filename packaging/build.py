@@ -63,10 +63,13 @@ def copy_bins() -> list[str]:
     b = DIST / "bin"
     b.mkdir(parents=True, exist_ok=True)
     got = []
-    for src in [ROOT / "bin/aria2c.exe", ROOT / "bin/fpcalc.exe"]:
+    for src in [ROOT / "bin/aria2c.exe", ROOT / "bin/fpcalc.exe", ROOT / "bin/go-librespot.exe"]:
         if src.is_file():
             shutil.copy2(src, b / src.name)
             got.append(src.name)
+    for dll in (ROOT / "bin").glob("*.dll"):
+        shutil.copy2(dll, b / dll.name)
+        got.append(dll.name)
     for name in ("ffmpeg", "ffprobe", "deno", "uv"):
         local = ROOT / "bin" / f"{name}.exe"
         src = local if local.is_file() else which_real(name)

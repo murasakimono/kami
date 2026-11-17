@@ -242,16 +242,53 @@ def _ytdlp_flat(target: str, timeout: int = 30) -> dict[str, Any]:
     return ydl.sanitize_info(info) if hasattr(ydl, "sanitize_info") else info
 
 
+def _librespot_now() -> dict[str, Any] | None:
+    try:
+        from app.core import librespot_host
+        if not librespot_host.is_running():
+            return None
+        st = librespot_host.status()
+        d = st.get("data") if isinstance(st.get("data"), dict) else None
+        tr = (d or {}).get("track") or {}
+        if not d or not tr.get("name"):
+            return None
+        uri = str(tr.get("uri") or "")
+        tid = uri.split(":")[-1] if uri.startswith("spotify:track:") else ""
+        steps = max(1, int(d.get("volume_steps") or 100))
+        vol = round(int(d.get("volume") or 100) * 100 / steps)
+        rep = "track" if d.get("repeat_track") else ("context" if d.get("repeat_context") else "off")
+        return {
+            "ok": True,
+            "playing": not bool(d.get("paused") or d.get("stopped")),
+            "id": tid,
+            "uri": uri,
+            "title": tr.get("name", ""),
+            "artist": ", ".join(tr.get("artist_names") or []),
+            "album": tr.get("album_name", ""),
+            "cover": tr.get("album_cover_url", ""),
+            "progress_ms": int(tr.get("position") or 0),
+            "duration_ms": int(tr.get("duration") or 0),
+            "shuffle": bool(d.get("shuffle_context")),
+            "repeat": rep,
+            "device_id": d.get("device_id", ""),
+            "device_name": d.get("device_name", "Kami"),
+            "volume": vol,
+            "local_librespot": True,
+        }
+    except Exception:
+        return None
+
+
 def spotify_now(token: str) -> dict[str, Any]:
     tok = get_spotify_token(token)
     if not tok:
-        return {"ok": False, "error": "no_token"}
+        return _librespot_now() or {"ok": False, "error": "no_token"}
     req = urllib.request.Request("https://api.spotify.com/v1/me/player",
                                  headers={"Authorization": f"Bearer {tok}"})
     try:
         with urllib.request.urlopen(req, timeout=6) as resp:
             if resp.status == 204:
-                return {"ok": True, "playing": False}
+                return _librespot_now() or {"ok": True, "playing": False}
             d = json.loads(resp.read().decode("utf-8"))
             it = d.get("item") or {}
             imgs = ((it.get("album") or {}).get("images") or [{}])
@@ -433,13 +470,27 @@ def spotify_play_uri(uri: str = "", context_uri: str = "", position_ms: int = 0)
             body["context_uri"] = uri
     if position_ms > 0:
         body["position_ms"] = int(position_ms)
-    # v1.35.4: Spotify Connect calan bir cihaz ister. Etkin cihaz yoksa istek 404 NO_ACTIVE_DEVICE
-    # donuyordu ve arayuz hicbir sey gostermiyordu. Etkin yoksa mevcut ilk cihazi sec; hic yoksa
-    # PC'deki Spotify uygulamasini ac ve cihaz gorunene kadar (en cok ~12 sn) bekle.
-    dev = _sp_pick_device(launch=True)
+    # Dahili go-librespot: acik baska aktif cihaz yoksa harici Spotify acmadan dogrudan Kami icinden cal.
+    dev = _sp_pick_device(launch=False)
+    if not dev:
+        from app.core import librespot_host
+        st = librespot_host.status()
+        if st.get("paired"):
+            lr = librespot_host.play_uri(uri=uri, context_uri=context_uri, position_ms=position_ms)
+            if lr.get("ok"):
+                return lr
+        elif st.get("running") and st.get("pair_url"):
+            return {
+                "ok": False,
+                "error": "librespot_pair",
+                "pair_url": st.get("pair_url", ""),
+                "pair_code": st.get("pair_code", ""),
+                "message": f"Dahili Spotify oynatıcıyı 1 kez eşleştir ({st.get('pair_code') or 'spotify.com/pair'}).",
+            }
+        dev = _sp_pick_device(launch=True)
     if not dev:
         return {"ok": False, "error": "no_device",
-                "message": "Spotify açık bir cihaz bulamadı. PC'de veya telefonda Spotify uygulamasını aç."}
+                "message": "Spotify açık bir cihaz bulamadı. Dahili oynatıcıyı eşleştir veya Spotify uygulamasını aç."}
     r = _sp_api("PUT", f"/me/player/play?device_id={dev}", body)
     return _sp_explain(r)
 
@@ -523,6 +574,11 @@ def spotify_transfer(device_id: str) -> dict[str, Any]:
 
 
 def spotify_seek(position_ms: int) -> dict[str, Any]:
+    from app.core import librespot_host
+    if librespot_host.is_running() and (librespot_host.status().get("active")):
+        r = librespot_host.seek(position_ms)
+        if r.get("ok"):
+            return r
     return _sp_api("PUT", f"/me/player/seek?position_ms={max(0, int(position_ms))}")
 
 
@@ -537,6 +593,11 @@ def spotify_repeat(state: str) -> dict[str, Any]:
 
 def spotify_volume(percent: int) -> dict[str, Any]:
     v = max(0, min(100, int(percent)))
+    from app.core import librespot_host
+    if librespot_host.is_running() and (librespot_host.status().get("active")):
+        r = librespot_host.set_volume(v)
+        if r.get("ok"):
+            return r
     return _sp_api("PUT", f"/me/player/volume?volume_percent={v}")
 
 
@@ -762,18 +823,23 @@ def ytm_to_spotify_playlist(url_or_id: str, new_name: str = "") -> dict[str, Any
 
 
 def spotify_control(token: str, action: str) -> dict[str, Any]:
-    """Alt cubuk: oynat/duraklat/ileri/geri. v1.35.4: PKCE oturumu (_sp_api) + cihaz secimi + anlamli hata."""
+    """Alt cubuk: oynat/duraklat/ileri/geri. v1.35.4: PKCE oturumu (_sp_api) + cihaz secimi + dahili go-librespot."""
     act = str(action or "").lower().strip()
     routes = {"play": ("PUT", "/me/player/play"), "pause": ("PUT", "/me/player/pause"),
               "next": ("POST", "/me/player/next"), "previous": ("POST", "/me/player/previous")}
     if act not in routes:
         return {"ok": False, "error": "bad_action"}
+    from app.core import librespot_host
+    if librespot_host.is_running() and librespot_host.status().get("active"):
+        r = librespot_host.control(act)
+        if r.get("ok"):
+            return r
     method, path = routes[act]
     if act == "play":
         dev = _sp_pick_device(launch=True)
         if not dev:
             return {"ok": False, "error": "no_device",
-                    "message": "Spotify açık bir cihaz bulamadı. PC'de veya telefonda Spotify uygulamasını aç."}
+                    "message": "Spotify açık bir cihaz bulamadı. Dahili oynatıcıyı eşleştir veya Spotify uygulamasını aç."}
         path += f"?device_id={dev}"
     return _sp_explain(_sp_api(method, path))
 

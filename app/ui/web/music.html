@@ -135,6 +135,10 @@
         <button class="btn pri" id="spCfgBtn" style="flex:1">Bağla / Ayarlar</button>
         <button class="btn" id="spOut" hidden>Çıkış</button>
       </div>
+      <div id="lsBox" style="border-top:1px solid var(--line);padding-top:6px;display:grid;gap:4px">
+        <small id="lsSt" style="color:var(--mut)">Dahili oynatıcı başlatılıyor…</small>
+        <button class="btn" id="lsPairBtn" hidden style="font-size:11.5px;padding:5px 8px">Dahili Oynatıcıyı Eşleştir</button>
+      </div>
     </div>
   </aside>
 
@@ -298,9 +302,44 @@
     try { r = await api()?.music_spotify_play?.(uri, ctx); } catch (_) { r = null; }
     clearTimeout(slow);
     if (btn) { btn.disabled = false; btn.innerHTML = old; }
+    if (r?.error === "librespot_pair" && r.pair_url) {
+      refreshLibrespot();
+      mToast(`Dahili oynatıcı eşleşmesi açılıyor (${r.pair_code || "spotify.com/pair"})…`);
+      api()?.open_external?.(r.pair_url);
+      return;
+    }
     if (!r || !r.ok) mToast((r && (r.message || r.error)) || "Spotify'a ulaşılamadı.", true);
     setTimeout(pollSpotify, 400);
   }
+  let _lsPairUrl = "";
+  async function refreshLibrespot() {
+    const st = await api()?.music_librespot_status?.().catch(() => null);
+    if (!st) return;
+    if (!st.installed) { lsSt.textContent = "Dahili oynatıcı: kuruluyor…"; lsPairBtn.hidden = true; api()?.music_librespot_start?.().then(() => refreshLibrespot()); return; }
+    if (st.paired) {
+      lsSt.textContent = "✓ Dahili Oynatıcı: Kami (Hazır)"; lsSt.style.color = "#2EE6A6";
+      lsPairBtn.hidden = true; _lsPairUrl = "";
+      return;
+    }
+    _lsPairUrl = st.pair_url || "";
+    lsSt.textContent = st.pair_code ? `Dahili Oynatıcı: Eşleştir (${st.pair_code})` : "Dahili Oynatıcı: Eşleştirme gerekli";
+    lsSt.style.color = "#F5B94A";
+    lsPairBtn.hidden = !_lsPairUrl;
+    lsPairBtn.textContent = st.pair_code ? `Eşleştir (${st.pair_code})` : "Dahili Oynatıcıyı Eşleştir";
+  }
+  lsPairBtn.onclick = () => {
+    if (!_lsPairUrl) return;
+    api()?.open_external?.(_lsPairUrl);
+    mToast("Tarayıcıda Spotify eşleşmesini onayla; otomatik bağlanacak.");
+    const t = setInterval(async () => {
+      await refreshLibrespot();
+      if (!lsPairBtn.hidden) return;
+      clearInterval(t);
+      refreshDevices("");
+      mToast("✓ Dahili Spotify oynatıcı hazır!");
+    }, 2500);
+    setTimeout(() => clearInterval(t), 120000);
+  };
   async function loadPlaylistsCache() {
     const r = await api()?.music_spotify_playlists?.().catch(() => null);
     if (r?.ok) PLAYLISTS = r.items || [];
@@ -580,8 +619,8 @@
     const lp = e.target.closest("[data-locplay]");
     if (lp) api()?.music_local_play?.(lp.dataset.locplay, lp.dataset.locroot);
   };
-  window.addEventListener("pywebviewready", () => { refreshAuthUi(); pollSpotify(); renderHome(); });
-  setTimeout(() => { if (window.pywebview) { refreshAuthUi(); pollSpotify(); if (NAV === "sp_search" && !q.value.trim()) renderHome(); } }, 350);
+  window.addEventListener("pywebviewready", () => { refreshAuthUi(); refreshLibrespot(); pollSpotify(); renderHome(); });
+  setTimeout(() => { if (window.pywebview) { refreshAuthUi(); refreshLibrespot(); pollSpotify(); if (NAV === "sp_search" && !q.value.trim()) renderHome(); } }, 350);
   setInterval(pollSpotify, 2500);
 </script>
 </body>
