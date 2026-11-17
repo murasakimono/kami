@@ -56,7 +56,7 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     "track": {     # Kami Studio hareket takibi: yazi/cikartma/bulanikligi nesneye yapistir (OpenCV CSRT, CPU)
         "module": "cv2",
-        "packages": ["opencv-contrib-python-headless>=4.9"],
+        "packages": ["opencv-contrib-python-headless>=4.9,<5"],   # 5.0 tekerleginde haarcascade dosyalari yok
         "extra_index": "",
         "size_gb": 0.15,
         "separate": True,

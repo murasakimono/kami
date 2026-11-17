@@ -23,8 +23,11 @@ def main(argv: list[str]) -> int:
         return 2
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     cap.set(cv2.CAP_PROP_POS_MSEC, start * 1000)
-    face = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    prof = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_profileface.xml")
+    hc = getattr(getattr(cv2, "data", None), "haarcascades", "")
+    face = cv2.CascadeClassifier(hc + "haarcascade_frontalface_default.xml") if hc else None
+    prof = cv2.CascadeClassifier(hc + "haarcascade_profileface.xml") if hc else None
+    if face is not None and face.empty():   # kaskad dosyasi yoksa yalniz hareket merkezi
+        face = prof = None
     step = max(1, int(round(fps / 6)))      # saniyede ~6 ornek
     raw: list[tuple[float, float | None]] = []
     prev = None
@@ -44,8 +47,8 @@ def main(argv: list[str]) -> int:
             sc = 360 / h
             small = cv2.resize(fr, (int(w * sc), 360))
             g = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-            fs = list(face.detectMultiScale(g, 1.15, 5, minSize=(28, 28)))
-            if not fs:
+            fs = list(face.detectMultiScale(g, 1.15, 5, minSize=(28, 28))) if face is not None else []
+            if not fs and prof is not None and not prof.empty():
                 fs = list(prof.detectMultiScale(g, 1.15, 5, minSize=(28, 28)))
             cx = None
             if fs:
