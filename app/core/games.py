@@ -148,7 +148,33 @@ def _sgdb_cover(title: str, sgdb_key: str, cache: dict[str, Any]) -> str:
         cache[ek] = url
         return url
     except Exception:
+        cache[ek] = ""   # basarisizi da hatirla: her acilista 2 x 5 sn beklemesin
         return ""
+
+
+_SGDB_BG = {"busy": False}
+
+
+def _sgdb_background(titles: list[str], sgdb_key: str) -> None:
+    """Kapagi olmayan oyunlari arka planda SteamGridDB'den doldurur; sonraki acilista hazir olur."""
+    if _SGDB_BG["busy"]:
+        return
+    _SGDB_BG["busy"] = True
+
+    def run():
+        try:
+            cache = _load_json(_covers_cache_path())
+            for i, t in enumerate(dict.fromkeys(titles)):
+                if _exact_title(t) not in cache:
+                    _sgdb_cover(t, sgdb_key, cache)
+                if i % 20 == 19:
+                    _save_json(_covers_cache_path(), cache)
+            _save_json(_covers_cache_path(), cache)
+        except Exception:
+            pass
+        finally:
+            _SGDB_BG["busy"] = False
+    threading.Thread(target=run, name="kami-sgdb-covers", daemon=True).start()
 
 
 def _scan_steam() -> list[dict[str, Any]]:
@@ -479,7 +505,7 @@ def _custom_games_path() -> Path:
     return paths.DATA_DIR / "custom_games.json"
 
 
-_PN_CACHE_V = 2
+_PN_CACHE_V = 3
 
 
 def import_playnite_library(lib_dir: str = "") -> dict[str, Any]:
@@ -502,7 +528,14 @@ def import_playnite_library(lib_dir: str = "") -> dict[str, Any]:
         gid = str(g.get("GameId") or "")
         inst = bool(g.get("IsInstalled"))
         cover = ""
-        if store == "Steam" and gid.isdigit():
+        ci = str(g.get("CoverImage") or "")
+        if ci and not ci.lower().startswith("http"):
+            cf = base / "files" / ci.replace("\\", "/")
+            if cf.is_file():
+                cover = cf.as_uri()   # Playnite'in diskteki kapagi: aninda, ag yok
+        elif ci.lower().startswith("http"):
+            cover = ci
+        if not cover and store == "Steam" and gid.isdigit():
             cover = f"https://cdn.cloudflare.steamstatic.com/steam/apps/{gid}/library_600x900.jpg"
         launch = ""
         if store == "Steam" and gid.isdigit():
@@ -590,6 +623,8 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
     sgdb_key = _token_store("sgdb_key.bin").load() or ""
     cov_cache = _load_json(_covers_cache_path())
     cov_dirty = False
+    sgdb_deadline = time.monotonic() + 2.0
+    sgdb_later: list[str] = []
 
     merged: dict[str, dict[str, Any]] = {}
     exact_to_key: dict[str, str] = {}
@@ -614,8 +649,14 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
         if not cur:
             cover = g.get("cover") or ""
             if not cover and sgdb_key:
-                cover = _sgdb_cover(title_clean, sgdb_key, cov_cache)
-                cov_dirty = True
+                ek_c = _exact_title(title_clean)
+                if ek_c in cov_cache:
+                    cover = str(cov_cache[ek_c] or "")
+                elif time.monotonic() < sgdb_deadline:
+                    cover = _sgdb_cover(title_clean, sgdb_key, cov_cache)
+                    cov_dirty = True
+                else:
+                    sgdb_later.append(title_clean)   # v1.35.4: kalanlar arka planda; liste beklemez
             pt_sec = int(playtimes.get(key, 0))
             if not pt_sec and g.get("steam_mins"):
                 pt_sec = int(g["steam_mins"]) * 60
@@ -660,6 +701,8 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
 
     if cov_dirty:
         _save_json(_covers_cache_path(), cov_cache)
+    if sgdb_later and sgdb_key:
+        _sgdb_background(sgdb_later, sgdb_key)
 
     # v1.35.1: test sunuculari / SDK / dedicated server oyun degil
     games = sorted((g for g in merged.values() if not _NOT_GAME.search(g["title"])),

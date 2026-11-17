@@ -1136,12 +1136,10 @@ def main() -> int:
 
     threading.Thread(target=update_loop, name="kami-update", daemon=True).start()
 
-    def _reload_main() -> None:   # kalp atisi kesildi: sayfayi yeniden yukle (pywebview arayuz is parcacigini bekler)
-        w = main_win["w"]
-        if w is not None and not quitting["v"]:
-            w.load_url(str(paths.WEB_DIR / "index.html"))
-
-    api._watchdog = UiWatchdog(lambda: winwin.is_visible(front._hwnd()), on_recover=_reload_main)
+    # v1.35.4: otomatik sayfa yenileme KALDIRILDI. load_url pywebview'in "loaded" bayragini sifirliyor ve
+    # bazen bir daha kurmuyordu -> tum JS<->Python donusleri "Main window failed to start" ile kalici olarak
+    # kopuyordu (Oyun 0 oyun, Ekosistem sekmeleri takili; 17.11 logunda 3083 kez). Donma yalniz loglanir.
+    api._watchdog = UiWatchdog(lambda: winwin.is_visible(front._hwnd()))
     api._watchdog.start()
     manager.start()
     debrid.start()

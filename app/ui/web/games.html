@@ -211,9 +211,12 @@
       detBody.querySelectorAll("[data-mplay]").forEach((b) => { b.onclick = () => api()?.games_launch?.(b.dataset.mplay, g.key); });
     }
 
-    async function load() {
+    let LOADING = null;
+    function load() { return LOADING ||= loadNow().finally(() => { LOADING = null; }); }   // cift tetiklemede tek tarama
+    async function loadNow() {
       grid.innerHTML = `<div class="msg">Kütüphane taranıyor…</div>`;
-      const r = await api()?.games_list?.(true).catch(() => null);
+      const r = await Promise.race([api()?.games_list?.(true).catch(() => null), new Promise((res) => setTimeout(() => res({ timeout: true }), 45000))]);
+      if (!r || r.timeout) { grid.innerHTML = `<div class="msg">Kütüphane okunamadı. <button class="tb" onclick="load()">Tekrar dene</button></div>`; return; }
       GAMES = r?.games || [];
       const allSt = [...new Set(GAMES.flatMap((g) => (g.stores || []).map((s) => s.store)).filter(Boolean))].sort();
       const curSt = storeSel.value;

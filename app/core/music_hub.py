@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import urllib.request
 from typing import Any
 
@@ -215,14 +214,7 @@ def search_ytmusic(query: str, limit: int = 12) -> dict[str, Any]:
     except Exception:
         pass
     try:
-        from app.engines.ytdlp_engine import find_ytdlp
-        exe = find_ytdlp()
-        if not exe:
-            return {"ok": False, "error": "ytdlp_missing", "items": []}
-        r = subprocess.run([exe, "--dump-single-json", "--flat-playlist", f"ytsearch{int(limit)}:{q}"],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=25,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        data = json.loads(r.stdout or "{}")
+        data = _ytdlp_flat(f"ytsearch{int(limit)}:{q}", 25)
         items = [{
             "id": e.get("id", ""),
             "title": e.get("title", ""),
@@ -234,6 +226,18 @@ def search_ytmusic(query: str, limit: int = 12) -> dict[str, Any]:
         return {"ok": True, "source": "yt-dlp", "items": items}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:120], "items": []}
+
+
+def _ytdlp_flat(target: str, timeout: int = 30) -> dict[str, Any]:
+    """yt-dlp'yi gomulu Python kutuphanesi olarak calistirir (Kami'de ayri yt-dlp.exe yok).
+    Eskiden var olmayan find_ytdlp import ediliyordu -> YT Music arama/liste hep ImportError."""
+    from app.engines.ytdlp_engine import _ytdlp
+    yd = _ytdlp()
+    opts = {"quiet": True, "no_warnings": True, "skip_download": True, "extract_flat": "in_playlist",
+            "socket_timeout": min(20, timeout), "noplaylist": False}
+    with yd.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(target, download=False) or {}
+    return ydl.sanitize_info(info) if hasattr(ydl, "sanitize_info") else info
 
 
 def spotify_now(token: str) -> dict[str, Any]:
@@ -658,14 +662,8 @@ def ytm_get_playlist(url_or_id: str, limit: int = 200, save: bool = True) -> dic
 
     if not items:
         try:
-            from app.engines.ytdlp_engine import find_ytdlp
-            exe = find_ytdlp()
-            if exe:
-                r = subprocess.run([exe, "--dump-single-json", "--flat-playlist",
-                                    f"https://www.youtube.com/playlist?list={pid}"],
-                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=35,
-                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-                d = json.loads(r.stdout or "{}")
+            if True:
+                d = _ytdlp_flat(f"https://www.youtube.com/playlist?list={pid}", 35)
                 title = str(d.get("title") or pid)
                 for e in (d.get("entries") or [])[:int(limit)]:
                     vid = e.get("id") or ""
