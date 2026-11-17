@@ -273,10 +273,227 @@ def _scan_gog() -> list[dict[str, Any]]:
     return out
 
 
+_RIOT_TITLES = {
+    "league_of_legends": "League of Legends",
+    "valorant": "VALORANT",
+    "bacon": "Legends of Runeterra",
+    "lion": "2XKO",
+}
+
+
+def _scan_riot() -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    rc_path = Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / "Riot Games/RiotClientInstalls.json"
+    if not rc_path.is_file():
+        return out
+    try:
+        rc = json.loads(rc_path.read_text(encoding="utf-8", errors="ignore"))
+        rc_exe = str(rc.get("rc_live") or rc.get("rc_default") or "").strip()
+        seen_p: set[str] = set()
+        for gdir, _exe in (rc.get("associated_client") or {}).items():
+            prod = ""
+            low = str(gdir).lower()
+            for k in _RIOT_TITLES:
+                if k.replace("_", " ") in low or k in low:
+                    prod = k
+                    break
+            if not prod or prod in seen_p:
+                continue
+            seen_p.add(prod)
+            out.append({
+                "store": "Riot Games",
+                "id": prod,
+                "title": _RIOT_TITLES[prod],
+                "path": str(gdir),
+                "size": 0,
+                "installed": Path(str(gdir)).is_dir(),
+                "launch": f"riot://{prod}",
+                "cover": "",
+                "genres": ["Action", "Competitive"],
+            })
+        meta = Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / "Riot Games/Metadata"
+        if meta.is_dir():
+            for d in meta.iterdir():
+                if not d.is_dir():
+                    continue
+                prod = d.name.split(".")[0]
+                if prod in _RIOT_TITLES and prod not in seen_p and rc_exe:
+                    seen_p.add(prod)
+                    out.append({
+                        "store": "Riot Games",
+                        "id": prod,
+                        "title": _RIOT_TITLES[prod],
+                        "path": "",
+                        "size": 0,
+                        "installed": True,
+                        "launch": f"riot://{prod}",
+                        "cover": "",
+                        "genres": ["Action", "Competitive"],
+                    })
+    except Exception:
+        pass
+    return out
+
+
+def _read_litedb_docs(db_path: Path) -> list[dict[str, Any]]:
+    import struct
+    import uuid
+    if not db_path.is_file():
+        return []
+    data = db_path.read_bytes()
+    docs: list[dict[str, Any]] = []
+
+    def parse_bson(buf: bytes, pos: int) -> dict[str, Any] | None:
+        end = pos + struct.unpack_from("<i", buf, pos)[0]
+        if end > len(buf) or end - pos < 5 or buf[end - 1] != 0:
+            return None
+        p = pos + 4
+        out: dict[str, Any] = {}
+        while p < end - 1:
+            t = buf[p]; p += 1
+            z = buf.find(b"\x00", p, end)
+            if z < 0:
+                return None
+            k = buf[p:z].decode("utf-8", "replace"); p = z + 1
+            if t == 0x02:
+                sl = struct.unpack_from("<i", buf, p)[0]; p += 4
+                if sl < 1 or p + sl > end:
+                    return None
+                out[k] = buf[p:p + sl - 1].decode("utf-8", "replace"); p += sl
+            elif t == 0x08:
+                out[k] = bool(buf[p]); p += 1
+            elif t == 0x10:
+                out[k] = struct.unpack_from("<i", buf, p)[0]; p += 4
+            elif t in (0x12, 0x09):
+                out[k] = struct.unpack_from("<q", buf, p)[0]; p += 8
+            elif t == 0x01:
+                out[k] = struct.unpack_from("<d", buf, p)[0]; p += 8
+            elif t == 0x05:
+                bl = struct.unpack_from("<i", buf, p)[0]; st = buf[p + 4]; p += 5
+                if st == 0x04 and bl == 16:
+                    out[k] = str(uuid.UUID(bytes_le=buf[p:p + 16]))
+                p += bl
+            elif t in (0x03, 0x04):
+                sub = parse_bson(buf, p)
+                if sub is None:
+                    return None
+                out[k] = list(sub.values()) if t == 0x04 else sub
+                p += struct.unpack_from("<i", buf, p)[0]
+            elif t == 0x0A:
+                out[k] = None
+            elif t == 0x07:
+                p += 12
+            else:
+                return None
+        return out
+
+    for pg in range(len(data) // 4096):
+        off = pg * 4096
+        if data[off + 4] != 4:
+            continue
+        i = off + 32
+        while i < off + 4090:
+            doc_len = struct.unpack_from("<i", data, i)[0]
+            if 12 <= doc_len <= 4064 and i + doc_len <= off + 4096 and data[i + doc_len - 1] == 0:
+                d = parse_bson(data, i)
+                if d and ("Name" in d or "_id" in d):
+                    docs.append(d)
+                    i += doc_len
+                    continue
+            i += 1
+    return docs
+
+
+def _playnite_cache_path() -> Path:
+    from app import paths
+    return paths.DATA_DIR / "playnite_import.json"
+
+
+def _custom_games_path() -> Path:
+    from app import paths
+    return paths.DATA_DIR / "custom_games.json"
+
+
+def import_playnite_library(lib_dir: str = "") -> dict[str, Any]:
+    """Playnite LiteDB veritabanindan tum Epic/GOG/Steam/Riot oyunlarini ve turlerini kalici olarak ice aktarir."""
+    base = Path(lib_dir) if lib_dir else (Path(os.environ.get("APPDATA", "")) / "Playnite/library")
+    gdb = base / "games.db"
+    if not gdb.is_file():
+        return {"ok": False, "error": "playnite_db_not_found"}
+    sources = {d["_id"]: d["Name"] for d in _read_litedb_docs(base / "sources.db") if "_id" in d and "Name" in d}
+    genres = {d["_id"]: d["Name"] for d in _read_litedb_docs(base / "genres.db") if "_id" in d and "Name" in d}
+    cats = {d["_id"]: d["Name"] for d in _read_litedb_docs(base / "categories.db") if "_id" in d and "Name" in d}
+    raw_games = [d for d in _read_litedb_docs(gdb) if "Name" in d and "GameId" in d]
+    items: list[dict[str, Any]] = []
+    for g in raw_games:
+        store = str(sources.get(g.get("SourceId"), "") or "Diğer")
+        if store == "Steam Family Sharing":
+            store = "Steam"
+        gid = str(g.get("GameId") or "")
+        inst = bool(g.get("IsInstalled"))
+        cover = ""
+        if store == "Steam" and gid.isdigit():
+            cover = f"https://cdn.cloudflare.steamstatic.com/steam/apps/{gid}/library_600x900.jpg"
+        launch = ""
+        if store == "Steam" and gid.isdigit():
+            launch = f"steam://rungameid/{gid}" if inst else f"steam://install/{gid}"
+        elif store == "Epic" and gid:
+            launch = f"com.epicgames.launcher://apps/{gid}?action=launch&silent=true"
+        elif store == "GOG" and gid:
+            launch = f"goggalaxy://openGameView/{gid}"
+        elif store == "Riot Games" and gid:
+            prod = gid.split(".")[0].lower()
+            if prod in _RIOT_TITLES:
+                launch = f"riot://{prod}"
+        items.append({
+            "store": store,
+            "id": gid,
+            "title": str(g.get("Name") or "").strip(),
+            "path": str(g.get("InstallDirectory") or ""),
+            "size": int(g.get("InstallSize") or 0),
+            "installed": inst,
+            "playtime_sec": int(g.get("Playtime") or 0),
+            "favorite": bool(g.get("Favorite")),
+            "genres": [genres[x] for x in (g.get("GenreIds") or []) if x in genres],
+            "categories": [cats[x] for x in (g.get("CategoryIds") or []) if x in cats],
+            "launch": launch,
+            "cover": cover,
+        })
+    _save_json(_playnite_cache_path(), {"items": items, "count": len(items)})
+    return {"ok": True, "count": len(items)}
+
+
+def add_custom_game(title: str, exe_path: str, store: str = "Özel") -> dict[str, Any]:
+    t = str(title or "").strip()
+    ex = str(exe_path or "").strip().strip('"')
+    if not t or not ex or not Path(ex).is_file():
+        return {"ok": False, "error": "Gecerli ad ve .exe/.lnk yolu gerekli"}
+    p = _custom_games_path()
+    cur = (_load_json(p).get("items") or [])
+    cur.append({
+        "store": store,
+        "id": ex,
+        "title": t,
+        "path": str(Path(ex).parent),
+        "size": 0,
+        "installed": True,
+        "launch": ex,
+        "cover": "",
+        "genres": ["Özel"],
+    })
+    _save_json(p, {"items": cur})
+    return {"ok": True, "count": len(cur)}
+
+
 def list_games(include_owned: bool = True) -> dict[str, Any]:
-    raw = _scan_steam() + _scan_epic() + _scan_gog()
+    raw = _scan_steam() + _scan_epic() + _scan_gog() + _scan_riot()
+    raw += (_load_json(_custom_games_path()).get("items") or [])
     if include_owned:
         raw += _scan_steam_owned()
+        pl_cache = _playnite_cache_path()
+        if not pl_cache.is_file() and (Path(os.environ.get("APPDATA", "")) / "Playnite/library/games.db").is_file():
+            import_playnite_library()
+        raw += (_load_json(pl_cache).get("items") or [])
     playtimes = _load_json(_playtime_path())
     sgdb_key = _token_store("sgdb_key.bin").load() or ""
     cov_cache = _load_json(_covers_cache_path())
@@ -310,25 +527,43 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
             pt_sec = int(playtimes.get(key, 0))
             if not pt_sec and g.get("steam_mins"):
                 pt_sec = int(g["steam_mins"]) * 60
+            if not pt_sec and g.get("playtime_sec"):
+                pt_sec = int(g["playtime_sec"])
             merged[key] = {
                 "key": key,
                 "title": title_clean,
-                "stores": [{"store": g["store"], "launch": g["launch"], "path": g["path"], "installed": bool(g.get("installed", True))}],
+                "stores": [{"store": g["store"], "launch": g.get("launch", ""), "path": g.get("path", ""), "installed": bool(g.get("installed", True))}],
                 "installed": bool(g.get("installed", True)),
                 "size": int(g.get("size") or 0),
                 "cover": cover,
                 "path": g.get("path") or "",
                 "playtime_sec": pt_sec,
+                "genres": list(dict.fromkeys(g.get("genres") or [])),
+                "categories": list(dict.fromkeys(g.get("categories") or [])),
+                "favorite": bool(g.get("favorite")),
             }
         else:
             if g.get("installed"):
                 cur["installed"] = True
             if all(s["store"] != g["store"] for s in cur["stores"]):
-                cur["stores"].append({"store": g["store"], "launch": g["launch"], "path": g["path"], "installed": bool(g.get("installed", True))})
+                cur["stores"].append({"store": g["store"], "launch": g.get("launch", ""), "path": g.get("path", ""), "installed": bool(g.get("installed", True))})
+            elif g.get("installed"):
+                for s in cur["stores"]:
+                    if s["store"] == g["store"] and not s.get("installed") and g.get("launch"):
+                        s.update(launch=g["launch"], path=g.get("path", ""), installed=True)
             if not cur["cover"] and g.get("cover"):
                 cur["cover"] = g["cover"]
             if not cur["path"] and g.get("path"):
                 cur["path"] = g["path"]
+            if g.get("favorite"):
+                cur["favorite"] = True
+            for gn in (g.get("genres") or []):
+                if gn not in cur["genres"]:
+                    cur["genres"].append(gn)
+            for ct in (g.get("categories") or []):
+                if ct not in cur["categories"]:
+                    cur["categories"].append(ct)
+            cur["playtime_sec"] = max(cur["playtime_sec"], int(g.get("playtime_sec") or 0))
 
     if cov_dirty:
         _save_json(_covers_cache_path(), cov_cache)
@@ -341,6 +576,20 @@ def launch_game(launch_target: str) -> dict[str, Any]:
     t = str(launch_target or "").strip()
     if not t:
         return {"ok": False, "error": "empty"}
+    if t.startswith("riot://"):
+        prod = t[7:].strip().lower()
+        if prod not in _RIOT_TITLES:
+            return {"ok": False, "error": "unsupported_riot"}
+        rc_path = Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / "Riot Games/RiotClientInstalls.json"
+        try:
+            rc = json.loads(rc_path.read_text(encoding="utf-8", errors="ignore"))
+            rc_exe = str(rc.get("rc_live") or rc.get("rc_default") or "").strip()
+            if rc_exe and Path(rc_exe).is_file():
+                subprocess.Popen([rc_exe, f"--launch-product={prod}", "--launch-patchline=live"])
+                return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+        return {"ok": False, "error": "riot_client_missing"}
     # yalniz oyun mağazasi linkleri ya da var olan exe/kisayol (rastgele yol/komut degil)
     if not (re.match(r"^(steam|com\.epicgames\.launcher|goggalaxy)://", t, re.I)
             or (Path(t).suffix.lower() in (".exe", ".lnk", ".url") and Path(t).is_file())):

@@ -7,6 +7,10 @@ def test_games_dedup_exact_and_variant_titles(monkeypatch, tmp_path):
     from app.core import games
     monkeypatch.setattr(games, "_playtime_path", lambda: tmp_path / "pt.json")
     monkeypatch.setattr(games, "_covers_cache_path", lambda: tmp_path / "cov.json")
+    monkeypatch.setattr(games, "_playnite_cache_path", lambda: tmp_path / "pn.json")
+    monkeypatch.setattr(games, "_custom_games_path", lambda: tmp_path / "cust.json")
+    monkeypatch.setattr(games, "_scan_riot", lambda: [])
+    monkeypatch.setattr(games, "import_playnite_library", lambda *a, **kw: {"ok": False})
     monkeypatch.setattr(games, "_scan_steam", lambda: [
         {"store": "Steam", "id": "100", "title": "Cyberpunk 2077", "path": "C:/Games/CP", "size": 10, "installed": True, "launch": "steam://rungameid/100", "cover": "c1"},
     ])
@@ -52,3 +56,17 @@ def test_studio_google_fonts_and_tr_map(tmp_path):
     assert len(studio.GOOGLE_FONTS) >= 40
     tr_map = studio.font_tr_map({})
     assert tr_map == {}
+
+
+def test_music_local_folder_scan(monkeypatch, tmp_path):
+    from app.core import music_hub as mh
+    monkeypatch.setattr(mh, "_folders_file", lambda: tmp_path / "folders.json")
+    mdir = tmp_path / "Contra"
+    mdir.mkdir()
+    (mdir / "01_akrep.mp3").write_bytes(b"ID3")
+    (mdir / "not_audio.txt").write_text("hi", encoding="utf-8")
+    r = mh.local_folders_add(str(mdir))
+    assert r["ok"] is True and str(mdir) in r["folders"]
+    sc = mh.local_scan_folder(str(mdir))
+    assert sc["ok"] is True and len(sc["items"]) == 1 and sc["items"][0]["title"] == "01_akrep"
+

@@ -31,7 +31,12 @@ def get_spotify_token(fallback: str = "") -> str:
 # ---------- Kalici Spotify girisi: Authorization Code + PKCE (istemci sirri yok) ----------
 SP_PORT = 47361   # 47395 web_isolation sunucusunda
 SP_REDIRECT = f"http://127.0.0.1:{SP_PORT}/callback"   # Spotify: localhost yasak, loopback IP serbest
-SP_SCOPES = "user-read-currently-playing user-read-playback-state user-modify-playback-state"
+SP_SCOPES = (
+    "user-read-currently-playing user-read-playback-state user-modify-playback-state "
+    "user-library-read user-library-modify "
+    "playlist-read-private playlist-read-collaborative playlist-modify-public playlist-modify-private "
+    "user-read-recently-played"
+)
 _SP_CACHE: dict[str, Any] = {"token": "", "exp": 0.0}
 
 
@@ -209,6 +214,7 @@ def spotify_now(token: str) -> dict[str, Any]:
                 "ok": True,
                 "playing": bool(d.get("is_playing")),
                 "id": it.get("id", ""),
+                "uri": it.get("uri", ""),
                 "title": it.get("name", ""),
                 "artist": ", ".join(a.get("name", "") for a in (it.get("artists") or [])),
                 "album": (it.get("album") or {}).get("name", ""),
@@ -218,6 +224,243 @@ def spotify_now(token: str) -> dict[str, Any]:
             }
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:120]}
+
+
+def _sp_api(method: str, path: str, body: dict[str, Any] | None = None, token: str = "") -> dict[str, Any]:
+    tok = get_spotify_token(token)
+    if not tok:
+        return {"ok": False, "error": "no_token"}
+    url = path if path.startswith("https://") else f"https://api.spotify.com/v1{path}"
+    data = json.dumps(body).encode("utf-8") if body is not None else (b"" if method in ("PUT", "POST", "DELETE") else None)
+    headers = {"Authorization": f"Bearer {tok}"}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            if resp.status == 204:
+                return {"ok": True}
+            raw = resp.read().decode("utf-8", errors="replace").strip()
+            return {"ok": True, "data": json.loads(raw) if raw else {}}
+    except urllib.error.HTTPError as exc:
+        err_txt = exc.read().decode("utf-8", errors="replace")[:180]
+        return {"ok": False, "status": exc.code, "error": err_txt or str(exc)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:120]}
+
+
+def spotify_search(query: str, kind: str = "track,album,playlist", limit: int = 20) -> dict[str, Any]:
+    import urllib.parse
+    q = str(query or "").strip()
+    if not q:
+        return {"ok": False, "tracks": [], "albums": [], "playlists": []}
+    qs = urllib.parse.urlencode({"q": q, "type": kind, "limit": min(50, max(1, int(limit)))})
+    r = _sp_api("GET", f"/search?{qs}")
+    if not r.get("ok"):
+        return {**r, "tracks": [], "albums": [], "playlists": []}
+    d = r.get("data") or {}
+    tracks = [{
+        "id": t.get("id", ""), "uri": t.get("uri", ""), "title": t.get("name", ""),
+        "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])),
+        "album": (t.get("album") or {}).get("name", ""),
+        "cover": ((t.get("album") or {}).get("images") or [{}])[-1].get("url", ""),
+        "duration_ms": t.get("duration_ms", 0),
+    } for t in ((d.get("tracks") or {}).get("items") or []) if t]
+    albums = [{
+        "id": a.get("id", ""), "uri": a.get("uri", ""), "title": a.get("name", ""),
+        "artist": ", ".join(x.get("name", "") for x in (a.get("artists") or [])),
+        "cover": (a.get("images") or [{}])[0].get("url", ""),
+        "total": a.get("total_tracks", 0),
+    } for a in ((d.get("albums") or {}).get("items") or []) if a]
+    playlists = [{
+        "id": p.get("id", ""), "uri": p.get("uri", ""), "title": p.get("name", ""),
+        "owner": (p.get("owner") or {}).get("display_name", ""),
+        "cover": (p.get("images") or [{}])[0].get("url", ""),
+        "total": (p.get("tracks") or {}).get("total", 0),
+    } for p in ((d.get("playlists") or {}).get("items") or []) if p]
+    return {"ok": True, "tracks": tracks, "albums": albums, "playlists": playlists}
+
+
+def spotify_playlists(limit: int = 40) -> dict[str, Any]:
+    r = _sp_api("GET", f"/me/playlists?limit={min(50, int(limit))}")
+    if not r.get("ok"):
+        return {**r, "items": []}
+    items = [{
+        "id": p.get("id", ""), "uri": p.get("uri", ""), "title": p.get("name", ""),
+        "owner": (p.get("owner") or {}).get("display_name", ""),
+        "cover": (p.get("images") or [{}])[0].get("url", ""),
+        "total": (p.get("tracks") or {}).get("total", 0),
+    } for p in ((r.get("data") or {}).get("items") or []) if p]
+    return {"ok": True, "items": items}
+
+
+def spotify_playlist_tracks(playlist_id: str, limit: int = 100) -> dict[str, Any]:
+    pid = str(playlist_id or "").strip()
+    if not pid:
+        return {"ok": False, "items": []}
+    r = _sp_api("GET", f"/playlists/{pid}/tracks?limit={min(100, int(limit))}")
+    if not r.get("ok"):
+        return {**r, "items": []}
+    items = []
+    for x in ((r.get("data") or {}).get("items") or []):
+        t = (x or {}).get("track") or {}
+        if not t or not t.get("uri"):
+            continue
+        items.append({
+            "id": t.get("id", ""), "uri": t.get("uri", ""), "title": t.get("name", ""),
+            "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])),
+            "album": (t.get("album") or {}).get("name", ""),
+            "cover": ((t.get("album") or {}).get("images") or [{}])[-1].get("url", ""),
+            "duration_ms": t.get("duration_ms", 0),
+        })
+    return {"ok": True, "items": items}
+
+
+def spotify_saved_tracks(limit: int = 50) -> dict[str, Any]:
+    r = _sp_api("GET", f"/me/tracks?limit={min(50, int(limit))}")
+    if not r.get("ok"):
+        return {**r, "items": []}
+    items = []
+    for x in ((r.get("data") or {}).get("items") or []):
+        t = (x or {}).get("track") or {}
+        if not t or not t.get("uri"):
+            continue
+        items.append({
+            "id": t.get("id", ""), "uri": t.get("uri", ""), "title": t.get("name", ""),
+            "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])),
+            "album": (t.get("album") or {}).get("name", ""),
+            "cover": ((t.get("album") or {}).get("images") or [{}])[-1].get("url", ""),
+            "duration_ms": t.get("duration_ms", 0),
+        })
+    return {"ok": True, "items": items}
+
+
+def spotify_recent_tracks(limit: int = 30) -> dict[str, Any]:
+    r = _sp_api("GET", f"/me/player/recently-played?limit={min(50, int(limit))}")
+    if not r.get("ok"):
+        return {**r, "items": []}
+    items = []
+    for x in ((r.get("data") or {}).get("items") or []):
+        t = (x or {}).get("track") or {}
+        if not t or not t.get("uri"):
+            continue
+        items.append({
+            "id": t.get("id", ""), "uri": t.get("uri", ""), "title": t.get("name", ""),
+            "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])),
+            "album": (t.get("album") or {}).get("name", ""),
+            "cover": ((t.get("album") or {}).get("images") or [{}])[-1].get("url", ""),
+            "duration_ms": t.get("duration_ms", 0),
+        })
+    return {"ok": True, "items": items}
+
+
+def spotify_play_uri(uri: str = "", context_uri: str = "", position_ms: int = 0) -> dict[str, Any]:
+    body: dict[str, Any] = {}
+    if context_uri:
+        body["context_uri"] = context_uri
+        if uri:
+            body["offset"] = {"uri": uri}
+    elif uri:
+        if ":track:" in uri:
+            body["uris"] = [uri]
+        else:
+            body["context_uri"] = uri
+    if position_ms > 0:
+        body["position_ms"] = int(position_ms)
+    return _sp_api("PUT", "/me/player/play", body)
+
+
+def spotify_queue_add(uri: str) -> dict[str, Any]:
+    import urllib.parse
+    if not uri:
+        return {"ok": False, "error": "empty_uri"}
+    return _sp_api("POST", f"/me/player/queue?uri={urllib.parse.quote(uri)}")
+
+
+def spotify_playlist_create(name: str, description: str = "", public: bool = False) -> dict[str, Any]:
+    nm = str(name or "").strip()
+    if not nm:
+        return {"ok": False, "error": "empty_name"}
+    me = _sp_api("GET", "/me")
+    uid = (me.get("data") or {}).get("id", "")
+    if not uid:
+        return {"ok": False, "error": me.get("error", "no_user")}
+    return _sp_api("POST", f"/users/{uid}/playlists", {"name": nm, "description": description, "public": bool(public)})
+
+
+def spotify_playlist_modify(playlist_id: str, uris: list[str], remove: bool = False) -> dict[str, Any]:
+    pid = str(playlist_id or "").strip()
+    if not pid or not uris:
+        return {"ok": False, "error": "missing_args"}
+    if remove:
+        return _sp_api("DELETE", f"/playlists/{pid}/tracks", {"tracks": [{"uri": u} for u in uris]})
+    return _sp_api("POST", f"/playlists/{pid}/tracks", {"uris": list(uris)})
+
+
+# ---------- Yerel Muzik Klasorleri (or. Downloads\Contra\...) ----------
+AUDIO_EXT = {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".opus", ".aac", ".wma"}
+
+
+def _folders_file():
+    from app import paths
+    return paths.DATA_DIR / "music_folders.json"
+
+
+def local_folders_list() -> list[str]:
+    p = _folders_file()
+    try:
+        if p.is_file():
+            return [str(x) for x in json.loads(p.read_text(encoding="utf-8")) if isinstance(x, str)]
+    except Exception:
+        pass
+    return []
+
+
+def local_folders_add(folder: str) -> dict[str, Any]:
+    from pathlib import Path
+    fp = Path(str(folder or "").strip().strip('"'))
+    if not fp.is_dir():
+        return {"ok": False, "error": "Klasor bulunamadi"}
+    cur = local_folders_list()
+    s = str(fp)
+    if s not in cur:
+        cur.append(s)
+        _folders_file().parent.mkdir(parents=True, exist_ok=True)
+        _folders_file().write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "folders": cur}
+
+
+def local_folders_remove(folder: str) -> dict[str, Any]:
+    s = str(folder or "").strip()
+    cur = [x for x in local_folders_list() if x != s]
+    _folders_file().parent.mkdir(parents=True, exist_ok=True)
+    _folders_file().write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "folders": cur}
+
+
+def local_scan_folder(folder: str = "", query: str = "", limit: int = 500) -> dict[str, Any]:
+    from pathlib import Path
+    roots = [Path(folder)] if folder else [Path(x) for x in local_folders_list()]
+    q = str(query or "").strip().lower()
+    items: list[dict[str, Any]] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for f in sorted(root.rglob("*")):
+            if not f.is_file() or f.suffix.lower() not in AUDIO_EXT:
+                continue
+            if q and q not in f.name.lower() and q not in f.parent.name.lower():
+                continue
+            items.append({
+                "path": str(f),
+                "title": f.stem,
+                "folder": f.parent.name,
+                "root": str(root),
+                "ext": f.suffix.lower().lstrip("."),
+            })
+            if len(items) >= limit:
+                break
+    return {"ok": True, "folders": local_folders_list(), "items": items}
 
 
 def spotify_control(token: str, action: str) -> dict[str, Any]:

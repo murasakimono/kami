@@ -4329,6 +4329,14 @@ class Api(StudioMixin):
         from app.core.games import TRACKER
         return TRACKER.set_auto_replay(enabled)
 
+    def games_import_playnite(self) -> dict[str, Any]:
+        from app.core.games import import_playnite_library
+        return import_playnite_library()
+
+    def games_add_custom(self, title: str, exe_path: str) -> dict[str, Any]:
+        from app.core.games import add_custom_game
+        return add_custom_game(title, exe_path)
+
     def music_search(self, query: str, limit: int = 12) -> dict[str, Any]:
         from app.core.music_hub import search_ytmusic
         return search_ytmusic(query, limit=limit)
@@ -4358,6 +4366,70 @@ class Api(StudioMixin):
         return spotify_control(str(self._manager.settings.get("spotify_token") or ""), action)
 
     def music_lyrics(self, title: str, artist: str = "") -> dict[str, Any]:
+        from app.core.music_hub import fetch_track_lyrics
+        return fetch_track_lyrics(title, artist)
+
+    def music_spotify_search(self, query: str, kind: str = "track,album,playlist", limit: int = 20) -> dict[str, Any]:
+        from app.core.music_hub import spotify_search
+        return spotify_search(query, kind=kind, limit=limit)
+
+    def music_spotify_playlists(self, limit: int = 40) -> dict[str, Any]:
+        from app.core.music_hub import spotify_playlists
+        return spotify_playlists(limit=limit)
+
+    def music_spotify_playlist_tracks(self, playlist_id: str, limit: int = 100) -> dict[str, Any]:
+        from app.core.music_hub import spotify_playlist_tracks
+        return spotify_playlist_tracks(playlist_id, limit=limit)
+
+    def music_spotify_saved(self, limit: int = 50) -> dict[str, Any]:
+        from app.core.music_hub import spotify_saved_tracks
+        return spotify_saved_tracks(limit=limit)
+
+    def music_spotify_recent(self, limit: int = 30) -> dict[str, Any]:
+        from app.core.music_hub import spotify_recent_tracks
+        return spotify_recent_tracks(limit=limit)
+
+    def music_spotify_play(self, uri: str = "", context_uri: str = "", position_ms: int = 0) -> dict[str, Any]:
+        from app.core.music_hub import spotify_play_uri
+        return spotify_play_uri(uri=uri, context_uri=context_uri, position_ms=position_ms)
+
+    def music_spotify_queue(self, uri: str) -> dict[str, Any]:
+        from app.core.music_hub import spotify_queue_add
+        return spotify_queue_add(uri)
+
+    def music_spotify_playlist_create(self, name: str, description: str = "", public: bool = False) -> dict[str, Any]:
+        from app.core.music_hub import spotify_playlist_create
+        return spotify_playlist_create(name, description=description, public=public)
+
+    def music_spotify_playlist_modify(self, playlist_id: str, uris: list[str], remove: bool = False) -> dict[str, Any]:
+        from app.core.music_hub import spotify_playlist_modify
+        return spotify_playlist_modify(playlist_id, uris, remove=remove)
+
+    def music_local_add(self, folder: str = "") -> dict[str, Any]:
+        from app.core.music_hub import local_folders_add
+        if not folder and self._window:
+            import webview
+            res = self._window.create_file_dialog(webview.FileDialog.FOLDER)
+            if not res:
+                return {"ok": False, "error": "cancelled"}
+            folder = res[0]
+        return local_folders_add(folder)
+
+    def music_local_remove(self, folder: str) -> dict[str, Any]:
+        from app.core.music_hub import local_folders_remove
+        return local_folders_remove(folder)
+
+    def music_local_scan(self, folder: str = "", query: str = "", limit: int = 500) -> dict[str, Any]:
+        from app.core.music_hub import local_scan_folder
+        return local_scan_folder(folder=folder, query=query, limit=limit)
+
+    def music_local_play(self, path: str, folder: str = "") -> dict[str, Any]:
+        if folder and hasattr(self, "playlist_add_folder"):
+            try:
+                self.playlist_add_folder(folder)
+            except Exception:
+                pass
+        return self.player_show({"path": path})
         from app.core.music_hub import fetch_track_lyrics
         return fetch_track_lyrics(title, artist)
 

@@ -365,6 +365,7 @@ function syncFsCtl() {
 const fmtT = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = t % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
 function onAppMsg(from, m) {
   if (m?.k === "yt") return ytIn(from, m);
+  if (m?.k === "sp") return spIn(from, m);
   if (m?.k === "sb") return sbIn(from, m);
   if (m?.k === "draw") return drawIn(from, m);
   if (m?.k === "file") return fileIn(from, m);
@@ -1064,5 +1065,71 @@ function ytStart() {
   const b = document.createElement("button"); b.id = "bYt"; b.title = "Birlikte YouTube izle";
   b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 6h18v12H3zM10 9l5 3-5 3z"/></svg>';
   b.onclick = ytStart;
+  dock.insertBefore(b, $("bSet"));
+})();
+
+// ---------- Birlikte Spotify Dinleme (Kami Oda) ----------
+const SP_SYNC = { lead: false, follow: false, timer: 0, lastUri: "", lastPos: 0, lastPlay: false, lastSyncAt: 0 };
+
+function spShowBar(title, artist, isLead) {
+  let bar = $("spSyncBar");
+  if (!bar) {
+    bar = document.createElement("div"); bar.id = "spSyncBar";
+    bar.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 12px;background:#130E1D;border:1px solid #2EE6A6;border-radius:10px;margin:8px 12px 0;font-size:12.5px;color:#EDE9F6";
+    $("room")?.insertBefore(bar, document.querySelector(".rm-main"));
+  }
+  bar.innerHTML = `<span style="color:#2EE6A6;font-weight:700">🎧 ${isLead ? "Yayınlıyorsun" : "Birlikte Dinleme"}:</span>` +
+    `<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(artist ? artist + " — " + title : title)}</b>` +
+    (isLead ? `<button class="rm-ib" id="spStopLead" style="padding:3px 9px">Yayını Durdur</button>`
+      : `<button class="rm-ib" id="spToggleFollow" style="padding:3px 9px">${SP_SYNC.follow ? "✓ Senkrondasın" : "Katıl"}</button>`);
+  if (isLead) $("spStopLead").onclick = spStopLead;
+  else $("spToggleFollow").onclick = () => {
+    SP_SYNC.follow = !SP_SYNC.follow;
+    SP_SYNC.lastUri = "";
+    spShowBar(title, artist, false);
+  };
+}
+
+function spStopLead() {
+  SP_SYNC.lead = false; clearInterval(SP_SYNC.timer);
+  S.core?.broadcast({ k: "sp", act: "stop" });
+  $("spSyncBar")?.remove();
+}
+
+async function spLeadTick() {
+  if (!SP_SYNC.lead) return;
+  const r = await window.pywebview?.api?.music_spotify_now?.().catch(() => null);
+  if (!r?.ok || !r.uri) return;
+  S.core?.broadcast({ k: "sp", act: "state", uri: r.uri, title: r.title || "", artist: r.artist || "", pos: r.progress_ms || 0, playing: !!r.playing, at: Date.now() });
+  spShowBar(r.title || "", r.artist || "", true);
+}
+
+async function spIn(from, m) {
+  if (m.act === "stop") { SP_SYNC.follow = false; SP_SYNC.lastUri = ""; $("spSyncBar")?.remove(); return; }
+  if (SP_SYNC.lead) return;
+  spShowBar(m.title || "", m.artist || "", false);
+  if (!SP_SYNC.follow || !m.uri || !window.pywebview?.api?.music_spotify_play) return;
+  const estPos = Math.max(0, (m.pos || 0) + (m.playing ? (Date.now() - (m.at || Date.now())) : 0));
+  const changedTrack = m.uri !== SP_SYNC.lastUri;
+  const drift = Math.abs(estPos - SP_SYNC.lastPos) > 4500 && (Date.now() - SP_SYNC.lastSyncAt > 6000);
+  if (changedTrack || drift || (m.playing !== SP_SYNC.lastPlay)) {
+    SP_SYNC.lastUri = m.uri; SP_SYNC.lastPos = estPos; SP_SYNC.lastPlay = !!m.playing; SP_SYNC.lastSyncAt = Date.now();
+    if (m.playing) await window.pywebview.api.music_spotify_play(m.uri, "", estPos).catch(() => {});
+    else await window.pywebview.api.music_spotify_control?.("pause").catch(() => {});
+  }
+}
+
+(function spButton() {
+  const dock = document.querySelector(".rm-dock"); if (!dock || $("bSpSync")) return;
+  const b = document.createElement("button"); b.id = "bSpSync"; b.title = "Odada Spotify birlikte dinle";
+  b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/></svg>';
+  b.onclick = () => {
+    if (SP_SYNC.lead) return spStopLead();
+    if (!window.pywebview?.api?.music_spotify_now) { toast("Spotify yayını için masaüstü Kami penceresi gerekir."); return; }
+    SP_SYNC.lead = true; SP_SYNC.follow = false;
+    spLeadTick();
+    clearInterval(SP_SYNC.timer);
+    SP_SYNC.timer = setInterval(spLeadTick, 3000);
+  };
   dock.insertBefore(b, $("bSet"));
 })();
