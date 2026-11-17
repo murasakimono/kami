@@ -4369,7 +4369,7 @@ class Api(StudioMixin):
         from app.core.music_hub import fetch_track_lyrics
         return fetch_track_lyrics(title, artist)
 
-    def music_spotify_search(self, query: str, kind: str = "track,album,playlist", limit: int = 20) -> dict[str, Any]:
+    def music_spotify_search(self, query: str, kind: str = "track,album,playlist", limit: int = 10) -> dict[str, Any]:
         from app.core.music_hub import spotify_search
         return spotify_search(query, kind=kind, limit=limit)
 
@@ -4430,8 +4430,6 @@ class Api(StudioMixin):
             except Exception:
                 pass
         return self.player_show({"path": path})
-        from app.core.music_hub import fetch_track_lyrics
-        return fetch_track_lyrics(title, artist)
 
     def cleaner_search(self, query: str, root: str = "", limit: int = 80) -> dict[str, Any]:
         from app.core.cleaner import search_files

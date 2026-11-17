@@ -195,9 +195,15 @@
 
     async function refreshAuthUi() {
       const st = await api()?.music_spotify_status?.().catch(() => null);
-      const on = !!st?.connected;
+      const on = !!st?.connected, exp = !!st?.expired;
       spConn.hidden = !on; spSetup.hidden = on;
-      spCfgBtn.textContent = on ? "Spotify ✓" : "Spotify Bağla";
+      spCfgBtn.textContent = on ? "Spotify ✓" : exp ? "Spotify (Yeniden Giriş)" : "Spotify Bağla";
+      if (exp) {
+        spTokBox.hidden = false;
+        spMsg.textContent = "Oturum süresi doldu veya izinler eksik; lütfen yeniden giriş yap.";
+        spTitle.textContent = "Spotify: Oturum süresi doldu";
+        spArtist.textContent = "Yukarıdaki 'Spotify ile giriş yap' butonundan yeniden bağlan.";
+      }
     }
 
     async function pollSpotify() {

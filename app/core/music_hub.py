@@ -79,14 +79,22 @@ def spotify_access_token() -> str:
     try:
         d = _sp_token_request({"grant_type": "refresh_token", "refresh_token": o["refresh_token"], "client_id": o["client_id"]})
         _sp_keep(d, o["client_id"])
+        _SP_CACHE["expired"] = False
         return _SP_CACHE["token"]
     except Exception:
+        _SP_CACHE["expired"] = True
         return ""
 
 
 def spotify_oauth_status() -> dict[str, Any]:
     o = _sp_oauth()
-    return {"connected": bool(o.get("refresh_token")), "client_id": o.get("client_id", ""), "redirect": SP_REDIRECT}
+    has_ref = bool(o.get("refresh_token"))
+    expired = bool(_SP_CACHE.get("expired"))
+    if has_ref and not _SP_CACHE.get("token"):
+        tok = spotify_access_token()
+        expired = not bool(tok)
+    return {"connected": has_ref and not expired, "expired": has_ref and expired,
+            "client_id": o.get("client_id", ""), "redirect": SP_REDIRECT}
 
 
 def spotify_logout() -> dict[str, Any]:
@@ -249,12 +257,12 @@ def _sp_api(method: str, path: str, body: dict[str, Any] | None = None, token: s
         return {"ok": False, "error": str(exc)[:120]}
 
 
-def spotify_search(query: str, kind: str = "track,album,playlist", limit: int = 20) -> dict[str, Any]:
+def spotify_search(query: str, kind: str = "track,album,playlist", limit: int = 10) -> dict[str, Any]:
     import urllib.parse
     q = str(query or "").strip()
     if not q:
         return {"ok": False, "tracks": [], "albums": [], "playlists": []}
-    qs = urllib.parse.urlencode({"q": q, "type": kind, "limit": min(50, max(1, int(limit)))})
+    qs = urllib.parse.urlencode({"q": q, "type": kind, "limit": min(10, max(1, int(limit)))})
     r = _sp_api("GET", f"/search?{qs}")
     if not r.get("ok"):
         return {**r, "tracks": [], "albums": [], "playlists": []}
@@ -298,12 +306,12 @@ def spotify_playlist_tracks(playlist_id: str, limit: int = 100) -> dict[str, Any
     pid = str(playlist_id or "").strip()
     if not pid:
         return {"ok": False, "items": []}
-    r = _sp_api("GET", f"/playlists/{pid}/tracks?limit={min(100, int(limit))}")
+    r = _sp_api("GET", f"/playlists/{pid}/items?limit={min(100, int(limit))}")
     if not r.get("ok"):
         return {**r, "items": []}
     items = []
     for x in ((r.get("data") or {}).get("items") or []):
-        t = (x or {}).get("track") or {}
+        t = (x or {}).get("item") or (x or {}).get("track") or {}
         if not t or not t.get("uri"):
             continue
         items.append({
@@ -381,11 +389,7 @@ def spotify_playlist_create(name: str, description: str = "", public: bool = Fal
     nm = str(name or "").strip()
     if not nm:
         return {"ok": False, "error": "empty_name"}
-    me = _sp_api("GET", "/me")
-    uid = (me.get("data") or {}).get("id", "")
-    if not uid:
-        return {"ok": False, "error": me.get("error", "no_user")}
-    return _sp_api("POST", f"/users/{uid}/playlists", {"name": nm, "description": description, "public": bool(public)})
+    return _sp_api("POST", "/me/playlists", {"name": nm, "description": description, "public": bool(public)})
 
 
 def spotify_playlist_modify(playlist_id: str, uris: list[str], remove: bool = False) -> dict[str, Any]:
@@ -393,8 +397,8 @@ def spotify_playlist_modify(playlist_id: str, uris: list[str], remove: bool = Fa
     if not pid or not uris:
         return {"ok": False, "error": "missing_args"}
     if remove:
-        return _sp_api("DELETE", f"/playlists/{pid}/tracks", {"tracks": [{"uri": u} for u in uris]})
-    return _sp_api("POST", f"/playlists/{pid}/tracks", {"uris": list(uris)})
+        return _sp_api("DELETE", f"/playlists/{pid}/items", {"items": [{"uri": u} for u in uris]})
+    return _sp_api("POST", f"/playlists/{pid}/items", {"uris": list(uris)})
 
 
 # ---------- Yerel Muzik Klasorleri (or. Downloads\Contra\...) ----------
