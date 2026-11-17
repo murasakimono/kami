@@ -363,6 +363,15 @@ legend { padding: 0; margin-bottom: 8px; font-weight: 600; color: var(--accent);
 .main[data-view="follow"] > #followView, .main[data-view="history"] > #historyView, .main[data-view="batch"] > #batchView, .main[data-view="convert"] > #convertView { display: block; }
 .fw-add { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .fw-add input[type=text], .fw-add textarea { flex: 1; min-width: 240px; }
+/* v1.35.4: Gecmis aramasi vb. kutular tarayici varsayilani gibi duruyordu; ust cubuktaki girisle ayni */
+.fw-add input[type=text], .fw-add input[type=number], .fw-add textarea {
+  height: 36px; padding: 0 12px; color: inherit; font: inherit;
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.fw-add textarea { height: auto; min-height: 36px; padding: 8px 12px; }
+.fw-add input:focus, .fw-add textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.fw-add input::placeholder, .fw-add textarea::placeholder { color: var(--muted); }
+#historyQ { padding-left: 36px; background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239c8fb8' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 12px center / 16px; }
 .fw-add input[type=number] { width: 56px; }
 .mt-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .mt-row > div { min-width: 0; }

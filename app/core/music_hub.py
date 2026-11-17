@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 import urllib.request
 from typing import Any
 
@@ -431,7 +433,53 @@ def spotify_play_uri(uri: str = "", context_uri: str = "", position_ms: int = 0)
             body["context_uri"] = uri
     if position_ms > 0:
         body["position_ms"] = int(position_ms)
-    return _sp_api("PUT", "/me/player/play", body)
+    # v1.35.4: Spotify Connect calan bir cihaz ister. Etkin cihaz yoksa istek 404 NO_ACTIVE_DEVICE
+    # donuyordu ve arayuz hicbir sey gostermiyordu. Etkin yoksa mevcut ilk cihazi sec; hic yoksa
+    # PC'deki Spotify uygulamasini ac ve cihaz gorunene kadar (en cok ~12 sn) bekle.
+    dev = _sp_pick_device(launch=True)
+    if not dev:
+        return {"ok": False, "error": "no_device",
+                "message": "Spotify açık bir cihaz bulamadı. PC'de veya telefonda Spotify uygulamasını aç."}
+    r = _sp_api("PUT", f"/me/player/play?device_id={dev}", body)
+    return _sp_explain(r)
+
+
+def _sp_explain(r: dict[str, Any]) -> dict[str, Any]:
+    if r.get("ok"):
+        return r
+    txt = str(r.get("error") or "")
+    if "PREMIUM_REQUIRED" in txt or r.get("status") == 403:
+        r["message"] = "Spotify uzaktan çalmayı yalnızca Premium hesapta izin veriyor."
+    elif "NO_ACTIVE_DEVICE" in txt or r.get("status") == 404:
+        r["message"] = "Spotify cihazı bulunamadı. Spotify uygulamasını açıp tekrar dene."
+    elif r.get("error") == "no_token":
+        r["message"] = "Spotify bağlı değil. Sol alttan Bağla'ya bas."
+    else:
+        r["message"] = "Spotify çalmayı başlatamadı: " + txt[:100]
+    return r
+
+
+def _sp_pick_device(launch: bool = False) -> str:
+    def pick() -> str:
+        d = spotify_devices().get("devices") or []
+        act = [x for x in d if x.get("active")]
+        pc = [x for x in d if str(x.get("type", "")).lower() == "computer"]
+        return ((act or pc or d or [{}])[0]).get("id", "")
+    dev = pick()
+    if dev or not launch:
+        return dev
+    try:
+        if os.name == "nt":
+            os.startfile("spotify:")   # noqa: S606 - kullanicinin kendi Spotify uygulamasi
+    except OSError:
+        return ""
+    deadline = time.time() + 12
+    while time.time() < deadline:
+        time.sleep(1.0)
+        dev = pick()
+        if dev:
+            return dev
+    return ""
 
 
 def spotify_queue_add(uri: str) -> dict[str, Any]:
@@ -714,25 +762,20 @@ def ytm_to_spotify_playlist(url_or_id: str, new_name: str = "") -> dict[str, Any
 
 
 def spotify_control(token: str, action: str) -> dict[str, Any]:
-    tok = get_spotify_token(token)
-    if not tok:
-        return {"ok": False, "error": "no_token"}
+    """Alt cubuk: oynat/duraklat/ileri/geri. v1.35.4: PKCE oturumu (_sp_api) + cihaz secimi + anlamli hata."""
     act = str(action or "").lower().strip()
-    routes = {
-        "play": ("PUT", "https://api.spotify.com/v1/me/player/play"),
-        "pause": ("PUT", "https://api.spotify.com/v1/me/player/pause"),
-        "next": ("POST", "https://api.spotify.com/v1/me/player/next"),
-        "previous": ("POST", "https://api.spotify.com/v1/me/player/previous"),
-    }
+    routes = {"play": ("PUT", "/me/player/play"), "pause": ("PUT", "/me/player/pause"),
+              "next": ("POST", "/me/player/next"), "previous": ("POST", "/me/player/previous")}
     if act not in routes:
         return {"ok": False, "error": "bad_action"}
-    method, url = routes[act]
-    req = urllib.request.Request(url, data=b"", method=method, headers={"Authorization": f"Bearer {tok}"})
-    try:
-        with urllib.request.urlopen(req, timeout=6) as resp:
-            return {"ok": resp.status in (200, 202, 204)}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)[:120]}
+    method, path = routes[act]
+    if act == "play":
+        dev = _sp_pick_device(launch=True)
+        if not dev:
+            return {"ok": False, "error": "no_device",
+                    "message": "Spotify açık bir cihaz bulamadı. PC'de veya telefonda Spotify uygulamasını aç."}
+        path += f"?device_id={dev}"
+    return _sp_explain(_sp_api(method, path))
 
 
 def fetch_track_lyrics(title: str, artist: str = "") -> dict[str, Any]:

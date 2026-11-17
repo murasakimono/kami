@@ -92,14 +92,21 @@
     if (root) root.hidden = true;
   }
 
+  // v1.35.4: sekme acilis verisi gelmezse (kopru takili) sekme sonsuza dek beklemesin; varsayilanla acilir
+  const ld = (p, def, ms = 6000) => Promise.race([
+    Promise.resolve(p).then((v) => (v == null ? def : v), () => def),
+    new Promise((res) => setTimeout(() => res(def), ms)),
+  ]);
+
   async function renderTab() {
     const seq = ++renderSeq;
     stopGrabPoll();
     const bd = root.querySelector(".eco-bd");
     root.querySelectorAll(".eco-tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === activeTab));
+    bd.innerHTML = `<div class="eco-card"><div class="eco-hint">Yükleniyor…</div></div>`;   // v1.35.4: eski sekme takili kalmasin
 
     if (activeTab === "rec") {
-      const [st, ch] = await Promise.all([api.rec_status().catch(() => ({})), api.chain_get?.().catch(() => ({})) || {}]);
+      const [st, ch] = await Promise.all([ld(api.rec_status?.(), {}), ld(api.chain_get?.(), {})]);
       if (seq !== renderSeq) return;
       bd.innerHTML = `
         <div class="eco-card">
@@ -174,7 +181,7 @@
       bd.querySelector("#ecoGoRoom").onclick = () => { closeModal(); api.room_open?.(true); };
       bd.querySelector("#ecoGoPic").onclick = () => { closeModal(); api.picture_open_editor?.(); };
     } else if (activeTab === "bypass") {
-      const ch = await api.chain_get?.().catch(() => ({})) || {};
+      const ch = await ld(api.chain_get?.(), {});
       if (seq !== renderSeq) return;
       bd.innerHTML = `
         <div class="eco-card">
@@ -283,7 +290,7 @@
         bd.querySelector("#ecoSeMsg").textContent = r.ok ? `${r.added} bölüm kuyruğa eklendi ✓` : "Hiçbir bölüm eklenemedi.";
       };
     } else if (activeTab === "grab") {
-      let [st, ch] = await Promise.all([api.grab_all_status().catch(() => ({})), api.chain_get?.().catch(() => ({})) || {}]);
+      let [st, ch] = await Promise.all([ld(api.grab_all_status?.(), {}), ld(api.chain_get?.(), {})]);
       if (seq !== renderSeq) return;
       const profs = ch.grab_follow_profiles || [];
       const formatGrabMsg = (s) => {
@@ -567,7 +574,7 @@
         });
       };
     } else if (activeTab === "mod") {
-      const [mods, steam] = await Promise.all([api.mod_list().catch(() => []), api.mod_steam_games?.().catch(() => []) || []]);
+      const [mods, steam] = await Promise.all([ld(api.mod_list?.(), []), ld(api.mod_steam_games?.(), [], 10000)]);
       if (seq !== renderSeq) return;
       bd.innerHTML = `
         <div class="eco-card">
@@ -641,7 +648,7 @@
         };
       });
     } else if (activeTab === "bridge") {
-      const br = await api.phone_bridge_url().catch(() => ({}));
+      const br = await ld(api.phone_bridge_url?.(), {});
       if (seq !== renderSeq) return;
       const curCos = window.kamiSfx?.getCostume?.() || "default";
       const sfxOn = window.kamiSfx?.isOn?.() !== false;
@@ -667,7 +674,7 @@
       bd.querySelector("#ecoCosSel").onchange = (e) => window.kamiSfx?.setCostume(e.target.value);
       bd.querySelector("#ecoSfxChk").onchange = (e) => { window.kamiSfx?.setOn(e.target.checked); if (e.target.checked) window.kamiSfx?.play("done"); };
     } else if (activeTab === "jobs") {
-      const list = await api.jobs_list?.().catch(() => []) || [];
+      const list = await ld(api.jobs_list?.(), []);
       if (seq !== renderSeq) return;
       bd.innerHTML = `
         <div class="eco-card">
