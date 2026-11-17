@@ -81,8 +81,10 @@ def scan(dirs: list[str]) -> dict[str, Any]:
         if not root.is_dir():
             continue
         for dp, dn, fn in os.walk(root):
-            dn[:] = [x for x in dn if not x.startswith(".") and x.lower() not in ("$recycle.bin", "system volume information")]
+            dn[:] = [x for x in dn if not x.startswith(".") and x.lower() not in ("$recycle.bin", "system volume information", "__macosx")]
             for name in fn:
+                if name.startswith("._"):   # macOS AppleDouble eki: medya degil, acilinca "moov atom not found"
+                    continue
                 q = Path(dp) / name
                 kind = media_kind(q)
                 if not kind or name.endswith((".part", ".aria2")):

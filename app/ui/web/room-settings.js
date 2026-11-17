@@ -44,12 +44,12 @@
   }
   // ust bardaki Oda sekmesine canli kisi rozetini yaz (cift dugme olmasin)
   function syncRoomTab() {
-    const tab = document.querySelector('#skTabs .sk-tab[data-mod="room"]');
+    const tab = document.getElementById("skRoomPill");
     if (!tab) { setTimeout(syncRoomTab, 600); return; }
     setInterval(async () => {
       try {
         const r = await api.room_status();
-        tab.classList.toggle("live", !!r.on);
+        tab.classList.toggle("live", !!r.people?.length);   // v1.35.2: sunucu hep acik; yalniz odada biri varken yesil
         const badge = document.getElementById("skRoomN");
         if (badge) badge.textContent = r.people?.length ? String(r.people.length) : "";
         tab.title = r.people?.length ? "Odada: " + r.people.join(", ") : "Kami Oda: sesli oda, ekran paylaşımı, oynatıcı yayını";

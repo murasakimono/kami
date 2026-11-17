@@ -366,3 +366,18 @@ body.sunak.fx-off canvas.sk-fx-gpu { display: none; }
 #sunak .sk-g.warn i { color: #FF8A9C; }
 .sk-peek-th { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 7px; margin-bottom: 8px; background: #000; }
 .sk-peek .sk-peek-m { color: #6EF2C2; margin-top: 3px; font-weight: 600; letter-spacing: .02em; }
+/* v1.35.2 ust cubuk: sekme gibi duran baslatici -> simgeli uygulama dugmeleri; Oda sagda ayri hap */
+#sunak .sk-tabs { gap: 2px; padding: 3px 4px; background: rgba(16, 12, 24, .7); border-color: rgba(157, 107, 255, .16); border-radius: 12px; }
+#sunak .sk-tab { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 9px; color: #B7AECC; }
+#sunak .sk-tab svg { width: 16px; height: 16px; color: #8F7BC9; transition: color .15s, transform .15s; }
+#sunak .sk-tab:hover { background: rgba(157, 107, 255, .16); color: #fff; }
+#sunak .sk-tab:hover svg { color: var(--sk-em); transform: translateY(-1px); }
+#sunak .sk-tab.on, #sunak .sk-tab.live { background: transparent; box-shadow: none; }
+#sunak .sk-status { align-items: center; gap: 8px; font-size: 12px; }
+#sunak .sk-chip { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 8px; background: rgba(16, 12, 24, .7); border: 1px solid rgba(157, 107, 255, .14); color: var(--sk-mute); }
+#sunak .sk-status .sk-room { border-radius: 8px; border: 1px solid rgba(157, 107, 255, .2); background: rgba(26, 20, 38, .85); }
+#sunak .sk-roompill { position: relative; }
+#sunak .sk-roompill .sk-dot { width: 7px; height: 7px; border-radius: 50%; background: #4A4160; font-style: normal; }
+#sunak .sk-roompill.live { border-color: rgba(46, 230, 166, .55); color: #fff; box-shadow: none; }
+#sunak .sk-roompill.live .sk-dot { background: var(--sk-em); box-shadow: 0 0 8px var(--sk-em); }
+@media (max-width: 1250px) { #sunak .sk-tab span { display: none; } #sunak .sk-tab { padding: 6px 9px; } }

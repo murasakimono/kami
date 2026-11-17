@@ -121,6 +121,11 @@ window.pxDrawerRender = async (...a) => {
   // izlemeye devam rafi
   const rec = peLS("kami.recent", []).filter((x) => !W[x.p]).slice(0, 8);
   if (rec.length) {
+    const peTop = () => {   // v1.35.2: sonradan eklenen raflar (pp-shelves) ustune biniyordu; en uste tasi
+      const sh = body.querySelector(".pe-shelf"), h = sh?.previousElementSibling;
+      if (sh && h?.tagName === "H4" && body.firstElementChild !== h) { body.prepend(sh); body.prepend(h); }
+    };
+    setTimeout(peTop, 0); setTimeout(peTop, 300);
     body.insertAdjacentHTML("afterbegin", `<h4>${plL("İzlemeye devam", "Continue watching")}</h4><div class="pe-shelf">${rec.map((x, i) => `<button class="pe-cont" data-cont="${i}"><b>${escapeHtml(pxBase(x.p))}</b><small>${fmtT(x.t)} / ${fmtT(x.d)}</small><i style="width:${Math.min(100, x.t / x.d * 100).toFixed(1)}%"></i></button>`).join("")}</div>`);
     body.querySelectorAll("[data-cont]").forEach((b) => b.onclick = (ev) => { ev.stopPropagation(); const x = rec[+b.dataset.cont]; playerOpenPath(x.p); $("#plDrawer").hidden = true; });
   }

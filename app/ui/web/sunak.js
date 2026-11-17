@@ -40,17 +40,15 @@ function skBuild() {
   <div class="sk-main">
     <div class="sk-head"><span class="sk-logo">KAMI</span>
       <nav class="sk-tabs" id="skTabs">
-        <button type="button" class="sk-tab on" data-mod="home">${skL("İndirmeler", "Downloads")}</button>
-        <button type="button" class="sk-tab" data-mod="player">Player</button>
-        <button type="button" class="sk-tab" data-mod="studio">Studio</button>
-        <button type="button" class="sk-tab" data-mod="picture">Picture</button>
-        <button type="button" class="sk-tab" data-mod="reader">Reader</button>
-        <button type="button" class="sk-tab" data-mod="room">${skL("Oda", "Room")}<i class="sk-tab-badge" id="skRoomN"></i></button>
-        <button type="button" class="sk-tab" data-mod="games">Oyun</button>
-        <button type="button" class="sk-tab" data-mod="music">Müzik</button>
-        <button type="button" class="sk-tab" data-mod="cleaner">Süzgeç</button>
+        <button type="button" class="sk-tab" data-mod="player" title="Player (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 4 20 12 7 20 7 4"/></svg><span>Player</span></button>
+        <button type="button" class="sk-tab" data-mod="studio" title="Studio (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M8 5v4M16 5v4"/></svg><span>Studio</span></button>
+        <button type="button" class="sk-tab" data-mod="picture" title="Picture (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg><span>Picture</span></button>
+        <button type="button" class="sk-tab" data-mod="reader" title="Reader (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/></svg><span>Reader</span></button>
+        <button type="button" class="sk-tab" data-mod="games" title="Oyun (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="5"/><path d="M7 10v4M5 12h4M15.5 11h.01M18 13h.01"/></svg><span>Oyun</span></button>
+        <button type="button" class="sk-tab" data-mod="music" title="Müzik (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span>Müzik</span></button>
+        <button type="button" class="sk-tab" data-mod="cleaner" title="Süzgeç (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg><span>Süzgeç</span></button>
       </nav>
-      <div class="sk-status"><span>${skL("motor", "engine")} <b id="skEngine">…</b></span><span>${skL("köprü", "bridge")} <b id="skBridge">…</b></span></div></div>
+      <div class="sk-status"><button type="button" class="sk-room sk-roompill" data-mod="room" id="skRoomPill" title="Kami Oda: sesli oda, ekran paylaşımı, birlikte izleme"><i class="sk-dot"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg><span>${skL("Oda", "Room")}</span><i class="sk-tab-badge" id="skRoomN"></i></button><span class="sk-chip">${skL("motor", "engine")} <b id="skEngine">…</b></span><span class="sk-chip">${skL("köprü", "bridge")} <b id="skBridge">…</b></span></div></div>
     <div class="sk-top">
       <div class="sk-altar" id="skAltar">
         <svg class="sk-ring" viewBox="0 0 300 300">
@@ -243,12 +241,13 @@ function skBind() {
     cleaner: () => api?.cleaner_open?.(),
   };
   $("#skTabs")?.addEventListener("click", (e) => {
-    const b = e.target.closest(".sk-tab[data-mod]");
+    const b = e.target.closest(".sk-tab[data-mod], #skRoomPill");
     if (!b) return;
     const mod = b.dataset.mod;
     if (mod === "home") { skCloseDrawer?.(); return; }
     LAUNCHERS[mod]?.();
   });
+  $("#skRoomPill")?.addEventListener("click", () => LAUNCHERS.room?.());
   // dosya surukleme: ruh uyanir, birakinca yutar (asil ekleme extras.js'teki drop dinleyicisinde)
   let depth = 0;
   document.addEventListener("dragenter", () => { depth++; altar.classList.add("drop"); SK.eye?.set({ mood: "alert" }); window.KamiSunakGPU?.setState?.({ drop: true, mood: "alert" }); });

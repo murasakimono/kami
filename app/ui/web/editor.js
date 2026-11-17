@@ -43,9 +43,10 @@ function cl() { return ED.layers[ED.cur]; }
 
 // ---------------------------------------------------------------- gorunum
 function edFit() {
-  const v = $("#edView"), m = 80;
-  ED.z = Math.min((v.clientWidth - m) / ED.W, (v.clientHeight - m * 1.6) / ED.H, 4);
-  ED.ox = (v.clientWidth - ED.W * ED.z) / 2; ED.oy = (v.clientHeight - ED.H * ED.z) / 2 + 10;
+  // v1.35.2: ust iki cubuk (~100 px) ve alt AI + katman cubuklari (~110 px) arasina sigdir (gorselin ustune biniyorlardi)
+  const v = $("#edView"), m = 80, top = 100, bot = 112, h = Math.max(120, v.clientHeight - top - bot);
+  ED.z = Math.min((v.clientWidth - m) / ED.W, h / ED.H, 4);
+  ED.ox = (v.clientWidth - ED.W * ED.z) / 2; ED.oy = top + (h - ED.H * ED.z) / 2;
 }
 const toDoc = (x, y) => [(x - ED.ox) / ED.z, (y - ED.oy) / ED.z];
 let rq = 0;

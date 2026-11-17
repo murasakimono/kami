@@ -113,3 +113,14 @@
 .ed-sd-foot { display: flex; gap: 4px; padding: 6px 8px; border-top: 1px solid #2A2140; flex-wrap: wrap; }
 .ed-sd-foot button { flex: 1; border: 1px solid #2A2140; background: #1E1730; color: #D9CCFF; padding: 5px 6px; cursor: pointer; font: inherit; font-size: 10.5px; }
 .ed-sd-foot button:hover { background: #6D28D9; color: #fff; }
+/* v1.35.2 Picture duzenleyici duzeni: yazilar kirilmasin, AI cubugu tek satir, katman dugmesi ust hizada */
+.ed-top, .ed-opt, .ed-aibar, .ed-side-toggle, .ed-sidedock { border-radius: 10px; }
+.ed-top { max-width: calc(100vw - 300px); }
+.ed-top button, .ed-opt button, .ed-aibar button { white-space: nowrap; border-radius: 7px; }
+.ed-top b { max-width: 170px; }
+.ed-side-toggle { top: 10px; height: 38px; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px; }
+.ed-sidedock { top: 56px; }
+.ed-aibar { flex-wrap: nowrap; bottom: 30px; max-width: min(920px, calc(100vw - 40px)); padding: 6px 8px; border-radius: 12px; box-shadow: 0 12px 30px rgba(0, 0, 0, .55); }
+.ed-aibar input { flex: 1 1 260px; min-width: 140px; width: auto; border-radius: 7px; }
+.ed-hint { display: none; }
+@media (min-width: 1700px) { .ed-hint { display: block; max-width: 300px; } }
