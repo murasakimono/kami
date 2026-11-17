@@ -4405,6 +4405,46 @@ class Api(StudioMixin):
         from app.core.music_hub import spotify_playlist_modify
         return spotify_playlist_modify(playlist_id, uris, remove=remove)
 
+    def music_spotify_devices(self) -> dict[str, Any]:
+        from app.core.music_hub import spotify_devices
+        return spotify_devices()
+
+    def music_spotify_transfer(self, device_id: str) -> dict[str, Any]:
+        from app.core.music_hub import spotify_transfer
+        return spotify_transfer(device_id)
+
+    def music_spotify_seek(self, position_ms: int) -> dict[str, Any]:
+        from app.core.music_hub import spotify_seek
+        return spotify_seek(position_ms)
+
+    def music_spotify_shuffle(self, state: bool) -> dict[str, Any]:
+        from app.core.music_hub import spotify_shuffle
+        return spotify_shuffle(state)
+
+    def music_spotify_repeat(self, state: str) -> dict[str, Any]:
+        from app.core.music_hub import spotify_repeat
+        return spotify_repeat(state)
+
+    def music_spotify_volume(self, percent: int) -> dict[str, Any]:
+        from app.core.music_hub import spotify_volume
+        return spotify_volume(percent)
+
+    def music_spotify_like_check(self, track_id: str) -> dict[str, Any]:
+        from app.core.music_hub import spotify_like_check
+        return spotify_like_check(track_id)
+
+    def music_spotify_like_toggle(self, track_id: str, like: bool) -> dict[str, Any]:
+        from app.core.music_hub import spotify_like_toggle
+        return spotify_like_toggle(track_id, like)
+
+    def music_spotify_queue_list(self) -> dict[str, Any]:
+        from app.core.music_hub import spotify_queue_list
+        return spotify_queue_list()
+
+    def music_spotify_album_tracks(self, album_id: str, limit: int = 50) -> dict[str, Any]:
+        from app.core.music_hub import spotify_album_tracks
+        return spotify_album_tracks(album_id, limit=limit)
+
     def music_local_add(self, folder: str = "") -> dict[str, Any]:
         from app.core.music_hub import local_folders_add
         if not folder and self._window:

@@ -1080,8 +1080,13 @@ function spShowBar(title, artist, isLead) {
   }
   bar.innerHTML = `<span style="color:#2EE6A6;font-weight:700">🎧 ${isLead ? "Yayınlıyorsun" : "Birlikte Dinleme"}:</span>` +
     `<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(artist ? artist + " — " + title : title)}</b>` +
+    `<button class="rm-ib" id="spJamQ" style="padding:3px 9px">+ Sıraya Ekle</button>` +
     (isLead ? `<button class="rm-ib" id="spStopLead" style="padding:3px 9px">Yayını Durdur</button>`
       : `<button class="rm-ib" id="spToggleFollow" style="padding:3px 9px">${SP_SYNC.follow ? "✓ Senkrondasın" : "Katıl"}</button>`);
+  $("spJamQ").onclick = () => {
+    const q = prompt("Oda Jam sırasına eklenecek şarkı (ad / sanatçı):");
+    if (q && q.trim()) S.core?.broadcast({ k: "sp", act: "q", query: q.trim() });
+  };
   if (isLead) $("spStopLead").onclick = spStopLead;
   else $("spToggleFollow").onclick = () => {
     SP_SYNC.follow = !SP_SYNC.follow;
@@ -1106,6 +1111,15 @@ async function spLeadTick() {
 
 async function spIn(from, m) {
   if (m.act === "stop") { SP_SYNC.follow = false; SP_SYNC.lastUri = ""; $("spSyncBar")?.remove(); return; }
+  if (m.act === "q" && SP_SYNC.lead && m.query && window.pywebview?.api?.music_spotify_search) {
+    const sr = await window.pywebview.api.music_spotify_search(m.query, "track", 1).catch(() => null);
+    const tr = sr?.tracks?.[0];
+    if (tr?.uri) {
+      await window.pywebview.api.music_spotify_queue?.(tr.uri).catch(() => {});
+      toast(`Jam sırasına eklendi: ${tr.artist} — ${tr.title}`);
+    }
+    return;
+  }
   if (SP_SYNC.lead) return;
   spShowBar(m.title || "", m.artist || "", false);
   if (!SP_SYNC.follow || !m.uri || !window.pywebview?.api?.music_spotify_play) return;

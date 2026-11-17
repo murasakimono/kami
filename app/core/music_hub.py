@@ -209,7 +209,7 @@ def spotify_now(token: str) -> dict[str, Any]:
     tok = get_spotify_token(token)
     if not tok:
         return {"ok": False, "error": "no_token"}
-    req = urllib.request.Request("https://api.spotify.com/v1/me/player/currently-playing",
+    req = urllib.request.Request("https://api.spotify.com/v1/me/player",
                                  headers={"Authorization": f"Bearer {tok}"})
     try:
         with urllib.request.urlopen(req, timeout=6) as resp:
@@ -218,6 +218,7 @@ def spotify_now(token: str) -> dict[str, Any]:
             d = json.loads(resp.read().decode("utf-8"))
             it = d.get("item") or {}
             imgs = ((it.get("album") or {}).get("images") or [{}])
+            dev = d.get("device") or {}
             return {
                 "ok": True,
                 "playing": bool(d.get("is_playing")),
@@ -229,6 +230,11 @@ def spotify_now(token: str) -> dict[str, Any]:
                 "cover": imgs[0].get("url", "") if imgs else "",
                 "progress_ms": d.get("progress_ms", 0),
                 "duration_ms": it.get("duration_ms", 0),
+                "shuffle": bool(d.get("shuffle_state")),
+                "repeat": str(d.get("repeat_state") or "off"),
+                "device_id": dev.get("id", ""),
+                "device_name": dev.get("name", ""),
+                "volume": int(dev.get("volume_percent") if dev.get("volume_percent") is not None else 100),
             }
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:120]}
@@ -399,6 +405,91 @@ def spotify_playlist_modify(playlist_id: str, uris: list[str], remove: bool = Fa
     if remove:
         return _sp_api("DELETE", f"/playlists/{pid}/items", {"items": [{"uri": u} for u in uris]})
     return _sp_api("POST", f"/playlists/{pid}/items", {"uris": list(uris)})
+
+
+def spotify_devices() -> dict[str, Any]:
+    r = _sp_api("GET", "/me/player/devices")
+    if not r.get("ok"):
+        return {**r, "devices": []}
+    devs = [{
+        "id": d.get("id", ""), "name": d.get("name", ""), "type": d.get("type", ""),
+        "active": bool(d.get("is_active")), "volume": int(d.get("volume_percent") or 100),
+    } for d in ((r.get("data") or {}).get("devices") or []) if d.get("id")]
+    return {"ok": True, "devices": devs}
+
+
+def spotify_transfer(device_id: str) -> dict[str, Any]:
+    if not device_id:
+        return {"ok": False, "error": "empty_device"}
+    return _sp_api("PUT", "/me/player", {"device_ids": [device_id], "play": True})
+
+
+def spotify_seek(position_ms: int) -> dict[str, Any]:
+    return _sp_api("PUT", f"/me/player/seek?position_ms={max(0, int(position_ms))}")
+
+
+def spotify_shuffle(state: bool) -> dict[str, Any]:
+    return _sp_api("PUT", f"/me/player/shuffle?state={'true' if state else 'false'}")
+
+
+def spotify_repeat(state: str) -> dict[str, Any]:
+    st = state if state in ("off", "context", "track") else "off"
+    return _sp_api("PUT", f"/me/player/repeat?state={st}")
+
+
+def spotify_volume(percent: int) -> dict[str, Any]:
+    v = max(0, min(100, int(percent)))
+    return _sp_api("PUT", f"/me/player/volume?volume_percent={v}")
+
+
+def spotify_like_check(track_id: str) -> dict[str, Any]:
+    if not track_id:
+        return {"ok": False, "liked": False}
+    r = _sp_api("GET", f"/me/tracks/contains?ids={track_id}")
+    if not r.get("ok"):
+        return {**r, "liked": False}
+    arr = r.get("data") if isinstance(r.get("data"), list) else []
+    return {"ok": True, "liked": bool(arr and arr[0])}
+
+
+def spotify_like_toggle(track_id: str, like: bool) -> dict[str, Any]:
+    if not track_id:
+        return {"ok": False, "error": "empty_id"}
+    return _sp_api("PUT" if like else "DELETE", f"/me/tracks?ids={track_id}", {"ids": [track_id]})
+
+
+def spotify_queue_list() -> dict[str, Any]:
+    r = _sp_api("GET", "/me/player/queue")
+    if not r.get("ok"):
+        return {**r, "queue": []}
+    q = []
+    for t in ((r.get("data") or {}).get("queue") or []):
+        if not t or not t.get("uri"):
+            continue
+        q.append({
+            "id": t.get("id", ""), "uri": t.get("uri", ""), "title": t.get("name", ""),
+            "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])),
+            "album": (t.get("album") or {}).get("name", ""),
+            "cover": ((t.get("album") or {}).get("images") or [{}])[-1].get("url", ""),
+        })
+    return {"ok": True, "queue": q}
+
+
+def spotify_album_tracks(album_id: str, limit: int = 50) -> dict[str, Any]:
+    aid = str(album_id or "").strip()
+    if not aid:
+        return {"ok": False, "items": []}
+    r = _sp_api("GET", f"/albums/{aid}/tracks?limit={min(50, int(limit))}")
+    if not r.get("ok"):
+        return {**r, "items": []}
+    items = [{
+        "id": t.get("id", ""), "uri": t.get("uri", ""), "title": t.get("name", ""),
+        "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])),
+        "album": "",
+        "cover": "",
+        "duration_ms": t.get("duration_ms", 0),
+    } for t in ((r.get("data") or {}).get("items") or []) if t and t.get("uri")]
+    return {"ok": True, "items": items}
 
 
 # ---------- Yerel Muzik Klasorleri (or. Downloads\Contra\...) ----------

@@ -10,13 +10,15 @@
   .top{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
   .top h1{margin:0;font-size:18px;color:#C4B5FD}
   input,select{background:#110D19;border:1px solid var(--line);border-radius:9px;color:var(--tx);padding:8px 12px;font:inherit}
-  .btn{border:1px solid var(--line);background:#1A1328;color:var(--tx);border-radius:9px;padding:7px 12px;cursor:pointer;font:600 12.5px inherit}
+  .btn{border:1px solid var(--line);background:#1A1328;color:var(--tx);border-radius:9px;padding:7px 11px;cursor:pointer;font:600 12.5px inherit}
   .btn:hover{border-color:var(--ac)} .btn.pri{background:#6D28D9;border-color:var(--ac)} .btn.on{border-color:var(--em);color:var(--em)}
   .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
   .spbox{margin-bottom:14px;padding:13px;background:#110D19;border:1px solid var(--line);border-radius:12px;display:grid;gap:10px}
   .sp-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   .sp-cov{width:48px;height:48px;border-radius:8px;background:#1A1328;object-fit:cover}
-  .sp-ctl{display:flex;gap:6px;align-items:center}
+  .sp-ctl{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+  .sp-seek{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--mut)}
+  .sp-seek input[type=range]{flex:1;accent-color:var(--em)}
   .sp-lyr{max-height:120px;overflow-y:auto;padding:8px 10px;background:#09070F;border:1px solid #221A35;border-radius:8px;font-size:12.5px;line-height:1.65;color:var(--mut)}
   .sp-lyr .on{color:var(--em);font-weight:700}
   .list{display:grid;gap:7px}
@@ -30,6 +32,7 @@
   .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:#130E1D;border:1px solid var(--line);border-radius:99px;font-size:12px}
   .chip button{border:0;background:none;color:var(--mut);cursor:pointer;padding:0;font:inherit}
   .chip button:hover{color:#fff}
+  .sec-h{margin:10px 0 4px;font-size:12px;letter-spacing:1px;color:#C4B5FD;text-transform:uppercase}
 </style>
 <script src="kami-embed.js"></script>
 </head>
@@ -43,12 +46,13 @@
   <div class="tabs" id="mTabs">
     <button class="btn on" data-tab="sp_search">🎵 Spotify Ara</button>
     <button class="btn" data-tab="sp_lib">📚 Kütüphanem</button>
+    <button class="btn" data-tab="sp_queue">📜 Sıra</button>
     <button class="btn" data-tab="local">📁 Yerel Klasörler</button>
     <button class="btn" data-tab="ytm">▶ YouTube Music</button>
   </div>
   <div class="spbox" id="spTokBox" hidden>
     <div id="spConn" hidden style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <span style="color:#2EE6A6;font-weight:600">✓ Spotify bağlı</span><span style="color:var(--mut);font-size:12px">Kütüphane ve çalma listeleri açık. (Yeniden yetkilendirmek için Çıkış → Giriş yapabilirsin)</span>
+      <span style="color:#2EE6A6;font-weight:600">✓ Spotify bağlı</span><span style="color:var(--mut);font-size:12px">Kütüphane, cihaz geçişi ve çalma listeleri açık.</span>
       <span style="flex:1"></span><button class="btn" id="spOut">Bağlantıyı kes</button>
     </div>
     <div id="spSetup">
@@ -72,10 +76,21 @@
         <small id="spArtist">Spotify cihazın açıksa buradan kontrol edebilir, ya da Yerel Klasörler / YouTube Music'ten doğrudan Kami Player'da çalabilirsin.</small>
       </div>
       <div class="sp-ctl">
+        <button class="btn" id="spShuf" title="Karıştır">🔀</button>
         <button class="btn" data-sp="previous" title="Önceki">⏮</button>
         <button class="btn pri" data-sp="toggle" id="spPlayBtn" title="Oynat / Duraklat">⏯</button>
         <button class="btn" data-sp="next" title="Sonraki">⏭</button>
+        <button class="btn" id="spRep" title="Tekrarla">🔁</button>
+        <button class="btn" id="spLike" title="Beğen / Kaldır">🤍</button>
+        <button class="btn" id="spDlNow" title="YouTube Music üzerinden MP3/FLAC indir">⬇</button>
+        <select id="spDev" title="Çalma cihazı"><option value="">Cihaz…</option></select>
+        <input id="spVol" type="range" min="0" max="100" value="100" style="width:74px;padding:0;accent-color:#9D6BFF" title="Ses">
       </div>
+    </div>
+    <div class="sp-seek">
+      <span id="spPos">0:00</span>
+      <input id="spSeek" type="range" min="0" max="1000" value="0">
+      <span id="spDur">0:00</span>
     </div>
     <div class="sp-lyr" id="spLyr" hidden></div>
   </div>
@@ -85,16 +100,18 @@
   <script>
     const api = () => window.pywebview?.api;
     const esc = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    let TAB = "sp_search", LIB_MODE = "playlists", CUR_PL = null, ITEMS = [], PLAYLISTS = [], SP_PLAYING = false, LAST_TRACK = "", LYRICS = [];
+    const fmtMs = (ms) => { const s = Math.max(0, Math.floor((ms || 0) / 1000)), m = Math.floor(s / 60), r = s % 60; return `${m}:${String(r).padStart(2, "0")}`; };
+    let TAB = "sp_search", LIB_MODE = "playlists", CUR_PL = null, ITEMS = [], PLAYLISTS = [];
+    let SP_PLAYING = false, SP_SHUF = false, SP_REP = "off", SP_LIKED = false, CUR_TRACK = null, LAST_TRACK = "", LYRICS = [], SEEK_LOCK = false;
 
     function setTab(t) {
       TAB = t;
       document.querySelectorAll("#mTabs [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
       subBar.hidden = true; folderChips.hidden = true;
       if (t === "sp_lib") loadLib();
+      else if (t === "sp_queue") loadQueue();
       else if (t === "local") loadLocal();
-      else if (t === "sp_search" && q.value.trim()) search();
-      else if (t === "ytm" && q.value.trim()) search();
+      else if ((t === "sp_search" || t === "ytm") && q.value.trim()) search();
       else list.innerHTML = `<div style="color:var(--mut);padding:14px">${t === "sp_search" ? "Spotify kataloğunda şarkı, albüm veya liste ara." : "YouTube Music'te ara ve Kami Player'da çal / indir."}</div>`;
     }
 
@@ -103,13 +120,30 @@
       if (r?.ok) PLAYLISTS = r.items || [];
     }
 
+    async function refreshDevices(curDevId) {
+      const r = await api()?.music_spotify_devices?.().catch(() => null);
+      const devs = r?.devices || [];
+      spDev.innerHTML = devs.length
+        ? devs.map((d) => `<option value="${esc(d.id)}" ${d.active || d.id === curDevId ? "selected" : ""}>${esc(d.name)} (${esc(d.type)})</option>`).join("")
+        : `<option value="">Aktif cihaz yok</option>`;
+    }
+
+    async function ytBridgeAction(title, artist, mode) {
+      const query = artist ? `${artist} - ${title}` : title;
+      const r = await api()?.music_search?.(query, 1).catch(() => null);
+      const first = (r?.items || [])[0];
+      if (!first?.url) { alert("YouTube Music eşleşmesi bulunamadı."); return; }
+      if (mode === "dl") await api()?.add_url?.(first.url);
+      else await api()?.player_open_url?.(first.url);
+    }
+
     async function search() {
       const qv = q.value.trim();
       if (TAB === "local") return loadLocal();
       if (!qv) return;
       list.innerHTML = `<div style="color:var(--mut);padding:12px">Aranıyor…</div>`;
       if (TAB === "ytm") {
-        const r = await api()?.music_search?.(qv).catch(() => null);
+        const r = await api()?.music_search?.(qv, 15).catch(() => null);
         ITEMS = r?.items || [];
         list.innerHTML = ITEMS.length ? ITEMS.map((it, i) => `
           <div class="row">
@@ -119,18 +153,52 @@
           </div>`).join("") : `<div style="color:var(--mut);padding:12px">Sonuç bulunamadı.</div>`;
         return;
       }
-      const r = await api()?.music_spotify_search?.(qv).catch(() => null);
+      const r = await api()?.music_spotify_search?.(qv, "track,album,playlist", 10).catch(() => null);
       if (!r?.ok) { list.innerHTML = `<div style="color:var(--mut);padding:12px">Spotify bağlı değil veya yetki yenilenmeli (${esc(r?.error || "")}).</div>`; return; }
       ITEMS = r.tracks || [];
       if (!PLAYLISTS.length) loadPlaylistsCache();
-      list.innerHTML = ITEMS.length ? ITEMS.map((it, i) => `
+      let html = "";
+      if (ITEMS.length) {
+        html += `<div class="sec-h">Şarkılar</div>` + ITEMS.map((it) => trackRowHtml(it, null)).join("");
+      }
+      if ((r.albums || []).length) {
+        html += `<div class="sec-h">Albümler</div>` + r.albums.map((a) => `
+          <div class="row">
+            ${a.cover ? `<img class="cov-sm" src="${esc(a.cover)}">` : ""}
+            <div class="meta"><b>${esc(a.title)}</b><small>${esc(a.artist)} · ${a.total} parça</small></div>
+            <button class="btn" data-openalb="${esc(a.id)}" data-albtitle="${esc(a.title)}" data-alburi="${esc(a.uri)}">Aç</button>
+            <button class="btn pri" data-splayctx="${esc(a.uri)}">▶ Çal</button>
+          </div>`).join("");
+      }
+      if ((r.playlists || []).length) {
+        html += `<div class="sec-h">Çalma Listeleri</div>` + r.playlists.map((p) => `
+          <div class="row">
+            ${p.cover ? `<img class="cov-sm" src="${esc(p.cover)}">` : ""}
+            <div class="meta"><b>${esc(p.title)}</b><small>${esc(p.owner)} · ${p.total} şarkı</small></div>
+            <button class="btn" data-openpl="${esc(p.id)}" data-pltitle="${esc(p.title)}" data-pluri="${esc(p.uri)}">Aç</button>
+            <button class="btn pri" data-splayctx="${esc(p.uri)}">▶ Çal</button>
+          </div>`).join("");
+      }
+      list.innerHTML = html || `<div style="color:var(--mut);padding:12px">Sonuç bulunamadı.</div>`;
+    }
+
+    function trackRowHtml(t, plId) {
+      return `
         <div class="row">
-          ${it.cover ? `<img class="cov-sm" src="${esc(it.cover)}">` : ""}
-          <div class="meta"><b>${esc(it.title)}</b><small>${esc(it.artist)} · ${esc(it.album)}</small></div>
-          <button class="btn pri" data-splay="${esc(it.uri)}">▶</button>
-          <button class="btn" data-spq="${esc(it.uri)}" title="Sıraya ekle">+ Sıra</button>
-          <button class="btn" data-spadd="${esc(it.uri)}" title="Çalma listesine ekle">+ Liste</button>
-        </div>`).join("") : `<div style="color:var(--mut);padding:12px">Sonuç bulunamadı.</div>`;
+          ${t.cover ? `<img class="cov-sm" src="${esc(t.cover)}">` : ""}
+          <div class="meta"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? " · " + esc(t.album) : ""}</small></div>
+          <button class="btn pri" data-splay="${esc(t.uri)}" ${plId ? `data-ctx="${esc(CUR_PL?.uri || "")}"` : ""}>▶</button>
+          <button class="btn" data-spq="${esc(t.uri)}" title="Sıraya ekle">+ Sıra</button>
+          <button class="btn" data-ytdlsp="${esc(t.title)}" data-ytart="${esc(t.artist)}" title="YouTube'dan MP3/FLAC indir">⬇</button>
+          ${plId ? `<button class="btn" data-sprem="${esc(t.uri)}" title="Listeden çıkar">✕</button>` : `<button class="btn" data-spadd="${esc(t.uri)}" title="Listeye ekle">+ Liste</button>`}
+        </div>`;
+    }
+
+    async function loadQueue() {
+      list.innerHTML = `<div style="color:var(--mut);padding:12px">Sıra yükleniyor…</div>`;
+      const r = await api()?.music_spotify_queue_list?.().catch(() => null);
+      if (!r?.ok) { list.innerHTML = `<div style="color:var(--mut);padding:12px">Sıra alınamadı (${esc(r?.error || "")}).</div>`; return; }
+      list.innerHTML = (r.queue || []).map((t) => trackRowHtml(t, null)).join("") || `<div style="color:var(--mut);padding:12px">Sırada bekleyen parça yok.</div>`;
     }
 
     async function loadLib() {
@@ -157,20 +225,8 @@
       } else {
         const r = LIB_MODE === "saved" ? await api()?.music_spotify_saved?.().catch(() => null) : await api()?.music_spotify_recent?.().catch(() => null);
         if (!r?.ok) { list.innerHTML = `<div style="color:var(--mut);padding:12px">Alınamadı (${esc(r?.error || "")}).</div>`; return; }
-        ITEMS = r.items || [];
-        renderSpTracks(ITEMS, null);
+        list.innerHTML = (r.items || []).map((t) => trackRowHtml(t, null)).join("") || `<div style="color:var(--mut);padding:12px">Liste boş.</div>`;
       }
-    }
-
-    function renderSpTracks(tracks, plId) {
-      list.innerHTML = tracks.map((t) => `
-        <div class="row">
-          ${t.cover ? `<img class="cov-sm" src="${esc(t.cover)}">` : ""}
-          <div class="meta"><b>${esc(t.title)}</b><small>${esc(t.artist)} · ${esc(t.album)}</small></div>
-          <button class="btn pri" data-splay="${esc(t.uri)}" ${plId ? `data-ctx="${esc(CUR_PL?.uri || "")}"` : ""}>▶</button>
-          <button class="btn" data-spq="${esc(t.uri)}">+ Sıra</button>
-          ${plId ? `<button class="btn" data-sprem="${esc(t.uri)}" title="Listeden çıkar">✕</button>` : `<button class="btn" data-spadd="${esc(t.uri)}">+ Liste</button>`}
-        </div>`).join("") || `<div style="color:var(--mut);padding:12px">Liste boş.</div>`;
     }
 
     async function loadLocal() {
@@ -190,7 +246,7 @@
         <div class="row">
           <div class="meta"><b>${esc(it.title)}</b><small>${esc(it.folder)} · ${esc(it.ext.toUpperCase())}</small></div>
           <button class="btn pri" data-locplay="${esc(it.path)}" data-locroot="${esc(it.root)}">▶ Çal</button>
-        </div>`).join("") : `<div style="color:var(--mut);padding:14px">Henüz yerel klasör eklenmedi. İstediğin sanatçı/albüm klasörünü ekleyip doğrudan Kami Player'da çalabilirsin.</div>`;
+        </div>`).join("") : `<div style="color:var(--mut);padding:14px">Henüz yerel klasör eklenmedi.</div>`;
     }
 
     async function refreshAuthUi() {
@@ -198,6 +254,7 @@
       const on = !!st?.connected, exp = !!st?.expired;
       spConn.hidden = !on; spSetup.hidden = on;
       spCfgBtn.textContent = on ? "Spotify ✓" : exp ? "Spotify (Yeniden Giriş)" : "Spotify Bağla";
+      if (on) refreshDevices("");
       if (exp) {
         spTokBox.hidden = false;
         spMsg.textContent = "Oturum süresi doldu veya izinler eksik; lütfen yeniden giriş yap.";
@@ -210,14 +267,29 @@
       const r = await api()?.music_spotify_now?.().catch(() => null);
       if (!r?.ok) return;
       if (!r.title) { spTitle.textContent = "Spotify: Şu an çalan parça yok"; spArtist.textContent = ""; spCov.hidden = true; spLyr.hidden = true; return; }
+      CUR_TRACK = r;
       SP_PLAYING = !!r.playing;
+      SP_SHUF = !!r.shuffle;
+      SP_REP = r.repeat || "off";
       spPlayBtn.textContent = SP_PLAYING ? "⏸" : "▶";
+      spShuf.classList.toggle("on", SP_SHUF);
+      spRep.classList.toggle("on", SP_REP !== "off");
+      spRep.textContent = SP_REP === "track" ? "🔂" : "🔁";
+      if (typeof r.volume === "number" && document.activeElement !== spVol) spVol.value = r.volume;
       spTitle.textContent = r.title;
-      spArtist.textContent = r.artist || "";
+      spArtist.textContent = `${r.artist || ""}${r.device_name ? " · 📱 " + r.device_name : ""}`;
       if (r.cover) { spCov.src = r.cover; spCov.hidden = false; } else spCov.hidden = true;
+      spPos.textContent = fmtMs(r.progress_ms);
+      spDur.textContent = fmtMs(r.duration_ms);
+      if (!SEEK_LOCK && r.duration_ms > 0) spSeek.value = Math.round((r.progress_ms / r.duration_ms) * 1000);
       const key = `${r.artist} - ${r.title}`;
       if (key !== LAST_TRACK) {
         LAST_TRACK = key;
+        if (r.id) {
+          const lk = await api()?.music_spotify_like_check?.(r.id).catch(() => null);
+          SP_LIKED = !!lk?.liked;
+          spLike.textContent = SP_LIKED ? "❤️" : "🤍";
+        }
         const lr = await api()?.music_lyrics?.(r.title, r.artist).catch(() => null);
         LYRICS = lr?.lines || [];
         if (!LYRICS.length && lr?.plain) LYRICS = lr.plain.split(/\r?\n/).filter(Boolean).map((tx) => ({ t: -1, text: tx }));
@@ -247,11 +319,32 @@
     };
     spOut.onclick = async () => { await api()?.music_spotify_logout?.(); refreshAuthUi(); };
     document.querySelector(".sp-ctl").onclick = async (e) => {
-      const b = e.target.closest("[data-sp]"); if (!b) return;
-      const act = b.dataset.sp === "toggle" ? (SP_PLAYING ? "pause" : "play") : b.dataset.sp;
-      await api()?.music_spotify_control?.(act);
-      setTimeout(pollSpotify, 350);
+      const b = e.target.closest("[data-sp]");
+      if (b) {
+        const act = b.dataset.sp === "toggle" ? (SP_PLAYING ? "pause" : "play") : b.dataset.sp;
+        await api()?.music_spotify_control?.(act);
+        setTimeout(pollSpotify, 350);
+      }
     };
+    spShuf.onclick = async () => { await api()?.music_spotify_shuffle?.(!SP_SHUF); setTimeout(pollSpotify, 250); };
+    spRep.onclick = async () => {
+      const nxt = SP_REP === "off" ? "context" : SP_REP === "context" ? "track" : "off";
+      await api()?.music_spotify_repeat?.(nxt); setTimeout(pollSpotify, 250);
+    };
+    spLike.onclick = async () => {
+      if (!CUR_TRACK?.id) return;
+      await api()?.music_spotify_like_toggle?.(CUR_TRACK.id, !SP_LIKED);
+      SP_LIKED = !SP_LIKED; spLike.textContent = SP_LIKED ? "❤️" : "🤍";
+    };
+    spDlNow.onclick = () => { if (CUR_TRACK?.title) ytBridgeAction(CUR_TRACK.title, CUR_TRACK.artist, "dl"); };
+    spDev.onchange = () => { if (spDev.value) api()?.music_spotify_transfer?.(spDev.value); };
+    spVol.onchange = () => api()?.music_spotify_volume?.(+spVol.value);
+    spSeek.onmousedown = () => { SEEK_LOCK = true; };
+    spSeek.onchange = async () => {
+      SEEK_LOCK = false;
+      if (CUR_TRACK?.duration_ms) await api()?.music_spotify_seek?.(Math.round((spSeek.value / 1000) * CUR_TRACK.duration_ms));
+    };
+
     subBar.onclick = async (e) => {
       const lm = e.target.closest("[data-lm]");
       if (lm) { LIB_MODE = lm.dataset.lm; loadLib(); return; }
@@ -259,13 +352,8 @@
         const nm = prompt("Yeni çalma listesi adı:"); if (!nm) return;
         await api()?.music_spotify_playlist_create?.(nm);
         loadLib();
-      } else if (e.target.id === "locAddPath") {
-        await api()?.music_local_add?.(locPath.value.trim());
-        loadLocal();
-      } else if (e.target.id === "locPick") {
-        await api()?.music_local_add?.("");
-        loadLocal();
-      }
+      } else if (e.target.id === "locAddPath") { await api()?.music_local_add?.(locPath.value.trim()); loadLocal(); }
+      else if (e.target.id === "locPick") { await api()?.music_local_add?.(""); loadLocal(); }
     };
     folderChips.onclick = async (e) => {
       const d = e.target.closest("[data-locdel]");
@@ -281,6 +369,8 @@
       if (ytp) { const it = ITEMS[+ytp.dataset.ytplay]; if (it) api()?.player_open_url?.(it.url); return; }
       const ytd = e.target.closest("[data-ytdl]");
       if (ytd) { const it = ITEMS[+ytd.dataset.ytdl]; if (it) { api()?.add_url?.(it.url); ytd.textContent = "✓"; } return; }
+      const ytdlsp = e.target.closest("[data-ytdlsp]");
+      if (ytdlsp) { ytdlsp.textContent = "…"; await ytBridgeAction(ytdlsp.dataset.ytdlsp, ytdlsp.dataset.ytart, "dl"); ytdlsp.textContent = "✓"; return; }
       const sp = e.target.closest("[data-splay]");
       if (sp) { await api()?.music_spotify_play?.(sp.dataset.splay, sp.dataset.ctx || ""); setTimeout(pollSpotify, 400); return; }
       const sctx = e.target.closest("[data-splayctx]");
@@ -290,15 +380,27 @@
       const opl = e.target.closest("[data-openpl]");
       if (opl) {
         CUR_PL = { id: opl.dataset.openpl, title: opl.dataset.pltitle, uri: opl.dataset.pluri };
-        subBar.innerHTML = `<button class="btn" id="backPl">← Listeler</button><b>${esc(CUR_PL.title)}</b><button class="btn pri" data-splayctx="${esc(CUR_PL.uri)}">▶ Tümünü Çal</button>`;
-        subBar.querySelector("#backPl").onclick = loadLib;
+        subBar.hidden = false;
+        subBar.innerHTML = `<button class="btn" id="backPl">← Geri</button><b>${esc(CUR_PL.title)}</b><button class="btn pri" data-splayctx="${esc(CUR_PL.uri)}">▶ Tümünü Çal</button>`;
+        subBar.querySelector("#backPl").onclick = () => setTab(TAB);
         subBar.querySelector("[data-splayctx]").onclick = () => api()?.music_spotify_play?.("", CUR_PL.uri);
         const r = await api()?.music_spotify_playlist_tracks?.(CUR_PL.id).catch(() => null);
-        renderSpTracks(r?.items || [], CUR_PL.id);
+        list.innerHTML = (r?.items || []).map((t) => trackRowHtml(t, CUR_PL.id)).join("") || `<div style="color:var(--mut);padding:12px">Liste boş.</div>`;
+        return;
+      }
+      const oalb = e.target.closest("[data-openalb]");
+      if (oalb) {
+        CUR_PL = { id: null, title: oalb.dataset.albtitle, uri: oalb.dataset.alburi };
+        subBar.hidden = false;
+        subBar.innerHTML = `<button class="btn" id="backAlb">← Geri</button><b>${esc(CUR_PL.title)}</b><button class="btn pri" data-splayctx="${esc(CUR_PL.uri)}">▶ Albümü Çal</button>`;
+        subBar.querySelector("#backAlb").onclick = () => setTab(TAB);
+        subBar.querySelector("[data-splayctx]").onclick = () => api()?.music_spotify_play?.("", CUR_PL.uri);
+        const r = await api()?.music_spotify_album_tracks?.(oalb.dataset.openalb).catch(() => null);
+        list.innerHTML = (r?.items || []).map((t) => trackRowHtml(t, null)).join("") || `<div style="color:var(--mut);padding:12px">Albüm boş.</div>`;
         return;
       }
       const rem = e.target.closest("[data-sprem]");
-      if (rem && CUR_PL) {
+      if (rem && CUR_PL?.id) {
         await api()?.music_spotify_playlist_modify?.(CUR_PL.id, [rem.dataset.sprem], true);
         rem.closest(".row")?.remove();
         return;
