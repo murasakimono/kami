@@ -45,8 +45,8 @@
 #player .pl-buf { background: #4A3D63; width: 0; }
 #player .pl-fill { width: 0; background: linear-gradient(90deg, #6D28D9, #2EE6A6); box-shadow: 0 0 10px rgba(46, 230, 166, .45); }
 #player .pl-seek:hover::before, #player .pl-seek:hover .pl-buf, #player .pl-seek:hover .pl-fill { top: 8px; height: 6px; }
-#player .pl-knob { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; background: linear-gradient(135deg, #2EE6A6, #9D6BFF); border: 1.5px solid #EDE9F6; transform: rotate(45deg); border-radius: 2px; box-shadow: 0 0 10px rgba(46, 230, 166, .75); transition: transform .14s, box-shadow .14s; left: 0; pointer-events: none; }
-#player .pl-seek:hover .pl-knob, #player .pl-seek:active .pl-knob { transform: rotate(45deg) scale(1.22); box-shadow: 0 0 14px rgba(46, 230, 166, .95); }
+#player .pl-knob { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; background: linear-gradient(135deg, #2EE6A6, #9D6BFF); border: 2px solid #EDE9F6; border-radius: 50%; box-shadow: 0 0 10px rgba(46, 230, 166, .8); transition: transform .14s, box-shadow .14s; left: 0; pointer-events: none; }
+#player .pl-seek:hover .pl-knob, #player .pl-seek:active .pl-knob { transform: scale(1.25); box-shadow: 0 0 14px rgba(46, 230, 166, .95); }
 #player .pl-tip { position: absolute; bottom: 22px; transform: translateX(-50%); padding: 3px; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; background: #1C1528; color: #EDE9F6; opacity: 0; pointer-events: none; white-space: nowrap; }
 #player .pl-seek:hover .pl-tip { opacity: 1; }
 
@@ -485,8 +485,6 @@ body.pl-open #sunak { visibility: hidden; }
 .pp-groups button:hover { border-color: #9D6BFF; color: #fff; }
 .pp-groups button.on { background: #6D28D9; border-color: #9D6BFF; color: #fff; font-weight: 600; }
 .pp-ch img { width: 28px; height: 28px; object-fit: contain; margin-right: 8px; border-radius: 4px; background: rgba(255,255,255,.05); }
-.pl-waveseek { display: none; position: absolute; left: 0; right: 0; bottom: 5px; width: 100%; height: 26px; pointer-events: none; opacity: .9; }
-#player.is-audio .pl-waveseek { display: block; }
 .pl-synchud { position: absolute; left: 50%; top: 56px; transform: translate(-50%, -6px); z-index: 35; padding: 7px 16px; border-radius: 999px;
   background: rgba(13,10,20,.88); backdrop-filter: blur(10px); border: 1px solid rgba(157,107,255,.55); color: #EDE9F6; font: 600 13px "Chakra Petch", sans-serif;
   box-shadow: 0 10px 26px rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .16s, transform .16s; }
@@ -497,4 +495,3 @@ body.pl-open #sunak { visibility: hidden; }
 .pl-lyr .pm-list:not(.synced):hover { scrollbar-width: thin; scrollbar-color: rgba(157, 107, 255, .3) transparent; }
 .pl-lyr .pm-list:not(.synced):hover::-webkit-scrollbar { display: block; width: 4px; }
 .pl-lyr .pm-list:not(.synced):hover::-webkit-scrollbar-thumb { background: rgba(157, 107, 255, .35); border-radius: 3px; }
-#player.is-audio .pl-seek .pl-fill, #player.is-audio .pl-seek .pl-buf { opacity: .25; }

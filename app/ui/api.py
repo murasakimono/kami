@@ -4299,6 +4299,29 @@ class Api(StudioMixin):
         return import_kamipack(pack_path, dest_dir=dest_dir or None)
 
     # ---------- Dalga C/D/E: Kami Oyun, Kami Muzik, Kami Suzgec ----------
+    def _open_mod_window(self, key: str) -> dict[str, Any]:
+        w = getattr(self, f"_{key}_win", None)
+        maker = getattr(self, f"_make_{key}_window", None)
+        if w is None and maker:
+            w = maker()
+            setattr(self, f"_{key}_win", w)
+        front = getattr(self, f"_front_{key}", None)
+        if front:
+            try:
+                front()
+            except Exception:
+                pass
+        return {"ok": w is not None}
+
+    def games_open(self) -> dict[str, Any]:
+        return self._open_mod_window("games")
+
+    def music_open(self) -> dict[str, Any]:
+        return self._open_mod_window("music")
+
+    def cleaner_open(self) -> dict[str, Any]:
+        return self._open_mod_window("cleaner")
+
     def games_list(self, include_owned: bool = True) -> dict[str, Any]:
         from app.core.games import list_games, TRACKER
         TRACKER.ensure_started()

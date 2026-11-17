@@ -446,6 +446,24 @@ def main() -> int:
     api._make_picture_window = make_picture_window
     api._front_picture = picture_front.request
 
+    # ---- Kami Oyun / Muzik / Suzgec (her biri kendi ayri penceresinde) ----
+    for _mkey, _mtitle, _mfile, _mw, _mh in (
+        ("games", "Kami Oyun", "games.html", 1320, 840),
+        ("music", "Kami Müzik", "music.html", 1240, 800),
+        ("cleaner", "Kami Süzgeç", "cleaner.html", 1220, 780),
+    ):
+        def _bind_mod(k=_mkey, t=_mtitle, f=_mfile, ww=_mw, hh=_mh):
+            fr = WindowFront(t)
+            def _make():
+                w = webview.create_window(t, url=str(paths.WEB_DIR / f), js_api=api,
+                                          width=ww, height=hh, min_size=(760, 520), background_color="#08070C", text_select=True)
+                w.events.closed += lambda: setattr(api, f"_{k}_win", None)
+                w.events.loaded += lambda: (fr.request(), threading.Timer(0.5, fr.request).start())
+                return w
+            setattr(api, f"_make_{k}_window", _make)
+            setattr(api, f"_front_{k}", fr.request)
+        _bind_mod()
+
     reader_front = WindowFront("Kami Reader")
 
     def make_reader_window():

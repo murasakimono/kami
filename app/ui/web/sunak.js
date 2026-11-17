@@ -49,13 +49,8 @@ function skBuild() {
         <button type="button" class="sk-tab" data-mod="games">Oyun</button>
         <button type="button" class="sk-tab" data-mod="music">Müzik</button>
         <button type="button" class="sk-tab" data-mod="cleaner">Süzgeç</button>
-        <span class="sk-tab-acts" id="skTabActs" hidden>
-          <button type="button" class="sk-tab-ico" id="skTabPop" title="${skL("Ayrı pencerede aç", "Open in separate window")}">↗</button>
-          <button type="button" class="sk-tab-ico" id="skTabKill" title="${skL("Sekmeyi kapat (RAM boşalt)", "Close tab")}">✕</button>
-        </span>
       </nav>
       <div class="sk-status"><span>${skL("motor", "engine")} <b id="skEngine">…</b></span><span>${skL("köprü", "bridge")} <b id="skBridge">…</b></span></div></div>
-    <div id="skTabHost" class="sk-tabhost" hidden></div>
     <div class="sk-top">
       <div class="sk-altar" id="skAltar">
         <svg class="sk-ring" viewBox="0 0 300 300">
@@ -236,68 +231,24 @@ function skBind() {
     hidePeek();
   });
   document.addEventListener("mousemove", (e) => SK.eye?.lookAt(e.clientX, e.clientY));
-  // Tek pencere sekme yoneticisi (tembel yukleme + postMessage API koprusu)
-  const MOD_URL = { player: "player.html", studio: "studio.html", picture: "picture.html", reader: "reader.html", games: "games.html", music: "music.html", cleaner: "cleaner.html" };
-  let curMod = "home";
-  const openTab = async (mod) => {
-    curMod = mod;
-    const host = $("#skTabHost"), acts = $("#skTabActs");
-    $$("#skTabs .sk-tab").forEach((b) => b.classList.toggle("on", b.dataset.mod === mod));
-    document.body.classList.toggle("sk-in-tab", mod !== "home");
-    if (mod === "home") { if (host) host.hidden = true; if (acts) acts.hidden = true; return; }
-    if (host) {
-      host.hidden = false;
-      [...host.children].forEach((f) => { f.hidden = f.dataset.mod !== mod; });
-      if (!host.querySelector(`iframe[data-mod="${mod}"]`)) {
-        let url = MOD_URL[mod] || "";
-        if (mod === "room") {
-          const st = await api?.room_open?.(false).catch(() => null);
-          url = st?.local || "";
-        }
-        if (url) {
-          const fr = document.createElement("iframe");
-          fr.dataset.mod = mod;
-          fr.src = url;
-          fr.allow = "microphone; camera; display-capture; clipboard-read; clipboard-write";
-          host.appendChild(fr);
-        }
-      }
-    }
-    if (acts) acts.hidden = false;
-    const pop = $("#skTabPop"); if (pop) pop.hidden = !["player", "studio", "picture", "reader", "room"].includes(mod);   // Oyun/Muzik/Suzgec'in ayri penceresi yok
+  // Modul baslatici: her uygulama kendi ayri penceresinde acilir (tam ekran ve kisayollar bozulmaz)
+  const LAUNCHERS = {
+    player: () => api?.player_show?.({}),
+    studio: () => api?.studio_show?.(""),
+    picture: () => api?.picture_open?.(""),
+    reader: () => api?.reader_show?.(""),
+    room: () => api?.room_open?.(true),
+    games: () => api?.games_open?.(),
+    music: () => api?.music_open?.(),
+    cleaner: () => api?.cleaner_open?.(),
   };
-  // sekme acikken sag ray/Araclar indirme ekranina ait: once Indirmeler'e don (cekmece sekmenin arkasinda kalmasin)
-  document.addEventListener("click", (e) => { if (curMod !== "home" && e.target.closest?.("#skDock button:not(#skToolsBtn), .sk-tools-g button")) openTab("home"); }, true);
   $("#skTabs")?.addEventListener("click", (e) => {
     const b = e.target.closest(".sk-tab[data-mod]");
-    if (b) openTab(b.dataset.mod);
+    if (!b) return;
+    const mod = b.dataset.mod;
+    if (mod === "home") { skCloseDrawer?.(); return; }
+    LAUNCHERS[mod]?.();
   });
-  $("#skTabPop")?.addEventListener("click", () => {
-    const fn = { player: () => api?.player_show?.({}), studio: () => api?.studio_open?.(""), picture: () => api?.picture_open?.(""), reader: () => api?.reader_show?.(""), room: () => api?.room_open?.(true) }[curMod];
-    fn?.();
-  });
-  $("#skTabKill")?.addEventListener("click", () => {
-    const host = $("#skTabHost"), fr = host?.querySelector(`iframe[data-mod="${curMod}"]`);
-    fr?.remove();
-    openTab("home");
-  });
-  if (!window._kamiMsgBridge) {
-    window._kamiMsgBridge = true;
-    window.addEventListener("message", async (e) => {
-      const d = e.data;
-      if (!d || typeof d.__kamiApi !== "number" || !e.source) return;
-      // yalniz kendi sekme iframe'lerimiz: sekmede yuklu dis icerik (YouTube, Oda...) top.postMessage ile API'ye ulasamasin
-      if (![...document.querySelectorAll("#skTabHost > iframe")].some((f) => f.contentWindow === e.source)) return;
-      try {
-        const fn = window.pywebview?.api?.[d.fn];
-        if (typeof fn !== "function") throw new Error("no_api:" + d.fn);
-        const data = await fn(...(d.args || []));
-        e.source.postMessage({ __kamiRes: d.__kamiApi, ok: true, data }, "*");
-      } catch (err) {
-        e.source.postMessage({ __kamiRes: d.__kamiApi, ok: false, error: String(err?.message || err) }, "*");
-      }
-    });
-  }
   // dosya surukleme: ruh uyanir, birakinca yutar (asil ekleme extras.js'teki drop dinleyicisinde)
   let depth = 0;
   document.addEventListener("dragenter", () => { depth++; altar.classList.add("drop"); SK.eye?.set({ mood: "alert" }); window.KamiSunakGPU?.setState?.({ drop: true, mood: "alert" }); });
@@ -777,23 +728,40 @@ STATE_HOOKS.push(skState);
   let pop = null;
   const SHORT = { fx: ["Efektler", "Effects"], ai: ["AI altyazı · vokal", "AI subs · vocals"], kfDockBtn: ["Akış & Copilot", "Flow & Copilot"] };
   const label = (b) => { const s = SHORT[b.dataset.sk] || SHORT[b.id]; return s ? skL(s[0], s[1]) : (b.dataset.tip || b.title || b.getAttribute("aria-label") || ""); };
+  let arranging = false;
   function arrange() {
+    if (arranging) return;
     const dock = $("#skDock"); if (!dock) return;
-    let tb = $("#skToolsBtn");
-    if (!tb) {
-      tb = document.createElement("button");
-      tb.id = "skToolsBtn"; tb.dataset.sk = "tools"; tb.title = skL("Araçlar", "Tools");
-      tb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><b id="skToolsN" hidden></b>';
-      dock.appendChild(tb);
+    arranging = true;
+    try {
+      let tb = $("#skToolsBtn");
+      if (!tb) {
+        tb = document.createElement("button");
+        tb.id = "skToolsBtn"; tb.dataset.sk = "tools"; tb.title = skL("Araçlar", "Tools");
+        tb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><b id="skToolsN" hidden></b>';
+        dock.appendChild(tb);
+      }
+      const btns = [...dock.querySelectorAll(":scope > button")];
+      const lib = btns.filter((b) => b.dataset.sk === "library");
+      lib.slice(1).forEach((b) => b.remove());
+      const order = [...CORE.map((k) => btns.find((b) => b.dataset.sk === k)), tb, btns.find((b) => b.dataset.sk === "settings")].filter(Boolean);
+      const curTail = [...dock.children].slice(-order.length);
+      if (curTail.length !== order.length || order.some((b, i) => curTail[i] !== b)) {
+        order.forEach((b) => dock.appendChild(b));
+      }
+      btns.forEach((b) => {
+        const want = isTool(b);
+        if (b.classList.contains("sk-intool") !== want) b.classList.toggle("sk-intool", want);
+      });
+      const fn = $("#skFollowN"), tn = $("#skToolsN");
+      if (tn) {
+        const hid = !fn || fn.hidden, txt = fn?.textContent || "";
+        if (tn.hidden !== hid) tn.hidden = hid;
+        if (tn.textContent !== txt) tn.textContent = txt;
+      }
+    } finally {
+      arranging = false;
     }
-    const btns = [...dock.querySelectorAll(":scope > button")];
-    const lib = btns.filter((b) => b.dataset.sk === "library");
-    lib.slice(1).forEach((b) => b.remove());   // iki yerden eklenen Kutuphane dugmesi tekille
-    const order = [...CORE.map((k) => btns.find((b) => b.dataset.sk === k || (k === "pano" && b.dataset.sk === "pano"))), tb, btns.find((b) => b.dataset.sk === "settings")].filter(Boolean);
-    order.forEach((b) => dock.appendChild(b));
-    btns.forEach((b) => b.classList.toggle("sk-intool", isTool(b)));
-    const fn = $("#skFollowN"), tn = $("#skToolsN");   // Takip rozetini Araclar dugmesine tasi
-    if (tn) { tn.hidden = !fn || fn.hidden; tn.textContent = fn?.textContent || ""; }
   }
   function openTools() {
     const dock = $("#skDock"), tb = $("#skToolsBtn");

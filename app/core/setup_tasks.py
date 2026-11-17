@@ -31,7 +31,8 @@ PLAYER_VIDEO = (".mkv", ".mp4", ".m4v", ".webm", ".avi", ".mov", ".ts", ".m2ts",
 PLAYER_AUDIO = (".mp3", ".flac", ".wav", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wma", ".ape", ".aiff", ".mka", ".wv")
 PLAYER_IMAGE = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".jfif", ".heic", ".tif", ".tiff")
 READER_COMIC = (".cbz", ".cbr", ".cb7", ".cbt")
-PROGIDS = {"Kami.Video": "Kami video", "Kami.Audio": "Kami ses", "Kami.Image": "Kami görsel", "Kami.Book": "Kami çizgi roman"}
+READER_DOCS = (".pdf", ".epub", ".mobi", ".fb2", ".azw3")
+PROGIDS = {"Kami.Video": "Kami video", "Kami.Audio": "Kami ses", "Kami.Image": "Kami görsel", "Kami.Book": "Kami Reader belge"}
 CAPS = r"Software\Kami\Capabilities"
 
 
@@ -49,9 +50,9 @@ def register_player(kami: str) -> None:
         winreg.SetValueEx(k, "ApplicationName", 0, winreg.REG_SZ, "Kami")
         winreg.SetValueEx(k, "ApplicationDescription", 0, winreg.REG_SZ, "Kami Download Manager & Player")
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, CAPS + r"\FileAssociations") as fa:
-        for ext in PLAYER_VIDEO + PLAYER_AUDIO + PLAYER_IMAGE + READER_COMIC:
+        for ext in PLAYER_VIDEO + PLAYER_AUDIO + PLAYER_IMAGE + READER_COMIC + READER_DOCS:
             pid = ("Kami.Video" if ext in PLAYER_VIDEO else "Kami.Image" if ext in PLAYER_IMAGE
-                   else "Kami.Book" if ext in READER_COMIC else "Kami.Audio")
+                   else "Kami.Book" if ext in (READER_COMIC + READER_DOCS) else "Kami.Audio")
             winreg.SetValueEx(fa, ext, 0, winreg.REG_SZ, pid)
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{ext}\OpenWithProgids") as k:
                 winreg.SetValueEx(k, pid, 0, winreg.REG_NONE, b"")

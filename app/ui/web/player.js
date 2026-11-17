@@ -35,7 +35,7 @@ function plBuild() {
       ${window.KAMI_PLAYER_WINDOW ? "" : `<button class="pl-x" id="plClose" title="${plL("Kapat (Esc)", "Close (Esc)")}">‹</button>`}
     </div>
     <div class="pl-deck">
-      <div class="pl-seek" id="plSeek"><canvas class="pl-waveseek" id="plWaveSeek" width="900" height="28"></canvas><i class="pl-buf" id="plBuf"></i><i class="pl-fill" id="plFill"></i><i class="pl-knob" id="plKnob"></i><span class="pl-tip" id="plTip"><img id="plThumb" alt=""><b id="plTipT"></b></span></div>
+      <div class="pl-seek" id="plSeek"><i class="pl-buf" id="plBuf"></i><i class="pl-fill" id="plFill"></i><i class="pl-knob" id="plKnob"></i><span class="pl-tip" id="plTip"><img id="plThumb" alt=""><b id="plTipT"></b></span></div>
       <div class="pl-row">
         <div class="pl-left"><span class="pl-time"><b id="plCur">0:00</b> / <span id="plDur">0:00</span></span>
           <button class="pl-b" data-pl="prev" id="plPrev" title="${plL("Önceki (P)", "Previous (P)")}">⏮</button><button class="pl-b" data-pl="back" title="-10 sn">−10</button><button class="pl-b" data-pl="fwd" title="+10 sn">+10</button><button class="pl-b" data-pl="next" id="plNext" title="${plL("Sonraki (N)", "Next (N)")}">⏭</button></div>
@@ -409,29 +409,8 @@ function plAudioGraph() {
   } catch (e) { console.warn("Web Audio kurulamadi", e); }
 }
 
-// muzik modunda figurun iki yaninda bagimsiz, ayna simetrik 16 bantlik ekolayzir + seekbar spektrumu
-function plWaveDraw(reset) {   // v1.32.1: sarkinin gercek dalga formu (eskiden anlik spektrum: zaman ekseninde frekans, yaniltici)
-  const cv = $("#plWaveSeek"); if (!cv || !$("#player")?.classList.contains("is-audio")) return;
-  const path = PL.info?.path || "";
-  if (path && PL.peaksFor !== path) {
-    PL.peaksFor = path; PL.peaks = null;
-    api.audio_peaks(path, 300).then((r) => { if (PL.peaksFor === path && r?.ok) { PL.peaks = r.peaks; plWaveDraw(); } }).catch(() => {});
-  }
-  const g = cv.getContext("2d"), W = cv.width, H = cv.height;
-  g.clearRect(0, 0, W, H);
-  const pk = PL.peaks; if (!pk) return;
-  const n = pk.length, bw = W / n, prog = PL.dur ? Math.min(1, Math.max(0, plNow() / PL.dur)) : 0;
-  const live = reset || !PL.bins ? 0 : (PL.bins[3] || 0) / 255;   // calarken hafif nabiz
-  for (let i = 0; i < n; i++) {
-    const done = i / n <= prog, h = Math.max(1.5, Math.pow(pk[i], 0.8) * (H - 2) * (done && Math.abs(i / n - prog) < 0.012 ? 1 + live * 0.25 : 1));
-    g.fillStyle = done ? "rgba(46, 230, 166, .85)" : "rgba(157, 107, 255, .32)";
-    g.fillRect(i * bw, (H - h) / 2, Math.max(1, bw - 0.6), h);
-  }
-}
-document.addEventListener("timeupdate", (e) => { if (e.target?.id === "plVideo" && e.target.paused) plWaveDraw(true); }, true);
-document.addEventListener("seeked", (e) => { if (e.target?.id === "plVideo") plWaveDraw(true); }, true);
+// muzik modunda figurun iki yaninda bagimsiz, ayna simetrik 16 bantlik ekolayzir
 function plBigEq(reset) {
-  plWaveDraw(reset);
   const L = $("#plBigEqL"), R = $("#plBigEqR"); if (!L || !PL.bins) return;
   PL.eqOn = !reset;
   const n = 16, bars = [...L.children], bars2 = [...R.children];

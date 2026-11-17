@@ -305,8 +305,8 @@
         }
         const app = new PIXI.Application();
         await app.init({
-          width: 300,
-          height: 330,
+          width: 320,
+          height: 356,
           backgroundAlpha: 0,
           antialias: true,
           autoDensity: true,
@@ -321,7 +321,7 @@
 
         // 1. Hiz halkasi & yorunge katmani
         const ringLayer = new PIXI.Container();
-        ringLayer.position.set(150, 150);
+        ringLayer.position.set(160, 152);
         app.stage.addChild(ringLayer);
 
         this.ringBase = new PIXI.Graphics();
@@ -341,7 +341,7 @@
         const auraTex = makeGlowTexture(PIXI, "rgba(139,92,246,A)");
         this.auraSprite = new PIXI.Sprite(auraTex);
         this.auraSprite.anchor.set(0.5);
-        this.auraSprite.position.set(150, 165);
+        this.auraSprite.position.set(160, 160);
         this.auraSprite.width = 250;
         this.auraSprite.height = 250;
         this.auraSprite.alpha = 0.25;
@@ -350,7 +350,7 @@
 
         // 3. Eklemli Kukla Maskot (PuppetRig)
         this.puppet = new PIXI.Container();
-        this.puppet.position.set(150, 164);
+        this.puppet.position.set(160, 162);
         app.stage.addChild(this.puppet);
 
         // Eklemli yan kagit kurdeleler (ikincil hareket)
@@ -391,7 +391,7 @@
         const fitSprite = (sp, tex, flip) => {
           const w = tex && tex !== PIXI.Texture.EMPTY && tex.width > 1 ? tex.width : 403;
           const h = tex && tex !== PIXI.Texture.EMPTY && tex.height > 1 ? tex.height : 614;
-          sp.scale.set((flip ? -1 : 1) * (222 / w), 338 / h);
+          sp.scale.set((flip ? -1 : 1) * (204 / w), 310 / h);
         };
         for (const sp of [this.prevCharSprite, this.curCharSprite]) {
           sp.anchor.set(0.5, 0.5);
@@ -486,9 +486,9 @@
           this.puppet.rotation +=
             (targetRot - this.puppet.rotation) * Math.min(1, dt * 10);
           this.puppet.x =
-            150 + (this.reduced ? 0 : mx * 5);
+            160 + (this.reduced ? 0 : mx * 5);
           this.puppet.y =
-            164 + breatheY + (this.reduced ? 0 : my * 3.5);
+            162 + breatheY + (this.reduced ? 0 : my * 3.5);
 
           // Yutma / squash-stretch animasyonu
           let sx = 1;

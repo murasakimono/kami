@@ -103,6 +103,11 @@ def spotify_logout() -> dict[str, Any]:
     return {"ok": True}
 
 
+_SP_STATES: dict[str, tuple[str, str]] = {}
+_SP_SRV: Any = None
+_SP_LOCK = None
+
+
 def spotify_login(client_id: str, timeout: float = 110.0) -> dict[str, Any]:
     """Tarayicida Spotify izin sayfasini acar, 127.0.0.1 geri donusunu dinler, kodu PKCE ile token'a cevirir."""
     import base64
@@ -112,25 +117,36 @@ def spotify_login(client_id: str, timeout: float = 110.0) -> dict[str, Any]:
     import threading
     import urllib.parse
     import webbrowser
+    global _SP_SRV, _SP_LOCK
+    if _SP_LOCK is None:
+        _SP_LOCK = threading.Lock()
     cid = str(client_id or "").strip()
     if not cid:
         return {"ok": False, "error": "no_client_id"}
     verifier = secrets.token_urlsafe(64)[:96]
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     state = secrets.token_urlsafe(16)
+    _SP_STATES[state] = (verifier, cid)
+    if len(_SP_STATES) > 8:
+        _SP_STATES.pop(next(iter(_SP_STATES)))
     got: dict[str, str] = {}
     done = threading.Event()
+
+    class Srv(http.server.ThreadingHTTPServer):
+        allow_reuse_address = True
 
     class H(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             u = urllib.parse.urlsplit(self.path)
-            q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
             if u.path != "/callback":
                 self.send_response(404); self.end_headers(); return
-            ok = q.get("state") == state and "code" in q
+            q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
+            st = q.get("state", "")
+            ok = st in _SP_STATES and "code" in q
             got.update(q if ok else {"error": q.get("error", "state_mismatch")})
-            body = ("<h2 style='font-family:sans-serif;color:#2EE6A6'>Kami Spotify'a bağlandı. Bu sekmeyi kapatabilirsin.</h2>" if ok
-                    else f"<h2 style='font-family:sans-serif;color:#FF6B81'>Bağlanamadı: {got.get('error')}</h2>")
+            body = ("<body style='background:#08070C;color:#2EE6A6;font-family:sans-serif;display:grid;place-items:center;height:90vh'>"
+                    "<h2>✓ Kami Spotify'a bağlandı. Bu sekmeyi kapatabilirsin.</h2></body>" if ok
+                    else f"<body style='background:#08070C;color:#FF6B81;font-family:sans-serif;display:grid;place-items:center;height:90vh'><h2>Bağlanamadı: {got.get('error')}</h2></body>")
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.end_headers()
             self.wfile.write(body.encode("utf-8"))
             done.set()
@@ -138,10 +154,19 @@ def spotify_login(client_id: str, timeout: float = 110.0) -> dict[str, Any]:
         def log_message(self, *a):
             pass
 
-    try:
-        srv = http.server.HTTPServer(("127.0.0.1", SP_PORT), H)
-    except OSError:
-        return {"ok": False, "error": "port_busy"}
+    with _SP_LOCK:
+        if _SP_SRV is not None:
+            try:
+                _SP_SRV.shutdown(); _SP_SRV.server_close()
+            except Exception:
+                pass
+            _SP_SRV = None
+        try:
+            srv = Srv(("127.0.0.1", SP_PORT), H)
+            _SP_SRV = srv
+        except OSError:
+            return {"ok": False, "error": "port_busy"}
+
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         webbrowser.open("https://accounts.spotify.com/authorize?" + urllib.parse.urlencode({
@@ -150,17 +175,23 @@ def spotify_login(client_id: str, timeout: float = 110.0) -> dict[str, Any]:
         if not done.wait(timeout):
             return {"ok": False, "error": "timeout"}
     finally:
-        srv.shutdown(); srv.server_close()
+        try:
+            srv.shutdown(); srv.server_close()
+        except Exception:
+            pass
+        if _SP_SRV is srv:
+            _SP_SRV = None
     if "code" not in got:
         return {"ok": False, "error": got.get("error", "denied")}
+    use_ver, use_cid = _SP_STATES.pop(got.get("state", ""), (verifier, cid))
     try:
         d = _sp_token_request({"grant_type": "authorization_code", "code": got["code"], "redirect_uri": SP_REDIRECT,
-                               "client_id": cid, "code_verifier": verifier})
+                               "client_id": use_cid, "code_verifier": use_ver})
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:160]}
     if not d.get("access_token"):
         return {"ok": False, "error": d.get("error_description") or "no_token"}
-    _sp_keep(d, cid)
+    _sp_keep(d, use_cid)
     return {"ok": True}
 
 
