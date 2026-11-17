@@ -502,6 +502,89 @@ class Api(StudioMixin):
                 continue
             self._manager.resume(d.id)
 
+    def perf_stats(self) -> dict[str, Any]:
+        from app.core import perfmon
+        try:
+            return {"ok": True, **perfmon.snapshot(self._manager.total_speed())}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    # ---------- v1.30 Ctrl+K her seyi arar ----------
+    def global_search(self, q: str, limit: int = 40) -> list[dict[str, Any]]:
+        """Indirmeler (liste + gecmis), Reader kitapligi/seriler, Studio projeleri, kuyruklar/RSS, Kasa (anlamsal, varsa).
+        Her sonuc: {kind, t, sub, path|url|id}. Arayuz 'kind'e gore acar."""
+        q = str(q or "").strip()
+        if len(q) < 2:
+            return []
+        ql = q.lower()
+        out: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def add(kind: str, t: str, sub: str = "", **kw: Any) -> None:
+            key = kind + "|" + (kw.get("path") or kw.get("url") or str(kw.get("id", "")) or t)
+            if key not in seen and len(out) < limit:
+                seen.add(key)
+                out.append({"kind": kind, "t": t, "sub": sub, **kw})
+
+        try:
+            for d in self._manager.store.list():
+                nm = d.filename or d.url
+                if ql in nm.lower() or ql in (d.url or "").lower():
+                    add("download", nm, str(getattr(d.status, "value", d.status)), id=d.id, path=d.path if str(d.status) == "complete" or getattr(d.status, "value", "") == "complete" else "")
+        except Exception:
+            log.debug("ara: indirmeler")
+        if getattr(self, "_history", None):
+            try:
+                for h in self._history.search(q, 30):
+                    if h.get("exists"):
+                        add("file", h.get("filename") or os.path.basename(h.get("path") or ""), "geçmiş · " + (h.get("category") or ""), path=h["path"])
+            except Exception:
+                log.debug("ara: gecmis")
+        try:
+            from app.core import reader
+            for b in reader.recent(200):
+                if ql in (b.get("title") or "").lower() or ql in b["path"].lower():
+                    add("book", b.get("title") or os.path.basename(b["path"]), f"Reader · {b.get('page', 0) + 1}/{b.get('count', 0)}", path=b["path"])
+            for s in reader.series_list():
+                if ql in (s.get("title") or "").lower():
+                    add("series", s["title"], f"seri · {len(s.get('new') or [])} yeni", id=s["id"])
+        except Exception:
+            log.debug("ara: reader")
+        try:
+            for pr in self.studio_recent():
+                nm = pr.get("name") or os.path.basename(pr.get("path", ""))
+                if ql in nm.lower():
+                    add("studio", nm, "Studio projesi", path=pr["path"])
+        except Exception:
+            log.debug("ara: studio")
+        try:
+            for f in (self._rss.public() if getattr(self, "_rss", None) else []):
+                if ql in (f.get("title") or "").lower():
+                    add("rss", f["title"], "RSS akışı", id=f["id"])
+        except Exception:
+            log.debug("ara: rss")
+        return out
+
+    def global_open(self, item: dict) -> dict[str, Any]:
+        k, path = str(item.get("kind") or ""), str(item.get("path") or "")
+        if k in ("file", "download") and path and os.path.exists(path):
+            ext = os.path.splitext(path)[1].lower()
+            from app.core.reader import READ_EXT
+            if ext in READ_EXT:
+                return self.reader_show(path)
+            if ext in (".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus"):
+                return self.player_show({"path": path})
+            if ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".heic"):
+                return self.picture_open(path)
+            return {"ok": bool(self.open_path(path))}
+        if k == "book" and path:
+            return self.reader_show(path)
+        if k == "studio" and path:
+            return self.studio_show(path)
+        if k == "series":
+            return self.reader_show()
+        return {"ok": False}
+
     # ---------- v1.29 RSS otomatik indirme ----------
     def _rss_add(self, it: dict, feed: dict) -> bool:
         """RSS girdisi -> torrent (RD ayarina gore; yerelde tum dosyalar) ya da duz dosya. Sormadan."""

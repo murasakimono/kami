@@ -20,12 +20,28 @@
     }
     return out;
   }
-  let box, list, inp, cur = [], sel = 0;
-  function render() {
+  let box, list, inp, cur = [], sel = 0, remote = [], rq = "", rt = 0;
+  const ICON = { download: "⬇", file: "📄", book: "📖", series: "📚", studio: "🎬", rss: "📡" };
+  function fetchRemote(q) {   // v1.30: Ctrl+K her seyi arar (indirmeler, gecmis, Reader, Studio, RSS)
+    clearTimeout(rt);
+    if (q.length < 2) { remote = []; return; }
+    rt = setTimeout(async () => {
+      const api = window.pywebview?.api; if (!api?.global_search) return;
+      try {
+        const r = (await api.global_search(q)) || [];
+        if (!box || inp.value.trim() !== q) return;
+        rq = q; remote = r.map((x) => ({ t: x.t, sub: x.sub, ic: ICON[x.kind] || "•", remote: true, run: () => api.global_open(x) }));
+        render(true);
+      } catch { /* yok */ }
+    }, 180);
+  }
+  function render(fromRemote) {
     const q = inp.value.toLowerCase().trim();
+    if (!fromRemote) fetchRemote(inp.value.trim());
     const norm = (x) => x.toLocaleLowerCase("tr").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
     const qq = norm(q).split(/\s+/).filter(Boolean);
-    cur = items().filter((x) => { const h = norm(x.t + " " + (x.sub || "")); return qq.every((w) => h.includes(w)); }).slice(0, 14);
+    const local = items().filter((x) => { const h = norm(x.t + " " + (x.sub || "")); return qq.every((w) => h.includes(w)); }).slice(0, 10);
+    cur = [...local, ...(rq && inp.value.trim() === rq ? remote : [])].slice(0, 24);
     sel = Math.min(sel, Math.max(0, cur.length - 1));
     const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
     list.innerHTML = cur.map((x, i) => `<div class="kp-i${i === sel ? " on" : ""}" data-i="${i}">${x.ic ? `<em>${x.ic}</em>` : ""}<span>${esc(x.t)}</span>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</div>`).join("") || `<div class="kp-e">${L("Sonuç yok", "No results")}</div>`;
