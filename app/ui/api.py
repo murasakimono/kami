@@ -4344,7 +4344,20 @@ class Api(StudioMixin):
     def games_list(self, include_owned: bool = True) -> dict[str, Any]:
         from app.core.games import list_games, TRACKER
         TRACKER.ensure_started()
-        return list_games(include_owned=include_owned)
+        r = list_games(include_owned=include_owned)
+        # v1.35.4: Playnite'in diskteki kapaklari file:// geliyor; pywebview sayfasi file:// resim yukleyemiyor
+        # (WebView2'de 0x0 dogrulandi). Yerel medya sunucusundan (127.0.0.1 + oturum anahtari) verilir.
+        if self._media is not None:
+            from urllib.parse import unquote, urlparse
+            for g in r.get("games") or []:
+                c = str(g.get("cover") or "")
+                if c.startswith("file:"):
+                    try:
+                        fp = unquote(urlparse(c).path).lstrip("/") if os.name == "nt" else unquote(urlparse(c).path)
+                        g["cover"] = self._media.asset_url(fp)
+                    except Exception:
+                        g["cover"] = ""
+        return r
 
     def games_launch(self, launch_target: str, key: str = "") -> dict[str, Any]:
         from app.core.games import launch_game
