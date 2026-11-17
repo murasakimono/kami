@@ -105,8 +105,8 @@ function metaFor(d) {
   const st = `<span class="st-${d.status}">${d.status === "error" && d.error ? `${T("st_error")}: ${escapeHtml(d.error === "yt_bot" ? T("err_yt_bot") : d.error === "integrity" ? (state.lang === "en" ? "corrupt, retrying" : "bozuk, yeniden deneniyor") : d.error)}` : d.status === "confirm" ? T("confirm_q") : d.phase === "processing" ? T("phase_processing") : d.phase === "seeding" ? T("phase_seeding") : T("st_" + d.status)}</span>`;
   parts.push(st);
   if (d.extra?.queue && window.kamiQueueName) parts.push(`<span class="qbadge${d.extra.qhold ? " hold" : ""}">⧉ ${escapeHtml(window.kamiQueueName(d.extra.queue))}${d.extra.qhold ? " · " + (state.lang === "en" ? "waiting" : "sırada") : ""}</span>`);
-  if (d.status === "complete" && d.extra?.integrity === "bad") parts.push(`<span class="st-error" title="${escapeHtml(d.extra.integrity_detail || "")}">⚠ ${state.lang === "en" ? "corrupt" : "bozuk"}</span>`);
-  else if (d.status === "complete" && d.extra?.integrity === "ok") parts.push(`<span title="${state.lang === "en" ? "Integrity verified" : "Sağlamlık doğrulandı"}">✓</span>`);
+  if (d.status === "complete" && d.extra?.integrity === "bad") parts.push(`<span class="bdg bdg-err" title="${escapeHtml(d.extra.integrity_detail || "")}">⚠ ${state.lang === "en" ? "corrupt" : "bozuk"}</span>`);
+  else if (d.status === "complete" && d.extra?.integrity === "ok") parts.push(`<span class="bdg bdg-ok" title="${state.lang === "en" ? "Integrity verified" : "Sağlamlık doğrulandı"}">✓</span>`);
   if (d.status === "complete" || d.status === "confirm") {
     if (d.size) parts.push(`<span>${fmtBytes(d.size)}</span>`);
   } else if (d.size) {

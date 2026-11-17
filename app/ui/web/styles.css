@@ -400,3 +400,10 @@ details.howto .hint { margin-top: 4px; line-height: 1.5; }
 .pl-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pl-act { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
 .pl-in { display: inline-flex; gap: 6px; align-items: center; }
+
+/* Parca 1: Tutarli rozet dili (kuyruk mor, dogrulandi yesil, hata kirmizi) */
+.bdg, .qbadge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.qbadge { background: rgba(157, 107, 255, .14); border: 1px solid rgba(157, 107, 255, .35); color: #C4B5FD; }
+.qbadge.hold { background: rgba(255, 255, 255, .05); border-color: var(--line); color: var(--muted); }
+.bdg-ok { background: rgba(46, 230, 166, .12); border: 1px solid rgba(46, 230, 166, .35); color: #2EE6A6; }
+.bdg-err { background: rgba(255, 77, 106, .14); border: 1px solid rgba(255, 77, 106, .4); color: #FF4D6A; }
