@@ -104,7 +104,8 @@
       if (!this.img) return;
       const ctx = this.ctx, W = this.canvas.width, H = this.canvas.height, T = this.target;
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
-      const k = Math.min(W / this.fw, H / this.fh), ox0 = (W - this.fw * k) / 2, oy0 = (H - this.fh * k) / 2;
+      // alt pay: nefes/paralaks/olcek figuru asagi itince gomulu zemin isigi canvas kenarinda kesilmesin
+      const k = Math.min(W / this.fw, H / this.fh) * 0.94, ox0 = (W - this.fw * k) / 2, oy0 = (H - this.fh * k) * 0.3;
       const still = this.reduced;
       const breath = this.breathe && !still ? Math.sin(this.t * 1.7) : 0;
       const pulse = T.playbackState === 'playing' && !still ? Math.max(0, Math.sin(this.t * 7.5)) * 0.018 : 0;

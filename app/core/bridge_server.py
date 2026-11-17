@@ -192,7 +192,7 @@ class BridgeServer:
             self.manager.settings.set("capture_enabled", bool(body.get("enabled")))
             return 200, {"ok": True, "capture_enabled": bool(self.manager.settings.get("capture_enabled"))}
         if path == "/v1/bypass":
-            from app.core.bypass import resolve_url
+            from app.core.bypass import resolve as resolve_url
             url = str(body.get("url") or "").strip()
             if not url.lower().startswith(("http://", "https://")):
                 return 400, {"ok": False, "error": "bad_url"}

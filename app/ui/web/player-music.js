@@ -93,6 +93,7 @@ function pmShow(res) {
   PM.lines = res?.synced ? pmParseLrc(res.synced) : [];
   PM.rawSynced = res?.synced || "";
   PM.plain = res?.plain || "";
+  if (empty && (PM.lines.length || PM.plain)) { empty.hidden = true; empty.innerHTML = ""; }   // soz geldiyse "bulunamadi" kutusu kalmasin
   PM.src = res?.source || "";
   PM.links = res?.links || {};
   PM.idx = -1;

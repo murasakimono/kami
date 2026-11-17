@@ -70,7 +70,7 @@ body.sunak.sk-drawer .sk-backdrop { display: block; position: fixed; inset: 0; z
 #sunak .sk-altar.full .sk-ring-fill { filter: drop-shadow(0 0 6px rgba(46, 230, 166, .9)); animation: sk-glow 1.6s ease-in-out infinite; }
 @keyframes sk-glow { 50% { opacity: .65; } }
 /* tam boy karakter halkanin onunde durur; boynuzlar halkayi tasar */
-#sunak .sk-char { position: absolute; left: 50%; top: -6px; width: 222px; height: 338px; transform: translateX(-50%); cursor: pointer; filter: drop-shadow(0 10px 24px rgba(0, 0, 0, .55)); }
+#sunak .sk-char { position: absolute; left: 50%; top: -6px; width: 222px; height: 338px; transform: translateX(-50%); cursor: pointer; -webkit-mask-image: linear-gradient(180deg, #000 88%, transparent 100%); mask-image: linear-gradient(180deg, #000 88%, transparent 100%); filter: drop-shadow(0 10px 24px rgba(0, 0, 0, .55)); }
 #sunak .sk-altar::after { content: ""; position: absolute; left: 50%; bottom: -4px; width: 210px; height: 22px; transform: translateX(-50%); background: radial-gradient(ellipse at center, rgba(46, 230, 166, .28), rgba(46, 230, 166, 0) 70%); pointer-events: none; }
 #sunak .sk-altar.drop .sk-char { filter: drop-shadow(0 0 22px rgba(46, 230, 166, .85)); }
 #sunak .sk-altar.drop .sk-ring circle:first-child { stroke: #0FA37A; }
