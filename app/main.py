@@ -113,6 +113,19 @@ def main() -> int:
     if "--studio-mcp" in sys.argv[1:]:   # Claude masaustu: Kami Studio MCP sunucusu (stdio, pencere yok)
         from app.core import studio_mcp
         return studio_mcp.main()
+    if "--studio-run" in sys.argv[1:]:   # otomasyon: Kami.exe --studio-run <boru hatti> <dosya...> (makbuz JSON yazar)
+        import json as _json
+        from app.core import studio_mcp_pro
+        i = sys.argv.index("--studio-run")
+        rest = sys.argv[i + 1:]
+        if not rest:
+            return 2
+        rec = studio_mcp_pro.t_pipeline("run", name=rest[0], media=rest[1:])
+        try:   # pencereli exe'de stdout yok; makbuz zaten Otomasyon\Çıktı'ya yazildi
+            print(_json.dumps(rec, ensure_ascii=False, indent=1))
+        except (AttributeError, OSError, ValueError):
+            pass
+        return 0 if rec.get("out") else 1
     if "--picture-mcp" in sys.argv[1:]:   # Claude/Antigravity: Kami Picture Pro MCP sunucusu (stdio)
         from app.core import picture_mcp
         return picture_mcp.main()
@@ -909,6 +922,16 @@ def main() -> int:
         atexit.register(media_srv.stop)
     except OSError:
         log.exception("Medya sunucusu acilamadi")
+
+    # ---- v1.26 Studio otomasyonu: Otomasyon\<boru hatti>\ klasorune birakilan dosyalar islenir
+    if settings.get("studio_automation", True):
+        try:
+            from app.core.studio_mcp_pro import DropWatcher
+            _drop = DropWatcher()
+            _drop.start()
+            atexit.register(_drop.stop)
+        except Exception:
+            log.exception("Studio otomasyon izleyicisi acilamadi")
 
     # ---- Faz 7.1: Cross-Origin Isolation (COOP/COEP + SharedArrayBuffer) yerel HTTP sunucusu
     from app.core.web_isolation import UiIsolationServer

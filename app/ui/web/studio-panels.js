@@ -116,6 +116,7 @@ P.sound = async () => {
     pb.innerHTML = h + `<div class="hint">Kami'nin kendi ürettiği <span id="sfxCnt">${sndCache.kami?.length || 94}</span> telifsiz ses & meme efekti. Sürükle ya da ＋.</div>` +
       `<div class="catpills" id="sndCats"></div><input class="in" id="kamiSndQ" placeholder="Vine boom, slow-mo böcek, earrape, rizz ara…" value="${esc(P.sound.q || "")}" style="width:100%;margin-bottom:6px"><div id="sndList" class="hint">Hazırlanıyor…</div>`;
     const items = sndCache.kami || (sndCache.kami = await job("studio_sfx", []));
+    if (panel !== "sound" || sndTab !== "kami" || !$("#sndCats")) return;   // beklerken baska panele gecildi
     const sc = $("#sfxCnt"); if (sc) sc.textContent = items.length;
     const renderKami = () => {
       const cat = P.sound.cat || "Tümü", q = (P.sound.q || "").toLowerCase();
@@ -393,7 +394,7 @@ P.text = () => {
   pb.innerHTML = `<div class="hint">Tıkla: oynatma kafasına ekler. Sürükle: istediğin yere.</div>` +
     `<div class="catpills">${cats.map(c => `<button class="${c === cat ? "on" : ""}" data-txcat="${c}">${c}</button>`).join("")}</div>` +
     `<input class="in" id="txQ" placeholder="${TEXT_PRESETS.length} yazı stili içinde ara…" value="${esc(P.text.q || "")}" style="width:100%;margin-bottom:6px">` +
-    `<div class="grid2">${items.map(({ p, i }) => `<div class="card" draggable="true" data-item='${esc(JSON.stringify({ type: "text", preset: i }))}' data-tp="${i}" style="font-family:'${p.s.font}';color:${p.s.color || "#fff"};${p.s.glow ? `text-shadow:0 0 8px ${p.s.glowColor}` : ""};${p.s.box ? `background:${p.s.boxColor};` : ""}font-size:15px;text-align:center">${esc(p.up ? p.n.toUpperCase() : p.n)}</div>`).join("")}</div>`;
+    `<div class="grid2">${items.map(({ p, i }) => `<div class="card" draggable="true" data-item='${esc(JSON.stringify({ type: "text", preset: i }))}' data-tp="${i}" style="font-family:'${p.s.font}';color:${p.s.color || "#fff"};${p.s.glow ? `text-shadow:0 0 8px ${p.s.glowColor}` : ""};${p.s.box ? `background:${p.s.boxColor};` : ""}font-size:15px;text-align:center">${esc(p.up ? p.n.toLocaleUpperCase("tr") : p.n)}</div>`).join("")}</div>`;
   const qi = $("#txQ"); qi.oninput = () => { P.text.q = qi.value; clearTimeout(P.text.t); P.text.t = setTimeout(() => { P.text(); const n = $("#txQ"); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }, 160); };
 };
 pb.addEventListener("click", e => {
@@ -804,11 +805,7 @@ function cutFillers(c) {
   snap(); let n = 0;
   for (const [t0, t1, tc, w] of hits.sort((a, b) => b[0] - a[0])) {   // sondan basa: onceki zamanlar kaymaz
     if (!removeRanges(c, [[src0 + (t0 - c.start) * sp, src0 + (t1 - c.start) * sp]], 0)) continue;
-    const d = t1 - t0; n++;
-    tc.words = tc.words.filter(x => x !== w);
-    for (const x of tc.words) if (tc.start + x.s >= t1 - 1e-6) { x.s = +(x.s - d).toFixed(3); x.e = +(x.e - d).toFixed(3); }
-    tc.dur = Math.max(.2, +(tc.dur - d).toFixed(3));
-    for (const o of ST.p.clips) if (o !== tc && o.words && o.track === tc.track && o.start >= t1 - 1e-6) o.start = +(o.start - d).toFixed(4);
+    n++;   // altyazi kelimeleri ve diger izler removeRanges -> syncRipple ile kayar
   }
   changed(); toast(n ? `${n} dolgu sesi kesildi` : "Kesilecek kadar uzun dolgu sesi yok");
 }

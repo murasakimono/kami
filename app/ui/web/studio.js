@@ -255,6 +255,39 @@ function rippleClose(track, t0, gap) {
   for (const c of ST.p.clips) if (c.track === track && c.start >= t0 - 1e-6) c.start = +(c.start - gap).toFixed(4);
   for (const ct of ST.p.cuts || []) if (ct.track === track && ct.seamStart >= t0 - 1e-6) ct.seamStart = +(ct.seamStart - gap).toFixed(4);
 }
+// senkron ripple (Premiere "sync lock"): bir izde [t0,t1] kesilince diger izler de kayar. Kilitli izler ve
+// bagli olmayan muzik yataklari (ses izi, link yok) yerinde kalir; kesimi kapsayan klip bolunur, ortasi atilir;
+// tamamen kesimin icindeki yazi/efekt/SFX silinir; altyazi kelimeleri kesilip kaydirilir.
+function syncRipple(srcTrack, t0, t1) {
+  const gap = t1 - t0; if (gap <= 1e-4) return;
+  for (const tr of ST.p.tracks) {
+    if (tr.id === srcTrack || tr.lock) continue;
+    for (const o of ST.p.clips.filter(c => c.track === tr.id)) {
+      const e = o.start + o.dur;
+      if (o.start >= t1 - 1e-6) { o.start = +(o.start - gap).toFixed(4); continue; }
+      if (e <= t0 + 1e-6) continue;
+      if (tr.kind === "audio" && !o.link && !o.linkId && ST.p.assets[o.asset]?.kind !== "video") continue;   // muzik/SFX yatagi
+      if (o.start >= t0 - 1e-6 && e <= t1 + 1e-6) { ST.p.clips.splice(ST.p.clips.indexOf(o), 1); ST.sel.delete(o.id); continue; }
+      if (o.words) {
+        o.words = o.words.filter(w => !(o.start + w.s >= t0 - 1e-3 && o.start + w.e <= t1 + 1e-3));
+        for (const w of o.words) if (o.start + w.s >= t1 - 1e-6) { w.s = +(w.s - gap).toFixed(3); w.e = +(w.e - gap).toFixed(3); }
+      }
+      const sp = o.speed || 1;
+      if (o.start < t0 && e > t1) {
+        if (o.asset && !o.words) {   // ortasi atilir: sag parca kesimin sonundan devam eder
+          const r = clone(o); r.id = uid(); r.start = +t0.toFixed(4); r.in = +((o.in || 0) + (t1 - o.start) * sp).toFixed(4); r.dur = +(e - t1).toFixed(4);
+          o.dur = +(t0 - o.start).toFixed(4); ST.p.clips.push(r);
+        } else o.dur = +Math.max(.05, o.dur - gap).toFixed(4);
+      } else if (o.start < t0) o.dur = +Math.max(.05, t0 - o.start).toFixed(4);
+      else {   // kesimin icinde baslayip disinda bitiyor
+        const cut = t1 - o.start;
+        if (o.asset) o.in = +((o.in || 0) + cut * sp).toFixed(4);
+        if (o.words) for (const w of o.words) { w.s = +Math.max(0, w.s - cut).toFixed(3); w.e = +Math.max(0, w.e - cut).toFixed(3); }
+        o.dur = +(o.dur - cut).toFixed(4); o.start = +t0.toFixed(4);
+      }
+    }
+  }
+}
 function rippleOpen(track, t0, gap) {
   for (const c of ST.p.clips) if (c.track === track && c.start >= t0 - 1e-6) c.start = +(c.start + gap).toFixed(4);
   for (const ct of ST.p.cuts || []) if (ct.track === track && ct.seamStart >= t0 - 1e-6) ct.seamStart = +(ct.seamStart + gap).toFixed(4);
@@ -273,8 +306,8 @@ function removeRanges(c, ranges, padAfter = .08, padBefore = padAfter) {
       if (t1 < mid.start + mid.dur - .02) splitClip(mid, t1);
       const cutSnap = clone(mid);
       ST.p.clips.splice(ST.p.clips.indexOf(mid), 1); ST.sel.delete(mid.id);
-      rippleClose(c.track, t1, t1 - t0);
-      ST.p.cuts.push({ id: "cut_" + uid(), track: c.track, seamStart: +t0.toFixed(4), dur: +cutSnap.dur.toFixed(4), clip: cutSnap });
+      rippleClose(c.track, t1, t1 - t0); syncRipple(c.track, t0, t1);
+      ST.p.cuts.push({ id: "cut_" + uid(), track: c.track, seamStart: +t0.toFixed(4), dur: +cutSnap.dur.toFixed(4), clip: cutSnap, sync: true });
       n++; break;
     }
   }
@@ -291,6 +324,7 @@ function restoreCuts(ids) {
     const seam = ct.seamStart;
     const restored = clone(ct.clip);
     rippleOpen(ct.track, seam, restored.dur);
+    if (ct.sync) for (const tr of ST.p.tracks) if (tr.id !== ct.track && !tr.lock) rippleOpen(tr.id, seam, restored.dur);   // senkron ripple'in tersi
     restored.start = +seam.toFixed(4);
     ST.p.clips.push(restored);
     ST.sel.add(restored.id);
@@ -1155,7 +1189,7 @@ function clipEl(c, t) {
 function waveCanvas(c, pk, w, h, big) {
   const cv = document.createElement("canvas"), W = Math.min(8000, Math.ceil(w)), sp = c.speed || 1;
   cv.width = W; cv.height = Math.max(8, h); cv.className = "wave"; cv.style.width = W + "px";
-  const g = cv.getContext("2d"), hex = pk.peaks, per = pk.per_sec, n = hex.length / 2;
+  const g = cv.getContext("2d"), hex = pk?.peaks || "", per = pk?.per_sec || 100, n = hex.length / 2;   // dalga alinamadiysa bos cizer, zaman cizelgesi cokmesin
   g.fillStyle = big ? "#2EE6A6" : "rgba(46,230,166,.55)";
   const vol = Math.min(1.5, c.vol ?? 1);
   for (let x = 0; x < W; x++) {

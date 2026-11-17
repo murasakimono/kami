@@ -821,6 +821,7 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
     order = _track_order(project)
     assets = project.get("assets", {})
     clips = [c for c in flatten_clips(project.get("clips", [])) if not tracks.get(c.get("track"), {}).get("hide")]
+    _dc = declick_flags(clips)
     frame_t = opts.get("frame")
     rng = opts.get("range") or [0, project_end(project)]
     T0, T1 = float(rng[0]), float(rng[1])
@@ -1171,7 +1172,8 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         if (a.get("audio") and not c.get("freeze") and not tracks[c["track"]].get("mute")
                 and (not has_solo or tracks[c["track"]].get("solo"))
                 and float(c.get("vol", 1) if c.get("vol") is not None else 1) > 0 and frame_t is None):
-            cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(tracks[c["track"]].get("vol", 1) or 0)}
+            cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(tracks[c["track"]].get("vol", 1) or 0),
+                  "_dcIn": _dc.get(str(c.get("id")), (True, True))[0], "_dcOut": _dc.get(str(c.get("id")), (True, True))[1]}
             lead_req = max(-d * 0.8, float(c.get("audioLead") or 0))
             tail_req = max(-d * 0.8, float(c.get("audioTail") or 0))
             if abs(lead_req) > 0.005 or abs(tail_req) > 0.005:
@@ -1284,7 +1286,8 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
         seg = min(d - cut0, T1 - max(s, T0))
         src_in = float(c.get("in", 0)) + cut0 * speed
         ii = add_input(["-ss", f"{src_in:.3f}", "-t", f"{seg * speed + 0.05:.3f}", "-i", a["path"]])
-        cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(t.get("vol", 1) if t.get("vol") is not None else 1)}
+        cv = {**c, "vol": float(c.get("vol", 1) if c.get("vol") is not None else 1) * float(t.get("vol", 1) if t.get("vol") is not None else 1),
+              "_dcIn": _dc.get(str(c.get("id")), (True, True))[0], "_dcOut": _dc.get(str(c.get("id")), (True, True))[1]}
         audio_parts.append((_audio_chain(ii, cv, cut0, seg, max(s, T0) - T0, speed), bool(t.get("duck"))))
     if frame_t is not None:
         return [*inputs, *_fc_args(graph, work), "-map", "[vout]", "-frames:v", "1", out], total
@@ -1659,6 +1662,26 @@ AUDIO_FIX = {
 }
 
 
+def declick_flags(clips: list[dict]) -> dict[str, tuple[bool, bool]]:
+    """Her klibin giris/cikisi gercek bir kesim mi? Ayni kaynagin kesintisiz devami (S ile bolme) ise mikro fade yok."""
+    out: dict[str, tuple[bool, bool]] = {}
+    by_track: dict[str, list[dict]] = {}
+    for c in clips:
+        if c.get("asset"):
+            by_track.setdefault(str(c.get("track")), []).append(c)
+    for seq in by_track.values():
+        seq = sorted(seq, key=lambda c: float(c["start"]))
+        for i, c in enumerate(seq):
+            def cont(a: dict, b: dict) -> bool:
+                spa = float(a.get("speed", 1) or 1)
+                return (a.get("asset") == b.get("asset") and abs(float(a["start"]) + float(a["dur"]) - float(b["start"])) < 0.002
+                        and abs(float(a.get("in", 0)) + float(a["dur"]) * spa - float(b.get("in", 0))) < 0.01)
+            prev = seq[i - 1] if i else None
+            nxt = seq[i + 1] if i + 1 < len(seq) else None
+            out[str(c.get("id"))] = (not (prev and cont(prev, c)), not (nxt and cont(c, nxt)))
+    return out
+
+
 def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: float, ramp: list | None = None) -> str:
     vol = float(c.get("vol", 1) if c.get("vol") is not None else 1)
     if ramp:   # hiz rampasi: dilim dilim atempo + birlestir
@@ -1721,8 +1744,12 @@ def _audio_chain(ii: int, c: dict, cut0: float, seg: float, off: float, speed: f
     d = float(c["dur"])
     if fi > cut0:
         ch.append(f"afade=t=in:st=0:d={fi - cut0:.3f}{c_opt}")
+    elif cut0 < 1e-3 and c.get("_dcIn"):   # kesim yerinde tik/pat olmasin: 12 ms yumusak giris (video-use kurali)
+        ch.append("afade=t=in:st=0:d=0.012")
     if fo > 0:
         ch.append(f"afade=t=out:st={max(0, d - cut0 - fo):.3f}:d={fo:.3f}{c_opt}")
+    elif c.get("_dcOut") and d - cut0 > 0.05:
+        ch.append(f"afade=t=out:st={max(0, d - cut0 - 0.012):.4f}:d=0.012")
     ch.append("aresample=48000,aformat=channel_layouts=stereo")
     pf = studio_fx_adv.pan_filter(c.get("pan"))
     if pf:
@@ -2289,6 +2316,55 @@ def ripple_close(project: dict, track: str, t0: float, gap: float) -> None:
             ct["seamStart"] = round(ct["seamStart"] - gap, 4)
 
 
+def sync_ripple(project: dict, src_track: str, t0: float, t1: float) -> None:
+    """Senkron ripple (studio.js syncRipple ile ayni kural): diger izler kesimi takip eder; kilitli izler ve bagsiz
+    muzik yataklari yerinde kalir, kesimi kapsayan medya bolunur, kesimin icindekiler silinir, altyazi kelimeleri kayar."""
+    import copy
+    import uuid
+    gap = t1 - t0
+    if gap <= 1e-4:
+        return
+    for tr in project.get("tracks") or []:
+        if tr["id"] == src_track or tr.get("lock"):
+            continue
+        for o in [c for c in project["clips"] if c.get("track") == tr["id"]]:
+            s0, e = float(o["start"]), float(o["start"]) + float(o["dur"])
+            if s0 >= t1 - 1e-6:
+                o["start"] = round(s0 - gap, 4)
+                continue
+            bed = tr.get("kind") == "audio" and not o.get("link") and not o.get("linkId") and \
+                (project.get("assets") or {}).get(o.get("asset"), {}).get("kind") != "video"
+            if e <= t0 + 1e-6 or bed:
+                continue
+            if s0 >= t0 - 1e-6 and e <= t1 + 1e-6:
+                project["clips"].remove(o)
+                continue
+            if o.get("words"):
+                o["words"] = [w for w in o["words"] if not (s0 + w["s"] >= t0 - 1e-3 and s0 + w["e"] <= t1 + 1e-3)]
+                for w in o["words"]:
+                    if s0 + w["s"] >= t1 - 1e-6:
+                        w["s"], w["e"] = round(w["s"] - gap, 3), round(w["e"] - gap, 3)
+            sp = float(o.get("speed", 1) or 1)
+            if s0 < t0 and e > t1:
+                if o.get("asset") and not o.get("words"):
+                    r = copy.deepcopy(o)
+                    r["id"] = "c" + uuid.uuid4().hex[:6]
+                    r["start"], r["in"], r["dur"] = round(t0, 4), round(float(o.get("in", 0)) + (t1 - s0) * sp, 4), round(e - t1, 4)
+                    o["dur"] = round(t0 - s0, 4)
+                    project["clips"].append(r)
+                else:
+                    o["dur"] = round(max(0.05, float(o["dur"]) - gap), 4)
+            elif s0 < t0:
+                o["dur"] = round(max(0.05, t0 - s0), 4)
+            else:
+                cut = t1 - s0
+                if o.get("asset"):
+                    o["in"] = round(float(o.get("in", 0)) + cut * sp, 4)
+                for w in o.get("words") or []:
+                    w["s"], w["e"] = round(max(0.0, w["s"] - cut), 3), round(max(0.0, w["e"] - cut), 3)
+                o["dur"], o["start"] = round(float(o["dur"]) - cut, 4), round(t0, 4)
+
+
 def ripple_close_gaps(project: dict, track: str) -> int:
     """Belirtilen izdeki klipler arasindaki tum bosluklari bastan sona kapatir; kaydirilan klip sayisini doner."""
     seq = sorted([c for c in project.get("clips") or [] if c.get("track") == track], key=lambda c: float(c.get("start", 0)))
@@ -2348,12 +2424,14 @@ def remove_ranges(
             project["clips"].remove(mid)
             if ripple:
                 ripple_close(project, c["track"], t1, t1 - t0)
+                sync_ripple(project, c["track"], t0, t1)
             cuts.append({
                 "id": f"cut_{uuid.uuid4().hex[:8]}",
                 "track": c["track"],
                 "seamStart": round(t0, 4),
                 "dur": round(cut_snap["dur"], 4),
                 "clip": cut_snap,
+                "sync": bool(ripple),
             })
             removed += 1
             break
@@ -2375,6 +2453,10 @@ def restore_cuts(project: dict, cut_ids: list[str]) -> list[str]:
         clip = copy.deepcopy(ct["clip"])
         dur = float(clip["dur"])
         ripple_open(project, ct["track"], seam, dur)
+        if ct.get("sync"):
+            for tr in project.get("tracks") or []:
+                if tr["id"] != ct["track"] and not tr.get("lock"):
+                    ripple_open(project, tr["id"], seam, dur)
         clip["start"] = round(seam, 4)
         project["clips"].append(clip)
         cuts.remove(ct)

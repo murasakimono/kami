@@ -23,7 +23,7 @@ STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "
                "studio_gemini_models", "studio_lottie", "studio_catalog_fonts",
                "studio_multicam_sync", "studio_smart_cut", "studio_audio_enhance", "studio_audio_duck",
                "studio_clipboard_copy", "studio_open_icon_search", "studio_open_icon_fetch", "studio_export_gif", "studio_sound_similar",
-               "studio_qc", "studio_poster", "studio_ref_profile", "studio_ref_lut"}
+               "studio_qc", "studio_poster", "studio_ref_profile", "studio_ref_lut", "studio_pipeline_run"}
 
 
 def _parse_myinstants(page_html: str, limit: int = 60) -> list[dict[str, Any]]:
@@ -176,8 +176,8 @@ class StudioMixin:
     def studio_make_proxy(self, path: str, height: int = 720) -> dict[str, Any]:
         st = self._st()
         r = st.make_proxy(str(path), int(height))
-        if r.get("ok") and r.get("path"):
-            r["url"] = self._media_url(r["path"])
+        if r.get("ok") and r.get("path") and self._media:
+            r["url"] = self._media.asset_url(r["path"])   # 720p H.264: dogrudan oynar
         return r
 
     def studio_inspect_ai(self, path: str, interval_s: float = 2.0) -> dict[str, Any]:
@@ -738,6 +738,23 @@ class StudioMixin:
         from app.core import studio_finish as sf
         ws = [{"w": str(w.get("w", "")), "s": float(w.get("s", 0)), "e": float(w.get("e", 0))} for w in (words or []) if isinstance(w, dict)]
         return sf.speech_suggestions(ws)
+
+    # ---- v1.26 otomasyon boru hatlari (Otomasyon klasoru; MCP 'pipeline' ile ayni)
+    def studio_pipelines(self) -> dict[str, Any]:
+        from app.core import studio_mcp_pro as P
+        d = P.pipelines_dir()
+        items = []
+        for f in sorted(d.glob("*.json")):
+            try:
+                sp = json.loads(f.read_text("utf-8"))
+            except (OSError, ValueError):
+                continue
+            items.append({"name": f.stem, "steps": len(sp.get("steps") or []), "size": sp.get("size"), "folder": str(d / f.stem)})
+        return {"dir": str(d), "items": items}
+
+    def studio_pipeline_run(self, name: str, files: list) -> dict[str, Any]:
+        from app.core import studio_mcp_pro as P
+        return P.t_pipeline("run", name=str(name), media=[str(x) for x in files or []])
 
     def studio_src_frame(self, path: str, t: float, width: int = 960) -> dict[str, Any]:
         """Kaynak dosyadan tek kare (JPEG data URL): takip kutusu cizmek icin."""

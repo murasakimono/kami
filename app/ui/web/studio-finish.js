@@ -9,6 +9,7 @@
     ["upscale", "🔍 Netleştir / Büyüt (Real-ESRGAN)", "Düşük çözünürlüklü veya bulanık klibi yapay zekayla 2-4x netleştirir (ekran kartı, ilk kullanımda ~45 MB iner)."],
     ["interp", "🐢 Akıcı Ağır Çekim (RIFE)", "Ara kare üretir: 2x/4x pürüzsüz ağır çekim ya da 60 fps akıcılık (ilk kullanımda bir kez indirilir)."],
     ["track", "📍 Hareket Takibi", "Yazı/çıkartma/görseli videodaki bir nesneye yapıştırır: kutuyu çiz, nesne nereye giderse o da gider."],
+    ["automation", "🤖 Otomasyon (boru hatları)", "Claude'a kurdurduğun kurgu tariflerini (sessizlik kes → altyazı → zoom → kapılı dışa aktar) seçtiğin dosyalarda çalıştırır. Otomasyon klasöründeki boru hattı klasörüne dosya bırakmak da çalıştırır."],
     ["poster", "🖼 Kapak Karesini Göm", "Dışa aktardığın videonun 0. karesine en canlı kareyi (ya da oynatma kafasını) yazar; akışta siyah kapak çıkmaz."],
     ["speedramp", "🏎️ Hız Eğrisi (Speed Ramp)", "CapCut Pro / Spunkram tarzı hazır hız eğrileri: Montage, Hero, Bullet, Jump Cut, Flash In/Out, Araba/Futbol Velocity."],
     ["audioreact", "🔊 Ses-Tepkili Zoom (Audio-Reactive)", "Müzik/oyun bas ve tepe vuruşlarına göre klibe otomatik nabız zoom anahtar kareleri yazar."],
@@ -17,7 +18,7 @@
   );
   const _ai = aiAction;
   aiAction = async (kind, c) => {
-    const f = { qc, speech, refstyle, upscale: c2 => enhance("upscale", c2), interp: c2 => enhance("interp", c2), track, poster, speedramp, audioreact, reframe916, aivision }[kind];
+    const f = { qc, speech, refstyle, automation, upscale: c2 => enhance("upscale", c2), interp: c2 => enhance("interp", c2), track, poster, speedramp, audioreact, reframe916, aivision }[kind];
     return f ? f(c) : _ai(kind, c);
   };
 
@@ -35,6 +36,30 @@
     }
     if (!r?.ok) { toast(r?.error || "olmadı", 4000); return null; }
     return (await waitStudioJob(r.job, label)).result;
+  }
+
+  // ---------------------------------------------------------------- otomasyon
+  async function automation() {
+    const r = await api.studio_pipelines();
+    if (!r?.items?.length) {
+      await modal(`<h3>🤖 Otomasyon</h3><div class="hint">Henüz boru hattı yok. Claude'a (Kami Studio MCP) “şu adımlarla bir boru hattı kaydet” de;
+        ör. sessizlikleri kes → otomatik altyazı → vuruş zoom'u → kapılı dışa aktar. Kaydedilince burada ve <b>${esc(r?.dir || "Otomasyon")}</b> klasöründe görünür.</div>
+        <div class="row"><button class="tb pri" data-v="no">Tamam</button></div>`);
+      return;
+    }
+    const name = await modal(`<h3>🤖 Otomasyon</h3><div class="hint">Bir boru hattı seç, sonra dosyaları seç. Her çalıştırma yeni bir proje ve makbuz (adım adım sonuç) yazar.
+      Klasöre bırakma: <b>${esc(r.dir)}\\&lt;ad&gt;</b></div>
+      <div class="sf-list">${r.items.map(i => `<button class="tb" style="display:block;width:100%;text-align:left;margin:4px 0" data-v="${esc(i.name)}">${esc(i.name)} · ${i.steps} adım${i.size ? " · " + i.size.join("×") : ""}</button>`).join("")}</div>
+      <div class="row"><button class="tb" data-v="no">Kapat</button></div>`);
+    if (!name) return;
+    const files = await api.studio_pick_media(); if (!files?.length) return;
+    busy(`“${name}” çalışıyor…`);
+    try {
+      const rec = await job("studio_pipeline_run", [name, files]); busy(null);
+      const ok = rec?.out;
+      await modal(`<h3>${ok ? "✅ Bitti" : "⚠️ Tamamlanamadı"}</h3><div class="sf-list">${(rec?.steps || []).map(s => `<div class="sf-item ${s.ok ? "info" : "err"}"><span>${s.ok ? "✓" : "✗"}</span><span style="flex:1">${esc(String(s.tool || s.step))}${s.error ? " — " + esc(s.error) : ""}</span></div>`).join("")}</div>
+        ${ok ? `<div class="hint">${esc(rec.out)}</div>` : ""}<div class="row"><button class="tb pri" data-v="no">Tamam</button></div>`);
+    } catch (e) { busy(null); toast("Olmadı: " + e.message, 5000); }
   }
 
   // ---------------------------------------------------------------- yayın öncesi kontrol
@@ -104,15 +129,7 @@
     const sp = c.speed || 1, src0 = c.in || 0; let n = 0;
     for (const [t0, t1] of ranges.sort((a, b) => b[0] - a[0])) {   // sondan başa: önceki zamanlar kaymaz
       if (t1 - t0 < .12 || !removeRanges(c, [[src0 + (t0 - c.start) * sp, src0 + (t1 - c.start) * sp]], 0)) continue;
-      const d = t1 - t0; n++;
-      for (const tc of caps) {
-        if (tc.start + tc.dur <= t0) continue;
-        tc.words = tc.words.filter(x => !(tc.start + x.s >= t0 - 1e-3 && tc.start + x.e <= t1 + 1e-3));
-        for (const x of tc.words) if (tc.start + x.s >= t1 - 1e-6) { x.s = +(x.s - d).toFixed(3); x.e = +(x.e - d).toFixed(3); }
-        tc.dur = Math.max(.2, +(tc.dur - d).toFixed(3));
-      }
-      const capTracks = new Set(caps.map(x => x.track));
-      for (const o of ST.p.clips) if (!caps.includes(o) && capTracks.has(o.track) && o.start >= t1 - 1e-6) o.start = +(o.start - d).toFixed(4);
+      n++;   // altyazi ve diger izler removeRanges -> syncRipple ile kayar
     }
     return n;
   }

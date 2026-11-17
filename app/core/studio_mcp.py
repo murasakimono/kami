@@ -818,6 +818,32 @@ def t_audio_pro_process(src_path: str, preset: str = "denoise_voice", pitch_semi
 # Kami Picture Pro + Makro MCP araclari (tek MCP baglantisindan tam kontrol)
 from app.core import picture_mcp as _pic_mcp  # noqa: E402
 TOOLS.update(_pic_mcp.TOOLS)
+from app.core import studio_mcp_pro as _pro  # noqa: E402,F401  (algi/kapi/otomasyon araclari kendini kaydeder)
+
+LOG = S.CACHE / "mcp_gecmis.jsonl"
+
+
+def _log_call(name: str, args: dict, ok: bool, ms: int, err: str = "") -> None:
+    """Islem gunlugu (DaVinci MCP 'execution trace' fikri): hangi arac, ne kadar surdu, basarili mi."""
+    try:
+        LOG.parent.mkdir(parents=True, exist_ok=True)
+        brief = {k: (v if len(json.dumps(v, ensure_ascii=False, default=str)) < 160 else "…") for k, v in (args or {}).items()}
+        with LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": time.strftime("%Y-%m-%d %H:%M:%S"), "tool": name, "args": brief, "ok": ok, "ms": ms,
+                                **({"err": err[:200]} if err else {})}, ensure_ascii=False) + "\n")
+        if LOG.stat().st_size > 2_000_000:   # 2 MB: son yarisi kalsin
+            lines = LOG.read_text("utf-8").splitlines()
+            LOG.write_text("\n".join(lines[len(lines) // 2:]) + "\n", "utf-8")
+    except OSError:
+        pass
+
+
+@tool("history", "Son MCP işlemleri (araç, argüman özeti, süre, hata). Ne yaptığını kullanıcıya özetlemek ve hatayı bulmak için.", {"n": N})
+def t_history(n: float = 30) -> Any:
+    try:
+        return [json.loads(x) for x in LOG.read_text("utf-8").splitlines()[-int(n):]]
+    except OSError:
+        return []
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -891,8 +917,10 @@ def handle(msg: dict) -> dict | None:
         return {"jsonrpc": "2.0", "id": mid, "result": {
             "protocolVersion": (msg.get("params") or {}).get("protocolVersion") or PROTO,
             "capabilities": {"tools": {}}, "serverInfo": {"name": "kami-studio", "version": "1.0"},
-            "instructions": "Kami Studio video editörü. Önce get_project ile durumu oku, catalog ile efekt adlarını öğren; "
-                            "düzenlemeler Studio penceresinde anında görünür. Sonucu görmek için render_frame kullan. Zamanlar saniye."}}
+            "instructions": "Kami Studio video editörü. Videoyu izleyemezsin; onun yerine: get_project -> get_transcript (ifadeler) -> "
+                            "analyze_clip -> karar anlarında source_view/timeline_view (kare şeridi + ses dalgası). İlk kez kurgu yapıyorsan "
+                            "editing_guide oku. Riskli düzenlemeden önce checkpoint save; bitince timeline_health ve export_checked (kapılı, "
+                            "QC'li). catalog efekt adlarını verir. Düzenlemeler Studio penceresinde anında görünür. Zamanlar saniye."}}
     if method == "ping":
         return {"jsonrpc": "2.0", "id": mid, "result": {}}
     if method == "tools/list":
@@ -902,14 +930,17 @@ def handle(msg: dict) -> dict | None:
         t = TOOLS.get(prm.get("name", ""))
         if not t:
             return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "bilinmeyen araç"}}
+        t0 = time.time()
         try:
             res = t["fn"](**(prm.get("arguments") or {}))
+            _log_call(prm.get("name", ""), prm.get("arguments") or {}, True, int((time.time() - t0) * 1000))
             if isinstance(res, dict) and "_image" in res:
                 content = [{"type": "image", "data": res["_image"], "mimeType": "image/png"}]
             else:
                 content = [{"type": "text", "text": json.dumps(res, ensure_ascii=False, separators=(",", ":"))}]
             return {"jsonrpc": "2.0", "id": mid, "result": {"content": content}}
         except Exception as exc:
+            _log_call(prm.get("name", ""), prm.get("arguments") or {}, False, int((time.time() - t0) * 1000), f"{type(exc).__name__}: {exc}")
             return {"jsonrpc": "2.0", "id": mid, "result": {"isError": True, "content": [
                 {"type": "text", "text": f"{type(exc).__name__}: {exc}"}]}}
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"yok: {method}"}}
