@@ -60,10 +60,12 @@
       const max = items[0]?.size || 1;
       document.getElementById("map").innerHTML = items.map((x) => `
         <div style="margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;font-size:12px"><span>${x.dir ? "📁" : "📄"} ${esc(x.name)}</span><b>${fmt(x.size)}</b></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px"><span ${x.dir ? `data-drill="${esc(x.path)}" style="cursor:pointer" title="İçine gir"` : ""}>${x.dir ? "📁" : "📄"} ${esc(x.name)}</span><b title="${x.approx ? "Süre sınırı doldu, en az bu kadar" : ""}">${x.approx ? "≥ " : ""}${fmt(x.size)}</b></div>
           <div class="bar"><i style="width:${Math.max(2, Math.round((x.size / max) * 100))}%"></i></div>
         </div>`).join("") || "Boş.";
+      if (r?.root) document.getElementById("root").value = r.root;
     }
+    document.getElementById("map").onclick = (e) => { const d = e.target.closest("[data-drill]"); if (d) { document.getElementById("root").value = d.dataset.drill; doMap(); } };
     document.getElementById("find").onclick = doSearch;
     document.getElementById("q").onkeydown = (e) => { if (e.key === "Enter") doSearch(); };
     document.getElementById("scan").onclick = doMap;
@@ -72,6 +74,7 @@
       if (!b || !confirm("Geri Dönüşüm Kutusu'na taşınsın mı?")) return;
       const r = await api()?.cleaner_trash?.(b.dataset.trash).catch(() => null);
       if (r?.ok) b.closest(".row")?.remove();
+      else b.textContent = r?.error === "protected" ? "korunuyor" : "olmadı";
     };
   </script>
 </body>

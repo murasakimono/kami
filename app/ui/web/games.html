@@ -69,14 +69,21 @@
     document.getElementById("rescan").onclick = load;
     document.getElementById("grid").onclick = async (e) => {
       const p = e.target.closest("[data-play]");
-      if (p) { const g = GAMES[+p.dataset.play]; if (g?.stores?.[0]) api()?.games_launch?.(g.stores[0].launch); }
+      const say = (t) => { const c = document.getElementById("cnt"); c.textContent = t; setTimeout(() => { c.textContent = GAMES.length + " oyun"; }, 6000); };
+      if (p) {
+        const g = GAMES[+p.dataset.play], st = g?.stores?.find((x) => x.launch);
+        if (!st) { say(`${g?.title || "Oyun"}: başlatma yolu bulunamadı`); return; }
+        const r = await api()?.games_launch?.(st.launch).catch(() => null);
+        say(r?.ok ? `▶ ${g.title} başlatılıyor (${st.store})` : `${g.title} başlatılamadı: ${r?.error || "?"}`);
+      }
       const s = e.target.closest("[data-save]");
       if (s) {
         const g = GAMES[+s.dataset.save]; if (!g) return;
         s.textContent = "…";
         const r = await api()?.games_backup_save?.(g.title).catch(() => null);
         s.textContent = r?.ok ? "✓" : "!";
-        if (r?.error === "ludusavi_missing") alert("Save yedeği için açık kaynak 'ludusavi' aracının PATH'te olması gerekir.");
+        if (r?.error === "ludusavi_missing") say("Save yedeği için Ludusavi gerekli: PowerShell'de  winget install mtkennerly.ludusavi");
+        else if (r?.ok) say(`✓ ${g.title} kaydı yedeklendi`);
       }
     };
     window.addEventListener("pywebviewready", load);

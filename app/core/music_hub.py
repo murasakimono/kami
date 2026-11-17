@@ -33,7 +33,8 @@ def search_ytmusic(query: str, limit: int = 12) -> dict[str, Any]:
         if not exe:
             return {"ok": False, "error": "ytdlp_missing", "items": []}
         r = subprocess.run([exe, "--dump-single-json", "--flat-playlist", f"ytsearch{int(limit)}:{q}"],
-                           capture_output=True, text=True, timeout=25)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=25,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         data = json.loads(r.stdout or "{}")
         items = [{
             "id": e.get("id", ""),

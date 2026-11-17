@@ -256,13 +256,16 @@ function skBind() {
       }
     }
     if (acts) acts.hidden = false;
+    const pop = $("#skTabPop"); if (pop) pop.hidden = !["player", "studio", "picture", "reader"].includes(mod);   // Oyun/Muzik/Suzgec'in ayri penceresi yok
   };
+  // sekme acikken sag ray/Araclar indirme ekranina ait: once Indirmeler'e don (cekmece sekmenin arkasinda kalmasin)
+  document.addEventListener("click", (e) => { if (curMod !== "home" && e.target.closest?.("#skDock button:not(#skToolsBtn), .sk-tools-g button")) openTab("home"); }, true);
   $("#skTabs")?.addEventListener("click", (e) => {
     const b = e.target.closest(".sk-tab[data-mod]");
     if (b) openTab(b.dataset.mod);
   });
   $("#skTabPop")?.addEventListener("click", () => {
-    const fn = { player: () => api?.player_show?.({}), studio: () => api?.studio_open?.(""), picture: () => api?.picture_open?.(""), reader: () => api?.reader_open?.("") }[curMod];
+    const fn = { player: () => api?.player_show?.({}), studio: () => api?.studio_open?.(""), picture: () => api?.picture_open?.(""), reader: () => api?.reader_show?.("") }[curMod];
     fn?.();
   });
   $("#skTabKill")?.addEventListener("click", () => {
@@ -275,6 +278,8 @@ function skBind() {
     window.addEventListener("message", async (e) => {
       const d = e.data;
       if (!d || typeof d.__kamiApi !== "number" || !e.source) return;
+      // yalniz kendi sekme iframe'lerimiz: sekmede yuklu dis icerik (YouTube, Oda...) top.postMessage ile API'ye ulasamasin
+      if (![...document.querySelectorAll("#skTabHost > iframe")].some((f) => f.contentWindow === e.source)) return;
       try {
         const fn = window.pywebview?.api?.[d.fn];
         if (typeof fn !== "function") throw new Error("no_api:" + d.fn);

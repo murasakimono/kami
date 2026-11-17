@@ -19,6 +19,14 @@ def _norm_title(name: str) -> str:
 def _scan_steam() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     roots = [Path("C:/Program Files (x86)/Steam"), Path("C:/Program Files/Steam")]
+    try:   # Steam baska surucudeyse gercek yeri kayit defterinde
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as k:
+            sp = Path(winreg.QueryValueEx(k, "SteamPath")[0])
+            if sp not in roots:
+                roots.insert(0, sp)
+    except (OSError, ImportError):
+        pass
     libs: list[Path] = []
     for r in roots:
         vdf = r / "steamapps" / "libraryfolders.vdf"
@@ -86,6 +94,19 @@ def _scan_epic() -> list[dict[str, Any]]:
     return out
 
 
+def _gog_exe(install: str, pid: str) -> str:
+    """GOG kurulum klasoru oyun degil; goggame-<id>.info icindeki birincil playTask'in exe'si."""
+    import json
+    try:
+        info = json.loads((Path(install) / f"goggame-{pid}.info").read_text(encoding="utf-8", errors="ignore"))
+        for t in info.get("playTasks") or []:
+            if t.get("isPrimary") and t.get("path"):
+                return str(Path(install) / t["path"])
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
 def _scan_gog() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     db = Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / "GOG.com/Galaxy/storage/galaxy-2.0.db"
@@ -107,7 +128,7 @@ def _scan_gog() -> list[dict[str, Any]]:
                 "title": str(title),
                 "path": str(ipath or ""),
                 "size": 0,
-                "launch": str(ipath or ""),
+                "launch": _gog_exe(str(ipath or ""), str(pid)),
                 "cover": "",
             })
     except Exception:
@@ -145,6 +166,10 @@ def launch_game(launch_target: str) -> dict[str, Any]:
     t = str(launch_target or "").strip()
     if not t:
         return {"ok": False, "error": "empty"}
+    # yalniz oyun mağazasi linkleri ya da var olan exe/kisayol (rastgele yol/komut degil)
+    if not (re.match(r"^(steam|com\.epicgames\.launcher|goggalaxy)://", t, re.I)
+            or (Path(t).suffix.lower() in (".exe", ".lnk", ".url") and Path(t).is_file())):
+        return {"ok": False, "error": "unsupported_target"}
     try:
         os.startfile(t)
         return {"ok": True}
@@ -158,7 +183,8 @@ def backup_save_ludusavi(title: str, out_dir: str = "") -> dict[str, Any]:
     dest.mkdir(parents=True, exist_ok=True)
     try:
         r = subprocess.run(["ludusavi", "backup", "--force", "--path", str(dest), title],
-                           capture_output=True, text=True, timeout=60)
+                           capture_output=True, text=True, timeout=120,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return {"ok": r.returncode == 0, "dir": str(dest), "out": (r.stdout or r.stderr)[:400]}
     except FileNotFoundError:
         return {"ok": False, "error": "ludusavi_missing", "dir": str(dest)}

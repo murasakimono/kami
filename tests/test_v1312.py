@@ -86,3 +86,14 @@ def test_dash_and_peaks(tmp_path):
     assert pk["ok"] and len(pk["peaks"]) == 100 and max(pk["peaks"]) == 1.0
     m = a.item_peek(1)
     assert round(m["duration"]) == 3 and m["acodec"]
+
+
+def test_games_launch_guard_and_cleaner_guard(tmp_path):
+    from app.core import cleaner, games
+    assert games.launch_game("cmd.exe /c calc")["error"] == "unsupported_target"
+    assert games.launch_game(str(tmp_path))["error"] == "unsupported_target"   # klasor: Gezgin acmasin
+    assert cleaner.trash_path(str(tmp_path.anchor))["error"] == "protected"
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "f.bin").write_bytes(b"x" * 5000)
+    m = cleaner.disk_treemap(str(tmp_path))
+    assert m["ok"] and m["items"][0]["size"] == 5000 and m["approx"] is False

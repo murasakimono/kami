@@ -2411,6 +2411,12 @@ class Api(StudioMixin):
             if not path:
                 return {"ok": False, "error": "cancelled"}
             lens = not edit
+        if not path:   # v1.33.1: sekmedeki "ayri pencerede ac" -> bos Picture penceresi
+            if getattr(self, "_picture_win", None) is None and getattr(self, "_make_picture_window", None):
+                self._picture_win = self._make_picture_window()
+            elif getattr(self, "_front_picture", None):
+                self._front_picture()
+            return {"ok": True}
         if not os.path.isfile(path):
             return {"ok": False, "error": "no_file"}
         with self._inbox_lock:
@@ -4308,7 +4314,7 @@ class Api(StudioMixin):
 
     def music_spotify_now(self) -> dict[str, Any]:
         from app.core.music_hub import spotify_now
-        return spotify_now(str(self.settings.get("spotify_token") or ""))
+        return spotify_now(str(self._manager.settings.get("spotify_token") or ""))
 
     def cleaner_search(self, query: str, root: str = "", limit: int = 80) -> dict[str, Any]:
         from app.core.cleaner import search_files
