@@ -407,14 +407,29 @@ def export_project_srt(project: dict[str, Any], out_path: Path) -> dict[str, Any
     idx = 1
     for c in clips:
         st = float(c.get("start") or 0.0)
-        words = c.get("words") or []
-        if words:
-            text = " ".join(str(w.get("w") or "").strip() for w in words if str(w.get("w") or "").strip())
-            s0 = st + float(words[0].get("s") or 0.0)
-            s1 = st + float(words[-1].get("e") or c.get("dur") or 1.0)
-        else:
-            text = str(c.get("text") or "").strip()
-            s0, s1 = st, st + float(c.get("dur") or 1.0)
+        words = [w for w in (c.get("words") or []) if str(w.get("w") or "").strip()]
+        if words:   # kelimeleri okunur satirlara bol: en cok 42 karakter / 3.5 sn, 0.5 sn sessizlikte yeni satir
+            cue: list[dict] = []
+            def flush() -> None:
+                nonlocal idx
+                if cue:
+                    a0, a1 = st + float(cue[0].get("s") or 0), st + float(cue[-1].get("e") or 0)
+                    txt = " ".join(str(w["w"]).strip() for w in cue)
+                    entries.append(f"{idx}\n{_ts(a0)} --> {_ts(max(a0 + 0.3, a1))}\n{txt}\n")
+                    idx += 1
+                    cue.clear()
+            for w in words:
+                if cue:
+                    long = len(" ".join(str(x["w"]) for x in cue)) + 1 + len(str(w["w"])) > 42
+                    slow = float(w.get("s") or 0) - float(cue[-1].get("e") or 0) > 0.5
+                    lasts = float(w.get("e") or 0) - float(cue[0].get("s") or 0) > 3.5
+                    if long or slow or lasts:
+                        flush()
+                cue.append(w)
+            flush()
+            continue
+        text = str(c.get("text") or "").strip()
+        s0, s1 = st, st + float(c.get("dur") or 1.0)
         if not text:
             continue
         entries.append(f"{idx}\n{_ts(s0)} --> {_ts(max(s0 + 0.1, s1))}\n{text}\n")

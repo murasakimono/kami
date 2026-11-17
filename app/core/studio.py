@@ -1457,6 +1457,17 @@ def grade_active(g: dict) -> bool:
     return any(abs(float(v)) > 1e-4 for w in ("lift", "gamma", "gain") for v in (g.get(w) or [0, 0, 0]))
 
 
+def media_dir() -> Path:
+    """Studio'nun uretilen medya koku (Videolar\\Kami Studio). Eski/yeni kodda gecen ad; home_dir ile ayni."""
+    return home_dir()
+
+
+def export_dir() -> Path:
+    d = home_dir() / "Çıktılar"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def lut_dir() -> Path:
     d = home_dir() / "LUT"
     d.mkdir(parents=True, exist_ok=True)

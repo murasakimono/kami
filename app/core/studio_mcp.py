@@ -31,6 +31,7 @@ def _ffmpeg() -> str:
 
 
 ST = S.Studio(_ffmpeg)
+find_clip = S.find_clip   # arac kodlarinda S. onekli ve oneksiz kullaniliyor
 
 
 def cur_path(path: str = "") -> str:
@@ -938,8 +939,14 @@ def t_isolate_voice_clip(clip: str, path: str = "") -> Any:
         return res
     info = ST.info(res["path"])
     aid = S.add_asset(pr, info)
-    c["asset"] = aid
-    c["in"] = 0.0
+    kinds = {t["id"]: t.get("kind") for t in pr.get("tracks") or []}
+    if kinds.get(c["track"]) == "audio":
+        c["asset"], c["in"] = aid, 0.0
+        c.pop("speed", None)
+    else:   # video klibi: goruntu kalsin, temiz ses ayri ize, klibin kendi sesi kisilir
+        tr = S.track_for(pr, "audio")
+        S.add_clip(pr, asset=aid, track=tr, start=c["start"], dur=c["dur"], speed=sp, link=c["id"])
+        c["vol"] = 0
     save(p, pr)
     return {**res, "clip": clip, "asset_id": aid}
 

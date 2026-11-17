@@ -364,7 +364,7 @@
     if (!aids[0]) return;
     snap();
     if (clipKind(c) === "audio") { c.asset = aids[0]; c.in = 0; }
-    else { c.vol = 0; placeAt({ asset: aids[0], dur: c.dur, in: 0, vol: 1 }, "audio", c.start); }
+    else { c.vol = 0; placeAt({ asset: aids[0], dur: c.dur, in: 0, vol: 1, speed: c.speed || 1, link: c.id }, "audio", c.start); }
     changed(); toast("Temiz vokal izi eklendi");
   }
 })();
