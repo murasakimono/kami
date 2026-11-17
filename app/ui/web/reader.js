@@ -472,7 +472,7 @@ function toggleMark() {
   if (RD.tab === "marks") renderTab();
 }
 document.addEventListener("keydown", (e) => {
-  if (e.target.matches("input, textarea, select")) {
+  if (e.target.matches?.("input, textarea, select")) {
     if (e.target.id === "rdQ" && e.key === "Enter") doSearch(e.target.value);
     return;
   }

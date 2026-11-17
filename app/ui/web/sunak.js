@@ -143,7 +143,7 @@ function skBind() {
   $("#skClose").addEventListener("click", skCloseDrawer);
   $("#skBackdrop").addEventListener("click", skCloseDrawer);   // cekmece disina tiklayinca kapanir
   document.addEventListener("keydown", (e) => {
-    if (e.target.matches("input, textarea, select") || document.querySelector("dialog[open]")) return;
+    if (e.target.matches?.("input, textarea, select") || document.querySelector("dialog[open]")) return;
     if (e.key === "Escape" && SK.multi.size && !document.body.classList.contains("sk-drawer")) { SK.multi.clear(); skRender(true); return; }
     if (e.key === "Escape") skCloseDrawer();
     if (document.body.classList.contains("sk-drawer")) return;

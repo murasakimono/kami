@@ -755,7 +755,7 @@ const PL_KEYS_DEFAULT = { " ": "toggle", k: "toggle", f: "full", m: "mute", arro
 function plKeymap() { try { return { ...PL_KEYS_DEFAULT, ...JSON.parse(localStorage.getItem("kami.keys") || "{}") }; } catch { return { ...PL_KEYS_DEFAULT }; } }
 function plKey(e) {
   const altGr = e.getModifierState && e.getModifierState("AltGraph");
-  if ((!PL.open && e.key !== "Escape") || PL.capture || e.target.matches("input:not([type=range]), textarea") || ((e.ctrlKey || e.altKey) && !altGr) || e.metaKey) return;
+  if ((!PL.open && e.key !== "Escape") || PL.capture || e.target.matches?.("input:not([type=range]), textarea") || ((e.ctrlKey || e.altKey) && !altGr) || e.metaKey) return;
   const act = plKeymap()[e.key.toLowerCase()];
   if (act && PL_ACTIONS[act]) { e.preventDefault(); e.stopPropagation(); PL_ACTIONS[act][2](); plWake(); }
 }
