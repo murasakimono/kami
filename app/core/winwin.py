@@ -35,8 +35,37 @@ if os.name == "nt":
     user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
     user32.AllowSetForegroundWindow.argtypes = [wintypes.DWORD]
     user32.IsWindow.argtypes = [wintypes.HWND]
+    user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.c_void_p]
+    user32.SetWindowRgn.argtypes = [wintypes.HWND, wintypes.HANDLE, wintypes.BOOL]
+    gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+    gdi32.CreateRoundRectRgn.restype = wintypes.HANDLE
+    gdi32.CreateRoundRectRgn.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
 else:   # testler / diger sistemler
-    user32 = kernel32 = None
+    user32 = kernel32 = gdi32 = dwmapi = None
+
+
+def round_pill(title: str, hwnd: int = 0) -> bool:
+    """Mini-Ada vb. cercevesiz pencereleri tam hap (kapsul) seklinde kirpar; dis kose dikdortgeni gorunmez."""
+    if not (user32 and gdi32):
+        return False
+    h = int(hwnd or find_window(title))
+    if not (h and user32.IsWindow(h)):
+        return False
+    r = _RECT()
+    if not user32.GetClientRect(h, ctypes.byref(r)):
+        return False
+    w, hh = max(2, int(r.right - r.left)), max(2, int(r.bottom - r.top))
+    if dwmapi is not None:
+        try:   # Win11 DWM koseleri de yuvarla (1 = DWMWCP_DONOTROUND veya 2 = DWMWCP_ROUND)
+            pref = ctypes.c_int(2)
+            dwmapi.DwmSetWindowAttribute(h, 33, ctypes.byref(pref), ctypes.sizeof(pref))
+        except Exception:
+            pass
+    rgn = gdi32.CreateRoundRectRgn(0, 0, w + 1, hh + 1, hh, hh)
+    if not rgn:
+        return False
+    return bool(user32.SetWindowRgn(h, rgn, True))
 
 
 def find_window(title: str, pid: int | None = None) -> int:

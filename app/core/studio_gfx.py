@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from app.core.studio_gfx_pack2 import GRAPHICS_PACK2, STICKERS_PACK2, graphic_pack2  # noqa: E402
+from app.core.studio_gfx_pack2 import GRAPHICS_HYPER, GRAPHICS_PACK2, STICKERS_PACK2, graphic_pack2  # noqa: E402
 
 SUBSCRIBE_PRO = {
     "yt-light": "YouTube açık (beğen → abone → zil)", "yt-dark": "YouTube koyu (beğen → abone → zil)",
@@ -22,6 +22,7 @@ GRAPHICS = {
     "news-card": "Haber / Kart (MKBHD)", "split-card": "50/50 Bölünmüş Kart", "stat-table": "İstatistik / Sıralama Kartı",
     "birazdan": "Birazdan.. Köşe Rozeti",
     **GRAPHICS_PACK2,
+    **GRAPHICS_HYPER,
 }
 
 STICKERS: dict[str, dict] = {

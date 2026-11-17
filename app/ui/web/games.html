@@ -22,13 +22,30 @@
   .cfg[hidden]{display:none}
   .cfg .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .cfg input{background:#09070F;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:6px 10px;font:inherit;min-width:190px}
+  .hero{position:relative;border:1px solid rgba(157,107,255,.38);border-radius:16px;overflow:hidden;margin-bottom:16px;min-height:176px;display:flex;align-items:flex-end;background:linear-gradient(125deg,#1A122E,#0B0813)}
+  .hero[hidden]{display:none}
+  .hero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(14px) brightness(.42) saturate(1.25);transform:scale(1.12);z-index:0}
+  .hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,7,12,.94) 0%,rgba(8,7,12,.72) 55%,rgba(8,7,12,.38) 100%);z-index:1}
+  .hero-in{position:relative;z-index:2;width:100%;display:flex;align-items:center;gap:18px;padding:18px 22px}
+  .hero-cov{width:92px;height:136px;border-radius:10px;object-fit:cover;flex:none;border:1px solid rgba(255,255,255,.16);box-shadow:0 12px 30px rgba(0,0,0,.6);background:#120D1C}
+  .hero-meta{flex:1;min-width:0;display:grid;gap:6px}
+  .hero-tag{font-size:11px;font-weight:700;letter-spacing:1.2px;color:var(--em);text-transform:uppercase}
+  .hero-meta h2{margin:0;font-size:22px;line-height:1.15;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hero-sub{font-size:12.5px;color:#C4B5FD;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .hero-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:14px}
-  .gcard{background:var(--card);border:1px solid var(--line);border-radius:13px;overflow:hidden;display:flex;flex-direction:column;transition:transform .16s,border-color .16s,box-shadow .16s;cursor:pointer}
-  .gcard:hover{transform:translateY(-3px);border-color:var(--ac);box-shadow:0 8px 24px rgba(109,40,217,.22)}
+  .gcard{background:var(--card);border:1px solid var(--line);border-radius:13px;overflow:hidden;display:flex;flex-direction:column;transition:transform .16s,border-color .16s,box-shadow .16s;cursor:pointer;position:relative}
+  .gcard:hover{transform:translateY(-3px);border-color:var(--ac);box-shadow:0 10px 26px rgba(109,40,217,.26)}
   .gcard.uninst{opacity:.78}
   .cov{aspect-ratio:2/3;background:linear-gradient(135deg,#1A122B,#0C0914);display:grid;place-items:center;position:relative;overflow:hidden}
   .cov .fb{position:absolute;inset:0;display:grid;place-items:center;font-size:28px;opacity:.45;z-index:0}
-  .cov img{width:100%;height:100%;object-fit:cover;display:block;position:relative;z-index:1;background:#0C0914}
+  .cov img{width:100%;height:100%;object-fit:cover;display:block;position:relative;z-index:1;background:#0C0914;transition:transform .25s}
+  .gcard:hover .cov img{transform:scale(1.04)}
+  .cov-ov{position:absolute;inset:auto 8px 8px 8px;z-index:3;display:flex;gap:6px;padding:7px;border-radius:10px;background:rgba(10,8,16,.84);backdrop-filter:blur(8px);border:1px solid rgba(157,107,255,.32);opacity:0;transform:translateY(6px);transition:opacity .15s,transform .15s}
+  .gcard:hover .cov-ov{opacity:1;transform:none}
+  .cov-ov button{flex:1;padding:6px 8px;font-size:11.5px;border-radius:7px}
+  .fav-b{position:absolute;top:7px;left:7px;z-index:3;width:26px;height:26px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(8,7,12,.78);color:#9E96B8;cursor:pointer;display:grid;place-items:center;font-size:13px;padding:0;transition:all .14s}
+  .fav-b:hover,.fav-b.on{color:#F5B94A;border-color:rgba(245,185,74,.6)}
   .badges{position:absolute;top:7px;right:7px;z-index:2;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
   .bdg{font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;background:rgba(8,7,12,.85);border:1px solid rgba(157,107,255,.45);color:#EDE9F6}
   .bdg.em{border-color:var(--em);color:var(--em)}
@@ -80,6 +97,7 @@
       <button class="btn pri" id="custAdd">+ Ekle</button>
     </div>
   </div>
+  <div class="hero" id="hero" hidden></div>
   <div class="grid" id="grid"></div>
   <div class="mdl" id="detMdl" hidden>
     <div class="mdl-box" id="detBody"></div>
@@ -89,6 +107,45 @@
     let GAMES = [], MODE = "inst";
     const esc = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const fmtPt = (sec) => { const m = Math.floor((sec || 0) / 60); return m >= 60 ? `${(m / 60).toFixed(1)} sa` : m > 0 ? `${m} dk` : ""; };
+    const fmtAgo = (ts) => {
+      if (!ts) return "";
+      const d = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+      return d < 120 ? "Az önce" : d < 3600 ? `${Math.floor(d / 60)} dk önce` : d < 86400 ? `${Math.floor(d / 3600)} sa önce` : `${Math.floor(d / 86400)} gün önce`;
+    };
+    const pickStore = (g) => (g?.stores || []).find((s) => s.installed) || g?.stores?.[0];
+
+    function renderHero() {
+      const heroEl = document.getElementById("hero");
+      const inst = GAMES.filter((g) => g.installed);
+      if (!inst.length || q.value.trim() || storeSel.value || genreSel.value) { heroEl.hidden = true; return; }
+      const pick = inst.slice().sort((a, b) => (b.last_played || 0) - (a.last_played || 0) || (b.playtime_sec || 0) - (a.playtime_sec || 0))[0];
+      if (!pick) { heroEl.hidden = true; return; }
+      const st = pickStore(pick);
+      const pt = fmtPt(pick.playtime_sec), ago = fmtAgo(pick.last_played);
+      heroEl.hidden = false;
+      heroEl.innerHTML = `
+        ${pick.cover ? `<img class="hero-bg" src="${esc(pick.cover)}" alt="" onerror="this.remove()">` : ""}
+        <div class="hero-in">
+          ${pick.cover ? `<img class="hero-cov" src="${esc(pick.cover)}" alt="" onerror="this.remove()">` : ""}
+          <div class="hero-meta">
+            <span class="hero-tag">${ago ? `▶ Devam Et · Son oynanan: ${esc(ago)}` : "▶ Hızlı Başlat · Öne Çıkan Oyun"}</span>
+            <h2>${esc(pick.title)}</h2>
+            <div class="hero-sub">
+              ${pick.stores.map((s) => `<span class="bdg">${esc(s.store)}</span>`).join("")}
+              ${pt ? `<span>⏱ ${pt}</span>` : ""}
+              ${(pick.genres || []).length ? `<span>· ${esc(pick.genres.slice(0, 3).join(", "))}</span>` : ""}
+            </div>
+            <div class="hero-acts">
+              ${st ? `<button class="btn pri" id="heroPlay">▶ Hemen Oyna (${esc(st.store)})</button>` : ""}
+              <button class="btn" id="heroSave">💾 Save Yedeği</button>
+              <button class="btn" id="heroDet">ℹ Detaylar</button>
+            </div>
+          </div>
+        </div>`;
+      heroEl.querySelector("#heroPlay")?.addEventListener("click", () => st && api()?.games_launch?.(st.launch, pick.key));
+      heroEl.querySelector("#heroSave")?.addEventListener("click", (ev) => { ev.target.textContent = "…"; api()?.games_backup_save?.(pick.title).then((r) => { ev.target.textContent = r?.ok ? "💾 Yedeklendi ✓" : "💾 Hata"; }); });
+      heroEl.querySelector("#heroDet")?.addEventListener("click", () => openDetail(pick));
+    }
 
     function filtered() {
       const qv = q.value.trim().toLowerCase(), st = storeSel.value, gn = genreSel.value;
@@ -103,6 +160,7 @@
     }
 
     function render() {
+      renderHero();
       const list = filtered();
       cnt.textContent = `${list.length} oyun`;
       if (!list.length) { grid.innerHTML = `<div class="msg">Eşleşen oyun bulunamadı.</div>`; return; }
@@ -112,7 +170,12 @@
         return `
         <div class="gcard ${g.installed ? "" : "uninst"}" data-key="${esc(g.key)}">
           <div class="cov">${g.cover ? `<img src="${esc(g.cover)}" loading="lazy" onerror="this.remove()">` : ""}<span class="fb">🎮</span>
+            <button class="fav-b ${g.favorite ? "on" : ""}" data-fav="${esc(g.key)}" title="Favori">${g.favorite ? "★" : "☆"}</button>
             <div class="badges">${g.stores.map((s) => `<span class="bdg">${esc(s.store)}</span>`).join("")}${g.installed ? "" : `<span class="bdg em">Kütüphane</span>`}</div>
+            <div class="cov-ov">
+              <button class="btn pri" data-play="${esc(g.key)}">${g.installed ? "▶ Oyna" : "⬇ Kur"}</button>
+              <button class="btn" data-save="${esc(g.key)}" title="Ludusavi save yedeği">💾</button>
+            </div>
           </div>
           <div class="body">
             <b>${g.favorite ? "★ " : ""}${esc(g.title)}</b>
@@ -145,13 +208,17 @@
       detX.onclick = () => { detMdl.hidden = true; };
       detSave.onclick = () => api()?.games_backup_save?.(g.title);
       detHltb.onclick = () => api()?.open_external?.(`https://howlongtobeat.com/?q=${encodeURIComponent(g.title)}`);
-      detBody.querySelectorAll("[data-mplay]").forEach((b) => { b.onclick = () => api()?.games_launch?.(b.dataset.mplay); });
+      detBody.querySelectorAll("[data-mplay]").forEach((b) => { b.onclick = () => api()?.games_launch?.(b.dataset.mplay, g.key); });
     }
 
     async function load() {
       grid.innerHTML = `<div class="msg">Kütüphane taranıyor…</div>`;
       const r = await api()?.games_list?.(true).catch(() => null);
       GAMES = r?.games || [];
+      const allSt = [...new Set(GAMES.flatMap((g) => (g.stores || []).map((s) => s.store)).filter(Boolean))].sort();
+      const curSt = storeSel.value;
+      storeSel.innerHTML = `<option value="">Tüm Mağazalar</option>` + allSt.map((x) => `<option>${esc(x)}</option>`).join("");
+      storeSel.value = curSt;
       const allG = [...new Set(GAMES.flatMap((g) => g.genres || []))].sort();
       const curG = genreSel.value;
       genreSel.innerHTML = `<option value="">Tüm Türler</option>` + allG.map((x) => `<option>${esc(x)}</option>`).join("");
@@ -188,8 +255,16 @@
     };
     detMdl.onclick = (e) => { if (e.target === detMdl) detMdl.hidden = true; };
     grid.onclick = async (e) => {
+      const fv = e.target.closest("[data-fav]");
+      if (fv) {
+        e.stopPropagation();
+        const g = GAMES.find((x) => x.key === fv.dataset.fav); if (!g) return;
+        const r = await api()?.games_toggle_favorite?.(g.key).catch(() => null);
+        if (r?.ok) { g.favorite = !!r.favorite; render(); }
+        return;
+      }
       const p = e.target.closest("[data-play]");
-      if (p) { e.stopPropagation(); const g = GAMES.find((x) => x.key === p.dataset.play); if (g?.stores?.[0]) api()?.games_launch?.(g.stores[0].launch); return; }
+      if (p) { e.stopPropagation(); const g = GAMES.find((x) => x.key === p.dataset.play); const st = pickStore(g); if (st) api()?.games_launch?.(st.launch, g.key); return; }
       const s = e.target.closest("[data-save]");
       if (s) {
         e.stopPropagation();

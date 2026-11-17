@@ -9,18 +9,20 @@
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; font-family: "Chakra Petch", sans-serif; }
   .island {
     position: absolute; inset: 0;
-    display: flex; align-items: center; gap: 10px;
-    padding: 0 10px 0 12px; box-sizing: border-box;
-    background: linear-gradient(135deg, #161124, #09070E 78%);
-    border: 1px solid #3F315B; border-radius: 999px;
-    box-shadow: 0 8px 26px rgba(0,0,0,.55), inset 0 0 22px rgba(124,58,237,.16);
+    display: flex; align-items: center; gap: 9px;
+    padding: 0 11px; box-sizing: border-box;
+    background: linear-gradient(135deg, #171128 0%, #0A0812 80%);
+    border: 1px solid rgba(167,139,250,.34); border-radius: 999px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 0 22px rgba(124,58,237,.18);
   }
   .eye {
-    width: 24px; height: 24px; flex: none; border-radius: 50%;
+    width: 26px; height: 26px; flex: none; border-radius: 50%;
     background: #120D1F url("eye/assets/idle.webp") center/125% no-repeat;
-    border: 1.5px solid #7C3AED;
-    cursor: pointer;
+    border: 1.5px solid #8B5CF6;
+    cursor: pointer; transition: transform .15s, border-color .15s;
   }
+  .eye:hover { transform: scale(1.06); border-color: #2EE6A6; }
+  .island.in-room .eye { border-color: #2EE6A6; }
   .metric { display: flex; align-items: baseline; gap: 4px; color: #F2EEFA; font-size: 13px; font-weight: 700; white-space: nowrap; }
   .metric small { font-size: 10px; color: #9D93B3; font-weight: 600; }
   .sep { width: 1px; height: 18px; background: rgba(255,255,255,.1); flex: none; }
@@ -37,17 +39,19 @@
   .btn:hover { background: rgba(124,58,237,.42); }
   .btn.clip { border-color: rgba(46,230,166,.38); background: rgba(20,184,138,.18); color: #A7F3D0; }
   .btn.clip:hover { background: rgba(20,184,138,.36); }
-  /* oda seridi (Discord oyun ici gibi) */
+  /* oda seridi (Discord oyun ici kapsulu) */
   .room { display: none; align-items: center; gap: 6px; min-width: 0; }
   .island.in-room .room { display: flex; } .island.in-room .dl { display: none; }
-  .av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; flex: none;
-    background: #3B2A5C; box-shadow: 0 0 0 2px transparent; transition: box-shadow .12s; position: relative; }
-  .av.talk { box-shadow: 0 0 0 2px #2EE6A6, 0 0 10px rgba(46,230,166,.6); }
+  .av { width: 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; flex: none;
+    background: #3B2A5C; box-shadow: 0 0 0 2px transparent; transition: box-shadow .12s, transform .12s; position: relative; }
+  .av.talk { box-shadow: 0 0 0 2px #2EE6A6, 0 0 10px rgba(46,230,166,.65); transform: scale(1.06); }
   .av.muted::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 9px; height: 9px; border-radius: 50%; background: #FF4D6A; border: 1.5px solid #09070E; }
-  .rname { font-size: 11px; color: #C4B5FD; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rb { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(167,139,250,.35); background: rgba(124,58,237,.18); color: #EDE9FE; cursor: pointer; display: grid; place-items: center; padding: 0; flex: none; }
-  .rb svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+  .rname { font-size: 11px; font-weight: 600; color: #D8CCF8; max-width: 82px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .rb { width: 25px; height: 25px; border-radius: 50%; border: 1px solid rgba(167,139,250,.35); background: rgba(124,58,237,.18); color: #EDE9FE; cursor: pointer; display: grid; place-items: center; padding: 0; flex: none; }
+  .rb svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; }
   .rb.off { background: rgba(255,77,106,.22); border-color: rgba(255,77,106,.5); color: #FFB3C0; }
+  .rb.leave { background: rgba(239,68,68,.22); border-color: rgba(248,113,113,.48); color: #FCA5A5; }
+  .rb.leave:hover { background: rgba(239,68,68,.42); color: #fff; }
   .x {
     width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent;
     color: #7D7394; font-size: 12px; cursor: pointer; flex: none;
@@ -66,6 +70,7 @@
     <div id="avs" style="display:flex;gap:4px"></div><span class="rname" id="rname"></span>
     <button class="rb" id="rMic" title="Mikrofon (Kami Oda)"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
     <button class="rb" id="rDeaf" title="Kulaklık (Kami Oda)"><svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H4zM17 14h3v6h-3z"/></svg></button>
+    <button class="rb leave" id="rLeave" title="Odadan Ayrıl"><svg viewBox="0 0 24 24"><path d="M3 15c5-5 13-5 18 0l-3 3-3-2v-2a10 10 0 0 0-6 0v2l-3 2z"/></svg></button>
   </div>
   <div class="spacer"></div>
   <button class="btn clip" id="clipBtn" title="Son 30 sn anlik klip kaydet">30sn Klip</button>
@@ -120,6 +125,7 @@
   $("#closeBtn").addEventListener("click", () => api()?.mini_island_toggle(false));
   $("#rMic").addEventListener("click", () => api()?.room_island_cmd("mute"));
   $("#rDeaf").addEventListener("click", () => api()?.room_island_cmd("deaf"));
+  $("#rLeave").addEventListener("click", () => api()?.room_island_cmd("leave"));
   $("#rname").addEventListener("click", () => api()?.room_island_cmd("open"));
   $("#clipBtn").addEventListener("click", async () => {
     const btn = $("#clipBtn");

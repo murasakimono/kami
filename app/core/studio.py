@@ -2556,7 +2556,7 @@ def sfx_dir() -> Path:
     return d
 
 
-_SFX_VERSION = "2.0-cc0"
+_SFX_VERSION = "2.1-kami"
 
 
 def _sfx_asset(key: str) -> Path | None:

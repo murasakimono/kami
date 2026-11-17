@@ -126,18 +126,26 @@ class Room:
             self.events = evs
             self.seq = len(evs)
 
-    def touch(self, pid: str, name: str, kind: str = "user") -> None:
+    def touch(self, pid: str, name: str, kind: str = "user", cid: str = "") -> None:
+        evicted: list[str] = []
         with self.cv:
+            if cid:   # ayni sekme/pencere yenilenince eski hayalet kimligi aninda dusur
+                for old_id in [k for k, v in self.peers.items() if k != pid and v.get("cid") == cid and v.get("kind") == kind]:
+                    old_p = self.peers.pop(old_id, None)
+                    if old_p:
+                        evicted.append(old_p["name"])
             p = self.peers.get(pid)
             new = p is None
             if new:
                 p = self.peers[pid] = {"name": name[:40] or "Misafir", "kind": kind, "seen": time.time(), "muted": False,
-                                       "deaf": False, "sharing": "", "bg": False, "q": [], "joined": time.time()}
+                                       "deaf": False, "sharing": "", "bg": False, "q": [], "joined": time.time(), "cid": cid[:48]}
             else:
                 p["seen"] = time.time()
                 p["name"] = name[:40] or p["name"]
+                if cid:
+                    p["cid"] = cid[:48]
             self.cv.notify_all()
-        if new and kind == "user":
+        if new and kind == "user" and not evicted:
             self.say(p["name"], "odaya girdi", "sys")
             if self.on_join:
                 try:
@@ -151,6 +159,20 @@ class Room:
             self.cv.notify_all()
         if p and p["kind"] == "user":
             self.say(p["name"], "ayrıldı", "sys")
+
+    def leave_cid(self, cid: str) -> None:
+        """Pencere kapanisinda ayni istemciye (or. ev sahibi penceresi) ait hayaletleri temizle."""
+        if not cid:
+            return
+        removed: list[dict[str, Any]] = []
+        with self.cv:
+            for k in [k for k, v in self.peers.items() if v.get("cid") == cid]:
+                removed.append(self.peers.pop(k))
+            if removed:
+                self.cv.notify_all()
+        for p in removed:
+            if p.get("kind") == "user":
+                self.say(p["name"], "ayrıldı", "sys")
 
     def set_me(self, pid: str, **kw: Any) -> None:
         with self.cv:
@@ -223,14 +245,19 @@ def soundboard_list() -> list[dict[str, str]]:
 
 
 _SB_CACHE: dict[str, bytes] = {}
+_SB_VER = ""
 
 
 def soundboard_file(key: str) -> bytes | None:
+    global _SB_VER
+    from app.core import studio
+    if _SB_VER != getattr(studio, "_SFX_VERSION", ""):
+        _SB_CACHE.clear()
+        _SB_VER = getattr(studio, "_SFX_VERSION", "")
     if key in _SB_CACHE:
         return _SB_CACHE[key]
     if key not in {x["id"] for x in soundboard_list()}:
         return None
-    from app.core import studio
     from app.engines.ytdlp_engine import find_ffmpeg
     got = studio.ensure_sfx(find_ffmpeg() or "", key)
     f = got.get(key)
@@ -528,7 +555,8 @@ def _handler(srv: RoomServer):
                     pid = (q.get("id") or [""])[0][:40]
                     if not pid:
                         return self._err(400)
-                    r.touch(pid, (q.get("name") or ["Misafir"])[0], (q.get("kind") or ["user"])[0][:10])
+                    cid = (q.get("cid") or [""])[0][:48]
+                    r.touch(pid, (q.get("name") or ["Misafir"])[0], (q.get("kind") or ["user"])[0][:10], cid)
                     try:
                         ack = int((q.get("a") or ["-1"])[0])
                     except ValueError:

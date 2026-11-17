@@ -387,7 +387,8 @@ def t_tpl(id: str, t: float, clip: str = "", path: str = "") -> Any:
     return {"added": added}
 
 
-@tool("add_graphic", "Hareketli grafik ekler: lower, lower-min, location, chapter, endscreen, callout, progress, highlight, counter, quote. "
+@tool("add_graphic", "Hareketli grafik ekler: lower, lower-min, location, chapter, endscreen, callout, progress, highlight, counter, quote, "
+      "ve HyperFrames Motion bloklari (hf-glass-shard, hf-wireframe-portal, hf-code-slice, hf-orbit-carousel, hf-canopy-part, hf-matrix-kinetic). "
       "style: title, sub, num, from/to/prefix/suffix, color, x, y, size, font.", {"kind": STR, "start": N, "dur": N, "style": {"type": "object"}, "path": PATH}, ["kind", "start"])
 def t_gfx(kind: str, start: float, dur: float = 4, style: dict | None = None, path: str = "") -> Any:
     p, pr = load(path)

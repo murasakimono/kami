@@ -4,7 +4,7 @@
 
 const PX = {
   queue: [], qi: -1, pending: null, nextShown: false, nextCancel: false, lib: null, libTab: "queue", libSeries: null,
-  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, xfade: 0, assStyle: "orig", ocrLang: "auto", dictClick: true, lyrics: true, lrclib: true, karaoke: true, glow: true, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100, rot: 0, flip: false }, audio: "off" },
+  cfg: { langs: "tr,en", trEngine: "nllb", dialog: false, delay: 0, xfade: 0, assStyle: "orig", ocrLang: "auto", dictClick: true, lyrics: true, lrclib: true, karaoke: true, glow: true, capsuleBar: false, sub: { size: "m", color: "#ffffff", bg: "semi", pos: 0 }, vid: { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100, rot: 0, flip: false }, audio: "off" },
 };
 const pxBase = (p) => String(p).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 const pxSave = () => { try { localStorage.setItem("kami.player", JSON.stringify(PX.cfg)); } catch { /* yok */ } };
@@ -327,6 +327,7 @@ window.plSettings = () => {
     <div class="px-keys">${pxKeysHtml()}</div>
     <button class="pl-b" data-act="keyreset">${plL("Varsayılana dön", "Reset to defaults")}</button>
     <h4>${plL("Genel", "General")}</h4>
+    ${pxBool("capsuleBar", plL("Yüzen kapsül kontrol çubuğu (tema)", "Floating capsule control bar (theme)"))}
     <button class="pl-b" data-act="default">${plL("Varsayılan oynatıcı yap (Windows ayarları)", "Make default player (Windows settings)")}</button>
     ${window.pxExtraToolsHtml?.() || ""}`;
   pxTabify(p);
@@ -373,6 +374,7 @@ function pxBool(key, label) {
 }
 function pxBoolApply(key) {
   if (key === "dictClick") { const b = $("#plSubs"); if (b) b.dataset.h = ""; }
+  if (key === "capsuleBar") $("#player")?.classList.toggle("pl-capsule", !!PX.cfg.capsuleBar);
   if (["lyrics", "lrclib", "glow"].includes(key) && PL.open && PL.info) window.plMusicStart?.(PL.info);
 }
 // h4 basliklarini sekmelere cevir (Altyazi | Goruntu | Ses | Muzik | Kisayollar | Genel); son sekme hatirlanir
@@ -402,7 +404,7 @@ function pxTabify(p) {
   show(last);
 }
 
-function pxApplyAll() { pxApplySub(); pxApplyVideo(); window.plApplyAudio(); }
+function pxApplyAll() { $("#player")?.classList.toggle("pl-capsule", !!PX.cfg.capsuleBar); pxApplySub(); pxApplyVideo(); window.plApplyAudio(); }
 function pxApplySub() {
   const el = $("#player"); if (!el) return;
   const s = PX.cfg.sub;

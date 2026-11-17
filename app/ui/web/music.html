@@ -39,6 +39,21 @@
   .meta{flex:1;min-width:0}
   .meta b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px}
   .meta small{color:var(--mut);font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dur{font-size:12px;color:var(--mut);min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
+  .qa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px;margin-bottom:14px}
+  .qa-card{display:flex;align-items:center;gap:11px;padding:0;height:56px;border-radius:10px;overflow:hidden;background:rgba(28,21,44,.85);border:1px solid var(--line);cursor:pointer;transition:background .14s,border-color .14s;text-align:left;color:var(--tx);font:inherit}
+  .qa-card:hover{background:#231A38;border-color:var(--ac)}
+  .qa-cov{width:56px;height:56px;flex:none;object-fit:cover;background:linear-gradient(135deg,#4C1D95,#10B981);display:grid;place-items:center;font-size:20px}
+  .qa-card b{flex:1;min-width:0;padding-right:10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .alb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(164px,1fr));gap:14px}
+  .acard{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:11px;display:flex;flex-direction:column;gap:8px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;position:relative}
+  .acard:hover{transform:translateY(-3px);border-color:var(--ac);box-shadow:0 10px 26px rgba(109,40,217,.22)}
+  .acov-w{position:relative;aspect-ratio:1;width:100%;border-radius:9px;overflow:hidden;background:linear-gradient(135deg,#24183D,#0E0A16);display:grid;place-items:center;font-size:32px}
+  .acov-w img{width:100%;height:100%;object-fit:cover;display:block}
+  .aplay{position:absolute;right:8px;bottom:8px;width:36px;height:36px;border-radius:50%;border:0;background:var(--em);color:#08070C;font-weight:700;cursor:pointer;display:grid;place-items:center;opacity:0;transform:translateY(6px);transition:opacity .15s,transform .15s;box-shadow:0 8px 20px rgba(0,0,0,.5)}
+  .acard:hover .aplay{opacity:1;transform:none}
+  .acard b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .acard small{font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .sec-h{margin:14px 0 6px;font-size:11px;font-weight:700;letter-spacing:1.2px;color:#C4B5FD;text-transform:uppercase;display:flex;align-items:center;gap:8px}
   .bar{grid-column:1/-1;background:#0A0810;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(200px,1fr) minmax(280px,1.4fr) minmax(240px,1fr);align-items:center;gap:16px;padding:0 18px}
   .b-left{display:flex;align-items:center;gap:11px;min-width:0}
@@ -168,7 +183,28 @@
     else if (n === "local") loadLocal();
     else if (n === "ytm") loadYtmBar();
     else if (q.value.trim()) search();
-    else list.innerHTML = `<div style="color:var(--mut);padding:16px">Spotify kataloğunda şarkı, albüm veya çalma listesi ara.</div>`;
+    else renderHome();
+  }
+
+  async function renderHome() {
+    list.innerHTML = `<div class="sec-h">⚡ Hızlı Erişim</div>
+      <div class="qa-grid">
+        <button class="qa-card" data-qnav="saved"><span class="qa-cov">❤️</span><b>Beğenilen Şarkılar</b></button>
+        <button class="qa-card" data-qnav="recent"><span class="qa-cov" style="background:linear-gradient(135deg,#1E1B4B,#6D28D9)">🕒</span><b>Son Çalınanlar</b></button>
+        <button class="qa-card" data-qnav="local"><span class="qa-cov" style="background:linear-gradient(135deg,#064E3B,#2EE6A6)">📁</span><b>Yerel Müzik Klasörleri</b></button>
+        <button class="qa-card" data-qnav="ytm"><span class="qa-cov" style="background:linear-gradient(135deg,#7F1D1D,#EF4444)">▶</span><b>YouTube Music</b></button>
+      </div>
+      <div id="homePls"><div style="color:var(--mut);padding:8px">Çalma listeleri yükleniyor…</div></div>`;
+    if (!PLAYLISTS.length) await loadPlaylistsCache();
+    const hp = document.getElementById("homePls");
+    if (!hp) return;
+    hp.innerHTML = PLAYLISTS.length
+      ? `<div class="sec-h">📚 Çalma Listelerin</div><div class="alb-grid">${PLAYLISTS.slice(0, 12).map((p) => `
+        <div class="acard" data-openpl="${esc(p.id)}" data-pltitle="${esc(p.title)}" data-pluri="${esc(p.uri)}">
+          <div class="acov-w">${p.cover ? `<img src="${esc(p.cover)}" alt="" loading="lazy">` : "🎵"}<button class="aplay" data-splayctx="${esc(p.uri)}" title="Çal">▶</button></div>
+          <b>${esc(p.title)}</b><small>${esc(p.owner)} · ${p.total} şarkı</small>
+        </div>`).join("")}</div>`
+      : `<div style="color:var(--mut);padding:8px">Spotify kataloğunda ara veya sol alttan Spotify hesabını bağla.</div>`;
   }
 
   async function loadPlaylistsCache() {
@@ -198,6 +234,7 @@
       <div class="row">
         ${t.cover ? `<img class="cov-sm" src="${esc(t.cover)}">` : ""}
         <div class="meta"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? " · " + esc(t.album) : ""}</small></div>
+        ${t.duration_ms ? `<span class="dur">${fmtMs(t.duration_ms)}</span>` : ""}
         <button class="btn pri" data-splay="${esc(t.uri)}" ${plId ? `data-ctx="${esc(CUR_PL?.uri || "")}"` : ""}>▶</button>
         <button class="btn" data-spq="${esc(t.uri)}" title="Sıraya ekle">+ Sıra</button>
         <button class="btn" data-ytdlsp="${esc(t.title)}" data-ytart="${esc(t.artist)}" title="MP3/FLAC indir">⬇</button>
@@ -228,12 +265,16 @@
     if (!PLAYLISTS.length) loadPlaylistsCache();
     let html = "";
     if (ITEMS.length) html += `<div class="sec-h">Şarkılar</div>` + ITEMS.map((it) => trackRowHtml(it, null)).join("");
-    if ((r.albums || []).length) html += `<div class="sec-h">Albümler</div>` + r.albums.map((a) => `
-      <div class="row">${a.cover ? `<img class="cov-sm" src="${esc(a.cover)}">` : ""}<div class="meta"><b>${esc(a.title)}</b><small>${esc(a.artist)} · ${a.total} parça</small></div>
-      <button class="btn" data-openalb="${esc(a.id)}" data-albtitle="${esc(a.title)}" data-alburi="${esc(a.uri)}">Aç</button><button class="btn pri" data-splayctx="${esc(a.uri)}">▶</button></div>`).join("");
-    if ((r.playlists || []).length) html += `<div class="sec-h">Çalma Listeleri</div>` + r.playlists.map((p) => `
-      <div class="row">${p.cover ? `<img class="cov-sm" src="${esc(p.cover)}">` : ""}<div class="meta"><b>${esc(p.title)}</b><small>${esc(p.owner)} · ${p.total} şarkı</small></div>
-      <button class="btn" data-openpl="${esc(p.id)}" data-pltitle="${esc(p.title)}" data-pluri="${esc(p.uri)}">Aç</button><button class="btn pri" data-splayctx="${esc(p.uri)}">▶</button></div>`).join("");
+    if ((r.albums || []).length) html += `<div class="sec-h">Albümler</div><div class="alb-grid">` + r.albums.map((a) => `
+      <div class="acard" data-openalb="${esc(a.id)}" data-albtitle="${esc(a.title)}" data-alburi="${esc(a.uri)}">
+        <div class="acov-w">${a.cover ? `<img src="${esc(a.cover)}" loading="lazy">` : "💿"}<button class="aplay" data-splayctx="${esc(a.uri)}">▶</button></div>
+        <b>${esc(a.title)}</b><small>${esc(a.artist)} · ${a.total} parça</small>
+      </div>`).join("") + `</div>`;
+    if ((r.playlists || []).length) html += `<div class="sec-h">Çalma Listeleri</div><div class="alb-grid">` + r.playlists.map((p) => `
+      <div class="acard" data-openpl="${esc(p.id)}" data-pltitle="${esc(p.title)}" data-pluri="${esc(p.uri)}">
+        <div class="acov-w">${p.cover ? `<img src="${esc(p.cover)}" loading="lazy">` : "🎵"}<button class="aplay" data-splayctx="${esc(p.uri)}">▶</button></div>
+        <b>${esc(p.title)}</b><small>${esc(p.owner)} · ${p.total} şarkı</small>
+      </div>`).join("") + `</div>`;
     list.innerHTML = html || `<div style="color:var(--mut);padding:12px">Sonuç bulunamadı.</div>`;
   }
 
@@ -248,12 +289,11 @@
       const r = await api()?.music_spotify_playlists?.().catch(() => null);
       if (!r?.ok) { list.innerHTML = `<div style="color:var(--mut);padding:12px">Listeler alınamadı (${esc(r?.error || "giriş yap")}).</div>`; return; }
       PLAYLISTS = r.items || [];
-      list.innerHTML = PLAYLISTS.map((p) => `
-        <div class="row">${p.cover ? `<img class="cov-sm" src="${esc(p.cover)}">` : ""}
-          <div class="meta"><b>${esc(p.title)}</b><small>${esc(p.owner)} · ${p.total} şarkı</small></div>
-          <button class="btn" data-openpl="${esc(p.id)}" data-pltitle="${esc(p.title)}" data-pluri="${esc(p.uri)}">Aç</button>
-          <button class="btn pri" data-splayctx="${esc(p.uri)}">▶ Çal</button>
-        </div>`).join("") || `<div style="color:var(--mut);padding:12px">Çalma listesi yok.</div>`;
+      list.innerHTML = PLAYLISTS.length ? `<div class="alb-grid">` + PLAYLISTS.map((p) => `
+        <div class="acard" data-openpl="${esc(p.id)}" data-pltitle="${esc(p.title)}" data-pluri="${esc(p.uri)}">
+          <div class="acov-w">${p.cover ? `<img src="${esc(p.cover)}" loading="lazy">` : "🎵"}<button class="aplay" data-splayctx="${esc(p.uri)}">▶</button></div>
+          <b>${esc(p.title)}</b><small>${esc(p.owner)} · ${p.total} şarkı</small>
+        </div>`).join("") + `</div>` : `<div style="color:var(--mut);padding:12px">Çalma listesi yok.</div>`;
     } else {
       const r = mode === "saved" ? await api()?.music_spotify_saved?.().catch(() => null) : await api()?.music_spotify_recent?.().catch(() => null);
       if (!r?.ok) { list.innerHTML = `<div style="color:var(--mut);padding:12px">Alınamadı (${esc(r?.error || "")}).</div>`; return; }
@@ -396,6 +436,8 @@
     if (p) { const sc = await api()?.music_local_scan?.(p.dataset.locplaydir, "").catch(() => null); if (sc?.items?.[0]) api()?.music_local_play?.(sc.items[0].path, p.dataset.locplaydir); }
   };
   list.onclick = async (e) => {
+    const qnav = e.target.closest("[data-qnav]");
+    if (qnav) { setNav(qnav.dataset.qnav); return; }
     const ytp = e.target.closest("[data-ytplay]");
     if (ytp) { const it = ITEMS[+ytp.dataset.ytplay]; if (it) api()?.player_open_url?.(it.url); return; }
     const ytd = e.target.closest("[data-ytdl]");
@@ -403,9 +445,9 @@
     const ytdlsp = e.target.closest("[data-ytdlsp]");
     if (ytdlsp) { ytdlsp.textContent = "…"; await ytBridgeAction(ytdlsp.dataset.ytdlsp, ytdlsp.dataset.ytart, "dl"); ytdlsp.textContent = "✓"; return; }
     const sp = e.target.closest("[data-splay]");
-    if (sp) { await api()?.music_spotify_play?.(sp.dataset.splay, sp.dataset.ctx || ""); setTimeout(pollSpotify, 400); return; }
+    if (sp) { e.stopPropagation(); await api()?.music_spotify_play?.(sp.dataset.splay, sp.dataset.ctx || ""); setTimeout(pollSpotify, 400); return; }
     const sctx = e.target.closest("[data-splayctx]");
-    if (sctx) { await api()?.music_spotify_play?.("", sctx.dataset.splayctx); setTimeout(pollSpotify, 400); return; }
+    if (sctx) { e.stopPropagation(); await api()?.music_spotify_play?.("", sctx.dataset.splayctx); setTimeout(pollSpotify, 400); return; }
     const spq = e.target.closest("[data-spq]");
     if (spq) { await api()?.music_spotify_queue?.(spq.dataset.spq); spq.textContent = "✓"; return; }
     const opl = e.target.closest("[data-openpl]");
@@ -444,8 +486,8 @@
     const lp = e.target.closest("[data-locplay]");
     if (lp) api()?.music_local_play?.(lp.dataset.locplay, lp.dataset.locroot);
   };
-  window.addEventListener("pywebviewready", () => { refreshAuthUi(); pollSpotify(); });
-  setTimeout(() => { if (window.pywebview) { refreshAuthUi(); pollSpotify(); } }, 350);
+  window.addEventListener("pywebviewready", () => { refreshAuthUi(); pollSpotify(); renderHome(); });
+  setTimeout(() => { if (window.pywebview) { refreshAuthUi(); pollSpotify(); if (NAV === "sp_search" && !q.value.trim()) renderHome(); } }, 350);
   setInterval(pollSpotify, 2500);
 </script>
 </body>

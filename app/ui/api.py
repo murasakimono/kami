@@ -2123,8 +2123,20 @@ class Api(StudioMixin):
         """Ev sahibinin oda penceresi (room.js) -> Mini-Ada: kim var, kim konusuyor, mikrofon/kulaklik."""
         import time as _t
         st = state if isinstance(state, dict) else {}
+        if st.get("left"):
+            self._room_island = None
+            if getattr(self, "_island_auto", False) and self._island_shown:
+                self._island_auto = False
+                self.mini_island_toggle(False)
+            return True
         people = [{"name": str(p.get("name", ""))[:24], "talk": bool(p.get("talk")), "muted": bool(p.get("muted")),
                    "me": bool(p.get("me"))} for p in (st.get("people") or [])[:8] if isinstance(p, dict)]
+        if not people:
+            self._room_island = None
+            if getattr(self, "_island_auto", False) and self._island_shown:
+                self._island_auto = False
+                self.mini_island_toggle(False)
+            return True
         self._room_island = {"t": _t.time(), "people": people, "muted": bool(st.get("muted")), "deaf": bool(st.get("deaf"))}
         others = sum(1 for p in people if not p["me"])
         if self._manager.settings.get("room_island") and others and not self._island_shown:
@@ -2136,10 +2148,15 @@ class Api(StudioMixin):
         return True
 
     def room_island_cmd(self, cmd: str) -> bool:
-        if cmd in ("mute", "deaf", "open"):
+        if cmd in ("mute", "deaf", "open", "leave"):
             if cmd == "open":
                 self.room_open(True)
                 return True
+            if cmd == "leave":
+                self._room_island = None
+                if getattr(self, "_island_auto", False) and self._island_shown:
+                    self._island_auto = False
+                    self.mini_island_toggle(False)
             self._room_island_q = (getattr(self, "_room_island_q", []) + [cmd])[-5:]
         return True
 
@@ -3983,6 +4000,8 @@ class Api(StudioMixin):
             if self._island_win is not None:
                 try:
                     self._island_win.show()
+                    from app.core import winwin
+                    winwin.round_pill("Kami Mini-Ada")
                 except Exception:
                     log.debug("mini_island show", exc_info=True)
             self._island_shown = True
@@ -4327,9 +4346,13 @@ class Api(StudioMixin):
         TRACKER.ensure_started()
         return list_games(include_owned=include_owned)
 
-    def games_launch(self, launch_target: str) -> dict[str, Any]:
+    def games_launch(self, launch_target: str, key: str = "") -> dict[str, Any]:
         from app.core.games import launch_game
-        return launch_game(launch_target)
+        return launch_game(launch_target, key=key)
+
+    def games_toggle_favorite(self, key: str) -> dict[str, Any]:
+        from app.core.games import toggle_favorite
+        return toggle_favorite(key)
 
     def games_backup_save(self, title: str, out_dir: str = "") -> dict[str, Any]:
         from app.core.games import backup_save_ludusavi

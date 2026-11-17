@@ -561,9 +561,28 @@ def main() -> int:
         w = webview.create_window("Kami Oda", url=url, js_api=api, width=1280, height=820, min_size=(420, 520),
                                   background_color="#07060B", text_select=True)
 
+        def closing() -> None:
+            try:
+                w.evaluate_js("window.__kamiRoomLeave && window.__kamiRoomLeave()")
+            except Exception:
+                pass
+            try:
+                api.room_island_push({"people": [], "left": True})
+            except Exception:
+                pass
+        w.events.closing += closing
+
         def closed() -> None:
             api._room_win = None
             room_keys_on(False)
+            try:
+                from app.core import room as _room_mod
+                rm = _room_mod.SERVER.room
+                if rm is not None:
+                    rm.leave_cid("kami-host")
+                api.room_island_push({"people": [], "left": True})
+            except Exception:
+                pass
         w.events.closed += closed
 
         def loaded() -> None:
@@ -799,9 +818,9 @@ def main() -> int:
     # ---- Faz 7.5: Masaustu Mini-Ada Seridi
     def _make_island_window():
         sc = webview.screens[0] if webview.screens else None
-        w, h = 440, 52
+        w, h = 480, 52
         x, y = ((sc.x + (sc.width - w) // 2), (sc.y + 14)) if sc else (None, None)
-        return webview.create_window(
+        win = webview.create_window(
             "Kami Mini-Ada",
             url=str(paths.WEB_DIR / "mini-island.html"),
             js_api=api,
@@ -810,12 +829,23 @@ def main() -> int:
             x=x,
             y=y,
             frameless=True,
+            shadow=False,
+            transparent=True,
             easy_drag=True,
             on_top=True,
             resizable=False,
             background_color="#09070E",
             focus=False,
         )
+
+        def _clip_island() -> None:
+            try:
+                winwin.round_pill("Kami Mini-Ada")
+            except Exception:
+                pass
+        win.events.loaded += _clip_island
+        win.events.shown += _clip_island
+        return win
 
     api._island_factory = _make_island_window
     if settings.get("mini_island"):

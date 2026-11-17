@@ -76,6 +76,38 @@ def _covers_cache_path() -> Path:
     return paths.DATA_DIR / "game_covers_cache.json"
 
 
+def _last_played_path() -> Path:
+    from app import paths
+    return paths.DATA_DIR / "game_last_played.json"
+
+
+def _favorites_path() -> Path:
+    from app import paths
+    return paths.DATA_DIR / "game_favorites.json"
+
+
+def _record_last_played(key: str) -> None:
+    if not key:
+        return
+    lp = _load_json(_last_played_path())
+    lp[key] = int(time.time())
+    _save_json(_last_played_path(), lp)
+
+
+def toggle_favorite(key: str) -> dict[str, Any]:
+    k = str(key or "").strip()
+    if not k:
+        return {"ok": False}
+    favs = _load_json(_favorites_path())
+    cur = not bool(favs.get(k))
+    if cur:
+        favs[k] = True
+    else:
+        favs.pop(k, None)
+    _save_json(_favorites_path(), favs)
+    return {"ok": True, "favorite": cur}
+
+
 def _load_json(p: Path) -> dict[str, Any]:
     try:
         if p.is_file():
@@ -488,13 +520,18 @@ def add_custom_game(title: str, exe_path: str, store: str = "Özel") -> dict[str
 def list_games(include_owned: bool = True) -> dict[str, Any]:
     raw = _scan_steam() + _scan_epic() + _scan_gog() + _scan_riot()
     raw += (_load_json(_custom_games_path()).get("items") or [])
+    pl_cache = _playnite_cache_path()
+    if not pl_cache.is_file() and (Path(os.environ.get("APPDATA", "")) / "Playnite/library/games.db").is_file():
+        import_playnite_library()
+    pl_items = (_load_json(pl_cache).get("items") or [])
     if include_owned:
         raw += _scan_steam_owned()
-        pl_cache = _playnite_cache_path()
-        if not pl_cache.is_file() and (Path(os.environ.get("APPDATA", "")) / "Playnite/library/games.db").is_file():
-            import_playnite_library()
-        raw += (_load_json(pl_cache).get("items") or [])
+        raw += pl_items
+    else:
+        raw += [x for x in pl_items if x.get("installed")]
     playtimes = _load_json(_playtime_path())
+    last_played = _load_json(_last_played_path())
+    favs = _load_json(_favorites_path())
     sgdb_key = _token_store("sgdb_key.bin").load() or ""
     cov_cache = _load_json(_covers_cache_path())
     cov_dirty = False
@@ -538,9 +575,10 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
                 "cover": cover,
                 "path": g.get("path") or "",
                 "playtime_sec": pt_sec,
+                "last_played": int(last_played.get(key, 0)),
                 "genres": list(dict.fromkeys(g.get("genres") or [])),
                 "categories": list(dict.fromkeys(g.get("categories") or [])),
-                "favorite": bool(g.get("favorite")),
+                "favorite": bool(favs[key]) if key in favs else bool(g.get("favorite")),
             }
         else:
             if g.get("installed"):
@@ -572,7 +610,7 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
     return {"ok": True, "games": games, "count": len(games)}
 
 
-def launch_game(launch_target: str) -> dict[str, Any]:
+def launch_game(launch_target: str, key: str = "") -> dict[str, Any]:
     t = str(launch_target or "").strip()
     if not t:
         return {"ok": False, "error": "empty"}
@@ -586,6 +624,7 @@ def launch_game(launch_target: str) -> dict[str, Any]:
             rc_exe = str(rc.get("rc_live") or rc.get("rc_default") or "").strip()
             if rc_exe and Path(rc_exe).is_file():
                 subprocess.Popen([rc_exe, f"--launch-product={prod}", "--launch-patchline=live"])
+                _record_last_played(key)
                 return {"ok": True}
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:120]}
@@ -596,6 +635,7 @@ def launch_game(launch_target: str) -> dict[str, Any]:
         return {"ok": False, "error": "unsupported_target"}
     try:
         os.startfile(t)
+        _record_last_played(key)
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:120]}
@@ -660,10 +700,11 @@ class GamePlayTracker:
 
     def _tick(self) -> None:
         import psutil
-        # kutuphane taramasi (tum .acf / GOG db) 5 dk onbellekli; surec kontrolu her 10 sn
+        # kutuphane taramasi (tum .acf / GOG / Riot / Ozel) 5 dk onbellekli; surec kontrolu her 10 sn
         if not getattr(self, "_pm", None) or time.time() - getattr(self, "_pm_t", 0) > 300:
             pm: list[tuple[str, str, str]] = []
-            for g in _scan_steam() + _scan_epic() + _scan_gog():
+            custom = _load_json(_custom_games_path()).get("items") or []
+            for g in _scan_steam() + _scan_epic() + _scan_gog() + _scan_riot() + custom:
                 p = str(g.get("path") or "").strip().lower().rstrip("\\/")
                 if len(p) > 4:
                     pm.append((p + os.sep, _norm_title(g["title"]) or _exact_title(g["title"]), g["title"]))
@@ -692,6 +733,7 @@ class GamePlayTracker:
             pt = _load_json(_playtime_path())
             pt[found_key] = int(pt.get(found_key, 0)) + 10
             _save_json(_playtime_path(), pt)
+            _record_last_played(found_key)
             if self._auto_replay and self._replay_started_for != found_key:
                 self._replay_started_for = found_key
                 try:

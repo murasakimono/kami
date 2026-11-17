@@ -45,7 +45,7 @@ function skBuild() {
         <button type="button" class="sk-tab" data-mod="studio">Studio</button>
         <button type="button" class="sk-tab" data-mod="picture">Picture</button>
         <button type="button" class="sk-tab" data-mod="reader">Reader</button>
-        <button type="button" class="sk-tab" data-mod="room">${skL("Oda", "Room")}</button>
+        <button type="button" class="sk-tab" data-mod="room">${skL("Oda", "Room")}<i class="sk-tab-badge" id="skRoomN"></i></button>
         <button type="button" class="sk-tab" data-mod="games">Oyun</button>
         <button type="button" class="sk-tab" data-mod="music">Müzik</button>
         <button type="button" class="sk-tab" data-mod="cleaner">Süzgeç</button>

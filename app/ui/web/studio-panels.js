@@ -462,7 +462,13 @@ const GFX_DEF = { lower: { title: "İsim Soyisim", sub: "Unvan", x: .07, y: .8 }
   "split-compare": { title: "ÖNCE", sub: "SONRA", x: .5, y: .5 },
   "podcast-card": { title: "Konuk İsim", sub: "Podcast #12", x: .06, y: .78 },
   "map-pin": { title: "ANKARA → İSTANBUL", sub: "450 KM", x: .5, y: .5 },
-  "glitch-title": { title: "GLITCH BAŞLIK", x: .5, y: .5 } };
+  "glitch-title": { title: "GLITCH BAŞLIK", x: .5, y: .5 },
+  "hf-glass-shard": { title: "CAMDA TASARIM", sub: "HyperFrames Cam Parçaları", x: .5, y: .5 },
+  "hf-wireframe-portal": { title: "BREAKTHROUGH", sub: "YENİ DÖNEM BAŞLADI", x: .5, y: .5 },
+  "hf-code-slice": { title: "MAKE IT", sub: "MATTER.", x: .5, y: .5 },
+  "hf-orbit-carousel": { title: "YÖRÜNGE KART", sub: "Perspektif Vitrin", x: .5, y: .5 },
+  "hf-canopy-part": { title: "SAHNE AÇILIŞI", sub: "Katmanlı Yaprak Geçişi", x: .5, y: .5 },
+  "hf-matrix-kinetic": { title: "SİSTEM ÇÖZÜLDÜ", sub: "KOD AKIŞI · 100% AKTİF", x: .5, y: .5 } };
 function addGfx(kind, t) { snap(); const c = placeAt({ graphic: kind, dur: kind === "endscreen" ? 20 : kind === "progress" ? Math.max(5, projEnd() - t) : 4, style: { ...(GFX_DEF[kind] || {}) } }, "text", t); ST.sel = new Set([c.id]); changed(); }
 
 // ---------------------------------------------------------------- cikartmalar (stickers) + Iconify Acik Kutuphane

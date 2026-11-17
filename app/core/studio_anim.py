@@ -261,6 +261,8 @@ TEXT_LOOP = {
 
 
 def text_catalog() -> dict:
+    for k, v in (("portal-burst", "Portal açılış (HF)"), ("tile-flip", "Karo 3B çevir (HF)"), ("shard-assemble", "Cam birleşimi (HF)")):
+        TEXT_IN.setdefault(k, v)
     return {"in": TEXT_IN, "out": TEXT_OUT, "loop": TEXT_LOOP}
 
 
@@ -356,6 +358,15 @@ def _in_tags(kind: str, D: int, x: float, y: float, W: int, H: int, tw: float, t
     if kind == "glitch-flash":
         a = _ms(D * 0.35)
         return f"\\1c&HFFFFFF&\\fax0.35\\alpha&H80&\\t(0,{a},\\fax-0.3\\alpha&H00&)\\t({a},{D},\\fax0)", "RESTORE_COL"
+    if kind == "portal-burst":
+        a = _ms(D * 0.55)
+        return f"\\fscx15\\fscy15\\blur16\\frz-25\\alpha&HFF&\\t(0,{a},0.6,\\fscx108\\fscy108\\blur0\\frz0\\alpha&H00&)\\t({a},{D},\\fscx100\\fscy100)", None
+    if kind == "tile-flip":
+        a = _ms(D * 0.5)
+        return f"\\frx90\\fscy40\\alpha&H80&\\t(0,{a},\\frx-12\\fscy106\\alpha&H00&)\\t({a},{D},\\frx0\\fscy100)", None
+    if kind == "shard-assemble":
+        a = _ms(D * 0.65)
+        return f"\\fscx160\\fscy50\\blur10\\fax0.3\\alpha&HFF&\\t(0,{a},0.6,\\fscx98\\fscy104\\blur0\\fax0\\alpha&H00&)\\t({a},{D},\\fscx100\\fscy100)", None
     return "", None
 
 

@@ -3,21 +3,30 @@
 "use strict";
 (function () {
   const QUALITY = {   // izleyicinin istedigi kalite -> yayincinin gonderim ayari
-    src: { h: 0, fps: 60, br: 14_000_000 },
+    src: { h: 0, fps: 60, br: 12_000_000 },
     "1080": { h: 1080, fps: 60, br: 8_000_000 },
     "1080_30": { h: 1080, fps: 30, br: 5_000_000 },
     "720": { h: 720, fps: 30, br: 3_000_000 },
-    "480": { h: 480, fps: 30, br: 1_200_000 },
+    "480": { h: 480, fps: 30, br: 1_500_000 },
   };
   const rid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-  function mungeOpus(sdp) {   // stereo, yuksek bit hizi, kayip duzeltme; DTX kapali (kayipsiza yakin ses)
+  function mungeOpus(sdp) {   // stereo, yuksek bit hizi + video baslangic bit hizi (300kbps -> 120p cokmesini onler)
     const m = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/i);
-    if (!m) return sdp;
-    const pt = m[1], extra = "stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;useinbandfec=1;usedtx=0;cbr=0";
-    const re = new RegExp(`a=fmtp:${pt} ([^\\r\\n]*)`);
-    if (re.test(sdp)) return sdp.replace(re, (all, p) => `a=fmtp:${pt} ${p.split(";").filter((x) => !/^(stereo|sprop-stereo|maxaveragebitrate|maxplaybackrate|useinbandfec|usedtx|cbr)=/.test(x)).concat(extra.split(";")).join(";")}`);
-    return sdp.replace(m[0], `${m[0]}\r\na=fmtp:${pt} ${extra}`);
+    if (m) {
+      const pt = m[1], extra = "stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;useinbandfec=1;usedtx=0;cbr=0";
+      const re = new RegExp(`a=fmtp:${pt} ([^\\r\\n]*)`);
+      if (re.test(sdp)) sdp = sdp.replace(re, (all, p) => `a=fmtp:${pt} ${p.split(";").filter((x) => !/^(stereo|sprop-stereo|maxaveragebitrate|maxplaybackrate|useinbandfec|usedtx|cbr)=/.test(x)).concat(extra.split(";")).join(";")}`);
+      else sdp = sdp.replace(m[0], `${m[0]}\r\na=fmtp:${pt} ${extra}`);
+    }
+    const vm = [...sdp.matchAll(/a=rtpmap:(\d+) (?:H264|VP8|VP9|AV1)\/90000/gi)];
+    for (const v of vm) {
+      const vpt = v[1], vextra = "x-google-min-bitrate=1200;x-google-start-bitrate=3500;x-google-max-bitrate=12000";
+      const vre = new RegExp(`a=fmtp:${vpt} ([^\\r\\n]*)`);
+      if (vre.test(sdp)) sdp = sdp.replace(vre, (all, p) => `a=fmtp:${vpt} ${p.split(";").filter((x) => !/^x-google-(min|start|max)-bitrate=/.test(x)).concat(vextra.split(";")).join(";")}`);
+      else sdp = sdp.replace(v[0], `${v[0]}\r\na=fmtp:${vpt} ${vextra}`);
+    }
+    return sdp;
   }
 
   class KamiRoom {
@@ -26,6 +35,7 @@
       this.name = o.name || "Misafir";
       this.kind = o.kind || "user";               // user | stream
       this.id = o.id || rid();
+      this.cid = o.cid || (() => { try { return window.pywebview && this.kind === "user" ? "kami-host" : (sessionStorage.kami_room_cid ||= rid()); } catch { return rid(); } })();
       this.on = o.on || {};                       // roster, events, track, trackgone, peerstate, quality, error
       this.peers = new Map();                     // id -> {pc, polite, making, ignore, meta:{streamId:kind}, q}
       this.local = new Map();                     // streamId -> {kind, stream}
@@ -44,6 +54,7 @@
       this._loop();
       this._beat = setInterval(() => this.post("me", {}), 15000);
       window.addEventListener("pagehide", () => this.leave());
+      window.addEventListener("beforeunload", () => this.leave());
     }
     async leave() {
       if (!this.alive) return;
@@ -60,7 +71,7 @@
       let fails = 0;
       while (this.alive) {
         try {
-          const q = `poll?id=${this.id}&name=${encodeURIComponent(this.name)}&kind=${this.kind}&n=${this.n}&rv=${this.rv}&a=${this.sack}`;
+          const q = `poll?id=${this.id}&cid=${encodeURIComponent(this.cid)}&name=${encodeURIComponent(this.name)}&kind=${this.kind}&n=${this.n}&rv=${this.rv}&a=${this.sack}`;
           const r = await (await fetch(this.url(q), { cache: "no-store" })).json();
           fails = 0;
           if (r.rv !== this.rv) { this.rv = r.rv; this.roster = r.roster; this._sync(); this.on.roster?.(r.roster, r.host); }
@@ -233,12 +244,15 @@
             const order = ["480", "720", "1080_30", "1080", "src"], want = QUALITY[P.q] ? P.q : "src";
             const qk = cap && order.indexOf(cap) < order.indexOf(want) ? cap : want;
             const Q = QUALITY[qk], h = tr.getSettings?.().height || 1080;
-            let pref = "";
-            for (const L of this.local.values()) if (L.stream.getTracks().includes(tr)) pref = L.pref || "";
+            let pref = "", isScreen = true;
+            for (const L of this.local.values()) if (L.stream.getTracks().includes(tr)) { pref = L.pref || ""; isScreen = L.kind === "screen" || L.kind === "player"; }
             p.encodings[0].scaleResolutionDownBy = Q.h && h > Q.h ? h / Q.h : 1;
-            p.encodings[0].maxFramerate = pref === "sharp" ? Math.min(30, Q.fps) : Q.fps;
+            p.encodings[0].maxFramerate = pref === "sharp" ? Math.min(30, Q.fps) : (isScreen && pref !== "smooth" && n > 1 ? Math.min(30, Q.fps) : Q.fps);
             p.encodings[0].maxBitrate = pref === "sharp" ? Math.max(Q.br, 6_000_000) : Q.br;
-            p.degradationPreference = pref === "sharp" ? "maintain-resolution" : "maintain-framerate";
+            p.encodings[0].priority = "high";
+            p.encodings[0].networkPriority = "high";
+            // Ekran paylasiminda cozunurlugu koru (maintain-resolution), 120p camurlasmasini engelle
+            p.degradationPreference = (isScreen && pref !== "smooth") || pref === "sharp" ? "maintain-resolution" : (pref === "smooth" ? "maintain-framerate" : "balanced");
           }
           await snd.setParameters(p);
         } catch { /* ilk muzakereden once olabilir */ }
@@ -267,14 +281,20 @@
       this.myQ = q;
       for (const [id, P] of this.peers) if (!to || id === to) { P.wantQ = q; this.post("sig", { to: id, data: { t: "q", q } }); }
     }
-    async stats(id) {   // baglanti bilgisi: rtt, kayip, gelen cozunurluk
+    async stats(id) {   // baglanti bilgisi: rtt, kayip, gelen cozunurluk (yalnizca secili aday ciftinde role kontrolu)
       const P = this.peers.get(id); if (!P) return null;
       const out = { rtt: 0, loss: 0, w: 0, h: 0, fps: 0, relay: false };
-      (await P.pc.getStats()).forEach((s) => {
-        if (s.type === "candidate-pair" && s.nominated) out.rtt = Math.round((s.currentRoundTripTime || 0) * 1000);
+      const st = await P.pc.getStats();
+      let nomPair = null;
+      st.forEach((s) => {
+        if (s.type === "candidate-pair" && (s.nominated || (s.state === "succeeded" && !nomPair))) nomPair = s;
         if (s.type === "inbound-rtp" && s.kind === "video") { out.w = s.frameWidth || 0; out.h = s.frameHeight || 0; out.fps = Math.round(s.framesPerSecond || 0); out.loss = s.packetsLost || 0; }
-        if (s.type === "local-candidate" && s.candidateType === "relay") out.relay = true;
       });
+      if (nomPair) {
+        out.rtt = Math.round((nomPair.currentRoundTripTime || 0) * 1000);
+        const lc = st.get?.(nomPair.localCandidateId), rc = st.get?.(nomPair.remoteCandidateId);
+        if (lc?.candidateType === "relay" || rc?.candidateType === "relay") out.relay = true;
+      }
       return out;
     }
   }

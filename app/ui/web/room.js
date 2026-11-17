@@ -44,6 +44,7 @@ async function roomKey() {   // ev sahibi (Kami penceresi) sifreyi bilmeden gire
   return sha256hex($("jnPw").value.trim());
 }
 async function join() {
+  if (S.core?.alive) return;
   const name = $("jnName").value.trim() || "Misafir";
   PREF.name = name; PREF.mic = $("jnMic").value || PREF.mic || ""; save();
   $("jnGo").disabled = true; $("jnErr").textContent = "";
@@ -154,7 +155,15 @@ function setMuted(v) { S.muted = v; PREF.muted = v; save(); applyMicState(); S.c
 function setDeaf(v) { S.deaf = v; applyMicState(); S.core?.setMe({ deaf: v }); }
 $("bMic").onclick = () => setMuted(!S.muted);
 $("bDeaf").onclick = () => setDeaf(!S.deaf);
-$("bLeave").onclick = async () => { await S.core?.leave(); stopShare(); stopCam(); document.body.innerHTML = `<div class="jn"><div class="jn-box"><div class="jn-sigil"><i></i><i></i><i></i><b>KAMI</b></div><p>Odadan ayrıldın.</p><button onclick="location.reload()">Tekrar gir</button></div></div>`; };
+window.__kamiRoomLeave = async () => {
+  try { await S.core?.leave(); } catch { }
+  try { stopShare(); stopCam(); S.micRaw?.getTracks().forEach((t) => t.stop()); S.mic?.stop?.(); } catch { }
+  try { await window.pywebview?.api?.room_island_push?.({ people: [], left: true }); } catch { }
+};
+$("bLeave").onclick = async () => {
+  await window.__kamiRoomLeave();
+  document.body.innerHTML = `<div class="jn"><div class="jn-box"><div class="jn-sigil"><i></i><i></i><i></i><b>KAMI</b></div><p>Odadan ayrıldın.</p><button onclick="location.reload()">Tekrar gir</button></div></div>`;
+};
 
 // bas-konus / kisayollar (sayfa odaktayken; Kami penceresinde genel kisayol Python'dan gelir)
 function pttKey(down) { if (!S.ptt) return; S.pttDown = down; applyMicState(); }
@@ -467,10 +476,10 @@ async function statsLoop() {
     const s = await S.core.stats(T.pid); if (!s) continue;
     const info = T.el.querySelector(".info");
     if (info) info.textContent = `${s.h ? s.h + "p" : ""}${s.fps ? " " + s.fps + "fps" : ""} · ${s.rtt}ms${s.relay ? " · röle" : ""}`;
-    if (T.q === "auto") {   // kayip artarsa bir kademe dus, uzun sure temizse cik
+    if (T.q === "auto") {   // duragan masaustunde 1-10 fps normaldir: sadece gercek paket kaybinda kademe dus
       const lost = s.loss - (T.lastLoss ?? s.loss); T.lastLoss = s.loss;
       const order = ["src", "1080", "1080_30", "720", "480"], i = order.indexOf(T.autoQ || "src");
-      if ((lost > 40 || (s.fps && s.fps < 18)) && i < order.length - 1) { T.autoQ = order[i + 1]; T.clean = 0; S.core.requestQuality(T.autoQ, T.pid); toast(`Bağlantı zayıf: yayın ${T.autoQ.replace("_", "p ").replace(/^(\d+)$/, "$1p")} kaliteye indi`); }
+      if ((lost > 35 || (s.h && s.h < 360 && s.fps && s.fps < 8 && lost > 8)) && i < order.length - 1) { T.autoQ = order[i + 1]; T.clean = 0; S.core.requestQuality(T.autoQ, T.pid); toast(`Bağlantı zayıf: yayın ${T.autoQ.replace("_", "p ").replace(/^(\d+)$/, "$1p")} kaliteye indi`); }
       else if (lost < 3) { T.clean = (T.clean || 0) + 1; if (T.clean > 10 && i > 0) { T.autoQ = order[i - 1]; T.clean = 0; S.core.requestQuality(T.autoQ, T.pid); } }
     }
     if (s.rtt > 250) worst = "bad"; else if (s.rtt > 120 && worst === "ok") worst = "mid";
@@ -984,13 +993,19 @@ document.addEventListener("click", (e) => { if (!e.target.closest("#sbPanel") &&
 let islandLast = "", islandAt = 0;
 setInterval(async () => {
   const api = window.pywebview?.api;
-  if (!S.isHost || !S.core || !api?.room_island_push) return;
+  if (!S.isHost || !S.core?.alive || !api?.room_island_push) return;
   const people = S.roster.filter((p) => p.kind === "user").map((p) => ({
     name: p.id === S.core.id ? (PREF.name || "Ben") : p.name, me: p.id === S.core.id, muted: !!p.muted,
     talk: !!document.querySelector(`.tk[data-id="${p.id}"]`)?.classList.contains("talk") }));
   const st = { people, muted: S.muted, deaf: S.deaf }, js = JSON.stringify(st);
   if (js !== islandLast || Date.now() - islandAt > 3000) { islandLast = js; islandAt = Date.now(); try { await api.room_island_push(st); } catch { /* yok */ } }
-  try { for (const c of (await api.room_island_poll()) || []) { if (c === "mute") setMuted(!S.muted); if (c === "deaf") setDeaf(!S.deaf); } } catch { /* yok */ }
+  try {
+    for (const c of (await api.room_island_poll()) || []) {
+      if (c === "mute") setMuted(!S.muted);
+      if (c === "deaf") setDeaf(!S.deaf);
+      if (c === "leave") $("bLeave")?.click();
+    }
+  } catch { /* yok */ }
 }, 600);
 
 if (window.pywebview?.api) init(); else { let done = false; window.addEventListener("pywebviewready", () => { if (!done) { done = true; init(); } }); setTimeout(() => { if (!done) { done = true; init(); } }, 400); }
