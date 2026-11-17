@@ -419,20 +419,53 @@ def _read_litedb_docs(db_path: Path) -> list[dict[str, Any]]:
                 return None
         return out
 
-    for pg in range(len(data) // 4096):
-        off = pg * 4096
-        if data[off + 4] != 4:
+    # LiteDB v4 (Playnite): 4 KB sayfa, 25 bayt baslik; veri sayfasi (tip 4) bloklari
+    # [idx u16][extendPage u32][size u16][veri]; buyuk kayitlar
+    # tip-5 "extend" sayfalarina zincirlenir. Eskiden tek sayfaya sigmayan kayitlar (uzun
+    # aciklamali oyunlar: Hogwarts Legacy vb.) sessizce atlaniyordu.
+    PS, NONE = 4096, 0xFFFFFFFF
+    n_pages = len(data) // PS
+    by_id: dict[str, dict[str, Any]] = {}
+    loose: list[dict[str, Any]] = []
+    for pg in range(n_pages):
+        off = pg * PS
+        try:
+            pid, typ, _prev, _nxt, cnt, _free = struct.unpack_from("<IBIIHH", data, off)
+        except struct.error:
+            break
+        if typ != 4 or pid != pg:
             continue
-        i = off + 32
-        while i < off + 4090:
-            doc_len = struct.unpack_from("<i", data, i)[0]
-            if 12 <= doc_len <= 4064 and i + doc_len <= off + 4096 and data[i + doc_len - 1] == 0:
-                d = parse_bson(data, i)
-                if d and ("Name" in d or "_id" in d):
-                    docs.append(d)
-                    i += doc_len
-                    continue
-            i += 1
+        i = off + 25
+        for _ in range(cnt):
+            if i + 8 > off + PS:
+                break
+            _idx, extp, size = struct.unpack_from("<HIH", data, i)
+            i += 8
+            if i + size > off + PS:
+                break
+            buf = bytearray(data[i:i + size])
+            i += size
+            q, hops = extp, 0
+            while q != NONE and q < n_pages and hops < 2000:
+                qo = q * PS
+                _qid, qt, _qp, qn, qc, _qf = struct.unpack_from("<IBIIHH", data, qo)
+                if qt != 5:
+                    break
+                buf += data[qo + 25:qo + 25 + min(qc, PS - 25)]
+                q, hops = qn, hops + 1
+            if len(buf) < 5:
+                continue
+            try:
+                d = parse_bson(bytes(buf), 0)
+            except Exception:
+                d = None
+            if not d or not ("Name" in d or "_id" in d):
+                continue
+            if "_id" in d:
+                by_id[str(d["_id"])] = d
+            else:
+                loose.append(d)
+    docs = list(by_id.values()) + loose
     return docs
 
 
@@ -444,6 +477,9 @@ def _playnite_cache_path() -> Path:
 def _custom_games_path() -> Path:
     from app import paths
     return paths.DATA_DIR / "custom_games.json"
+
+
+_PN_CACHE_V = 2
 
 
 def import_playnite_library(lib_dir: str = "") -> dict[str, Any]:
@@ -458,6 +494,8 @@ def import_playnite_library(lib_dir: str = "") -> dict[str, Any]:
     raw_games = [d for d in _read_litedb_docs(gdb) if "Name" in d and "GameId" in d]
     items: list[dict[str, Any]] = []
     for g in raw_games:
+        if g.get("Hidden"):   # Playnite'ta kullanicinin gizledigi kayitlar (cekilis, editor araci vb.)
+            continue
         store = str(sources.get(g.get("SourceId"), "") or "Diğer")
         if store == "Steam Family Sharing":
             store = "Steam"
@@ -491,7 +529,7 @@ def import_playnite_library(lib_dir: str = "") -> dict[str, Any]:
             "launch": launch,
             "cover": cover,
         })
-    _save_json(_playnite_cache_path(), {"items": items, "count": len(items)})
+    _save_json(_playnite_cache_path(), {"items": items, "count": len(items), "v": _PN_CACHE_V})
     return {"ok": True, "count": len(items)}
 
 
@@ -526,8 +564,20 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
     raw = _scan_steam() + _scan_epic() + _scan_gog() + _scan_riot()
     raw += (_load_json(_custom_games_path()).get("items") or [])
     pl_cache = _playnite_cache_path()
-    if not pl_cache.is_file() and (Path(os.environ.get("APPDATA", "")) / "Playnite/library/games.db").is_file():
-        import_playnite_library()
+    pn_db = Path(os.environ.get("APPDATA", "")) / "Playnite/library/games.db"
+    if pn_db.is_file():
+        # onbellek yoksa, eski okuyucuyla (v<2, buyuk kayitlari atliyordu) yapildiysa
+        # ya da Playnite veritabani sonradan degistiyse yeniden ice aktar
+        try:
+            stale = (not pl_cache.is_file() or _load_json(pl_cache).get("v") != _PN_CACHE_V
+                     or pn_db.stat().st_mtime > pl_cache.stat().st_mtime)
+        except OSError:
+            stale = True
+        if stale:
+            try:
+                import_playnite_library()
+            except Exception:
+                pass
     pl_items = (_load_json(pl_cache).get("items") or [])
     if include_owned:
         raw += _scan_steam_owned()

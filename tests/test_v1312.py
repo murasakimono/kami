@@ -134,3 +134,48 @@ def test_spotify_pkce_login_and_refresh(tmp_path, monkeypatch):
     assert m.spotify_access_token() == "AT_refresh_token"
     monkeypatch.setattr(webbrowser, "open", opener("SAHTE"))
     assert m.spotify_login("CID", timeout=5)["error"] == "state_mismatch"
+
+
+def _bson(d):
+    import struct, uuid
+    body = b""
+    for k, v in d.items():
+        kb = k.encode() + b"\x00"
+        if isinstance(v, bool):
+            body += b"\x08" + kb + bytes([v])
+        elif isinstance(v, uuid.UUID):
+            body += b"\x05" + kb + struct.pack("<iB", 16, 4) + v.bytes_le
+        else:
+            sb = str(v).encode() + b"\x00"
+            body += b"\x02" + kb + struct.pack("<i", len(sb)) + sb
+    return struct.pack("<i", len(body) + 5) + body + b"\x00"
+
+
+def test_litedb_reader_follows_extend_pages(tmp_path):
+    """v1.35.2: Playnite LiteDB'de sayfaya sigmayan kayitlar (Hogwarts Legacy vb.) atlaniyordu."""
+    import struct, uuid
+    from app.core import games
+    PS, NONE = 4096, 0xFFFFFFFF
+    small = _bson({"_id": uuid.uuid4(), "Name": "Kucuk", "GameId": "a"})
+    big = _bson({"_id": uuid.uuid4(), "Name": "Hogwarts Legacy", "GameId": "b", "Description": "x" * 6000})
+    hidden = _bson({"_id": uuid.uuid4(), "Name": "Gizli", "GameId": "c", "Hidden": True})
+
+    def page(pid, typ, nxt, cnt, content):
+        h = struct.pack("<IBIIHH", pid, typ, NONE, nxt, cnt, 0) + b"\x00" * 8
+        return (h + content).ljust(PS, b"\x00")
+
+    blocks = struct.pack("<HIH", 0, NONE, len(small)) + small + struct.pack("<HIH", 1, 2, 0) + struct.pack("<HIH", 2, NONE, len(hidden)) + hidden
+    c1, c2 = big[:4000], big[4000:]
+    db = page(0, 1, NONE, 0, b"") + page(1, 4, NONE, 3, blocks) + page(2, 5, 3, len(c1), c1) + page(3, 5, NONE, len(c2), c2)
+    (tmp_path / "games.db").write_bytes(db)
+    names = sorted(d["Name"] for d in games._read_litedb_docs(tmp_path / "games.db"))
+    assert names == ["Gizli", "Hogwarts Legacy", "Kucuk"]
+    (tmp_path / "sources.db").write_bytes(page(0, 1, NONE, 0, b""))
+    import app.paths as paths
+    old = paths.DATA_DIR
+    paths.DATA_DIR = tmp_path
+    try:
+        r = games.import_playnite_library(str(tmp_path))
+        assert r["ok"] and r["count"] == 2   # gizli olan alinmaz
+    finally:
+        paths.DATA_DIR = old
