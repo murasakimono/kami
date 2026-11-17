@@ -368,3 +368,23 @@
     changed(); toast("Temiz vokal izi eklendi");
   }
 })();
+
+// v1.28 Kami Deck: telefondaki Studio tuslari klavye kisayolu olarak calisir (tek kaynak: studio.js keydown)
+(function deckBus() {
+  const MAP = { play: [" "], split: ["s"], undo: ["z", 1], redo: ["y", 1], marker: ["m"], trimL: ["q"], trimR: ["w"],
+    delete: ["Delete", 0, 1], save: ["s", 1], export: ["e", 1] };
+  const tick = async () => {
+    try {
+      const cmds = (await api.deck_bus_poll?.("studio")) || [];
+      for (const c of cmds) {
+        const m = MAP[c]; if (!m) continue;
+        document.activeElement?.blur?.();
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: m[0], ctrlKey: !!m[1], shiftKey: !!m[2], bubbles: true, cancelable: true }));
+      }
+    } catch {}
+    setTimeout(tick, document.hidden ? 1500 : 400);
+  };
+  let on = false; const start = () => { if (!on) { on = true; setTimeout(tick, 1000); } };
+  window.addEventListener("pywebviewready", start);
+  if (window.pywebview?.api) start();
+})();

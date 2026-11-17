@@ -550,6 +550,16 @@ def _handler(srv: RoomServer):
                 pass
 
         def do_POST(self):
+            if self.path.startswith("/c/"):   # Kapsul yorumu
+                from urllib.parse import parse_qs, urlsplit
+                from app.core import kapsul
+                u = urlsplit(self.path)
+                n = int(self.headers.get("Content-Length") or 0)
+                try:
+                    body = json.loads(self.rfile.read(min(n, 8000)) or b"{}")
+                except ValueError:
+                    return self._err(400)
+                return kapsul.serve_post(self, u.path.strip("/").split("/")[1:], parse_qs(u.query), body if isinstance(body, dict) else {})
             r, rest = self._room()
             if not r or len(rest) != 1:
                 return self._err(404)

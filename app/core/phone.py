@@ -165,6 +165,7 @@ class PhoneServer:
         self.status = status
         self.control = control
         self.on_upload: Callable[[str, str], None] | None = None
+        self.on_deck: Callable[[str, dict], tuple[int, dict]] | None = None   # v1.28 Kami Deck + uzaktan indirme
         self._srv: ThreadingHTTPServer | None = None
         self._hits: list[float] = []
         self._lock = threading.Lock()
@@ -303,6 +304,9 @@ class PhoneServer:
                                       f"Gönderme sayfası + indirme durumu</a></p>")
                 if path == "/bridge":
                     return self._html(_BRIDGE_HTML)
+                if path == "/deck":
+                    from app.core.deck_page import DECK_HTML
+                    return self._html(DECK_HTML)
                 if path == "/status":
                     if not self._key_ok():
                         return self._send(401, {"ok": False, "error": "key", "message": "Anahtar yanlış ya da eksik."})
@@ -320,6 +324,22 @@ class PhoneServer:
                     log.warning("Telefon: yerel ag disi istek reddedildi ip=%s", client)
                     return self._send(403, {"ok": False, "error": "forbidden", "message": "✕ Sadece yerel ağ."})
                 path = self.path.split("?")[0]
+                if path.startswith(("/deck/", "/dl/")) and outer.on_deck:
+                    if not self._key_ok():
+                        return self._send(401, {"ok": False, "error": "key"})
+                    n = int(self.headers.get("Content-Length") or 0)
+                    if n < 0 or n > MAX_BODY:
+                        return self._send(413, {"ok": False, "error": "size"})
+                    try:
+                        b = json.loads(self.rfile.read(n).decode("utf-8", "replace") or "{}") if n else {}
+                    except ValueError:
+                        b = {}
+                    try:
+                        code, obj = outer.on_deck(path, b if isinstance(b, dict) else {})
+                    except Exception as exc:
+                        log.exception("Deck %s", path)
+                        code, obj = 500, {"ok": False, "error": str(exc)[:120]}
+                    return self._send(code, obj)
                 if path not in ("/send", "/control", "/upload"):
                     return self._send(404, {"ok": False, "message": "✕ Böyle bir adres yok."})
                 if not outer._rate_ok():
@@ -413,7 +433,8 @@ button{background:#7c4dff;border-color:#9d6bff;cursor:pointer;font-weight:600}
 <button onclick="padAct('rec_replay')">⏱ 30sn Klip</button>
 <button onclick="padAct('studio')">🎬 Studio</button>
 <button onclick="padAct('picture')">🖼 Picture</button>
-</div><div id="padSt" style="margin-top:6px;font-size:13px;color:#2ee6a6"></div></div>
+</div><div id="padSt" style="margin-top:6px;font-size:13px;color:#2ee6a6"></div>
+<a href="/deck" style="display:block;margin-top:10px;color:#C9B3FF">🎛 Kami Deck: özelleştirilebilir tuşlar + uzaktan indirme yönetimi →</a></div>
 <script>
 const qp=new URLSearchParams(location.search).get('k');
 const kEl=document.getElementById('key');

@@ -200,3 +200,17 @@
     if (r.epg) api.iptv_epg(r.epg, r.channels.map((c) => c.id).filter(Boolean).slice(0, 3000)).then((x) => { if (x?.ok) { TV.epg = x.epg; if (PX.libTab === "tv") renderTv(); } }).catch(() => {});
   }, true);
 })();
+
+// v1.28 Kami Deck: telefondaki tuslar Player komutlarini veri yolundan gonderir
+(function deckBus() {
+  const tick = async () => {
+    try {
+      const cmds = (await api.deck_bus_poll?.("player")) || [];
+      for (const c of cmds) if (PL_ACTIONS[c]) { PL_ACTIONS[c][2](); plWake?.(); }
+    } catch {}
+    setTimeout(tick, document.hidden ? 1500 : 400);
+  };
+  let on = false; const start = () => { if (!on) { on = true; setTimeout(tick, 1000); } };
+  window.addEventListener("pywebviewready", start);
+  if (window.pywebview?.api) start();
+})();

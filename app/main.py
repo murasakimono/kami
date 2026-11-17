@@ -886,6 +886,7 @@ def main() -> int:
                         lambda text, fmt="": api.add_text_detail(text, "phone", fmt),
                         status=api.phone_status_items, control=api.phone_control)
     phone.on_upload = api.phone_on_upload
+    phone.on_deck = api.phone_deck
     from app.core import room as _room
     _room.SERVER.phone_srv = phone
     from app.core.jobs import jobs as _jobs

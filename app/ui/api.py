@@ -1832,17 +1832,28 @@ class Api(StudioMixin):
             return True
         return False
 
-    def kapsul_create(self, path: str = "", hours: float = 24, password: str = "", max_dl: int = 0, note: str = "",
+    def kapsul_create(self, path: Any = "", hours: float = 24, password: str = "", max_dl: int = 0, note: str = "",
                       shield: bool = False) -> dict[str, Any]:
         from app.core import kapsul, room
+        if not kapsul.ON_EVENT:   # indirildi / yorum bildirimi
+            def _ev(kind: str, name: str, detail: str) -> None:
+                from app.core import desktop
+                desktop.toast("Kami Kapsül", (f"İndirildi: {detail or name}" if kind == "dl" else f"Yorum ({name}): {detail}"))
+            kapsul.ON_EVENT = _ev
         if not path:
             if not self._window:
                 return {"ok": False, "error": "no_window"}
             import webview
-            res = self._window.create_file_dialog(webview.FileDialog.OPEN)
+            res = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True)
             if not res:
                 return {"ok": False, "error": "cancelled"}
-            path = res[0]
+            path = list(res) if len(res) > 1 else res[0]
+        if isinstance(path, list):   # birden fazla dosya: tek link (kalkan yalniz tek gorselde)
+            res = kapsul.create([str(x) for x in path], hours, password, max_dl, note)
+            if res.get("ok"):
+                room.SERVER.start(self._room_name(), True, self._room_id())
+                res["url"] = self._kapsul_url(res["id"])
+            return res
         shielded = None
         if shield and os.path.splitext(path)[1].lower() in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
             from app import paths
@@ -2916,12 +2927,12 @@ class Api(StudioMixin):
         except Exception as exc:
             return {"ok": False, "message": type(exc).__name__}
 
-    def phone_status_items(self) -> list[dict[str, Any]]:
+    def phone_status_items(self, limit: int = 15) -> list[dict[str, Any]]:
         """Telefon sayfasindaki "indirme durumu": aktif/bekleyen/duraklatilmis + son bitenler."""
         order = {Status.ACTIVE: 0, Status.WAITING: 1, Status.PAUSED: 2, Status.ERROR: 3, Status.COMPLETE: 4}
         items = sorted(self._manager.snapshot(), key=lambda d: (order.get(d.status, 5), -(d.id or 0)))
         out = []
-        for d in items[:15]:
+        for d in items[:max(1, int(limit))]:
             pct = int(d.downloaded * 100 / d.size) if d.size else (100 if d.status == Status.COMPLETE else 0)
             st = {Status.ACTIVE: "iniyor", Status.WAITING: "sırada", Status.PAUSED: "duraklatıldı",
                   Status.ERROR: "hata", Status.COMPLETE: "bitti"}.get(d.status, str(d.status))
@@ -2929,7 +2940,8 @@ class Api(StudioMixin):
             out.append({"id": d.id, "name": d.filename or d.url, "percent": max(0, min(100, pct)),
                         "label": f"{st} · %{pct}{speed}",
                         "can_pause": d.status in (Status.ACTIVE, Status.WAITING),
-                        "can_resume": d.status in (Status.PAUSED, Status.ERROR)})
+                        "can_resume": d.status in (Status.PAUSED, Status.ERROR),
+                        "can_top": d.status in (Status.WAITING, Status.PAUSED), "status": str(getattr(d.status, "value", d.status))})
         return out
 
     def phone_control(self, download_id: int, action: str) -> bool:
@@ -2939,6 +2951,8 @@ class Api(StudioMixin):
         if action == "resume":
             self._manager.resume(int(download_id))
             return True
+        if action.startswith("deck:"):   # eski Pad sayfasi da yeni eylemleri cagirabilsin
+            return bool(self.deck_run(action[5:]).get("ok"))
         if action.startswith("pad:"):
             act = action.split(":", 1)[1]
             if act == "rec_toggle":
@@ -2954,8 +2968,68 @@ class Api(StudioMixin):
             return True
         return False
 
+    # ---------- v1.28 Kami Deck (telefonu Stream Deck gibi kullan) + uzaktan indirme yonetimi ----------
+    def _deck_handlers(self) -> dict[str, Any]:
+        return {
+            "app:studio": lambda a="": self.studio_show(), "app:picture": lambda a="": self.picture_open_editor(),
+            "app:player": lambda a="": self.player_show(), "app:reader": lambda a="": self.reader_show(),
+            "app:room": lambda a="": self.room_open(True), "app:show": lambda a="": self._deck_show_main(),
+            "rec:toggle": lambda a="": self.rec_toggle(), "rec:replay": lambda a="": self.rec_save_replay(),
+            "room:mute": lambda a="": self.room_island_cmd("mute"), "room:deaf": lambda a="": self.room_island_cmd("deaf"),
+            "dl:pause_all": lambda a="": self.pause_all(), "dl:resume_all": lambda a="": self.resume_all(),
+            "dl:limit": lambda a="": self.set_setting("speed_limit_kib", max(0, int(float(a or 0)))),
+            "studio_open": lambda: None,   # Studio komutlari: pencere acik degilse komut 5 sn icinde duser
+        }
+
+    def _deck_show_main(self) -> None:
+        try:
+            if self._window:
+                self._window.restore()
+                self._window.show()
+        except Exception:
+            pass
+
+    def deck_get(self) -> dict[str, Any]:
+        from app.core import deck
+        return {**deck.load(), "catalog": deck.CATALOG}
+
+    def deck_save(self, data: dict) -> dict[str, Any]:
+        from app.core import deck
+        return deck.save(data if isinstance(data, dict) else {})
+
+    def deck_run(self, action: str, arg: str = "") -> dict[str, Any]:
+        from app.core import deck
+        return deck.run(str(action), str(arg or ""), self._deck_handlers())
+
+    def deck_bus_poll(self, target: str) -> list:
+        from app.core import deck
+        return deck.bus_poll(str(target))
+
+    def phone_deck(self, path: str, body: dict) -> tuple[int, dict[str, Any]]:
+        """Telefon sunucusundan: /deck/data, /deck/run, /deck/save, /dl/action, /dl/list."""
+        b = body if isinstance(body, dict) else {}
+        if path == "/deck/data":
+            return 200, {"ok": True, **self.deck_get(), "downloads": self.phone_status_items(40),
+                         "limit": int(self._manager.settings.get("speed_limit_kib") or 0)}
+        if path == "/deck/run":
+            return 200, self.deck_run(str(b.get("a", "")), str(b.get("arg", "")))
+        if path == "/deck/save":
+            return 200, {"ok": True, **self.deck_save(b)}
+        if path == "/dl/action":
+            act, did = str(b.get("action", "")), int(b.get("id") or 0)
+            if act == "remove":
+                self._manager.remove(did, bool(b.get("delete_file")))
+            elif act == "top":
+                ids = [d.id for d in self._manager.snapshot() if not d.status.is_finished]
+                if did in ids:
+                    self._manager.reorder([did] + [x for x in ids if x != did])
+            elif not self.phone_control(did, act):
+                return 400, {"ok": False, "error": "bad_action"}
+            return 200, {"ok": True, "downloads": self.phone_status_items(40)}
+        return 404, {"ok": False}
+
     def phone_on_upload(self, path: str, kind: str) -> None:
-        from app.ui import desktop
+        from app.core import desktop
         desktop.toast("Kami Mobil Köprü", f"Telefondan alındı: {os.path.basename(path)}",
                       [("Klasörü aç", "kami://phoneinbox")])
         if kind == "snap" and os.path.isfile(path):
