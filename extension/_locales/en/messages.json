@@ -190,5 +190,8 @@
   },
   "popup_active": {
     "message": "Active downloads"
+  },
+  "popup_grab_all": {
+    "message": "📥 List everything on this page (Download all)"
   }
 }

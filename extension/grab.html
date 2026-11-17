@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Kami — Tümünü indir</title>
+<style>
+  @font-face { font-family: "Chakra Petch"; font-weight: 600; src: url(fonts/ChakraPetch-SemiBold.ttf) format("truetype"); }
+  :root { color-scheme: dark; --accent: #A78BFA; --btn: #7C3AED; --green: #2EE6A6; --muted: #8E86A3; --bg: #0B0910; --card: #16101F; --text: #EDE9F6; --line: #2B2238; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(124,58,237,.22), transparent 70%), var(--bg); color: var(--text);
+         font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: #0B0910ee; backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); padding: 14px 22px; display: grid; gap: 10px; }
+  h1 { margin: 0; font: 600 20px "Chakra Petch", sans-serif; letter-spacing: .5px; }
+  h1 small { color: var(--muted); font: 400 13px "Segoe UI", sans-serif; margin-left: 10px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .chip { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 999px; padding: 5px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+  .chip.on { border-color: var(--accent); color: var(--text); background: rgba(124,58,237,.18); }
+  .chip b { color: var(--accent); font-weight: 600; margin-left: 4px; }
+  input[type=text] { background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 7px 10px; font: inherit; min-width: 280px; flex: 1; }
+  label { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+  button.main { background: var(--btn); color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; font: 600 14px "Chakra Petch", sans-serif; cursor: pointer; }
+  button.main:disabled { opacity: .45; cursor: default; }
+  button.sec { background: var(--card); color: #C4B5FD; border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+  main { padding: 10px 22px 40px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px 8px; border-bottom: 1px solid #1d1628; vertical-align: middle; }
+  tr:hover td { background: #140f1c; }
+  td.nm { max-width: 0; width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.nm small { display: block; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  td:first-child { width: 30px; }
+  td.ext { color: var(--accent); font-weight: 600; width: 70px; }
+  td.host { color: var(--muted); font-size: 12px; width: 22%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--green); }
+  #msg { color: var(--green); font-size: 13px; }
+  .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>KAMI · <span id="t1"></span><small id="pageName"></small></h1>
+  <div class="row" id="kinds"></div>
+  <div class="row">
+    <input type="text" id="q" spellcheck="false">
+    <label><input type="checkbox" id="sameHost"> <span id="t2"></span></label>
+    <label><input type="checkbox" id="hideHtml" checked> <span id="t3"></span></label>
+  </div>
+  <div class="row">
+    <button class="sec" id="all"></button><button class="sec" id="none"></button>
+    <span id="count" style="color:var(--muted);font-size:13px"></span><span style="flex:1"></span>
+    <span id="msg"></span><button class="main" id="send" disabled></button>
+  </div>
+</header>
+<main><table><tbody id="list"></tbody></table><p class="empty" id="empty" hidden></p></main>
+<script src="grab.js"></script>
+</body>
+</html>

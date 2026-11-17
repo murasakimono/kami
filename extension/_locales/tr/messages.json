@@ -190,5 +190,8 @@
   },
   "popup_active": {
     "message": "Süren indirmeler"
+  },
+  "popup_grab_all": {
+    "message": "📥 Sayfadaki her şeyi listele (Tümünü indir)"
   }
 }

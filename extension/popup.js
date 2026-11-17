@@ -24,6 +24,10 @@ async function setupPage() {
   }
   pageTab = tab;
   b.hidden = false;
+  const g = document.getElementById("grabAll");   // v1.29 "Tumunu indir" paneli
+  g.textContent = t("popup_grab_all") || "📥 Sayfadaki her şeyi listele";
+  g.hidden = false; g.disabled = false;
+  g.onclick = () => { chrome.tabs.create({ url: chrome.runtime.getURL("grab.html?tab=" + tab.id) }); window.close(); };
   const site = kamiCloudSite(tab.url);
   if (site && site.kind === "share") {
     // iki satir: ana metin + altta kucuk site adi (tek satirda tasiyordu)

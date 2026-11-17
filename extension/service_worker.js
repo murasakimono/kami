@@ -139,6 +139,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg && msg.type === "get-torrents") {
     chrome.storage.session.get(tlKey(msg.tabId)).then((g) => sendResponse(g[tlKey(msg.tabId)] || []));
     return true;
+  } else if (msg && msg.type === "grab-send") {      // v1.29 "Tumunu indir" paneli: secilenler sirayla Kami'ye
+    (async () => {
+      let ok = 0, fail = 0;
+      for (const l of (msg.links || []).slice(0, 2000)) {
+        try {
+          const r = /^magnet:/i.test(l.url) ? await sendRd(l.url, msg.pageUrl || "") :
+            await sendToKami({ url: l.url, filename: l.filename || "", referrer: msg.pageUrl || "", pageUrl: msg.pageUrl || "", source: "context_menu", pageTitle: msg.title || "" });
+          if (r && r.ok !== false && r.accepted !== false) ok++; else fail++;
+        } catch (_) { fail++; }
+      }
+      flashBadge(String(ok), "#2EE6A6", 3000, `${ok} indirme gönderildi`);
+      sendResponse({ ok, fail });
+    })();
+    return true;
   } else if (msg && msg.type === "rd-send") {        // popup "RD'ye gonder"
     sendRd(msg.url, msg.pageUrl || "").then(sendResponse);
     return true;
