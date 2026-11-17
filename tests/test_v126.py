@@ -66,5 +66,23 @@ def test_v126_styles_ramps_and_mcp_tools():
     for k in studio_pro_v26.PRO_STYLES_V26:
         assert k in studio_brand.VIRAL_RECIPES
     assert "car_velocity" in studio_pro_v26.SPEED_RAMP_PRESETS
-    for tname in ("inspect_video_for_ai", "apply_audio_reactive", "auto_reframe_clip", "apply_speed_ramp"):
+    for tname in ("inspect_video_for_ai", "apply_audio_reactive", "auto_reframe_clip", "apply_speed_ramp",
+                  "isolate_voice_clip", "export_subtitles_srt"):
         assert tname in studio_mcp.TOOLS
+
+
+def test_v127_voice_isolate_and_srt_export(tmp_path: Path):
+    ff = find_ffmpeg()
+    assert ff
+    vid = _make_sample_mp4(tmp_path / "voice.mp4", 1.5)
+    iso = studio_pro_v26.isolate_voice_audio(ff, str(vid), tmp_path / "iso")
+    assert iso["ok"] and Path(iso["path"]).is_file()
+
+    proj = {"name": "TestProj", "clips": [
+        {"start": 0.0, "dur": 1.2, "words": [{"w": "Merhaba", "s": 0.0, "e": 0.5}, {"w": "dünya", "s": 0.5, "e": 1.1}]},
+        {"start": 1.5, "dur": 1.0, "text": "İkinci satır"},
+    ]}
+    srt = studio_pro_v26.export_project_srt(proj, tmp_path / "out.srt")
+    assert srt["ok"] and srt["count"] == 2
+    txt = Path(srt["path"]).read_text(encoding="utf-8")
+    assert "Merhaba dünya" in txt and "İkinci satır" in txt

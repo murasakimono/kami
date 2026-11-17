@@ -197,6 +197,18 @@ class StudioMixin:
         from app.core.studio_pro_v26 import SPEED_RAMP_PRESETS
         return SPEED_RAMP_PRESETS
 
+    def studio_voice_isolate(self, path: str, start: float = 0.0, dur: float = 0.0) -> dict[str, Any]:
+        from app.core import studio
+        from app.core.studio_pro_v26 import isolate_voice_audio
+        return isolate_voice_audio(self._st().ffmpeg(), str(path), studio.media_dir() / "Izole", float(start or 0), float(dur or 0))
+
+    def studio_export_srt(self, project: dict, out_path: str = "") -> dict[str, Any]:
+        from pathlib import Path
+        from app.core import studio
+        from app.core.studio_pro_v26 import export_project_srt
+        dst = Path(out_path) if out_path else (studio.export_dir() / f"{(project or {}).get('name', 'altyazi')}.srt")
+        return export_project_srt(project or {}, dst)
+
     def studio_silences(self, path: str, start: float, dur: float, db: float = -35, min_len: float = 0.45) -> list:
         return self._st().silences(str(path), float(start), float(dur), float(db), float(min_len))
 

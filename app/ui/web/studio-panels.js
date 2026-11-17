@@ -44,8 +44,14 @@ P.media = async () => {
     <button class="tb" id="wfStg" title="Seçili klipleri kademeli basamakla (Shifter)">🎬 Basamakla</button>
     <button class="tb" id="wfPurge" title="Kullanılmayan medya varlıklarını temizle">🧹 Temizle</button>
   </div>`;
+  const mq = (P.media.q || "").toLowerCase(), mkind = P.media.kind || "all";
+  const filtAs = as.filter(([, a]) => (mkind === "all" || a.kind === mkind) && (!mq || (a.name || "").toLowerCase().includes(mq)));
+  if (as.length) {
+    h += `<div class="catpills" id="medFlt" style="margin-bottom:5px">${[["all", "Tümü"], ["video", "Video"], ["audio", "Ses"], ["image", "Görsel"]].map(([k, l]) => `<button type="button" data-mk="${k}" class="${mkind === k ? "on" : ""}">${l}</button>`).join("")}</div>` +
+      `<input class="in" id="medQ" placeholder="Medya ara…" value="${esc(P.media.q || "")}" style="width:100%;margin-bottom:6px">`;
+  }
   h += as.length ? "" : `<div class="hint">Dosyaları pencereye sürükle-bırak ya da “İçe aktar”. Video, ses, resim ve GIF olur.<br>İlk eklenenler zaman çizelgesine kendiliğinden dizilir.</div>`;
-  h += `<div class="bin">${as.map(([id, a]) => {
+  h += `<div class="bin">${filtAs.map(([id, a]) => {
     const m = ST.media[a.path], bg = a.kind === "image" || a.gif ? `background-image:url('${a.url}')` : m?.thumbs?.sprite ? `background-image:url(${m.thumbs.sprite});background-size:${(m.thumbs.count || 16) * 100}% 100%;background-position:${100 / ((m.thumbs.count || 16) - 1) * 2}% 0` : "";
     return `<div class="asset ${a.kind}${a.missing ? " missing" : ""}${ST.binSel.has(id) ? " sel" : ""}" draggable="true" data-aid="${id}" style="${bg}" title="${esc(a.path)}">
       <button class="ad" data-add="${id}" title="Oynatma kafasına ekle">＋</button>${a.kind !== "image" || a.gif ? `<span class="du">${fmt(a.dur, false)}</span>` : ""}<span class="nm">${esc(a.name)}</span></div>`;
@@ -53,6 +59,8 @@ P.media = async () => {
   const rec = await api.studio_recent();
   if (rec.length) h += sec("Son projeler") + rec.slice(0, 8).map(r => `<div class="snd" data-open="${esc(r.path)}"><b>${esc(r.name || r.path.split(/[\\/]/).pop())}</b><button title="Aç">↗</button></div>`).join("");
   pb.innerHTML = h;
+  if ($("#medQ")) $("#medQ").oninput = e => { P.media.q = e.target.value; P.media(); };
+  $("#medFlt")?.addEventListener("click", e => { const b = e.target.closest("[data-mk]"); if (b) { P.media.kind = b.dataset.mk; P.media(); } });
   const rawClone = () => { const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url; return p; };
   $("#wfPaste").onclick = async () => {
     const r = await api.studio_clipboard_paste();
@@ -550,9 +558,27 @@ P.captions = () => {
     sec("Stil") + `<div class="grid2">${Object.entries(ST.cat.captions).map(([k, v]) => `<div class="card${k === (localStorage.kstCap || "hormozi") ? " on" : ""}" data-cap="${k}"><i class="capv cv-${esc(ST.cat.capb?.[k]?.b || k)}"${ST.cat.capb?.[k]?.font ? ` style="font-family:'${esc(ST.cat.capb[k].font)}'"` : ""}><span>bu</span><u>örnek</u><span>yazı</span></i><b>${esc(v)}</b></div>`).join("")}</div>` +
     `<div class="row" style="margin-top:12px"><button class="tb pri" id="capGo">≡ ${c ? "Seçili klibe altyazı" : "Altyazı oluştur"}</button></div>` +
     `<div class="row" style="margin-top:6px"><button class="tb" id="capBi">🌐 Çift Dilli (.SRT/.ASS)</button><button class="tb" id="capConv">↺ .SRT↔.ASS Dönüştür</button></div>` +
+    `<div class="row" style="margin-top:6px"><button class="tb" id="capExpSrt">📄 .SRT İndir</button><button class="tb" id="capFindRep">🔍 Bul & Değiştir</button></div>` +
     `<div class="hint">Yazım hatalarını sağ paneldeki “Kelimeler” kutusundan düzeltebilirsin.</div>`;
   $("#capGo").onclick = () => aiAction("captions", firstSel());
   $("#capBi").onclick = () => aiAction("bilingual", firstSel());
+  $("#capExpSrt").onclick = async () => {
+    const p = clone(ST.p); for (const a of Object.values(p.assets)) delete a.url;
+    const r = await api.studio_export_srt(p, "");
+    toast(r?.ok ? `${r.count} satır dışa aktarıldı: ${r.path.split(/[\\/]/).pop()}` : "Altyazı bulunamadı");
+  };
+  $("#capFindRep").onclick = async () => {
+    const find = await promptText("Altyazılarda aranacak kelime", "", "Tüm altyazı kliplerinde toplu düzeltme yapar.");
+    if (!find) return;
+    const rep = await promptText(`"${find}" yerine yazılacak kelime`, "", "");
+    if (rep == null) return;
+    snap(); let cnt = 0;
+    for (const cl of ST.p.clips) {
+      if (cl.words?.length) for (const w of cl.words) if (w.w && w.w.includes(find)) { w.w = w.w.replaceAll(find, rep); cnt++; }
+      if (cl.text && cl.text.includes(find)) { cl.text = cl.text.replaceAll(find, rep); cnt++; }
+    }
+    changed(); toast(cnt ? `${cnt} yerde düzeltildi` : "Eşleşme bulunamadı");
+  };
   $("#capConv").onclick = async () => {
     const p = await promptText("Altyazı dosya yolu (.srt veya .ass)", "", "Seçtiğin dosyanın biçimini ASS ↔ SRT çevirir.");
     if (!p) return;

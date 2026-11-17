@@ -359,3 +359,67 @@ def trans_in_v26(kind: str, d: float, W: int, H: int, tag: str = "t", c0: float 
         return f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lt(hypot(X-W/2,Y-H/2),{E}*hypot(W/2,H/2)),alpha(X,Y),0)':{en}"
     return "null"
 
+
+# ---------------------------------------------------------------------------
+# 7. Studio İçi Tek Tık Ses İzolasyonu & Altyazı .SRT Dışa Aktarma (v1.27.0)
+# ---------------------------------------------------------------------------
+def isolate_voice_audio(ffmpeg: str, path: str, out_dir: Path,
+                        start: float = 0.0, dur: float = 0.0) -> dict[str, Any]:
+    """Konusma frekanslarini koruyup arka plan gurultusunu/klavye/oyun sesini baskilayan cok asamali vokal izolatoru."""
+    src = Path(path)
+    if not src.is_file():
+        return {"ok": False, "error": "file_not_found"}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    hsh = hashlib.sha1(f"{src}:{start}:{dur}".encode()).hexdigest()[:10]
+    dst = out_dir / f"{src.stem[:32]}_{hsh}_vokal.wav"
+    af = (
+        "highpass=f=90,lowpass=f=12000,"
+        "afftdn=nr=22:nf=-34:tn=1,"
+        "equalizer=f=300:t=q:w=1.2:g=-3.0,"
+        "equalizer=f=3000:t=q:w=1.4:g=3.5,"
+        "acompressor=threshold=-20dB:ratio=3.5:attack=6:release=140:makeup=4,"
+        "alimiter=limit=0.95"
+    )
+    cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", "error"]
+    if start > 0:
+        cmd += ["-ss", f"{start:.3f}"]
+    cmd += ["-i", str(src)]
+    if dur > 0:
+        cmd += ["-t", f"{dur:.3f}"]
+    cmd += ["-vn", "-af", af, "-ar", "48000", "-ac", "2", str(dst)]
+    r = subprocess.run(cmd, capture_output=True, timeout=600, creationflags=NO_WINDOW)
+    if r.returncode != 0 or not dst.is_file():
+        return {"ok": False, "error": r.stderr.decode("utf-8", "replace")[-240:] or "isolate_failed"}
+    return {"ok": True, "path": str(dst)}
+
+
+def export_project_srt(project: dict[str, Any], out_path: Path) -> dict[str, Any]:
+    """Projedeki tum altyazi/yazi kliplerini standart .srt dosyasina yazar."""
+    def _ts(sec: float) -> str:
+        ms = max(0, int(round(sec * 1000)))
+        h, rem = divmod(ms, 3_600_000)
+        m, rem = divmod(rem, 60_000)
+        s, ms_rem = divmod(rem, 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms_rem:03d}"
+
+    clips = sorted(project.get("clips") or [], key=lambda c: float(c.get("start", 0) or 0))
+    entries: list[str] = []
+    idx = 1
+    for c in clips:
+        st = float(c.get("start") or 0.0)
+        words = c.get("words") or []
+        if words:
+            text = " ".join(str(w.get("w") or "").strip() for w in words if str(w.get("w") or "").strip())
+            s0 = st + float(words[0].get("s") or 0.0)
+            s1 = st + float(words[-1].get("e") or c.get("dur") or 1.0)
+        else:
+            text = str(c.get("text") or "").strip()
+            s0, s1 = st, st + float(c.get("dur") or 1.0)
+        if not text:
+            continue
+        entries.append(f"{idx}\n{_ts(s0)} --> {_ts(max(s0 + 0.1, s1))}\n{text}\n")
+        idx += 1
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(entries), encoding="utf-8")
+    return {"ok": True, "path": str(out_path), "count": idx - 1}
+

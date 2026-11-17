@@ -205,6 +205,14 @@ const SFX = (() => {
     else if (kind === "burning-edge") { r.leak = .85 * (1 - u); r.mask = { kind: "wipe-r", e }; }
     else if (kind === "datamosh-cut") { r.rgb = true; r.dx = .02 * Math.sin(local * 110) * (1 - u); }
     else if (kind === "camera-flash-bulb") { r.flash = .92 * Math.exp(-Math.pow(u * 4.2, 2)); }
+    // v1.26 gl-transitions paritesi
+    else if (kind === "morph-warp") { r.zoom = 1 + .12 * (1 - e); r.blur = 8 * (1 - u); }
+    else if (kind === "dreamy-fade") { r.blur = 12 * (1 - u); r.flash = .18 * (1 - u); }
+    else if (kind === "cube-rotate") { r.sx = Math.max(.05, e); }
+    else if (kind === "swirl-spin") { r.rot = 37 * (1 - e); }
+    else if (kind === "burn-warm") { r.flash = .35 * (1 - u); r.leak = .65 * (1 - u); }
+    else if (kind === "doom-melt") { r.dy = -.5 * (1 - e); }
+    else if (/^(directional-wipe|pixelize-dissolve|window-slice|radial-wipe|cross-hatch|circle-open)/.test(kind)) r.mask = { kind, e };
     else if (/^(liquid-splash-wipe|retro-tv-off|kinetic-tile-flip|ink-splatter-wipe|cyberpunk-slice|liquid-drip|crt-off|crt-on|ink-splat|strip-blind-|paper-tear-slide|checker-dissolve|tile-flip)/.test(kind)) r.mask = { kind, e };
     else if (/^(wipe-|barn-|iris|eye|clock|diag-|wave-wipe|corner|diamond|heart|cross|blinds-|checker|stripes|blocks|dissolve|page-curl|split-curtain)/.test(kind)) r.mask = { kind, e };
     return r;
@@ -238,6 +246,13 @@ const SFX = (() => {
       for (let i = 0; i <= 64; i++) { const t = i / 64 * Math.PI * 2, x = Math.pow(Math.sin(t), 3) * .3, y = (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) / 16 * .3;
         c.lineTo(W / 2 + x * s, H * .45 - y * s); } },
     "cross": (c, e, W, H) => { c.rect(W / 2 - e * W / 2, 0, e * W, H); c.rect(0, H / 2 - e * H / 2, W, e * H); },
+    // v1.26 gl-transitions maskeleri
+    "directional-wipe": (c, e, W, H) => { c.moveTo(0, 0); c.lineTo(W * 1.3 * e, 0); c.lineTo(W * (1.3 * e - .3), H); c.lineTo(0, H); },
+    "pixelize-dissolve": (c, e, W, H) => { const s = 16; for (let x = 0; x < W; x += s) for (let y = 0; y < H; y += s) if ((((x / s * 11 + y / s * 17) % 23) / 23) < e * 1.06) c.rect(x, y, s, s); },
+    "window-slice": (c, e, W, H) => { const bw = W / 12; for (let i = 0; i < 12; i++) c.rect(i * bw, 0, bw * e + 1, H); },
+    "radial-wipe": (c, e, W, H) => { c.moveTo(W / 2, H / 2); c.arc(W / 2, H / 2, Math.hypot(W, H), -Math.PI, -Math.PI + Math.PI * 2 * e); },
+    "cross-hatch": (c, e, W, H) => { for (let d = -H; d < W; d += 24) { c.rect(d, 0, 24 * e + 1, H); } },
+    "circle-open": (c, e, W, H) => { c.arc(W / 2, H / 2, Math.max(1, e * Math.hypot(W / 2, H / 2)), 0, Math.PI * 2); },
     "blinds-h": (c, e, W, H) => { for (let i = 0; i < 8; i++) c.rect(0, i * H / 8, W, e * H / 8 + 1); },
     "blinds-v": (c, e, W, H) => { for (let i = 0; i < 10; i++) c.rect(i * W / 10, 0, e * W / 10 + 1, H); },
     "checker": (c, e, W, H) => { const bw = W / 8, bh = H / 6; for (let i = 0; i < 8; i++) for (let j = 0; j < 6; j++) { const p = ((i + j) % 2) * .5, k = Math.max(0, Math.min(1, (e - p) * 2)); if (k > 0) c.rect(i * bw, j * bh, bw * k, bh); } },

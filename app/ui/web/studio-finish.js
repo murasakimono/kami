@@ -15,10 +15,11 @@
     ["audioreact", "🔊 Ses-Tepkili Zoom (Audio-Reactive)", "Müzik/oyun bas ve tepe vuruşlarına göre klibe otomatik nabız zoom anahtar kareleri yazar."],
     ["reframe916", "📱 Akıllı Oto-Reframe (16:9 → 9:16)", "Yatay videodaki yüz/özneyi takip ederek dikey kadraja otomatik odaklar."],
     ["aivision", "👁️ AI Görüş Paketi (Kare Şeridi)", "Tasarımcı Dayı / Video Use yöntemi: 2 sn'de bir kare şeridi ve ses enerji haritası çıkarır."],
+    ["voiceiso", "🎙️ Ses İzolasyonu (Vokal Temizle)", "Oyun/ortam/klavye gürültüsünü bastırıp konuşmayı net izole sese ayırır."],
   );
   const _ai = aiAction;
   aiAction = async (kind, c) => {
-    const f = { qc, speech, refstyle, automation, upscale: c2 => enhance("upscale", c2), interp: c2 => enhance("interp", c2), track, poster, speedramp, audioreact, reframe916, aivision }[kind];
+    const f = { qc, speech, refstyle, automation, upscale: c2 => enhance("upscale", c2), interp: c2 => enhance("interp", c2), track, poster, speedramp, audioreact, reframe916, aivision, voiceiso }[kind];
     return f ? f(c) : _ai(kind, c);
   };
 
@@ -253,18 +254,64 @@
     }
   }
 
-  // ---------------------------------------------------------------- v1.26 Pro Araclari
+  // ---------------------------------------------------------------- v1.26 / v1.27 Pro Araclari
   async function speedramp(c) {
     c = c && clipKind(c) === "video" ? c : needSel(["video"]); if (!c) return;
     const pre = await api.studio_speed_ramp_presets();
-    const pick = await modal(`<h3>🏎️ Hız Eğrisi (Speed Ramp)</h3>
-      <div class="hint">Seçili klibe CapCut Pro / Spunkram tarzı hız eğrisi uygular.</div>
-      <div class="sf-list">${Object.entries(pre || {}).map(([k, v]) => `<button class="tb" data-v="${esc(k)}" style="justify-content:flex-start">${esc(v.name)}</button>`).join("")}</div>
-      <div class="row">${c.ramp ? `<button class="tb" data-v="__off">Eğriyi kaldır</button>` : ""}<button class="tb" data-v="">Vazgeç</button></div>`);
-    if (!pick) return;
+    let pts = (c.ramp?.length ? c.ramp : pre?.montage?.pts || [[0, 1], [0.5, 1], [1, 1]]).map(p => [+p[0], +p[1]]);
+    let dragIdx = -1;
+    const ok = await modal(`<h3>🏎️ Görsel Hız Eğrisi (Speed Ramp)</h3>
+      <div class="hint">Noktaları sürükle (0.25× – 4.0×) veya hazır eğri seç.</div>
+      <div class="catpills" id="srPre">${Object.entries(pre || {}).map(([k, v]) => `<button type="button" data-sr="${esc(k)}">${esc(v.name)}</button>`).join("")}</div>
+      <canvas id="srCv" width="460" height="170" style="width:100%;height:170px;background:#0B0812;border:1px solid #352754;border-radius:6px;cursor:grab;margin:6px 0"></canvas>
+      <div class="row">${c.ramp ? `<button class="tb" data-v="__off">Eğriyi kaldır</button>` : ""}<button class="tb" data-v="">Vazgeç</button><button class="tb pri" data-v="ok">Uygula</button></div>`, {
+      init: m => {
+        const cv = $("#srCv", m), ctx = cv.getContext("2d");
+        const toXY = ([t, s]) => [24 + t * (cv.width - 48), cv.height - 22 - ((Math.min(4, Math.max(0.25, s)) - 0.25) / 3.75) * (cv.height - 44)];
+        const draw = () => {
+          ctx.clearRect(0, 0, cv.width, cv.height);
+          ctx.strokeStyle = "rgba(139,92,246,.18)"; ctx.lineWidth = 1;
+          for (const sp of [0.5, 1, 2, 3, 4]) {
+            const [, y] = toXY([0, sp]);
+            ctx.beginPath(); ctx.moveTo(24, y); ctx.lineTo(cv.width - 24, y); ctx.stroke();
+            ctx.fillStyle = "#8A829E"; ctx.font = "10px sans-serif"; ctx.fillText(sp + "x", 2, y + 3);
+          }
+          ctx.strokeStyle = "#8B5CF6"; ctx.lineWidth = 2.5; ctx.beginPath();
+          pts.forEach((p, i) => { const [x, y] = toXY(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+          ctx.stroke();
+          pts.forEach((p, i) => {
+            const [x, y] = toXY(p);
+            ctx.fillStyle = i === dragIdx ? "#2EE6A6" : "#EDE9F6";
+            ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "#6D28D9"; ctx.lineWidth = 2; ctx.stroke();
+          });
+        };
+        draw();
+        $("#srPre", m).onclick = e => {
+          const b = e.target.closest("[data-sr]"); if (!b) return;
+          const p = pre?.[b.dataset.sr]?.pts; if (p) { pts = p.map(q => [+q[0], +q[1]]); draw(); }
+        };
+        cv.onpointerdown = e => {
+          const r = cv.getBoundingClientRect(), mx = (e.clientX - r.left) * (cv.width / r.width), my = (e.clientY - r.top) * (cv.height / r.height);
+          dragIdx = pts.findIndex(p => { const [x, y] = toXY(p); return Math.hypot(x - mx, y - my) < 14; });
+          if (dragIdx >= 0) cv.setPointerCapture(e.pointerId);
+        };
+        cv.onpointermove = e => {
+          if (dragIdx < 0) return;
+          const r = cv.getBoundingClientRect(), mx = (e.clientX - r.left) * (cv.width / r.width), my = (e.clientY - r.top) * (cv.height / r.height);
+          const sp = +(0.25 + (1 - Math.min(1, Math.max(0, (my - 22) / (cv.height - 44)))) * 3.75).toFixed(2);
+          let t = +Math.min(1, Math.max(0, (mx - 24) / (cv.width - 48))).toFixed(3);
+          if (dragIdx === 0) t = 0; else if (dragIdx === pts.length - 1) t = 1;
+          else t = Math.min(pts[dragIdx + 1][0] - 0.03, Math.max(pts[dragIdx - 1][0] + 0.03, t));
+          pts[dragIdx] = [t, sp]; draw();
+        };
+        cv.onpointerup = () => { dragIdx = -1; };
+      },
+    });
+    if (!ok) return;
     snap();
-    if (pick === "__off") { snap(); rampApply(c, null); changed(); toast("Hız eğrisi kaldırıldı"); return; }
-    if (pre?.[pick]?.pts) { snap(); rampApply(c, pre[pick].pts); changed(); toast("Hız eğrisi uygulandı: " + pre[pick].name); }
+    if (ok === "__off") { rampApply(c, null); changed(); toast("Hız eğrisi kaldırıldı"); return; }
+    rampApply(c, pts); changed(); toast("Görsel hız eğrisi uygulandı");
   }
 
   async function audioreact(c) {
@@ -304,5 +351,20 @@
       </div>
       ${r.sheet_url ? `<img src="${esc(r.sheet_url)}" style="width:100%;max-height:46vh;object-fit:contain;border-radius:6px;border:1px solid #2A2140;background:#000">` : ""}
       <div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`);
+  }
+
+  async function voiceiso(c) {
+    c = c && ["video", "audio"].includes(clipKind(c)) ? c : needSel(["video", "audio"]); if (!c) return;
+    const a = assetOf(c); if (!a?.path || !a.audio) { toast("Sesli bir klip seç"); return; }
+    busy("Konuşma sesi izole ediliyor…");
+    let r;
+    try { r = await api.studio_voice_isolate(a.path, c.in || 0, c.dur * (c.speed || 1)); } finally { busy(null); }
+    if (!r?.ok || !r.path) { toast("Ses izole edilemedi"); return; }
+    const aids = await importPaths([r.path]);
+    if (!aids[0]) return;
+    snap();
+    if (clipKind(c) === "audio") { c.asset = aids[0]; c.in = 0; }
+    else { c.vol = 0; placeAt({ asset: aids[0], dur: c.dur, in: 0, vol: 1 }, "audio", c.start); }
+    changed(); toast("Temiz vokal izi eklendi");
   }
 })();

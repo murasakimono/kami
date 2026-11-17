@@ -925,6 +925,34 @@ def t_apply_speed_ramp(clip: str, preset: str, path: str = "") -> Any:
     return {"ok": True, "clip": clip, "preset": preset, "dur": r["dur"]}
 
 
+@tool("isolate_voice_clip", "Klipteki konuşma sesini arka plan/oyun gürültüsünden izole edip temiz vokal WAV üretir.",
+      {"clip": STR, "path": PATH}, ["clip"])
+def t_isolate_voice_clip(clip: str, path: str = "") -> Any:
+    from app.core.studio_pro_v26 import isolate_voice_audio
+    p, pr = load(path)
+    c = find_clip(pr, clip)
+    src = pr["assets"][c["asset"]]["path"]
+    sp = float(c.get("speed") or 1.0)
+    res = isolate_voice_audio(_ffmpeg(), src, S.media_dir() / "Izole", float(c.get("in") or 0.0), float(c["dur"]) * sp)
+    if not res.get("ok"):
+        return res
+    info = ST.info(res["path"])
+    aid = S.add_asset(pr, info)
+    c["asset"] = aid
+    c["in"] = 0.0
+    save(p, pr)
+    return {**res, "clip": clip, "asset_id": aid}
+
+
+@tool("export_subtitles_srt", "Projedeki tüm altyazıları standart .srt dosyasına dışa aktarır.",
+      {"out_path": STR, "path": PATH})
+def t_export_subtitles_srt(out_path: str = "", path: str = "") -> Any:
+    from app.core.studio_pro_v26 import export_project_srt
+    p, pr = load(path)
+    dst = Path(out_path) if out_path else (S.export_dir() / f"{pr.get('name', 'altyazi')}.srt")
+    return export_project_srt(pr, dst)
+
+
 def handle(msg: dict) -> dict | None:
     mid, method = msg.get("id"), msg.get("method", "")
     if mid is None:
