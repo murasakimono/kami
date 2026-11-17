@@ -12,6 +12,7 @@ Zaman: saniye. Kaynak zamani = in + (zaman - start) * speed.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -402,7 +403,7 @@ class Studio:
             streams = []
         if not streams:
             return {"ok": False, "error": "no_audio_streams"}
-        out_dir = media_dir() / "Kanallar"
+        out_dir = home_dir() / "Kanallar"
         out_dir.mkdir(parents=True, exist_ok=True)
         stem = re.sub(r"[^\w\-]+", "_", Path(path).stem)[:40]
         paths: list[str] = []
@@ -410,7 +411,9 @@ class Studio:
         if len(streams) >= 2:
             for idx, st in enumerate(streams):
                 tags = st.get("tags") or {}
-                raw_lbl = str(tags.get("title") or tags.get("handler_name") or f"Kanal {idx + 1}").strip()
+                hn = str(tags.get("handler_name") or "").strip()
+                generic = not hn or hn.lower() in ("soundhandler", "iso media file produced by google inc.") or "handler" in hn.lower()
+                raw_lbl = str(tags.get("title") or ("" if generic else hn) or f"Kanal {idx + 1}").strip()
                 safe = re.sub(r"[^\w\-]+", "_", raw_lbl)[:24] or f"k{idx + 1}"
                 dst = out_dir / f"{stem}_a{idx + 1}_{safe}.wav"
                 self._run(["-y", "-loglevel", "error", "-i", path, "-map", f"0:a:{idx}", "-vn", "-ar", "48000", "-ac", "2", str(dst)], timeout=600)
@@ -435,14 +438,14 @@ class Studio:
         """4K/agir video klibi icin hafif onizleme vekili (720p, hizli keyframe) uretir; export orijinali kullanir."""
         if not os.path.isfile(path):
             return {"ok": False, "error": "not_found"}
-        out_dir = media_dir() / "Proxy"
+        out_dir = home_dir() / "Proxy"
         out_dir.mkdir(parents=True, exist_ok=True)
         h = hashlib.sha1(f"{path}:{os.path.getmtime(path)}:{height}".encode()).hexdigest()[:12]
         dst = out_dir / f"{Path(path).stem[:32]}_{h}_{height}p.mp4"
         if not dst.is_file():
             self._run([
                 "-y", "-loglevel", "error", "-i", path,
-                "-vf", f"scale=-2:min({int(height)},ih)",
+                "-vf", f"scale=-2:'min({int(height)},ih)'",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-g", "15",
                 "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(dst),
             ], timeout=3600)
