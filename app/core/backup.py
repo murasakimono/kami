@@ -22,6 +22,8 @@ from app.core.extras import APP_VERSION, _ver
 
 log = logging.getLogger(__name__)
 
+SQLITE_DB_FILES: tuple[str, ...] = ("kami.db", "history.db")
+
 JSON_DATA_FILES: tuple[str, ...] = (
     "settings.json",
     "game_covers_cache.json",
@@ -33,8 +35,8 @@ JSON_DATA_FILES: tuple[str, ...] = (
     "ytm_playlists.json",
     "music_folders.json",
     "playlists.json",
-    "player_meta.json",
-    "player_intro.json",
+    "media_meta.json",
+    "intro_marks.json",
 )
 
 DPAPI_KEY_LABELS: dict[str, str] = {
@@ -42,10 +44,16 @@ DPAPI_KEY_LABELS: dict[str, str] = {
     "spotify_oauth.bin": "Spotify (PKCE)",
     "spotify_token.bin": "Spotify (Token)",
     "sgdb_key.bin": "SteamGridDB",
-    "steam_key.bin": "Steam API",
+    "steam_web.bin": "Steam API",
+    "tmdb_key.bin": "TMDB",
+    "opensubtitles_key.bin": "OpenSubtitles",
+    "genius_token.bin": "Genius",
+    "freesound_key.bin": "Freesound",
     "yt_cookies.bin": "YouTube çerezleri",
     "room_worker.bin": "Kami Oda sabit link",
     "turn_key.bin": "Kami Oda TURN",
+    "ntfy_topic.bin": "ntfy",
+    "phone_key.bin": "Kami Telefon",
     "archive_passwords.bin": "Arşiv parolaları",
 }
 
@@ -78,9 +86,9 @@ def create_backup(
     data_dir: Path | None = None,
     db_path: Path | None = None,
     version: str = APP_VERSION,
+    local_storage: dict[str, Any] | str | None = None,
 ) -> dict[str, Any]:
     dd = Path(data_dir) if data_dir else paths.DATA_DIR
-    db = Path(db_path) if db_path else (dd / "kami.db")
     ts = time.strftime("%Y%m%d_%H%M%S")
     if dest_path:
         out = Path(dest_path)
@@ -104,11 +112,17 @@ def create_backup(
                 if fp.is_file():
                     zf.write(fp, arcname=f"data/{fname}")
                     included.append(fname)
-            if db.is_file():
-                db_snap = tmp_path / "kami.db"
-                _sqlite_backup(db, db_snap)
-                zf.write(db_snap, arcname="data/kami.db")
-                included.append("kami.db")
+            for dbname in SQLITE_DB_FILES:
+                dbf = Path(db_path) if (db_path and dbname == "kami.db") else (dd / dbname)
+                if dbf.is_file():
+                    db_snap = tmp_path / dbname
+                    _sqlite_backup(dbf, db_snap)
+                    zf.write(db_snap, arcname=f"data/{dbname}")
+                    included.append(dbname)
+            if local_storage:
+                ls_str = local_storage if isinstance(local_storage, str) else json.dumps(local_storage, ensure_ascii=False)
+                zf.writestr("data/localstorage_backup.json", ls_str)
+                included.append("localstorage_backup.json")
             studio_list = _studio_projects_list()
             if studio_list:
                 zf.writestr("data/studio_projects_list.json", json.dumps(studio_list, ensure_ascii=False, indent=2))
@@ -136,10 +150,81 @@ def _backup_existing_for_restore(target_dir: Path) -> Path:
         fp = target_dir / fname
         if fp.is_file():
             shutil.copy2(fp, snap_dir / fname)
-    db = target_dir / "kami.db"
-    if db.is_file():
-        _sqlite_backup(db, snap_dir / "kami.db")
+    for dbname in SQLITE_DB_FILES:
+        db = target_dir / dbname
+        if db.is_file():
+            _sqlite_backup(db, snap_dir / dbname)
     return snap_dir
+
+
+def _inspect_kamibak(src: Path, current_version: str) -> tuple[dict[str, Any] | None, str | None]:
+    if not src.is_file():
+        return None, "file_not_found"
+    try:
+        with zipfile.ZipFile(src, "r") as zf:
+            if "manifest.json" not in zf.namelist():
+                return None, "missing_manifest"
+            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+    except zipfile.BadZipFile:
+        return None, "bad_zip"
+    except Exception:
+        return None, "bad_manifest"
+    bver = str(manifest.get("version") or "0.0.0")
+    if _ver(bver) > _ver(current_version):
+        return manifest, "newer_version"
+    return manifest, None
+
+
+def stage_restore(
+    src_path: Path | str,
+    target_dir: Path | None = None,
+    current_version: str = APP_VERSION,
+) -> dict[str, Any]:
+    """Canli calisan Kami'de dosyalarin ustune yazmadan once dogrular ve pending_restore.kamibak olarak siraya alir."""
+    src = Path(src_path)
+    td = Path(target_dir) if target_dir else paths.DATA_DIR
+    td.mkdir(parents=True, exist_ok=True)
+    manifest, err = _inspect_kamibak(src, current_version)
+    if err:
+        out: dict[str, Any] = {"ok": False, "error": err}
+        if err == "newer_version" and manifest:
+            out["backup_version"] = str(manifest.get("version") or "")
+            out["current_version"] = current_version
+        return out
+    assert manifest is not None
+    pending = td / "pending_restore.kamibak"
+    tmp_p = td / "pending_restore.kamibak.tmp"
+    shutil.copy2(src, tmp_p)
+    tmp_p.replace(pending)
+    reenter = list(dict.fromkeys(
+        list(manifest.get("excluded_dpapi") or [])
+        + [label for fname, label in DPAPI_KEY_LABELS.items() if not (td / fname).is_file()]
+    ))
+    return {
+        "ok": True,
+        "staged": True,
+        "backup_version": str(manifest.get("version") or ""),
+        "restored": list(manifest.get("files") or []),
+        "reenter_keys": reenter,
+        "restart_required": True,
+    }
+
+
+def apply_pending_restore(
+    target_dir: Path | None = None,
+    current_version: str = APP_VERSION,
+) -> dict[str, Any] | None:
+    """Acilista Settings ve SQLite DB acilmadan once pending_restore.kamibak varsa uygular."""
+    td = Path(target_dir) if target_dir else paths.DATA_DIR
+    pending = td / "pending_restore.kamibak"
+    if not pending.is_file():
+        return None
+    res = restore_backup(pending, target_dir=td, current_version=current_version)
+    try:
+        pending.unlink()
+    except OSError:
+        pass
+    return res
 
 
 def restore_backup(
@@ -168,6 +253,14 @@ def restore_backup(
                 }
 
             safety_dir = _backup_existing_for_restore(td)
+            for dbname in SQLITE_DB_FILES:
+                for suf in ("-wal", "-shm"):
+                    wf = td / f"{dbname}{suf}"
+                    if wf.is_file():
+                        try:
+                            wf.unlink()
+                        except OSError:
+                            pass
             restored: list[str] = []
             for info in zf.infolist():
                 if info.is_dir() or not info.filename.startswith("data/"):
@@ -175,7 +268,8 @@ def restore_backup(
                 rel = info.filename[len("data/"):]
                 if not rel or "/" in rel or "\\" in rel or ".." in rel or rel.endswith(".bin"):
                     continue
-                dst = (td / rel).resolve()
+                out_name = "pending_localstorage.json" if rel == "localstorage_backup.json" else rel
+                dst = (td / out_name).resolve()
                 if td.resolve() not in dst.parents:
                     continue
                 tmp_dst = dst.with_name(dst.name + ".restore_tmp")

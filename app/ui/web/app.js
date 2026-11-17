@@ -753,6 +753,14 @@ async function initFaz7() {
       if (r?.ok) ib.classList.toggle("on", Boolean(r.visible));
     });
   }
+  try {
+    const lsRestored = await api?.consume_pending_localstorage?.();
+    if (lsRestored && typeof lsRestored === "object") {
+      for (const [k, v] of Object.entries(lsRestored)) {
+        try { localStorage.setItem(k, String(v)); } catch {}
+      }
+    }
+  } catch {}
   await refreshVramHud();
   setInterval(() => { if (!document.hidden) refreshVramHud(); }, 3000);
 }

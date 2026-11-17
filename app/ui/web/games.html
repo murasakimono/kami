@@ -313,7 +313,7 @@
       if (card) openDetail(GAMES.find((x) => x.key === card.dataset.key));
     };
     window.addEventListener("pywebviewready", load);
-    setTimeout(() => { if (!GAMES.length && window.pywebview) load(); }, 350);
+    if (!location.search.includes("selftest=1")) setTimeout(() => { if (!GAMES.length && window.pywebview) load(); }, 350);
     setInterval(refreshStatus, 10000);
   </script>
 </body>

@@ -239,7 +239,7 @@ function bindAppSettings() {
       const keys = (r.reenter_keys || []).length
         ? `\n\nGüvenlik nedeniyle şu anahtarları yeniden gir:\n- ${r.reenter_keys.join("\n- ")}`
         : "";
-      alert(`Yedek geri yüklendi (${(r.restored || []).length} dosya).\nDeğişikliklerin tam geçmesi için Kami'yi yeniden başlat.${keys}`);
+      alert(`Yedek geri yükleme için hazırlandı (${(r.restored || []).length} dosya).\nVeritabanı ve ayarların bozulmadan uygulanması için Kami'yi şimdi kapatıp yeniden aç.${keys}`);
     } finally { btn.disabled = false; }
   });
 }

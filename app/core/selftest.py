@@ -66,7 +66,8 @@ def run_selftest(
     failed_titles: list[str] = []
 
     for mod, title, html in MODULES:
-        if getattr(api, f"_{mod}_win", None) is not None:
+        # Prewarm edilmis Player penceresi kullanici tarafindan acilmis sayilmaz -> test et; diger acik pencereleri atla
+        if mod != "player" and getattr(api, f"_{mod}_win", None) is not None:
             results[mod] = {"status": "skipped", "reason": "already_open"}
             continue
         t0 = time.monotonic()
@@ -105,30 +106,66 @@ def run_selftest(
 
 
 def probe_pywebview_window(webview_mod: Any, api: Any, mod: str, title: str, html: str, timeout: float = 10.0) -> dict[str, Any]:
-    """pywebview ile gizli pencere olustur, JS api.ping() yanitini olc, pencereyi yok et."""
+    """Gercek modul fabrika fonksiyonuyla (yoksa gizli pencere ile) ping + keep_warm/kapanis testi."""
+    # Prewarm edilmis gizli Player penceresi varsa dogrudan onun uzerinde ping at (yok etme)
+    existing = getattr(api, f"_{mod}_win", None)
+    if existing is not None and mod == "player":
+        ex = ThreadPoolExecutor(max_workers=1)
+        try:
+            val = ex.submit(
+                existing.evaluate_js,
+                "(async()=>{try{return window.pywebview?.api?.ping?await window.pywebview.api.ping():null}catch(e){return {ok:false,error:String(e)}}})()",
+            ).result(timeout=timeout)
+            if isinstance(val, dict) and val.get("ok"):
+                return {"ok": True}
+            return {"ok": False, "error": f"bad_ping:{val!r}"[:120]}
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
+
     ready = threading.Event()
-    w = webview_mod.create_window(
-        f"{title} [SelfTest]",
-        url=str(paths.WEB_DIR / html),
-        js_api=api,
-        width=640,
-        height=400,
-        hidden=True,
-    )
+    factory = getattr(api, f"_make_{mod}_window", None)
+    if callable(factory):
+        try:
+            w = factory(prewarm=True) if mod == "player" else factory(selftest=True)
+        except TypeError:
+            w = None
+    else:
+        w = None
+    if w is None:
+        url = (paths.WEB_DIR / html).as_uri() + "?selftest=1"
+        w = webview_mod.create_window(
+            f"{title} [SelfTest]",
+            url=url,
+            js_api=api,
+            width=640,
+            height=400,
+            hidden=True,
+        )
     w.events.loaded += lambda: ready.set()
     try:
         if not ready.wait(timeout=timeout):
             return {"ok": False, "error": "load_timeout"}
-        with ThreadPoolExecutor(max_workers=1) as ex:
+        ex = ThreadPoolExecutor(max_workers=1)
+        try:
             val = ex.submit(
                 w.evaluate_js,
                 "(async()=>{try{return window.pywebview?.api?.ping?await window.pywebview.api.ping():null}catch(e){return {ok:false,error:String(e)}}})()",
             ).result(timeout=timeout)
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
         if isinstance(val, dict) and val.get("ok"):
             return {"ok": True}
         return {"ok": False, "error": f"bad_ping:{val!r}"[:120]}
     finally:
         try:
+            w.hide()
+        except Exception:
+            pass
+        try:
             w.destroy()
+        except Exception:
+            pass
+        try:
+            setattr(api, f"_{mod}_win", None)
         except Exception:
             pass

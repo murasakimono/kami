@@ -293,10 +293,11 @@ def check_spotify() -> dict[str, Any]:
         st = music_hub.spotify_status()
         if not st.get("logged_in"):
             return _r("spotify", "Spotify PKCE", "info", "Oturum acilmamis")
-        devs = []
-        with ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(music_hub.spotify_devices)
-            devs = fut.result(timeout=3.0) or []
+        ex = ThreadPoolExecutor(max_workers=1)
+        try:
+            devs = ex.submit(music_hub.spotify_devices).result(timeout=3.0) or []
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
         active = sum(1 for d in devs if d.get("is_active"))
         return _r("spotify", "Spotify PKCE", "ok", f"Bagli · {len(devs)} cihaz ({active} aktif)")
     except Exception as exc:
@@ -306,14 +307,16 @@ def check_spotify() -> dict[str, Any]:
 def check_librespot() -> dict[str, Any]:
     try:
         from app.core import librespot_host
-        st = librespot_host.status()
-        if not st.get("has_bin"):
+        has_bin = bool(librespot_host.find_binary())
+        if not has_bin:
             return _r("librespot", "Dahili oynatici (go-librespot)", "info", "Binary yok (Kamify acilinca indirilir)")
-        if st.get("running"):
+        running = bool(librespot_host.is_running())
+        paired = bool(librespot_host.has_credentials())
+        if running:
             return _r("librespot", "Dahili oynatici (go-librespot)", "ok",
-                      "Calisiyor" + (" · eslesmis" if st.get("paired") else " · eslesme bekliyor"))
+                      "Calisiyor" + (" · eslesmis" if paired else " · eslesme bekliyor"))
         return _r("librespot", "Dahili oynatici (go-librespot)", "info",
-                  "Hazir (kapali)" + (" · eslesmis" if st.get("paired") else ""))
+                  "Hazir (kapali)" + (" · eslesmis" if paired else ""))
     except Exception as exc:
         return _r("librespot", "Dahili oynatici (go-librespot)", "warn", f"Durum okunamadi: {type(exc).__name__}")
 
@@ -380,15 +383,17 @@ def check_module_windows(api: Any = None) -> dict[str, Any]:
         w = getattr(api, f"_{m}_win", None)
         if w is None:
             continue
+        ex = ThreadPoolExecutor(max_workers=1)
         try:
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                res = ex.submit(w.evaluate_js, "1+1").result(timeout=2.5)
+            res = ex.submit(w.evaluate_js, "1+1").result(timeout=2.5)
             if res == 2:
                 open_ok.append(m)
             else:
                 bad.append(m)
         except Exception:
             bad.append(m)
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
     if bad:
         return _r("modwins", "Modul pencereleri", "fail", "Yanit vermeyen: " + ", ".join(bad))
     if open_ok:

@@ -341,6 +341,15 @@ def main() -> int:
     import webview  # GUI yalnizca gerektiginde yuklensin
 
     # IPv6'si olmayan agda her AAAA adresi 21 sn bekletiyordu (RD 42 sn). IPv4 once; IPv6 hic yoksa aria2'de kapat.
+    try:
+        from app.core import backup as _backup, extras as _extras
+        _rr = _backup.apply_pending_restore(paths.DATA_DIR, _extras.APP_VERSION)
+        if _rr and _rr.get("ok"):
+            log.info("Bekleyen yedek acilista geri yuklendi (%d dosya)", len(_rr.get("restored") or []))
+        elif _rr and not _rr.get("ok"):
+            log.warning("Bekleyen yedek uygulanamadi: %s", _rr.get("error"))
+    except Exception:
+        log.exception("Bekleyen yedek kontrolu")
     settings = Settings()
     from app.core import net
     net.prefer_ipv4()
@@ -546,15 +555,18 @@ def main() -> int:
     # ---- Kami Picture: fotograf goruntuleyici + Kami Lens (ayri pencere, ayni api)
     picture_front = WindowFront("Kami Picture")
 
-    def make_picture_window():
-        w = webview.create_window("Kami Picture", url=str(paths.WEB_DIR / "picture.html"), js_api=api,
-                                  width=1280, height=820, min_size=(520, 360), background_color="#050408", text_select=False)
+    def make_picture_window(selftest: bool = False):
+        url = ((paths.WEB_DIR / "picture.html").as_uri() + "?selftest=1") if selftest else str(paths.WEB_DIR / "picture.html")
+        w = webview.create_window("Kami Picture", url=url, js_api=api,
+                                  width=1280, height=820, min_size=(520, 360), background_color="#050408",
+                                  text_select=False, hidden=selftest)
 
         def closed() -> None:
             api._picture_win = None
         w.events.closed += closed
         keep_warm(w)
-        w.events.loaded += lambda: (_set_hwnd_icon("Kami Picture", "picture", (56, 189, 248)), picture_front.request(), threading.Timer(0.6, picture_front.request).start())
+        if not selftest:
+            w.events.loaded += lambda: (_set_hwnd_icon("Kami Picture", "picture", (56, 189, 248)), picture_front.request(), threading.Timer(0.6, picture_front.request).start())
         return w
     api._make_picture_window = make_picture_window
     api._front_picture = picture_front.request
@@ -568,12 +580,15 @@ def main() -> int:
     ):
         def _bind_mod(k=_mkey, t=_mtitle, f=_mfile, ww=_mw, hh=_mh, col=_MOD_ICON_COLORS[_mkey]):
             fr = WindowFront(t)
-            def _make():
-                w = webview.create_window(t, url=str(paths.WEB_DIR / f), js_api=api,
-                                          width=ww, height=hh, min_size=(760, 520), background_color="#08070C", text_select=True)
+            def _make(selftest: bool = False):
+                url = ((paths.WEB_DIR / f).as_uri() + "?selftest=1") if selftest else str(paths.WEB_DIR / f)
+                w = webview.create_window(t, url=url, js_api=api,
+                                          width=ww, height=hh, min_size=(760, 520), background_color="#08070C",
+                                          text_select=True, hidden=selftest)
                 w.events.closed += lambda: setattr(api, f"_{k}_win", None)
                 keep_warm(w)
-                w.events.loaded += lambda: (_set_hwnd_icon(t, k, col), fr.request(), threading.Timer(0.5, fr.request).start())
+                if not selftest:
+                    w.events.loaded += lambda: (_set_hwnd_icon(t, k, col), fr.request(), threading.Timer(0.5, fr.request).start())
                 return w
             setattr(api, f"_make_{k}_window", _make)
             setattr(api, f"_front_{k}", fr.request)
@@ -581,9 +596,11 @@ def main() -> int:
 
     reader_front = WindowFront("Kami Reader")
 
-    def make_reader_window():
-        w = webview.create_window("Kami Reader", url=str(paths.WEB_DIR / "reader.html"), js_api=api,
-                                  width=1360, height=880, min_size=(560, 400), background_color="#07060B", text_select=True)
+    def make_reader_window(selftest: bool = False):
+        url = ((paths.WEB_DIR / "reader.html").as_uri() + "?selftest=1") if selftest else str(paths.WEB_DIR / "reader.html")
+        w = webview.create_window("Kami Reader", url=url, js_api=api,
+                                  width=1360, height=880, min_size=(560, 400), background_color="#07060B",
+                                  text_select=True, hidden=selftest)
 
         def closed() -> None:
             api._reader_win = None
@@ -591,6 +608,8 @@ def main() -> int:
         w.events.closed += closed
         keep_warm(w)
         def loaded() -> None:
+            if selftest:
+                return
             _set_hwnd_icon("Kami Reader", "reader", (245, 158, 11))
             reader_front.request(); threading.Timer(0.6, reader_front.request).start()
             try:
@@ -614,9 +633,11 @@ def main() -> int:
     # ---- Kami Studio: video editoru (ayri pencere, ayni api)
     studio_front = WindowFront("Kami Studio")
 
-    def make_studio_window():
-        w = webview.create_window("Kami Studio", url=str(paths.WEB_DIR / "studio.html"), js_api=api,
-                                  width=1600, height=960, min_size=(1100, 680), background_color="#07060B", text_select=False)
+    def make_studio_window(selftest: bool = False):
+        url = ((paths.WEB_DIR / "studio.html").as_uri() + "?selftest=1") if selftest else str(paths.WEB_DIR / "studio.html")
+        w = webview.create_window("Kami Studio", url=url, js_api=api,
+                                  width=1600, height=960, min_size=(1100, 680), background_color="#07060B",
+                                  text_select=False, hidden=selftest)
 
         def closed() -> None:
             api._studio_win = None
@@ -624,6 +645,8 @@ def main() -> int:
         keep_warm(w)
 
         def loaded() -> None:
+            if selftest:
+                return
             _set_hwnd_app_id("Kami Studio", "Murasakimono.Kami.Studio")
             _set_hwnd_icon("Kami Studio", "studio", (167, 139, 250))
             studio_front.request(); threading.Timer(0.6, studio_front.request).start()

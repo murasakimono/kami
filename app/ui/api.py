@@ -1097,7 +1097,13 @@ class Api(StudioMixin):
             if not picked:
                 return {"ok": False, "cancelled": True}
             p = picked[0] if isinstance(picked, (list, tuple)) else str(picked)
-        res = backup.create_backup(p or None)
+        ls_data = None
+        if self._window is not None:
+            try:
+                ls_data = self._window.evaluate_js("JSON.stringify(localStorage)")
+            except Exception:
+                ls_data = None
+        res = backup.create_backup(p or None, local_storage=ls_data)
         if res.get("ok") and not dest_path:
             subprocess.Popen(["explorer", "/select,", os.path.normpath(res["path"])])
         return res
@@ -1115,7 +1121,22 @@ class Api(StudioMixin):
             if not picked:
                 return {"ok": False, "cancelled": True}
             p = picked[0] if isinstance(picked, (list, tuple)) else str(picked)
-        return backup.restore_backup(p)
+        return backup.stage_restore(p)
+
+    def consume_pending_localstorage(self) -> dict[str, Any]:
+        from app import paths
+        p = paths.DATA_DIR / "pending_localstorage.json"
+        if not p.is_file():
+            return {}
+        try:
+            data = json.loads(p.read_text("utf-8"))
+        except Exception:
+            data = {}
+        try:
+            p.unlink()
+        except OSError:
+            pass
+        return data if isinstance(data, dict) else {}
 
     # ---------- Kami Doktor ----------
     def ping(self) -> dict[str, Any]:
