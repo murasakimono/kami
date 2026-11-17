@@ -145,7 +145,7 @@ function applyMicState() {
   $("bMic")?.classList.toggle("x", S.muted || S.deaf);
   $("bMic")?.classList.toggle("ptt-on", S.ptt && S.pttDown && !S.muted);
   $("bDeaf")?.classList.toggle("x", S.deaf);
-  for (const a of S.audios.values()) a.muted = S.deaf || outMuted();
+  for (const [k, a] of S.audios) peerVol(k, a, a._v ?? 1);
   for (const t of S.tiles.values()) if (t.pid !== "me") t.video.muted = S.deaf || t.userMuted || outMuted();
   if (PIP.v) PIP.v.muted = S.deaf || !PIP.mixed;
   syncFsCtl();
@@ -223,13 +223,31 @@ function stopCam() {
 }
 
 // ---------------------------------------------------------------- uzak izler
+// Kisi basina ses: %100'e kadar <audio>.volume (dokunulmaz hat); %100 ustu (en cok %200) yalniz o kisi icin
+// WebAudio kazanci, ogesi sessize alinir (Chrome uzak WebRTC akisini WebAudio'ya ancak oge bagliyken verir).
+function peerVol(key, a, v) {
+  v = Math.max(0, Math.min(2, +v || 0)); a._v = v;
+  const off = S.deaf || outMuted();
+  let b = S.boost?.get(key);
+  if (v > 1.001 && S.ctx && a.srcObject) {
+    if (!b) {
+      try {
+        const src = S.ctx.createMediaStreamSource(a.srcObject), g = S.ctx.createGain();
+        src.connect(g).connect(S.ctx.destination); b = { src, g }; (S.boost ||= new Map()).set(key, b);
+      } catch { b = null; }
+    }
+    if (b) { b.g.gain.setTargetAtTime(off ? 0 : v, S.ctx.currentTime, 0.02); a.volume = 1; a.muted = true; return; }
+  }
+  if (b) { try { b.src.disconnect(); b.g.disconnect(); } catch { /* yok */ } S.boost.delete(key); }
+  a.volume = Math.min(1, v); a.muted = off;
+}
 function onTrack(pid, stream, kind, track) {
   if (kind === "mic" || (track.kind === "audio" && !stream.getVideoTracks().length && kind !== "player" && kind !== "screen")) {
     let a = S.audios.get(pid + ":" + stream.id);
     if (!a) {
-      a = new Audio(); a.autoplay = true; a.playsInline = true; a.srcObject = stream; a.muted = S.deaf || outMuted();
-      a.volume = (PREF.vol?.[nameOf(pid)] ?? 1);
+      a = new Audio(); a.autoplay = true; a.playsInline = true; a.srcObject = stream;
       S.audios.set(pid + ":" + stream.id, a);
+      peerVol(pid + ":" + stream.id, a, PREF.vol?.[nameOf(pid)] ?? 1);
       a.play().catch(() => toast("Sesi duymak için ekrana bir kez dokun."));
       meterFor(pid, stream);
     }
@@ -240,7 +258,7 @@ function onTrack(pid, stream, kind, track) {
 function onTrackGone(pid, stream) { removeTile(pid + ":" + stream.id); }
 function onPeerGone(pid) {
   for (const k of [...S.tiles.keys()]) if (k.startsWith(pid + ":")) removeTile(k);
-  for (const [k, a] of [...S.audios]) if (k.startsWith(pid + ":")) { a.srcObject = null; S.audios.delete(k); }
+  for (const [k, a] of [...S.audios]) if (k.startsWith(pid + ":")) { const b = S.boost?.get(k); if (b) { try { b.src.disconnect(); b.g.disconnect(); } catch { /* yok */ } S.boost.delete(k); } a.srcObject = null; S.audios.delete(k); }
   S.meters.delete(pid);
   dropRx(pid);
 }
@@ -394,10 +412,10 @@ function onRoster(list) {
       const [c1, c2] = color(p.id);
       el = document.createElement("div"); el.className = "tk"; el.dataset.id = p.id;
       el.style.setProperty("--c1", c1); el.style.setProperty("--c2", c2);
-      el.innerHTML = `<div class="tk-face"></div><b></b><small></small>` + (me ? "" : `<input type="range" min="0" max="1.5" step="0.05" title="Ses seviyesi">`);
+      el.innerHTML = `<div class="tk-face"></div><b></b><small></small>` + (me ? "" : `<input type="range" min="0" max="2" step="0.05" title="Ses seviyesi (%200'e kadar)">`);
       box.appendChild(el);
       const r = el.querySelector("input");
-      if (r) { r.value = PREF.vol?.[p.name] ?? 1; r.oninput = () => { PREF.vol ||= {}; PREF.vol[p.name] = +r.value; save(); for (const [k, a] of S.audios) if (k.startsWith(p.id + ":")) a.volume = Math.min(1, +r.value); }; }
+      if (r) { r.value = PREF.vol?.[p.name] ?? 1; r.oninput = () => { PREF.vol ||= {}; PREF.vol[p.name] = +r.value; save(); for (const [k, a] of S.audios) if (k.startsWith(p.id + ":")) peerVol(k, a, +r.value); r.title = `Ses %${Math.round(+r.value * 100)}`; }; }
     }
     el.querySelector(".tk-face").textContent = (p.name || "?").trim().charAt(0).toUpperCase();
     el.querySelector("b").textContent = p.name + (me ? " (sen)" : "");
