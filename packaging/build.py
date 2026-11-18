@@ -100,6 +100,9 @@ def main(argv: list[str]) -> int:
     copy_tree(ROOT / "plugins", DIST / "plugins")
     copy_tree(ROOT / "extension", DIST / "extension", ignore=("*.pem",))
     copy_tree(ROOT / "docs", DIST / "docs")
+    sys.path.insert(0, str(ROOT))
+    from app.core import icons as _icons
+    _icons.export_all(DIST / "icons")
     assert not list((DIST / "extension").glob("*.pem")), "ozel anahtar pakete girmemeli"
     size = sum(f.stat().st_size for f in DIST.rglob("*") if f.is_file()) / 1e6
     print(f"dist: {DIST} ({size:.0f} MB)")

@@ -459,7 +459,7 @@ function level(an) { an.getByteTimeDomainData(buf); let m = 0; for (const v of b
 function talkLoop() {
   if (S.core) {
     const lv = S.micAn ? level(S.micAn) : 0;
-    if (!$("set").hidden) $("sMeter").style.width = Math.min(100, lv * 220) + "%";
+    if ($("set")?.hidden === false && $("sMeter")) $("sMeter").style.width = Math.min(100, lv * 220) + "%";
     const meEl = document.querySelector(`.tk[data-id="${S.core.id}"]`);
     meEl?.classList.toggle("talk", micOpen() && lv > 0.06);
     for (const [pid, an] of S.meters) document.querySelector(`.tk[data-id="${pid}"]`)?.classList.toggle("talk", level(an) > 0.05);
@@ -487,8 +487,10 @@ async function statsLoop() {
   netDot(worst);
 }
 function netDot(w) {
+  const el = $("rmNet");
+  if (!el) return;
   const pcs = [...(S.core?.peers.values() || [])], bad = pcs.some((P) => ["failed", "disconnected"].includes(P.pc.connectionState));
-  $("rmNet").className = "rm-net " + (bad ? "bad" : w || "ok");
+  el.className = "rm-net " + (bad ? "bad" : w || "ok");
 }
 
 // ---------------------------------------------------------------- sohbet

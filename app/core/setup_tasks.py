@@ -36,11 +36,20 @@ PROGIDS = {"Kami.Video": "Kami video", "Kami.Audio": "Kami ses", "Kami.Image": "
 CAPS = r"Software\Kami\Capabilities"
 
 
+def _progid_icon(kami: str, pid: str) -> str:
+    icon_name = {"Kami.Book": "reader.ico", "Kami.Video": "player.ico", "Kami.Audio": "player.ico", "Kami.Image": "picture.ico"}.get(pid)
+    if icon_name:
+        cand = Path(kami).parent / "icons" / icon_name
+        if cand.is_file():
+            return f'"{cand}",0'
+    return f'"{kami}",0'
+
+
 def register_player(kami: str) -> None:
     """ProgID + OpenWithProgids + RegisteredApplications (HKCU, yonetici gerekmez)."""
     for pid, name in PROGIDS.items():
         for sub, nm, val in [(rf"Software\Classes\{pid}", "", name),
-                             (rf"Software\Classes\{pid}\DefaultIcon", "", f'"{kami}",0'),
+                             (rf"Software\Classes\{pid}\DefaultIcon", "", _progid_icon(kami, pid)),
                              (rf"Software\Classes\{pid}\shell\open", "FriendlyAppName", {"Kami.Image": "Kami Picture", "Kami.Book": "Kami Reader"}.get(pid, "Kami Player")),
                              (rf"Software\Classes\{pid}\shell\open\command", "",
                               {"Kami.Image": f'"{kami}" --view "%1"', "Kami.Book": f'"{kami}" --read "%1"'}.get(pid, f'"{kami}" --play "%1"'))]:

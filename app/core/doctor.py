@@ -295,10 +295,11 @@ def check_spotify() -> dict[str, Any]:
             return _r("spotify", "Spotify PKCE", "info", "Oturum acilmamis")
         ex = ThreadPoolExecutor(max_workers=1)
         try:
-            devs = ex.submit(music_hub.spotify_devices).result(timeout=3.0) or []
+            res = ex.submit(music_hub.spotify_devices).result(timeout=3.0) or {}
         finally:
             ex.shutdown(wait=False, cancel_futures=True)
-        active = sum(1 for d in devs if d.get("is_active"))
+        devs = res.get("devices") or [] if isinstance(res, dict) else (res or [])
+        active = sum(1 for d in devs if d.get("active") or d.get("is_active"))
         return _r("spotify", "Spotify PKCE", "ok", f"Bagli · {len(devs)} cihaz ({active} aktif)")
     except Exception as exc:
         return _r("spotify", "Spotify PKCE", "warn", f"Durum alinamadi: {type(exc).__name__}")

@@ -243,6 +243,8 @@ def recent(limit: int = 30) -> list[dict[str, Any]]:
             d = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        if not isinstance(d, dict):
+            continue
         if d.get("path") and os.path.exists(d["path"]):
             out.append({"path": d["path"], "title": d.get("title", ""), "page": d.get("page", 0),
                         "count": d.get("count", 0), "opened": d.get("opened", 0), "hl": len(d.get("hl", []))})
@@ -259,6 +261,8 @@ def stats() -> dict[str, Any]:
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
+            continue
+        if not isinstance(d, dict):
             continue
         stt = d.get("stats") or {}
         total += float(stt.get("secs") or 0)

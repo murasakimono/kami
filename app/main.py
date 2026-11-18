@@ -71,47 +71,18 @@ def _set_hwnd_app_id(title: str, app_id: str) -> None:
 _MOD_ICONS_KEEP: list[int] = []
 
 
-def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int]) -> None:
+def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int] | None = None) -> None:
     """Modul penceresine kendine ozgu renkli/simgeli gorev cubugu ve baslik ikonu atar."""
     if sys.platform != "win32":
         return
     try:
         import ctypes
-        from PIL import Image, ImageDraw
+        from app.core import icons
         icon_dir = paths.DATA_DIR / "icons"
         icon_dir.mkdir(parents=True, exist_ok=True)
-        ico = icon_dir / f"{key}_v2.ico"
+        ico = icon_dir / f"{key}_v4.ico"
         if not ico.is_file():
-            im = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-            d = ImageDraw.Draw(im)
-            r, g, b = accent
-            d.rounded_rectangle([4, 4, 60, 60], radius=16, fill=(14, 10, 24, 255), outline=(r, g, b, 255), width=4)
-            if key == "player":
-                d.polygon([(24, 18), (48, 32), (24, 46)], fill=(r, g, b, 255))
-            elif key == "studio":
-                d.rounded_rectangle([18, 20, 46, 44], radius=4, outline=(r, g, b, 255), width=4)
-                d.line([(18, 27), (46, 27)], fill=(r, g, b, 255), width=3)
-            elif key == "picture":
-                d.rounded_rectangle([17, 19, 47, 45], radius=4, outline=(r, g, b, 255), width=4)
-                d.ellipse([22, 23, 29, 30], fill=(r, g, b, 255))
-                d.polygon([(19, 43), (33, 30), (45, 43)], fill=(r, g, b, 255))
-            elif key == "reader":
-                d.rounded_rectangle([19, 17, 45, 47], radius=3, outline=(r, g, b, 255), width=4)
-                d.line([(25, 25), (39, 25)], fill=(r, g, b, 255), width=3)
-                d.line([(25, 32), (39, 32)], fill=(r, g, b, 255), width=3)
-                d.line([(25, 39), (35, 39)], fill=(r, g, b, 255), width=3)
-            elif key == "music":
-                d.ellipse([19, 37, 29, 46], fill=(r, g, b, 255))
-                d.ellipse([36, 34, 46, 43], fill=(r, g, b, 255))
-                d.line([(28, 40), (28, 20), (45, 17), (45, 37)], fill=(r, g, b, 255), width=4)
-            elif key == "games":
-                d.rounded_rectangle([15, 24, 49, 42], radius=8, outline=(r, g, b, 255), width=4)
-                d.line([(24, 29), (24, 37)], fill=(r, g, b, 255), width=3)
-                d.line([(20, 33), (28, 33)], fill=(r, g, b, 255), width=3)
-                d.ellipse([37, 30, 42, 35], fill=(r, g, b, 255))
-            else:
-                d.polygon([(18, 20), (46, 20), (35, 34), (35, 46), (29, 46), (29, 34)], fill=(r, g, b, 255))
-            im.save(str(ico), format="ICO", sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
+            icons.write_ico(key, ico)
         hwnd = ctypes.windll.user32.FindWindowW(None, title)
         if not hwnd:
             return
@@ -511,7 +482,7 @@ def main() -> int:
         state = {"prewarm": prewarm}
 
         def closed() -> None:
-            if api._player_win is w:
+            if getattr(api, "_player_win", None) is w:
                 api._player_win = None
         w.events.closed += closed
         keep_warm(w, "try{var v=document.getElementById('plVideo');if(v)v.pause();if(document.fullscreenElement)document.exitFullscreen()}catch(e){}")
@@ -567,7 +538,7 @@ def main() -> int:
                                   text_select=False, hidden=selftest)
 
         def closed() -> None:
-            if api._picture_win is w:
+            if getattr(api, "_picture_win", None) is w:
                 api._picture_win = None
         w.events.closed += closed
         keep_warm(w)
@@ -610,7 +581,7 @@ def main() -> int:
                                   text_select=True, hidden=selftest)
 
         def closed() -> None:
-            if api._reader_win is w:
+            if getattr(api, "_reader_win", None) is w:
                 api._reader_win = None
                 api.reader_close()
         w.events.closed += closed
@@ -648,7 +619,7 @@ def main() -> int:
                                   text_select=False, hidden=selftest)
 
         def closed() -> None:
-            if api._studio_win is w:
+            if getattr(api, "_studio_win", None) is w:
                 api._studio_win = None
         w.events.closed += closed
         keep_warm(w)
