@@ -80,7 +80,7 @@ def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int] | None = N
         from app.core import icons
         icon_dir = paths.DATA_DIR / "icons"
         icon_dir.mkdir(parents=True, exist_ok=True)
-        ico = icon_dir / f"{key}_v8.ico"
+        ico = icon_dir / f"{key}_v9.ico"
         if not ico.is_file():
             icons.write_ico(key, ico)
         hwnd = ctypes.windll.user32.FindWindowW(None, title)
@@ -984,6 +984,17 @@ def main() -> int:
             except Exception:
                 log.debug("muzik mini-ada", exc_info=True)
     threading.Thread(target=_music_island_loop, name="kami-music-island", daemon=True).start()
+
+    def _caption_loop() -> None:   # yeni acilan her pencerenin gri baslik cubugunu uygulama rengine boyar
+        from app.core import winwin as _ww
+        while True:
+            try:
+                _ww.tint_own_windows()
+            except Exception:
+                log.debug("baslik rengi", exc_info=True)
+            time.sleep(0.4)
+    if sys.platform == "win32":
+        threading.Thread(target=_caption_loop, name="kami-caption", daemon=True).start()
     if settings.get("mini_island"):
         try:
             api.mini_island_toggle(True)

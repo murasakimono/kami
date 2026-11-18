@@ -353,22 +353,7 @@
         this.puppet.position.set(160, 162);
         app.stage.addChild(this.puppet);
 
-        // Eklemli yan kagit kurdeleler (ikincil hareket)
-        for (const side of [-1, 1]) {
-          const joint = new PIXI.Container();
-          joint.position.set(side * 58, -10);
-          const rib = new PIXI.Graphics()
-            .moveTo(0, 0)
-            .lineTo(side * 12, 42)
-            .lineTo(side * 4, 78)
-            .lineTo(side * -6, 46)
-            .closePath()
-            .fill({ color: 0x1e142d, alpha: 0.85 })
-            .stroke({ width: 1.5, color: 0x6d28d9, alpha: 0.65 });
-          joint.addChild(rib);
-          this.puppet.addChild(joint);
-          this.ribbons.push({ side, joint });
-        }
+        // Yan kurdeleler kaldirildi: maskotun yaninda kanat gibi cirpinan mor elmas olarak gorunuyordu (karakter tasariminda yok)
 
         // Karakter sprite katmanlari (crossfade icin prev + cur)
         const charWrap = new PIXI.Container();

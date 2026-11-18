@@ -162,10 +162,10 @@ def render_small_icon(key: str, size: int = 32):
 
 
 def write_ico(key: str, out_path: Path) -> Path:
-    """48/256 px: tam maskotlu tasarim; 16/24/32 px: ayni tasarimin kirpilmis, netlestirilmis hali."""
+    """128/256 px: tam tasarim; 16-64 px (masaustu dahil): dis cercevesi kirpilmis, netlestirilmis hali."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     im256 = render_icon_image(key, size=256)
-    layers = [render_icon_image(key, size=128), render_icon_image(key, size=64), render_icon_image(key, size=48),
+    layers = [render_icon_image(key, size=128), render_small_icon(key, 64), render_small_icon(key, 48),
               render_small_icon(key, 32), render_small_icon(key, 24), render_small_icon(key, 16)]
     im256.save(out_path, format="ICO", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
                append_images=layers)

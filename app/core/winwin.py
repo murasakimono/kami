@@ -35,6 +35,8 @@ if os.name == "nt":
     user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
     user32.AllowSetForegroundWindow.argtypes = [wintypes.DWORD]
     user32.IsWindow.argtypes = [wintypes.HWND]
+    user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.GetWindowLongW.restype = ctypes.c_long
     user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.c_void_p]
     user32.SetWindowRgn.argtypes = [wintypes.HWND, wintypes.HANDLE, wintypes.BOOL]
     gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
@@ -88,6 +90,58 @@ def find_window(title: str, pid: int | None = None) -> int:
 
     user32.EnumWindows(_EnumProc(cb), 0)
     return found[0] if found else 0
+
+
+_TINTED: set[int] = set()
+CAPTION_BG = (11, 9, 16)      # Sunak arka plani (#0B0910) ile ayni: baslik cubugu uygulamanin devami gibi gorunur
+CAPTION_FG = (226, 220, 240)
+CAPTION_BORDER = (28, 18, 40)
+
+
+def _colorref(rgb: tuple[int, int, int]) -> ctypes.c_uint:
+    r, g, b = rgb
+    return ctypes.c_uint(r | (g << 8) | (b << 16))
+
+
+def tint_caption(hwnd: int, bg: tuple[int, int, int] = CAPTION_BG, fg: tuple[int, int, int] = CAPTION_FG) -> bool:
+    """Windows 11: standart baslik cubugunu (gri #202020) uygulama rengine boyar. Win10'da sadece koyu mod uygulanir."""
+    if not (dwmapi and hwnd):
+        return False
+    ok = False
+    try:
+        h = wintypes.HWND(int(hwnd))
+        dark = ctypes.c_int(1)
+        dwmapi.DwmSetWindowAttribute(h, 20, ctypes.byref(dark), ctypes.sizeof(dark))   # DWMWA_USE_IMMERSIVE_DARK_MODE
+        for attr, val in ((35, _colorref(bg)), (36, _colorref(fg)), (34, _colorref(CAPTION_BORDER))):   # CAPTION / TEXT / BORDER
+            ok = (dwmapi.DwmSetWindowAttribute(h, attr, ctypes.byref(val), ctypes.sizeof(val)) == 0) or ok
+    except Exception:
+        log.debug("tint_caption", exc_info=True)
+    return ok
+
+
+def tint_own_windows(pid: int | None = None) -> int:
+    """Bu surecin gorunur, baslik cubuklu tum pencerelerini bir kez boyar (yeni acilan modul pencereleri dahil)."""
+    if user32 is None:
+        return 0
+    pid = pid or os.getpid()
+    for dead in [h for h in _TINTED if not user32.IsWindow(h)]:   # kapanan pencerenin tutamaci yeniden kullanilabilir
+        _TINTED.discard(dead)
+    todo: list[int] = []
+
+    def cb(hwnd, _):
+        p = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(p))
+        if p.value == pid and int(hwnd) not in _TINTED and user32.IsWindowVisible(hwnd):
+            style = user32.GetWindowLongW(hwnd, -16)
+            if style & 0x00C00000 == 0x00C00000:   # WS_CAPTION
+                todo.append(int(hwnd))
+        return True
+
+    user32.EnumWindows(_EnumProc(cb), 0)
+    for h in todo:
+        tint_caption(h)
+        _TINTED.add(h)
+    return len(todo)
 
 
 def allow_foreground(pid: int | None = None) -> None:
