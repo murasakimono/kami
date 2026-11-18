@@ -1144,7 +1144,7 @@ class Api(StudioMixin):
         return {"ok": True, "version": APP_VERSION}
 
     def is_selftest(self) -> bool:
-        return bool(getattr(self, "_selftest_active", False))
+        return False
 
     def doctor_run(self) -> dict[str, Any]:
         from app.core import doctor

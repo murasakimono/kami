@@ -79,7 +79,7 @@ def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int]) -> None:
         from PIL import Image, ImageDraw
         icon_dir = paths.DATA_DIR / "icons"
         icon_dir.mkdir(parents=True, exist_ok=True)
-        ico = icon_dir / f"{key}.ico"
+        ico = icon_dir / f"{key}_v2.ico"
         if not ico.is_file():
             im = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
             d = ImageDraw.Draw(im)
@@ -96,7 +96,9 @@ def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int]) -> None:
                 d.polygon([(19, 43), (33, 30), (45, 43)], fill=(r, g, b, 255))
             elif key == "reader":
                 d.rounded_rectangle([19, 17, 45, 47], radius=3, outline=(r, g, b, 255), width=4)
-                d.line([(25, 25), (39, 25), (25, 32), (39, 32)], fill=(r, g, b, 255), width=3)
+                d.line([(25, 25), (39, 25)], fill=(r, g, b, 255), width=3)
+                d.line([(25, 32), (39, 32)], fill=(r, g, b, 255), width=3)
+                d.line([(25, 39), (35, 39)], fill=(r, g, b, 255), width=3)
             elif key == "music":
                 d.ellipse([19, 37, 29, 46], fill=(r, g, b, 255))
                 d.ellipse([36, 34, 46, 43], fill=(r, g, b, 255))
@@ -501,19 +503,21 @@ def main() -> int:
 
     player_front = WindowFront("Kami Player")
 
-    def make_player_window(prewarm: bool = False):
-        w = webview.create_window("Kami Player", url=str(paths.WEB_DIR / "player.html"), js_api=api,
+    def make_player_window(prewarm: bool = False, js_api: Any = None):
+        w = webview.create_window("Kami Player", url=str(paths.WEB_DIR / "player.html"), js_api=js_api or api,
                                   width=1280, height=760, min_size=(360, 150), background_color="#050408",
                                   text_select=False, hidden=prewarm)
         state = {"prewarm": prewarm}
 
         def closed() -> None:
-            api._player_win = None
+            if api._player_win is w:
+                api._player_win = None
         w.events.closed += closed
         keep_warm(w, "try{var v=document.getElementById('plVideo');if(v)v.pause();if(document.fullscreenElement)document.exitFullscreen()}catch(e){}")
 
         def loaded() -> None:
             bind_drop(w)
+            _set_hwnd_app_id("Kami Player", "Murasakimono.Kami.Player")
             _set_hwnd_icon("Kami Player", "player", (46, 230, 166))
             if state.pop("prewarm", False):   # arka planda hazirlandi: one getirme, gizli kalsin
                 return
@@ -556,23 +560,24 @@ def main() -> int:
     # ---- Kami Picture: fotograf goruntuleyici + Kami Lens (ayri pencere, ayni api)
     picture_front = WindowFront("Kami Picture")
 
-    def make_picture_window(selftest: bool = False):
-        w = webview.create_window("Kami Picture [SelfTest]" if selftest else "Kami Picture", url=str(paths.WEB_DIR / "picture.html"), js_api=api,
+    def make_picture_window(selftest: bool = False, js_api: Any = None):
+        w = webview.create_window("Kami Picture [SelfTest]" if selftest else "Kami Picture", url=str(paths.WEB_DIR / "picture.html"), js_api=js_api or api,
                                   width=1280, height=820, min_size=(520, 360), background_color="#050408",
                                   text_select=False, hidden=selftest)
 
         def closed() -> None:
-            api._picture_win = None
+            if api._picture_win is w:
+                api._picture_win = None
         w.events.closed += closed
         keep_warm(w)
         if not selftest:
-            w.events.loaded += lambda: (_set_hwnd_icon("Kami Picture", "picture", (56, 189, 248)), picture_front.request(), threading.Timer(0.6, picture_front.request).start())
+            w.events.loaded += lambda: (_set_hwnd_app_id("Kami Picture", "Murasakimono.Kami.Picture"), _set_hwnd_icon("Kami Picture", "picture", (56, 189, 248)), picture_front.request(), threading.Timer(0.6, picture_front.request).start())
         return w
     api._make_picture_window = make_picture_window
     api._front_picture = picture_front.request
 
     # ---- Kami Oyun / Muzik / Suzgec (her biri kendi ayri penceresinde) ----
-    _MOD_ICON_COLORS = {"games": (129, 140, 248), "music": (46, 230, 166), "cleaner": (244, 114, 182)}
+    _MOD_ICON_COLORS = {"games": (129, 140, 248), "music": (192, 132, 252), "cleaner": (244, 114, 182)}
     for _mkey, _mtitle, _mfile, _mw, _mh in (
         ("games", "Kami Games", "games.html", 1320, 840),
         ("music", "Kamify", "music.html", 1240, 800),
@@ -580,14 +585,17 @@ def main() -> int:
     ):
         def _bind_mod(k=_mkey, t=_mtitle, f=_mfile, ww=_mw, hh=_mh, col=_MOD_ICON_COLORS[_mkey]):
             fr = WindowFront(t)
-            def _make(selftest: bool = False):
-                w = webview.create_window(f"{t} [SelfTest]" if selftest else t, url=str(paths.WEB_DIR / f), js_api=api,
+            def _make(selftest: bool = False, js_api: Any = None):
+                w = webview.create_window(f"{t} [SelfTest]" if selftest else t, url=str(paths.WEB_DIR / f), js_api=js_api or api,
                                           width=ww, height=hh, min_size=(760, 520), background_color="#08070C",
                                           text_select=True, hidden=selftest)
-                w.events.closed += lambda: setattr(api, f"_{k}_win", None)
+                def _on_closed():
+                    if getattr(api, f"_{k}_win", None) is w:
+                        setattr(api, f"_{k}_win", None)
+                w.events.closed += _on_closed
                 keep_warm(w)
                 if not selftest:
-                    w.events.loaded += lambda: (_set_hwnd_icon(t, k, col), fr.request(), threading.Timer(0.5, fr.request).start())
+                    w.events.loaded += lambda: (_set_hwnd_app_id(t, f"Murasakimono.Kami.{k.title()}"), _set_hwnd_icon(t, k, col), fr.request(), threading.Timer(0.5, fr.request).start())
                 return w
             setattr(api, f"_make_{k}_window", _make)
             setattr(api, f"_front_{k}", fr.request)
@@ -595,19 +603,21 @@ def main() -> int:
 
     reader_front = WindowFront("Kami Reader")
 
-    def make_reader_window(selftest: bool = False):
-        w = webview.create_window("Kami Reader [SelfTest]" if selftest else "Kami Reader", url=str(paths.WEB_DIR / "reader.html"), js_api=api,
+    def make_reader_window(selftest: bool = False, js_api: Any = None):
+        w = webview.create_window("Kami Reader [SelfTest]" if selftest else "Kami Reader", url=str(paths.WEB_DIR / "reader.html"), js_api=js_api or api,
                                   width=1360, height=880, min_size=(560, 400), background_color="#07060B",
                                   text_select=True, hidden=selftest)
 
         def closed() -> None:
-            api._reader_win = None
-            api.reader_close()
+            if api._reader_win is w:
+                api._reader_win = None
+                api.reader_close()
         w.events.closed += closed
         keep_warm(w)
         def loaded() -> None:
             if selftest:
                 return
+            _set_hwnd_app_id("Kami Reader", "Murasakimono.Kami.Reader")
             _set_hwnd_icon("Kami Reader", "reader", (245, 158, 11))
             reader_front.request(); threading.Timer(0.6, reader_front.request).start()
             try:
@@ -631,13 +641,14 @@ def main() -> int:
     # ---- Kami Studio: video editoru (ayri pencere, ayni api)
     studio_front = WindowFront("Kami Studio")
 
-    def make_studio_window(selftest: bool = False):
-        w = webview.create_window("Kami Studio [SelfTest]" if selftest else "Kami Studio", url=str(paths.WEB_DIR / "studio.html"), js_api=api,
+    def make_studio_window(selftest: bool = False, js_api: Any = None):
+        w = webview.create_window("Kami Studio [SelfTest]" if selftest else "Kami Studio", url=str(paths.WEB_DIR / "studio.html"), js_api=js_api or api,
                                   width=1600, height=960, min_size=(1100, 680), background_color="#07060B",
                                   text_select=False, hidden=selftest)
 
         def closed() -> None:
-            api._studio_win = None
+            if api._studio_win is w:
+                api._studio_win = None
         w.events.closed += closed
         keep_warm(w)
 

@@ -312,7 +312,7 @@
       const card = e.target.closest(".gcard");
       if (card) openDetail(GAMES.find((x) => x.key === card.dataset.key));
     };
-    window.addEventListener("pywebviewready", load);
+    window.addEventListener("pywebviewready", async () => { if (!(await window.pywebview.api?.is_selftest?.())) load(); });
     setTimeout(async () => { if (!GAMES.length && window.pywebview && !(await window.pywebview.api?.is_selftest?.())) load(); }, 350);
     setInterval(refreshStatus, 10000);
   </script>

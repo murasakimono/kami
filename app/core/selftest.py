@@ -53,6 +53,18 @@ def _write_result(payload: dict[str, Any], data_dir: Path | None = None) -> Path
     return p
 
 
+class _SelfTestApiProxy:
+    """Test pencerelerine ozel js_api sarmalayicisi: yalnizca test penceresinde is_selftest() -> True."""
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def is_selftest(self) -> bool:
+        return True
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
 def run_selftest(
     api: Any,
     current_version: str,
@@ -64,35 +76,25 @@ def run_selftest(
     """Her modul penceresi icin gizli olustur -> ping -> kapat sinamasi."""
     results: dict[str, dict[str, Any]] = {}
     failed_titles: list[str] = []
-    try:
-        setattr(api, "_selftest_active", True)
-    except Exception:
-        pass
-    try:
-        for mod, title, html in MODULES:
-            # Prewarm edilmis Player penceresi kullanici tarafindan acilmis sayilmaz -> test et; diger acik pencereleri atla
-            if mod != "player" and getattr(api, f"_{mod}_win", None) is not None:
-                results[mod] = {"status": "skipped", "reason": "already_open"}
-                continue
-            t0 = time.monotonic()
-            try:
-                res = probe_window_fn(mod, title, html, timeout)
-                dt_ms = int((time.monotonic() - t0) * 1000)
-                ok = bool(res and res.get("ok"))
-                entry = {"status": "ok" if ok else "fail", "ms": dt_ms}
-                if not ok:
-                    entry["error"] = str((res or {}).get("error") or "no_response")
-                    failed_titles.append(title)
-                results[mod] = entry
-            except Exception as exc:
-                dt_ms = int((time.monotonic() - t0) * 1000)
-                results[mod] = {"status": "fail", "ms": dt_ms, "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
-                failed_titles.append(title)
-    finally:
+    for mod, title, html in MODULES:
+        # Prewarm edilmis Player penceresi kullanici tarafindan acilmis sayilmaz -> test et; diger acik pencereleri atla
+        if mod != "player" and getattr(api, f"_{mod}_win", None) is not None:
+            results[mod] = {"status": "skipped", "reason": "already_open"}
+            continue
+        t0 = time.monotonic()
         try:
-            setattr(api, "_selftest_active", False)
-        except Exception:
-            pass
+            res = probe_window_fn(mod, title, html, timeout)
+            dt_ms = int((time.monotonic() - t0) * 1000)
+            ok = bool(res and res.get("ok"))
+            entry = {"status": "ok" if ok else "fail", "ms": dt_ms}
+            if not ok:
+                entry["error"] = str((res or {}).get("error") or "no_response")
+                failed_titles.append(title)
+            results[mod] = entry
+        except Exception as exc:
+            dt_ms = int((time.monotonic() - t0) * 1000)
+            results[mod] = {"status": "fail", "ms": dt_ms, "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+            failed_titles.append(title)
 
     all_ok = not failed_titles
     payload = {
@@ -132,10 +134,11 @@ def probe_pywebview_window(webview_mod: Any, api: Any, mod: str, title: str, htm
             ex.shutdown(wait=False, cancel_futures=True)
 
     ready = threading.Event()
+    proxy = _SelfTestApiProxy(api)
     factory = getattr(api, f"_make_{mod}_window", None)
     if callable(factory):
         try:
-            w = factory(prewarm=True) if mod == "player" else factory(selftest=True)
+            w = factory(prewarm=True, js_api=proxy) if mod == "player" else factory(selftest=True, js_api=proxy)
         except TypeError:
             w = None
     else:
@@ -144,7 +147,7 @@ def probe_pywebview_window(webview_mod: Any, api: Any, mod: str, title: str, htm
         w = webview_mod.create_window(
             f"{title} [SelfTest]",
             url=str(paths.WEB_DIR / html),
-            js_api=api,
+            js_api=proxy,
             width=640,
             height=400,
             hidden=True,
@@ -174,6 +177,7 @@ def probe_pywebview_window(webview_mod: Any, api: Any, mod: str, title: str, htm
         except Exception:
             pass
         try:
-            setattr(api, f"_{mod}_win", None)
+            if getattr(api, f"_{mod}_win", None) is w:
+                setattr(api, f"_{mod}_win", None)
         except Exception:
             pass
