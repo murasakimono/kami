@@ -279,8 +279,9 @@ def check_log_errors() -> dict[str, Any]:
             tail = fh.read().decode("utf-8", "replace").splitlines()
     except OSError:
         return _r("log", "Son hatalar", "info", "Log okunamadi")
+    from app.core.extras import APP_VERSION
     cutoff = time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() - 86400))
-    ver_tag = f"Kami {paths.APP_VERSION}"
+    ver_tag = f"Kami {APP_VERSION}"
     start_idx = next((i for i, ln in enumerate(tail) if ver_tag in ln), 0)
     errs = [ln for ln in tail[start_idx:] if " ERROR " in ln and ln[:16] >= cutoff]
     if not errs:

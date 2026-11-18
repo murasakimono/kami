@@ -186,6 +186,8 @@ def main() -> int:
     paths.setup_frozen()
     paths.ensure_dirs()
     _setup_logging()
+    from app.core.extras import APP_VERSION as _APP_VERSION
+    log.info("Kami %s basladi", _APP_VERSION)
     if "--studio-mcp" in sys.argv[1:]:   # Claude masaustu: Kami Studio MCP sunucusu (stdio, pencere yok)
         from app.core import studio_mcp
         return studio_mcp.main()
