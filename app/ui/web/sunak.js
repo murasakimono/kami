@@ -586,6 +586,7 @@ function skState(s) {
     const p = SK.prevStatus.get(d.id);
     if (p && p !== "complete" && d.status === "complete") {
       SK.happyUntil = Date.now() + 4000;
+      window.KamiFX?.pulse?.();
       if (SK.autoPlay.has(d.id)) { SK.autoPlay.delete(d.id); skAutoSave(); playerOpen(d.id); }   // bitince oynat
     }
     SK.prevStatus.set(d.id, d.status);
@@ -622,6 +623,22 @@ function skState(s) {
     drop: $("#skAltar").classList.contains("drop"),
   });
   window.KamiFX?.setSpeed?.(SK.speedFrac);
+  // Windows gorev cubugu ilerleme cubugu (ITaskbarList3)
+  let tbState = "none", tbPct = 0;
+  if (active.length) {
+    const totSz = active.reduce((a, d) => a + (d.size || 0), 0);
+    const totDl = active.reduce((a, d) => a + (d.downloaded || 0), 0);
+    tbState = "normal";
+    tbPct = totSz > 0 ? Math.min(100, Math.round((totDl / totSz) * 100)) : 50;
+  } else if (its.some((d) => d.status === "error")) {
+    tbState = "error"; tbPct = 100;
+  } else if (its.some((d) => d.status === "paused")) {
+    tbState = "paused"; tbPct = 50;
+  }
+  if (SK._tbLast !== `${tbState}:${tbPct}`) {
+    SK._tbLast = `${tbState}:${tbPct}`;
+    api?.taskbar_progress?.(tbPct, tbState)?.catch?.(() => {});
+  }
   skTrackSpeeds();
   const fc = $("#followCount")?.textContent; const fn = $("#skFollowN");
   if (fn) { fn.hidden = !fc || fc === "0"; fn.textContent = fc || ""; }
@@ -755,6 +772,36 @@ window.fxApplyMode = function (mode) {
 skBuild();
 fxInit();
 STATE_HOOKS.push(skState);
+
+// Istege bagli: Kamify calarken kapak rengini Sunak arka planina hafifce yansit
+(() => {
+  let lastCov = "";
+  setInterval(async () => {
+    if (document.hidden || !state?.settings?.sunak_kamify_sync) {
+      if (lastCov) { lastCov = ""; window.KamiFX?.setTint?.(0, 0, 0); }
+      return;
+    }
+    try {
+      const now = await api?.music_spotify_now?.();
+      const cov = now?.playing ? (now.cover || "") : "";
+      if (!cov) { if (lastCov) { lastCov = ""; window.KamiFX?.setTint?.(0, 0, 0); } return; }
+      if (cov === lastCov) return;
+      lastCov = cov;
+      const im = new Image(); im.crossOrigin = "anonymous";
+      im.onload = () => {
+        try {
+          const cv = document.createElement("canvas"); cv.width = 6; cv.height = 6;
+          const g = cv.getContext("2d"); g.drawImage(im, 0, 0, 6, 6);
+          const d = g.getImageData(0, 0, 6, 6).data;
+          let r = 0, gr = 0, b = 0, n = 0;
+          for (let i = 0; i < d.length; i += 4) { if (d[i] + d[i+1] + d[i+2] > 30) { r += d[i]; gr += d[i+1]; b += d[i+2]; n++; } }
+          if (n) window.KamiFX?.setTint?.(Math.round(r / n), Math.round(gr / n), Math.round(b / n));
+        } catch {}
+      };
+      im.src = cov;
+    } catch {}
+  }, 5000);
+})();
 
 // v1.32.1 Sag ray sadelestirme: 12 dugme -> ana isler + "Araclar" izgarasi + Ayarlar.
 // Orijinal dugmeler DOM'da (gizli) kalir; dosemeler onlara tiklatir -> tum mevcut isleyiciler aynen calisir.

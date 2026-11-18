@@ -75,6 +75,7 @@ DEFAULTS: dict[str, Any] = {
     "kamify_ambiance": True,       # Kamify kapak rengine uyumlu dinamik arka plan ambiyansi
     "games_tilt": True,            # Kami Games kartlarinda fare takipli 3D egim + krom yansima
     "reader_page_anim": True,      # Kami Reader sayfa cevirme golge/kayma gecisi
+    "sunak_kamify_sync": False,    # Kamify calarken kapak rengini Sunak arka planina hafifce yansit
     # Ag: bazi sunucularin IPv6 adresi bu agda cevapsiz (RD: 21 sn x adres). Kapali = aria2 sadece IPv4.
     "aria2_ipv6": False,           # degisiklik Kami yeniden acilinca gecerli
     # Asama 6b: medya ekstralari

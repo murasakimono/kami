@@ -1,16 +1,26 @@
 // KamiFX: WebGL GLSL Akan Obsidian arka plani, View Transitions API ve enerji kivilcimi.
-// Tum efektler ayarlardan acilip kapatilabilir; eski Klasik Parcacik moduyla gecislidir.
+// 30 fps sinirli, blur/hidden/reduced-motion duyarli, webglcontextlost kurtarmali, Klasik Parcacik yedekli.
 "use strict";
 (() => {
-  const ST = { mode: "obsidian", transitions: true, speed: 0, gl: null, canvas: null, raf: 0, t0: performance.now(), pulse: 0 };
+  const REDUCED = (() => {
+    try { return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || false; } catch { return false; }
+  })();
+  const ST = {
+    mode: "obsidian", transitions: true, speed: 0,
+    gl: null, canvas: null, raf: 0, t0: performance.now(), last: 0,
+    pulse: 0, focused: true, altarX: 0.24, altarY: 0.72,
+    tint: [0.0, 0.0, 0.0],
+  };
 
   const VS = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
   const FS = `
     precision mediump float;
     uniform vec2 u_res;
+    uniform vec2 u_altar;
     uniform float u_time;
     uniform float u_speed;
     uniform float u_pulse;
+    uniform vec3 u_tint;
     float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
     float noise(vec2 p){
       vec2 i=floor(p), f=fract(p);
@@ -23,27 +33,26 @@
       return v;
     }
     void main(){
-      vec2 uv=(gl_FragCoord.xy/u_res)-0.5;
-      uv.x*=u_res.x/max(1.0,u_res.y);
-      float t=u_time*(0.11+u_speed*0.18);
-      vec2 q=vec2(fbm(uv*2.1+vec2(t*0.4,-t*0.3)), fbm(uv*2.1+vec2(-t*0.35,t*0.45)+5.2));
-      float n=fbm(uv*2.4+q*1.6+t*0.15);
-      float vein=smoothstep(0.46,0.52,abs(n-0.52));
-      float glow=(1.0-vein)*(0.25+0.55*u_speed+0.6*u_pulse);
-      vec3 base=vec3(0.031,0.022,0.055);
-      vec3 vio=vec3(0.18,0.09,0.34)*n*0.75;
-      vec3 em=vec3(0.11,0.78,0.56)*glow*0.42;
-      float vig=smoothstep(1.05,0.15,length(uv));
-      gl_FragColor=vec4((base+vio+em)*vig, 1.0);
+      vec2 uv=gl_FragCoord.xy/u_res;
+      float asp=u_res.x/max(1.0,u_res.y);
+      vec2 p=(uv-0.5)*vec2(asp,1.0);
+      vec2 ap=(u_altar-0.5)*vec2(asp,1.0);
+      float t=u_time*(0.12+u_speed*0.32);
+      vec2 q=vec2(fbm(p*2.1+vec2(t*0.42,-t*0.32)), fbm(p*2.1+vec2(-t*0.36,t*0.44)+5.2));
+      float n=fbm(p*2.4+q*1.6+t*0.16);
+      float vein=smoothstep(0.34,0.50,abs(n-0.50));
+      float glow=(1.0-vein)*(0.40+0.95*u_speed+0.90*u_pulse);
+      vec3 base=vec3(0.036,0.020,0.062);
+      vec3 vio=vec3(0.32,0.08,0.48)*n*0.85;   // gercek Kami moru (lacivert degil)
+      vec3 em=vec3(0.14,0.86,0.62)*glow*0.46;   // zumrut enerji damarlari
+      float distA=length(p-ap);
+      float aura=exp(-distA*2.2)*(0.26+0.42*u_speed+0.55*u_pulse);
+      vec3 altarGlow=(vec3(0.36,0.12,0.58)+u_tint*0.65)*aura;
+      float vig=smoothstep(1.35,0.12,distA);
+      gl_FragColor=vec4((base+vio+em+altarGlow)*vig, 1.0);
     }`;
 
-  function ensureCanvas() {
-    if (ST.canvas) return ST.canvas;
-    const c = document.createElement("canvas");
-    c.id = "skObsidian";
-    c.style.cssText = "position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:0;transition:opacity .35s ease";
-    document.body.prepend(c);
-    ST.canvas = c;
+  function initWebGL(c) {
     const gl = c.getContext("webgl", { alpha: false, antialias: false, powerPreference: "low-power" });
     if (!gl) return null;
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null; };
@@ -59,35 +68,84 @@
     const loc = gl.getAttribLocation(prog, "p");
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    ST.gl = {
+    return {
       gl,
       uRes: gl.getUniformLocation(prog, "u_res"),
+      uAltar: gl.getUniformLocation(prog, "u_altar"),
       uTime: gl.getUniformLocation(prog, "u_time"),
       uSpeed: gl.getUniformLocation(prog, "u_speed"),
       uPulse: gl.getUniformLocation(prog, "u_pulse"),
+      uTint: gl.getUniformLocation(prog, "u_tint"),
     };
+  }
+
+  function updateAltarCenter() {
+    const el = document.getElementById("skAltar");
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && innerWidth > 0 && innerHeight > 0) {
+      ST.altarX = (r.left + r.width * 0.5) / innerWidth;
+      ST.altarY = 1.0 - (r.top + r.height * 0.5) / innerHeight;
+    }
+  }
+
+  function ensureCanvas() {
+    if (ST.canvas) return ST.canvas;
+    const c = document.createElement("canvas");
+    c.id = "skObsidian";
+    c.style.cssText = "position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:0;transition:opacity .35s ease";
+    document.body.prepend(c);
+    ST.canvas = c;
+    c.addEventListener("webglcontextlost", (e) => {
+      e.preventDefault();
+      if (ST.raf) { cancelAnimationFrame(ST.raf); ST.raf = 0; }
+      ST.gl = null;
+      if (ST.mode === "obsidian" && typeof window.fxApplyMode === "function") window.fxApplyMode("particles");
+    });
+    c.addEventListener("webglcontextrestored", () => {
+      ST.gl = initWebGL(c);
+      if (ST.gl && ST.mode === "obsidian") {
+        c.style.opacity = "1";
+        if (typeof window.fxApplyMode === "function") window.fxApplyMode("obsidian");
+        startLoop();
+      }
+    });
+    ST.gl = initWebGL(c);
+    if (!ST.gl) return null;
     const resize = () => {
       const dpr = Math.min(1.5, window.devicePixelRatio || 1);
       c.width = Math.max(1, Math.floor(innerWidth * 0.5 * dpr));
       c.height = Math.max(1, Math.floor(innerHeight * 0.5 * dpr));
-      gl.viewport(0, 0, c.width, c.height);
+      ST.gl?.gl.viewport(0, 0, c.width, c.height);
+      updateAltarCenter();
     };
     resize();
     window.addEventListener("resize", resize);
     return c;
   }
 
+  function startLoop() {
+    if (!ST.raf && ST.mode === "obsidian" && ST.gl && !document.hidden && ST.focused && !REDUCED) {
+      ST.raf = requestAnimationFrame(frame);
+    }
+  }
+
   function frame(now) {
     ST.raf = 0;
-    if (ST.mode !== "obsidian" || document.hidden || !ST.gl) return;
-    const { gl, uRes, uTime, uSpeed, uPulse } = ST.gl;
-    ST.pulse = Math.max(0, ST.pulse * 0.94);
+    if (ST.mode !== "obsidian" || document.hidden || !ST.focused || !ST.gl) return;
+    if (now - ST.last < 33) { ST.raf = requestAnimationFrame(frame); return; } // 30 fps siniri
+    ST.last = now;
+    const { gl, uRes, uAltar, uTime, uSpeed, uPulse, uTint } = ST.gl;
+    ST.pulse = Math.max(0, ST.pulse * 0.92);
+    updateAltarCenter();
     gl.uniform2f(uRes, ST.canvas.width, ST.canvas.height);
+    gl.uniform2f(uAltar, ST.altarX, ST.altarY);
     gl.uniform1f(uTime, (now - ST.t0) / 1000);
     gl.uniform1f(uSpeed, ST.speed);
     gl.uniform1f(uPulse, ST.pulse);
+    gl.uniform3f(uTint, ST.tint[0], ST.tint[1], ST.tint[2]);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    ST.raf = requestAnimationFrame(frame);
+    if (!REDUCED) ST.raf = requestAnimationFrame(frame);
   }
 
   function setMode(mode) {
@@ -98,7 +156,13 @@
       const c = ensureCanvas();
       if (c && ST.gl) {
         c.style.opacity = "1";
-        if (!ST.raf && !document.hidden) ST.raf = requestAnimationFrame(frame);
+        if (REDUCED) frame(performance.now());
+        else startLoop();
+      } else {
+        // WebGL yoksa otomatik Klasik Parcacik yedegine dus
+        ST.mode = "particles";
+        document.body.dataset.bgMode = "particles";
+        if (typeof window.fxApplyMode === "function") window.fxApplyMode("particles");
       }
     } else if (ST.canvas) {
       ST.canvas.style.opacity = "0";
@@ -107,12 +171,12 @@
   }
 
   function vt(fn) {
-    if (!ST.transitions || typeof document.startViewTransition !== "function") return fn();
+    if (REDUCED || !ST.transitions || typeof document.startViewTransition !== "function") return fn();
     try { return document.startViewTransition(fn); } catch { return fn(); }
   }
 
   function sparkFrom(fromEl, toEl) {
-    if (!ST.transitions || !fromEl || !toEl) return;
+    if (REDUCED || !ST.transitions || !fromEl || !toEl) return;
     const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
     if (!a.width || !b.width) return;
     const dot = document.createElement("div");
@@ -127,9 +191,9 @@
     setTimeout(() => { dot.remove(); ST.pulse = 1.0; }, 500);
   }
 
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && ST.mode === "obsidian" && ST.gl && !ST.raf) ST.raf = requestAnimationFrame(frame);
-  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && ST.focused) startLoop(); });
+  window.addEventListener("blur", () => { ST.focused = false; if (ST.raf) { cancelAnimationFrame(ST.raf); ST.raf = 0; } });
+  window.addEventListener("focus", () => { ST.focused = true; startLoop(); });
 
   window.KamiFX = {
     applySettings(s) {
@@ -137,10 +201,11 @@
       ST.transitions = s.ui_transitions !== false;
       const mode = s.sunak_bg_mode || "obsidian";
       setMode(mode);
-      if (typeof window.fxApplyMode === "function") window.fxApplyMode(mode);
+      if (typeof window.fxApplyMode === "function") window.fxApplyMode(ST.mode);
     },
     setMode,
     setSpeed(v) { ST.speed = Math.max(0, Math.min(1, Number(v) || 0)); },
+    setTint(r, g, b) { ST.tint = [r / 255, g / 255, b / 255]; },
     pulse() { ST.pulse = 1.0; },
     vt,
     sparkFrom,

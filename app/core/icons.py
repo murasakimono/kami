@@ -9,13 +9,14 @@ from pathlib import Path
 ICON_SIZES: list[tuple[int, int]] = [(16, 16), (32, 32), (48, 48), (256, 256)]
 
 MODULES: dict[str, tuple[str, tuple[int, int, int]]] = {
+    "main": ("Kami", (164, 118, 248)),           # Canli Kami moru
     "player": ("Kami Player", (46, 230, 166)),     # Zumrut yesili
     "studio": ("Kami Studio", (167, 139, 250)),    # Mor
     "picture": ("Kami Picture", (56, 189, 248)),   # Gok mavisi
     "reader": ("Kami Reader", (245, 158, 11)),     # Kehribar / Altin
-    "games": ("Kami Games", (129, 140, 248)),      # Indigo
+    "games": ("Kami Games", (78, 156, 255)),       # Elektrik mavi (morlardan ayrissin)
     "music": ("Kamify", (232, 121, 249)),          # Orkide / Magenta
-    "cleaner": ("Kami Cleaner", (251, 113, 133)),  # Mercan pembe
+    "cleaner": ("Kami Cleaner", (245, 130, 72)),   # Sicak mercan-turuncu (hata kirmizisindan ayrissin)
 }
 
 
@@ -94,14 +95,59 @@ def render_icon_image(key: str, size: int = 256):
     return im
 
 
+def render_compact_icon(key: str, size: int = 32):
+    """16 ve 32 px gibi kucuk katmanlar icin boynuzsuz, yuksek kontrastli sade modul simgesi uretir."""
+    from PIL import Image, ImageDraw
+
+    S = 128
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    _, (r, g, b) = MODULES.get(key, ("Kami", (164, 118, 248)))
+    acc = (r, g, b, 255)
+    bg = (14, 10, 26, 255)
+    d.rounded_rectangle([6, 6, S - 6, S - 6], radius=30, fill=bg, outline=acc, width=10)
+
+    if key == "main":
+        d.ellipse([24, 34, S - 24, S - 34], fill=(46, 230, 166, 255))
+        d.ellipse([54, 38, 74, 90], fill=(10, 7, 18, 255))
+    elif key == "player":
+        d.polygon([(44, 30), (96, 64), (44, 98)], fill=acc)
+    elif key == "studio":
+        d.rounded_rectangle([26, 34, 102, 94], radius=10, outline=acc, width=10)
+        d.line([(26, 52), (102, 52)], fill=acc, width=10)
+    elif key == "picture":
+        d.rounded_rectangle([26, 30, 102, 98], radius=10, outline=acc, width=10)
+        d.ellipse([38, 40, 56, 58], fill=acc)
+        d.polygon([(32, 90), (62, 58), (96, 90)], fill=acc)
+    elif key == "reader":
+        d.rounded_rectangle([26, 28, 64, 100], radius=6, fill=(r, g, b, 70), outline=acc, width=8)
+        d.rounded_rectangle([64, 28, 102, 100], radius=6, fill=(r, g, b, 70), outline=acc, width=8)
+    elif key == "games":
+        d.line([(44, 46), (44, 82)], fill=acc, width=12)
+        d.line([(26, 64), (62, 64)], fill=acc, width=12)
+        d.ellipse([74, 48, 92, 66], fill=acc)
+        d.ellipse([86, 68, 104, 86], fill=acc)
+    elif key == "music":
+        d.ellipse([28, 74, 54, 98], fill=acc)
+        d.ellipse([72, 66, 98, 90], fill=acc)
+        d.line([(48, 84), (48, 34), (92, 28), (92, 76)], fill=acc, width=12)
+    elif key == "cleaner":
+        d.polygon([(26, 32), (102, 32), (72, 68), (72, 98), (56, 90), (56, 68)], fill=acc)
+    return im.resize((size, size), Image.Resampling.LANCZOS)
+
+
 def write_ico(key: str, out_path: Path) -> Path:
+    """16/32 px'de sade yuksek kontrastli simge, 48/256 px'de tam maskotlu tasarimi tek .ico'da birlestirir."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    im = render_icon_image(key, size=256)
-    im.save(out_path, format="ICO", sizes=ICON_SIZES)
+    im256 = render_icon_image(key, size=256)
+    im48 = render_icon_image(key, size=48)
+    im32 = render_compact_icon(key, size=32)
+    im16 = render_compact_icon(key, size=16)
+    im256.save(out_path, format="ICO", append_images=[im48, im32, im16])
     return out_path
 
 
 def export_all(icons_dir: Path) -> list[Path]:
     """Tum modul .ico dosyalarini hedef klasore uretir."""
     icons_dir.mkdir(parents=True, exist_ok=True)
-    return [write_ico(key, icons_dir / f"{key}.ico") for key in MODULES]
+    return [write_ico(key, icons_dir / f"{key}.ico") for key in MODULES if key != "main"]

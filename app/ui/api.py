@@ -1146,6 +1146,15 @@ class Api(StudioMixin):
     def is_selftest(self) -> bool:
         return False
 
+    def taskbar_progress(self, pct: int = 0, state: str = "none") -> bool:
+        try:
+            import ctypes
+            from app.core import taskbar
+            hwnd = ctypes.windll.user32.FindWindowW(None, "Kami") if os.name == "nt" else 0
+            return taskbar.set_progress(int(hwnd or 0), int(pct), str(state or "none"))
+        except Exception:
+            return False
+
     def doctor_run(self) -> dict[str, Any]:
         from app.core import doctor
         wd = getattr(self, "_watchdog", None)
