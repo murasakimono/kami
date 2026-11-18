@@ -280,7 +280,9 @@ def check_log_errors() -> dict[str, Any]:
     except OSError:
         return _r("log", "Son hatalar", "info", "Log okunamadi")
     cutoff = time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() - 86400))
-    errs = [ln for ln in tail if " ERROR " in ln and ln[:16] >= cutoff]
+    ver_tag = f"Kami {paths.APP_VERSION}"
+    start_idx = next((i for i, ln in enumerate(tail) if ver_tag in ln), 0)
+    errs = [ln for ln in tail[start_idx:] if " ERROR " in ln and ln[:16] >= cutoff]
     if not errs:
         return _r("log", "Son hatalar (24 sa)", "ok", "Hata yok")
     last = re.sub(r"^\S+ \S+ ERROR ", "", errs[-1])[:160]
@@ -290,7 +292,7 @@ def check_log_errors() -> dict[str, Any]:
 def check_spotify() -> dict[str, Any]:
     try:
         from app.core import music_hub
-        st = music_hub.spotify_status()
+        st = music_hub.spotify_oauth_status()
         if not st.get("logged_in"):
             return _r("spotify", "Spotify PKCE", "info", "Oturum acilmamis")
         ex = ThreadPoolExecutor(max_workers=1)

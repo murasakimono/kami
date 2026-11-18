@@ -91,8 +91,28 @@ class Tray:
         img_path = paths.WEB_DIR / "kami.png"   # uygulama logosu (eklenti simgesi ayri)
         image = Image.open(img_path) if img_path.exists() else Image.new("RGBA", (32, 32), (124, 77, 255, 255))
         M = pystray.MenuItem
+        def _music_label(_):
+            try:
+                from app.core import music_hub
+                m = music_hub.cached_now()
+                if m and m.get("playing") and m.get("title"):
+                    return f"♪ {m['title'][:28]} — {self._text('Duraklat', 'Pause')}"
+            except Exception:
+                pass
+            return self._text("Kamify: Duraklat / Sürdür", "Kamify: Pause / Resume")
+
+        def _music_toggle():
+            try:
+                from app.core import music_hub
+                m = music_hub.cached_now()
+                act = "pause" if (m and m.get("playing")) else "play"
+                music_hub.spotify_control("", act)
+            except Exception:
+                pass
+
         menu = pystray.Menu(
             M(lambda _: self._text("Kami'yi göster", "Show Kami"), lambda: self.on_show(), default=True),
+            M(_music_label, _music_toggle),
             M(lambda _: self._text("Tümünü duraklat", "Pause all"), lambda: self.on_pause_all()),
             M(lambda _: self._text("Tümünü sürdür", "Resume all"), lambda: self.on_resume_all()),
             pystray.Menu.SEPARATOR,

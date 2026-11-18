@@ -4055,7 +4055,9 @@ class Api(StudioMixin):
 
     def mini_island_state(self) -> dict[str, Any]:
         from app.core.vram_guard import snapshot
+        from app.core import music_hub
         card = self.card_state()
+        mus = music_hub.cached_now()
         return {
             "speed": card.get("speed", 0),
             "active": card.get("n", 0),
@@ -4063,6 +4065,7 @@ class Api(StudioMixin):
             "profile": self._profile_store().active_profile(),
             "visible": bool(self._island_shown),
             "room": self._room_island_live(),
+            "music": {"playing": bool(mus.get("playing")), "title": mus.get("title", ""), "artist": mus.get("artist", "")} if mus else None,
         }
 
     def _room_island_live(self) -> dict[str, Any] | None:

@@ -26,8 +26,9 @@ body.sunak { background: radial-gradient(ellipse 55% 50% at 32% 30%, ${glow} 0%,
 #sunak .sk-band { background: linear-gradient(180deg, ${royal}, ${plum}); border-bottom-color: ${violet}; }
 #sunak .sk-strip.sel, #sunak .sk-strip.msel { filter: drop-shadow(0 0 12px ${violet}cc); }
 #skFog { filter: ${f} blur(30px); }
-#sunak .sk-char { filter: ${f} drop-shadow(0 10px 24px rgba(0,0,0,.55)); }
-#sunak .sk-altar.drop .sk-char { filter: ${f} drop-shadow(0 0 22px rgba(46,230,166,.85)); }
+#sunak .sk-char, #skAltarGpu { filter: ${f} drop-shadow(0 10px 24px rgba(0,0,0,.55)); }
+#sunak .sk-altar.drop .sk-char, #sunak .sk-altar.drop #skAltarGpu { filter: ${f} drop-shadow(0 0 22px rgba(46,230,166,.85)); }
+#skBgGpu, #skFx { filter: ${f}; }
 #sunak .sk-logo, .kc-char, .card-char, img.kami-logo { filter: ${f}; }
 `;
   }

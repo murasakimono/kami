@@ -776,15 +776,19 @@ STATE_HOOKS.push(skState);
 // Istege bagli: Kamify calarken kapak rengini Sunak arka planina hafifce yansit
 (() => {
   let lastCov = "";
+  const clearTint = () => {
+    window.KamiFX?.setTint?.(0, 0, 0);
+    document.body.style.backgroundImage = "";
+  };
   setInterval(async () => {
     if (document.hidden || !state?.settings?.sunak_kamify_sync) {
-      if (lastCov) { lastCov = ""; window.KamiFX?.setTint?.(0, 0, 0); }
+      if (lastCov) { lastCov = ""; clearTint(); }
       return;
     }
     try {
       const now = await api?.music_spotify_now?.();
       const cov = now?.playing ? (now.cover || "") : "";
-      if (!cov) { if (lastCov) { lastCov = ""; window.KamiFX?.setTint?.(0, 0, 0); } return; }
+      if (!cov) { if (lastCov) { lastCov = ""; clearTint(); } return; }
       if (cov === lastCov) return;
       lastCov = cov;
       const im = new Image(); im.crossOrigin = "anonymous";
@@ -795,7 +799,11 @@ STATE_HOOKS.push(skState);
           const d = g.getImageData(0, 0, 6, 6).data;
           let r = 0, gr = 0, b = 0, n = 0;
           for (let i = 0; i < d.length; i += 4) { if (d[i] + d[i+1] + d[i+2] > 30) { r += d[i]; gr += d[i+1]; b += d[i+2]; n++; } }
-          if (n) window.KamiFX?.setTint?.(Math.round(r / n), Math.round(gr / n), Math.round(b / n));
+          if (n) {
+            const rr = Math.round(r / n), gg = Math.round(gr / n), bb = Math.round(b / n);
+            window.KamiFX?.setTint?.(rr, gg, bb);
+            document.body.style.backgroundImage = `radial-gradient(ellipse 60% 55% at 24% 28%, rgba(${rr},${gg},${bb},.22), transparent 70%)`;
+          }
         } catch {}
       };
       im.src = cov;

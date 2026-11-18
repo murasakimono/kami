@@ -79,10 +79,12 @@
   .mdl[hidden]{display:none}
   .mdl-box{width:min(520px,92vw);background:#120E1C;border:1px solid var(--ac);border-radius:14px;padding:18px;display:grid;gap:10px}
   .mdl-box input{background:#09070F;border:1px solid var(--line);border-radius:9px;color:var(--tx);padding:8px 12px;font:inherit;width:100%}
-  .lyr-pop{position:fixed;right:0;top:0;bottom:90px;width:min(360px,42vw);background:rgba(12,9,19,.97);border-left:1px solid var(--line);padding:18px 20px;overflow-y:auto;z-index:40;box-shadow:-12px 0 36px rgba(0,0,0,.55);font-size:15px;line-height:1.9;color:#7D7496}
+  .lyr-pop{position:fixed;right:0;top:0;bottom:90px;width:min(360px,42vw);background:rgba(12,9,19,.97);border-left:1px solid var(--line);padding:18px 20px;overflow-y:auto;z-index:40;box-shadow:-12px 0 36px rgba(0,0,0,.55);font:500 14.5px/1.7 "Chakra Petch","Segoe UI",system-ui,sans-serif;color:#7D7496;backdrop-filter:blur(10px)}
   .lyr-pop[hidden]{display:none}
   .lyr-pop .lyr-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line);font:700 14px "Chakra Petch",sans-serif;color:#EDE9F6}
-  .lyr-pop .on{color:#fff;font-weight:700;font-size:16.5px;text-shadow:0 0 18px rgba(46,230,166,.35)}
+  .lyr-pop .lyr-ln{padding:5px 10px;border-radius:8px;cursor:pointer;transition:color .24s ease,transform .24s ease,background .2s ease,text-shadow .24s ease}
+  .lyr-pop .lyr-ln:hover{color:#D8CCF8;background:rgba(157,107,255,.10)}
+  .lyr-pop .lyr-ln.on{color:#fff;font-weight:700;font-size:16px;transform:translateX(4px);background:rgba(46,230,166,.09);text-shadow:0 0 18px rgba(46,230,166,.42)}
   .bar{position:relative;overflow:hidden}
   #spWave{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.55}
   .b-left,.b-mid,.b-right{position:relative;z-index:1}
@@ -542,13 +544,20 @@
         if (!LYRICS.length) {
           spLyr.innerHTML = hd + `<div style="color:var(--mut)">Bu parça için şarkı sözü bulunamadı.</div>`;
         } else {
-          spLyr.innerHTML = hd + LYRICS.map((ln, idx) => `<div class="${idx === activeIdx ? "on" : ""}">${esc(ln.text)}</div>`).join("");
+          spLyr.innerHTML = hd + LYRICS.map((ln, idx) => `<div class="lyr-ln${idx === activeIdx ? " on" : ""}" data-ms="${ln.t >= 0 ? Math.round(ln.t * 1000) : ""}">${esc(ln.text)}</div>`).join("");
           spLyr.querySelector(".on")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
         }
         document.getElementById("spLyrX")?.addEventListener("click", () => { spLyr.hidden = true; spLyrBtn.classList.remove("on"); });
       }
     }
   }
+  spLyr.onclick = async (e) => {
+    const ln = e.target.closest(".lyr-ln[data-ms]");
+    const ms = Number(ln?.dataset?.ms);
+    if (!Number.isFinite(ms) || ms < 0) return;
+    await api()?.music_spotify_seek?.(ms).catch(() => {});
+    setTimeout(pollSpotify, 180);
+  };
 
   document.querySelectorAll(".nav-b[data-nav]").forEach((b) => { b.onclick = () => setNav(b.dataset.nav); });
   go.onclick = search;
@@ -702,7 +711,7 @@
         for (let i = 0; i < d.length; i += 4) { if (d[i] + d[i+1] + d[i+2] > 30) { r += d[i]; gr += d[i+1]; b += d[i+2]; n++; } }
         if (n) {
           r = Math.round(r / n); gr = Math.round(gr / n); b = Math.round(b / n);
-          el.style.background = `radial-gradient(circle at 75% 22%, rgba(${r},${gr},${b},.16), transparent 62%)`;
+          el.style.background = `radial-gradient(circle at 74% 22%, rgba(${r},${gr},${b},.34), transparent 64%), radial-gradient(circle at 18% 80%, rgba(${r},${gr},${b},.18), transparent 58%)`;
           el.style.opacity = "1";
         }
       } catch { el.style.opacity = "0"; }

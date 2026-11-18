@@ -187,7 +187,7 @@
             <div class="badges">${g.stores.map((s) => `<span class="bdg">${esc(s.store)}</span>`).join("")}${g.installed ? "" : `<span class="bdg em">Kütüphane</span>`}</div>
             <div class="cov-ov">
               <button class="btn pri" data-play="${esc(g.key)}">${g.installed ? "▶ Oyna" : "⬇ Kur"}</button>
-              <button class="btn" data-save="${esc(g.key)}" title="Ludusavi save yedeği"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></button>
+              <button class="btn" data-save="${esc(g.key)}" title="Ludusavi save yedeği"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save</button>
             </div>
           </div>
           <div class="body">
@@ -195,7 +195,7 @@
             ${(pt || gn) ? `<div class="pt">${pt ? pt : ""}${pt && gn ? " · " : ""}${esc(gn)}</div>` : ""}
             <div class="acts">
               <button class="btn pri" data-play="${esc(g.key)}">${g.installed ? "▶ Oyna" : "⬇ Kur"}</button>
-              <button class="btn" data-save="${esc(g.key)}" title="Ludusavi ile save yedeği"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></button>
+              <button class="btn" data-save="${esc(g.key)}" title="Ludusavi ile save yedeği"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save</button>
             </div>
           </div>
         </div>`;

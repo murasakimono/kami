@@ -137,12 +137,12 @@ def render_compact_icon(key: str, size: int = 32):
 
 
 def write_ico(key: str, out_path: Path) -> Path:
-    """16/32 px'de sade yuksek kontrastli simge, 48/256 px'de tam maskotlu tasarimi tek .ico'da birlestirir."""
+    """Tum katmanlarda (16/32/48/256) ayni maskotlu tasarimi tek .ico'da birlestirir."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     im256 = render_icon_image(key, size=256)
     im48 = render_icon_image(key, size=48)
-    im32 = render_compact_icon(key, size=32)
-    im16 = render_compact_icon(key, size=16)
+    im32 = render_icon_image(key, size=32)
+    im16 = render_icon_image(key, size=16)
     im256.save(out_path, format="ICO", append_images=[im48, im32, im16])
     return out_path
 

@@ -49,8 +49,8 @@ function applyI18n() {
   render();
 }
 
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
+function applyTheme(_theme) {
+  document.documentElement.dataset.theme = "dark";
   drawSpeed();
 }
 

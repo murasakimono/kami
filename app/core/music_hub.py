@@ -279,6 +279,17 @@ def _librespot_now() -> dict[str, Any] | None:
         return None
 
 
+_LAST_NOW: dict[str, Any] = {}
+
+
+def cached_now() -> dict[str, Any] | None:
+    """Ag cagrisi yapmadan mevcut yerel (go-librespot) veya son bilinen oynatma durumunu dondurur."""
+    loc = _librespot_now()
+    if loc and loc.get("title"):
+        return loc
+    return dict(_LAST_NOW) if _LAST_NOW.get("playing") and _LAST_NOW.get("title") else None
+
+
 def spotify_now(token: str) -> dict[str, Any]:
     tok = get_spotify_token(token)
     if not tok:
@@ -288,12 +299,15 @@ def spotify_now(token: str) -> dict[str, Any]:
     try:
         with urllib.request.urlopen(req, timeout=6) as resp:
             if resp.status == 204:
-                return _librespot_now() or {"ok": True, "playing": False}
+                res = _librespot_now() or {"ok": True, "playing": False}
+                _LAST_NOW.clear()
+                _LAST_NOW.update(res)
+                return res
             d = json.loads(resp.read().decode("utf-8"))
             it = d.get("item") or {}
             imgs = ((it.get("album") or {}).get("images") or [{}])
             dev = d.get("device") or {}
-            return {
+            res = {
                 "ok": True,
                 "playing": bool(d.get("is_playing")),
                 "id": it.get("id", ""),
@@ -310,6 +324,9 @@ def spotify_now(token: str) -> dict[str, Any]:
                 "device_name": dev.get("name", ""),
                 "volume": int(dev.get("volume_percent") if dev.get("volume_percent") is not None else 100),
             }
+            _LAST_NOW.clear()
+            _LAST_NOW.update(res)
+            return res
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:120]}
 

@@ -18,7 +18,8 @@
   .rp-card h4{margin:0 0 12px;font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--mute);display:flex;align-items:center;gap:8px}
   .rp-hero{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06)}
   .rp-hero strong{font-size:28px;font-weight:700;color:#EDE9F6}.rp-hero small{display:block;font-size:11px;color:var(--mute)}
-  .rp-streak{padding:4px 10px;border-radius:999px;background:rgba(46,230,166,.12);border:1px solid rgba(46,230,166,.35);color:var(--em);font-size:12px;font-weight:600}
+  .rp-streak{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(46,230,166,.12);border:1px solid rgba(46,230,166,.35);color:var(--em);font-size:12px;font-weight:600}
+  .rp-ico{width:14px;height:14px;flex:none;display:block}
   .rp-nums{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.rp-nums div{font-size:16px;font-weight:700}.rp-nums small{display:block;font-size:10.5px;color:var(--mute);font-weight:400}
   .rp-bars{display:flex;gap:4px;align-items:flex-end;height:48px;margin-top:14px}.rp-bars i{flex:1;background:var(--violet);border-radius:3px 3px 0 0;min-height:3px;opacity:.82;transition:opacity .15s}
   .rp-bars i:hover{opacity:1}.rp-bars i.t{background:var(--em);box-shadow:0 0 8px rgba(46,230,166,.4)}
@@ -26,8 +27,11 @@
   .rp-ser .s small{color:var(--mute);font-size:11px}.rp-ser .s .nw{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
   .rp-ser .s .nw button{font-size:12px;padding:3px 8px;border:1px solid var(--em);background:transparent;color:var(--em);border-radius:6px;cursor:pointer}
   .rp-ser .s .x{background:none;border:0;color:var(--mute);cursor:pointer}.rp-badge{background:var(--em);color:#000;border-radius:999px;padding:0 7px;font-size:11px;font-weight:700;margin-left:6px}
-  .rp-add{display:flex;gap:6px;margin-top:10px}.rp-add input{flex:1;background:#0b0912;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 10px}
-  .rp-add button{border:1px solid var(--line);background:var(--royal);color:#fff;border-radius:8px;padding:7px 12px;cursor:pointer}
+  .rp-add{display:flex;gap:8px;margin-top:12px;align-items:center}.rp-add input{flex:1;min-width:0;background:#0b0912;border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 12px;font:inherit;outline:none;transition:border-color .15s}.rp-add input:focus{border-color:var(--violet)}
+  .rp-add button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:#1b132b;color:#EDE9F6;border-radius:9px;padding:8px 12px;font:600 12.5px inherit;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .rp-add button:hover{border-color:var(--violet);background:#251a3a}
+  .rp-add #rpAdd{background:linear-gradient(135deg,#7C3AED,#5B21B6);border-color:rgba(167,139,250,.45);color:#fff}
+  .rp-add #rpAdd:hover{filter:brightness(1.1)}
   @media (max-width: 800px){.rp-panels{grid-template-columns:1fr}}`;
   document.head.appendChild(css);
   const hud = document.createElement("div"); hud.id = "rpHud"; hud.hidden = true; document.body.appendChild(hud);
@@ -138,17 +142,17 @@
     const ns = ser.reduce((a, s) => a + (s.new?.length || 0), 0);
     box.innerHTML = `
       <div class="rp-card"><h4>${L("Okuma", "Reading")}</h4>
-        <div class="rp-hero"><div><strong>${fmtDur(st.today)}</strong><small>${L("bugün okunan", "read today")}</small></div><span class="rp-streak">🔥 ${st.streak} ${L("gün seri", "day streak")}</span></div>
+        <div class="rp-hero"><div><strong>${fmtDur(st.today)}</strong><small>${L("bugün okunan", "read today")}</small></div><span class="rp-streak"><svg class="rp-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c.5 3.5-2 5.5-2 8.5a4 4 0 0 0 8 0c0-3-2-5-2-7.5 2.5 1.5 4 4.5 4 8a8 8 0 1 1-16 0c0-3.5 2-6.5 5-8 .5 1.5 1.5 2.5 3 2.5z"/></svg>${st.streak} ${L("gün seri", "day streak")}</span></div>
         <div class="rp-nums"><div>${fmtDur(st.week)}<small>${L("bu hafta", "this week")}</small></div>
         <div>${st.pages}<small>${L("sayfa", "pages")}</small></div>
         <div>${st.finished}<small>${L("bitirilen", "finished")}</small></div><div>${fmtDur(st.total)}<small>${L("toplam", "total")}</small></div></div>
         <div class="rp-bars" title="${L("Son 14 gün", "Last 14 days")}">${st.days.map((d, i) => `<i class="${i === st.days.length - 1 ? "t" : ""}" style="height:${Math.round((d.s / mx) * 100)}%" title="${d.d}: ${fmtDur(d.s)}"></i>`).join("")}</div></div>
       <div class="rp-card"><h4>${L("Seriler", "Series")}${ns ? `<span class="rp-badge">${ns} ${L("yeni", "new")}</span>` : ""}</h4>
-        <div class="rp-ser">${ser.map((s) => `<div class="s" data-id="${s.id}"><div><b>${esc(s.title)}</b> <small>${s.kind === "mangadex" ? "MangaDex" : L("klasör", "folder")}${s.last_n >= 0 ? ` · ${L("son", "last")} ${s.last_n}` : ""}${s.error ? ` · ⚠ ${esc(s.error)}` : ""}</small></div>
+        <div class="rp-ser">${ser.map((s) => `<div class="s" data-id="${s.id}"><div><b>${esc(s.title)}</b> <small>${s.kind === "mangadex" ? "MangaDex" : L("klasör", "folder")}${s.last_n >= 0 ? ` · ${L("son", "last")} ${s.last_n}` : ""}${s.error ? ` · ! ${esc(s.error)}` : ""}</small></div>
           <button class="x" data-rm="${s.id}" title="${L("Takibi bırak", "Unfollow")}">✕</button>
           ${s.new?.length ? `<div class="nw">${s.new.slice(-8).map((c, k) => `<button data-ch="${s.id}:${s.new.length - Math.min(8, s.new.length) + k}">${esc(c.name)}</button>`).join("")}<button data-seen="${s.id}">✓ ${L("gördüm", "seen")}</button></div>` : ""}</div>`).join("") ||
           `<small style="color:var(--mute)">${L("Bir manga klasörü ya da mangadex.org/title/… linki ekle; yeni bölüm gelince haber veririm.", "Add a manga folder or a mangadex.org/title/… link; I'll tell you when a new chapter arrives.")}</small>`}</div>
-        <div class="rp-add"><input id="rpSrc" placeholder="${L("Klasör yolu ya da mangadex.org/title/… linki", "Folder path or mangadex.org/title/… link")}"><button id="rpPick">📁</button><button id="rpAdd">${L("Takip et", "Follow")}</button><button id="rpChk" title="${L("Şimdi yokla", "Check now")}">⟳</button></div></div>`;
+        <div class="rp-add"><input id="rpSrc" placeholder="${L("Klasör yolu ya da mangadex.org/title/… linki", "Folder path or mangadex.org/title/… link")}"><button id="rpPick" title="${L("Klasör seç", "Choose folder")}"><svg class="rp-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button id="rpAdd">${L("Takip et", "Follow")}</button><button id="rpChk" title="${L("Şimdi yokla", "Check now")}"><svg class="rp-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg></button></div></div>`;
     box.querySelector("#rpPick").onclick = async () => { const p = await api.reader_pick(true); if (p) box.querySelector("#rpSrc").value = p; };
     box.querySelector("#rpAdd").onclick = async () => {
       const v = box.querySelector("#rpSrc").value.trim(); if (!v) return;

@@ -56,7 +56,7 @@
   window.addEventListener("pywebviewready", () => { tick(); setInterval(tick, 1000); });
   $("#x").addEventListener("click", (e) => { e.stopPropagation(); api().card_close(); });
   $("#mRec").addEventListener("click", (e) => { e.stopPropagation(); api().rec_toggle?.(); });
-  $("#mMic").addEventListener("click", (e) => { e.stopPropagation(); api().room_mic_toggle?.(); });
+  $("#mMic").addEventListener("click", (e) => { e.stopPropagation(); api().room_island_cmd?.("mute"); });
   $("#card").addEventListener("click", () => api().card_open());
   const card = $("#card");
   card.addEventListener("dragover", (e) => { e.preventDefault(); card.classList.add("drop"); });
