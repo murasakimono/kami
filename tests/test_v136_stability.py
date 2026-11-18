@@ -135,3 +135,50 @@ def test_update_channel_stable_vs_beta():
         bt = extras.check_update(current="1.36.0", channel="beta")
     assert st["available"] is False and st["version"] == "1.36.0"
     assert bt["available"] is True and bt["version"] == "1.37.0" and bt["prerelease"] is True
+
+
+def test_music_island_auto_show_hide(monkeypatch):
+    """v1.37.5: Kamify gizliyken muzik caliyorsa ada gecici acilir; durunca kapanir; elle acilmis adaya dokunmaz."""
+    from app.core import music_hub, winwin
+    from app.ui.api import Api
+    a = object.__new__(Api)
+    a._island_shown, a._island_auto, a._island_win, a._island_factory = False, False, None, None
+    calls = []
+    def toggle(show=None, persist=True):
+        calls.append((show, persist)); a._island_shown = bool(show)
+        return {"ok": True}
+    a.mini_island_toggle = toggle
+    state = {"m": {"playing": True, "title": "Sarki"}, "vis": False}
+    monkeypatch.setattr(music_hub, "cached_now", lambda: state["m"])
+    monkeypatch.setattr(winwin, "find_window", lambda t: 123)
+    monkeypatch.setattr(winwin, "is_visible", lambda h: state["vis"])
+    a.music_island_tick()
+    assert calls[-1] == (True, False) and a._island_auto          # gizli + caliyor -> ac (ayara yazmadan)
+    state["vis"] = True; a.music_island_tick()
+    assert calls[-1] == (False, False) and not a._island_auto     # Kamify one geldi -> kapat
+    a._island_shown, a._island_auto = True, False                 # kullanici elle acti
+    state["vis"] = False; state["m"] = None; n = len(calls); a.music_island_tick()
+    assert len(calls) == n                                         # elle acilmis adaya dokunulmaz
+
+
+def test_progid_icon_prefers_versioned_file(tmp_path):
+    import os, sys, time
+    import pytest
+    if sys.platform != "win32":
+        pytest.skip("winreg yalniz Windows'ta")
+    from app.core import setup_tasks
+    exe = tmp_path / "Kami.exe"; exe.write_bytes(b"x")
+    d = tmp_path / "icons"; d.mkdir()
+    (d / "player.ico").write_bytes(b"x")
+    old = d / "player-1373.ico"; old.write_bytes(b"x"); os.utime(old, (time.time() - 100, time.time() - 100))
+    new = d / "player-1375.ico"; new.write_bytes(b"x")
+    assert setup_tasks._progid_icon(str(exe), "Kami.Video") == f'"{new}",0'
+    assert setup_tasks._progid_icon(str(exe), "Kami.Image") == f'"{exe}",0'
+
+
+def test_icon_layers_small_variant(tmp_path):
+    from PIL import Image
+    from app.core import icons
+    p = icons.write_ico("player", tmp_path / "p.ico")
+    assert {(16, 16), (32, 32), (48, 48), (256, 256)} <= set(Image.open(p).info["sizes"])
+    assert icons.export_all(tmp_path / "out")[0].name.startswith("player-")

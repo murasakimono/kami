@@ -39,9 +39,13 @@ CAPS = r"Software\Kami\Capabilities"
 def _progid_icon(kami: str, pid: str) -> str:
     icon_name = {"Kami.Book": "reader.ico", "Kami.Video": "player.ico", "Kami.Audio": "player.ico", "Kami.Image": "picture.ico"}.get(pid)
     if icon_name:
-        cand = Path(kami).parent / "icons" / icon_name
-        if cand.is_file():
-            return f'"{cand}",0'
+        d = Path(kami).parent / "icons"
+        stem = icon_name[:-4]
+        # surum etiketli ad (player-1375.ico) once; yoksa eski sabit ad (player.ico)
+        tagged = sorted(d.glob(f"{stem}-*.ico"), key=lambda q: q.stat().st_mtime, reverse=True) if d.is_dir() else []
+        for cand in tagged + [d / icon_name]:
+            if cand.is_file():
+                return f'"{cand}",0'
     return f'"{kami}",0'
 
 
@@ -150,6 +154,18 @@ def unregister_player() -> None:
     _notify_assoc()
 
 
+def _refresh_icon_cache() -> None:
+    """Yalniz kurulumda: Windows ikon onbellegini yeniler (eski dosya turu ikonlari takili kalmasin)."""
+    try:
+        import os
+        import subprocess
+        exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "ie4uinit.exe")
+        if os.path.isfile(exe):
+            subprocess.run([exe, "-show"], timeout=20, creationflags=0x08000000)   # CREATE_NO_WINDOW
+    except Exception:
+        pass
+
+
 def _notify_assoc() -> None:
     try:
         import ctypes
@@ -192,6 +208,7 @@ def register(exe_dir: Path | None = None) -> list[str]:
     done.append("magnet: Kami")
     register_player(kami)
     done.append("oynatici: video/ses uzantilari")
+    _refresh_icon_cache()
     register_protocol(kami)
     done.append("kami:// + bildirim kimligi")
     register_convert_menu(kami)

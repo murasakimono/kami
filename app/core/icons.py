@@ -136,18 +136,54 @@ def render_compact_icon(key: str, size: int = 32):
     return im.resize((size, size), Image.Resampling.LANCZOS)
 
 
+def render_small_icon(key: str, size: int = 32):
+    """16/24/32 px katmanlari: ayni maskotlu tasarim, ama dis cerceve bosluklari kirpilip parlaklik/kontrast
+    artirilir; kucuk boyutta maskot ve modul simgesi okunur kalir (yalin kucultmede ana ikon kara kutuya donuyordu)."""
+    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+    from app import paths
+
+    src = paths.WEB_DIR / "icons" / f"{key}.png"
+    if not src.is_file():
+        return render_icon_image(key, size=size)
+    im = Image.open(src).convert("RGBA")
+    c = int(im.width * 0.13)
+    im = im.crop((c, c, im.width - c, im.height - c))
+    im = ImageEnhance.Brightness(im).enhance(1.35)
+    im = ImageEnhance.Contrast(im).enhance(1.25)
+    im = ImageEnhance.Color(im).enhance(1.25)
+    S = 128
+    im = im.resize((S, S), Image.Resampling.LANCZOS)
+    mask = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, S - 1, S - 1], radius=26, fill=255)
+    a = im.getchannel("A")
+    im.putalpha(Image.composite(a, Image.new("L", (S, S), 0), mask))
+    im = im.resize((size, size), Image.Resampling.LANCZOS)
+    return im.filter(ImageFilter.UnsharpMask(radius=0.6, percent=120, threshold=1))
+
+
 def write_ico(key: str, out_path: Path) -> Path:
-    """Tum katmanlarda (16/32/48/256) ayni maskotlu tasarimi tek .ico'da birlestirir."""
+    """48/256 px: tam maskotlu tasarim; 16/24/32 px: ayni tasarimin kirpilmis, netlestirilmis hali."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     im256 = render_icon_image(key, size=256)
-    im48 = render_icon_image(key, size=48)
-    im32 = render_icon_image(key, size=32)
-    im16 = render_icon_image(key, size=16)
-    im256.save(out_path, format="ICO", append_images=[im48, im32, im16])
+    layers = [render_icon_image(key, size=128), render_icon_image(key, size=64), render_icon_image(key, size=48),
+              render_small_icon(key, 32), render_small_icon(key, 24), render_small_icon(key, 16)]
+    im256.save(out_path, format="ICO", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+               append_images=layers)
     return out_path
+
+
+def icon_tag() -> str:
+    """Kurulumdaki .ico dosya adina eklenen surum etiketi. Windows ikon onbellegi dosya yoluna gore tuttugu icin
+    ad degismezse eski ikonu gostermeye devam ediyordu."""
+    try:
+        from app.core.extras import APP_VERSION
+        return APP_VERSION.replace(".", "")
+    except Exception:
+        return "0"
 
 
 def export_all(icons_dir: Path) -> list[Path]:
     """Tum modul .ico dosyalarini hedef klasore uretir."""
     icons_dir.mkdir(parents=True, exist_ok=True)
-    return [write_ico(key, icons_dir / f"{key}.ico") for key in MODULES if key != "main"]
+    tag = icon_tag()
+    return [write_ico(key, icons_dir / f"{key}-{tag}.ico") for key in MODULES if key != "main"]

@@ -88,6 +88,7 @@ class Api(StudioMixin):
         self._profiles = None                            # Faz 7.4: Coklu profil deposu
         self._island_win = None                          # Faz 7.5: Masaustu mini-ada seridi
         self._island_shown = False
+        self._island_auto = False                        # ada Kamify icin otomatik mi acildi
         self._island_factory = None
         self._warns: list[dict[str, Any]] = []
         self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
@@ -4075,8 +4076,10 @@ class Api(StudioMixin):
             return None
         return ri
 
-    def mini_island_toggle(self, show: bool | None = None) -> dict[str, Any]:
+    def mini_island_toggle(self, show: bool | None = None, persist: bool = True) -> dict[str, Any]:
         target = (not self._island_shown) if show is None else bool(show)
+        if persist:
+            self._island_auto = False   # kullanici elle actiysa/kapattiysa otomatik mod devreden cikar
         if target:
             if self._island_win is None and self._island_factory is not None:
                 self._island_win = self._island_factory()
@@ -4095,8 +4098,28 @@ class Api(StudioMixin):
                 except Exception:
                     log.debug("mini_island hide", exc_info=True)
             self._island_shown = False
-        self._manager.settings.set("mini_island", self._island_shown)
+        if persist:
+            self._manager.settings.set("mini_island", self._island_shown)
         return {"ok": True, "visible": self._island_shown}
+
+    def music_island_tick(self) -> None:
+        """v1.37.5: Kamify penceresi gizliyken muzik caliyorsa mini-adayi gecici ac (ayari degistirmeden);
+        muzik durunca ya da Kamify one gelince otomatik actigi adayi geri kapat. Kullanicinin elle actigi
+        adaya hic dokunmaz. Eskiden ada varsayilan kapali oldugu icin '♪ sarki' dugmesi hic gorunmuyordu."""
+        from app.core import music_hub, winwin
+        if self._island_shown and not getattr(self, "_island_auto", False):
+            return
+        m = music_hub.cached_now()
+        playing = bool(m and m.get("playing") and m.get("title"))
+        h = winwin.find_window("Kamify")
+        kamify_open = bool(h) and winwin.is_visible(h)
+        want = playing and not kamify_open
+        if want and not self._island_shown:
+            self.mini_island_toggle(True, persist=False)
+            self._island_auto = True
+        elif not want and self._island_shown and getattr(self, "_island_auto", False):
+            self.mini_island_toggle(False, persist=False)
+            self._island_auto = False
 
     # ---------- Faz 11: LinkCrawler, Canli DVR, Web Arsivi, Medya Sagligi ----------
     def crawler_rules_list(self) -> dict[str, Any]:

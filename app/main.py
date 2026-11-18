@@ -80,7 +80,7 @@ def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int] | None = N
         from app.core import icons
         icon_dir = paths.DATA_DIR / "icons"
         icon_dir.mkdir(parents=True, exist_ok=True)
-        ico = icon_dir / f"{key}_v7.ico"
+        ico = icon_dir / f"{key}_v8.ico"
         if not ico.is_file():
             icons.write_ico(key, ico)
         hwnd = ctypes.windll.user32.FindWindowW(None, title)
@@ -975,6 +975,15 @@ def main() -> int:
         return win
 
     api._island_factory = _make_island_window
+
+    def _music_island_loop() -> None:
+        while True:
+            time.sleep(2.0)
+            try:
+                api.music_island_tick()
+            except Exception:
+                log.debug("muzik mini-ada", exc_info=True)
+    threading.Thread(target=_music_island_loop, name="kami-music-island", daemon=True).start()
     if settings.get("mini_island"):
         try:
             api.mini_island_toggle(True)

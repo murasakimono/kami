@@ -58,6 +58,8 @@ Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cr
 ; eski surumden kalan derlenmis Python onbellegi / kaldirilmis eklentiler
 Type: filesandordirs; Name: "{app}\_internal"
 Type: filesandordirs; Name: "{app}\plugins\*\__pycache__"
+; eski surum etiketli dosya turu ikonlari (yenisi farkli adla gelir; Windows onbellegi yola gore tutar)
+Type: files; Name: "{app}\icons\*.ico"
 
 [Icons]
 Name: "{group}\Kami"; Filename: "{app}\Kami.exe"; Comment: "Kami Download Manager"
