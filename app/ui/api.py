@@ -2208,7 +2208,7 @@ class Api(StudioMixin):
             self._room_island = None
             if getattr(self, "_island_auto", False) and self._island_shown:
                 self._island_auto = False
-                self.mini_island_toggle(False)
+                self.mini_island_toggle(False, persist=False)
             return True
         people = [{"name": str(p.get("name", ""))[:24], "talk": bool(p.get("talk")), "muted": bool(p.get("muted")),
                    "me": bool(p.get("me"))} for p in (st.get("people") or [])[:8] if isinstance(p, dict)]
@@ -2216,16 +2216,16 @@ class Api(StudioMixin):
             self._room_island = None
             if getattr(self, "_island_auto", False) and self._island_shown:
                 self._island_auto = False
-                self.mini_island_toggle(False)
+                self.mini_island_toggle(False, persist=False)
             return True
         self._room_island = {"t": _t.time(), "people": people, "muted": bool(st.get("muted")), "deaf": bool(st.get("deaf"))}
         others = sum(1 for p in people if not p["me"])
         if self._manager.settings.get("room_island") and others and not self._island_shown:
-            self._island_auto = True        # birisi odaya girdi: seridi kendiligimizden ac
-            self.mini_island_toggle(True)
+            self.mini_island_toggle(True, persist=False)   # birisi odaya girdi: seridi kendiligimizden ac
+            self._island_auto = True
         elif not others and getattr(self, "_island_auto", False) and self._island_shown:
             self._island_auto = False
-            self.mini_island_toggle(False)
+            self.mini_island_toggle(False, persist=False)
         return True
 
     def room_island_cmd(self, cmd: str) -> bool:
@@ -4117,7 +4117,7 @@ class Api(StudioMixin):
         if want and not self._island_shown:
             self.mini_island_toggle(True, persist=False)
             self._island_auto = True
-        elif not want and self._island_shown and getattr(self, "_island_auto", False):
+        elif not want and self._island_shown and getattr(self, "_island_auto", False) and not getattr(self, "_room_island", None):
             self.mini_island_toggle(False, persist=False)
             self._island_auto = False
 

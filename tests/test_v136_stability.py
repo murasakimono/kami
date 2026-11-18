@@ -182,3 +182,16 @@ def test_icon_layers_small_variant(tmp_path):
     p = icons.write_ico("player", tmp_path / "p.ico")
     assert {(16, 16), (32, 32), (48, 48), (256, 256)} <= set(Image.open(p).info["sizes"])
     assert icons.export_all(tmp_path / "out")[0].name.startswith("player-")
+
+
+def test_music_island_does_not_close_room_island(monkeypatch):
+    from app.core import music_hub, winwin
+    from app.ui.api import Api
+    a = object.__new__(Api)
+    a._island_shown, a._island_auto, a._room_island = True, True, {"people": [1]}
+    calls = []
+    a.mini_island_toggle = lambda show=None, persist=True: calls.append(show)
+    monkeypatch.setattr(music_hub, "cached_now", lambda: None)
+    monkeypatch.setattr(winwin, "find_window", lambda t: 0)
+    a.music_island_tick()
+    assert calls == []   # oda suruyor: muzik durdu diye Oda'nin adasi kapanmaz
