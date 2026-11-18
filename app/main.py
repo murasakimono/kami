@@ -80,7 +80,7 @@ def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int] | None = N
         from app.core import icons
         icon_dir = paths.DATA_DIR / "icons"
         icon_dir.mkdir(parents=True, exist_ok=True)
-        ico = icon_dir / f"{key}_v5.ico"
+        ico = icon_dir / f"{key}_v6.ico"
         if not ico.is_file():
             icons.write_ico(key, ico)
         hwnd = ctypes.windll.user32.FindWindowW(None, title)

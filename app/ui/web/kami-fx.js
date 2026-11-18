@@ -41,12 +41,12 @@
       vec2 q=vec2(fbm(p*2.1+vec2(t*0.42,-t*0.32)), fbm(p*2.1+vec2(-t*0.36,t*0.44)+5.2));
       float n=fbm(p*2.4+q*1.6+t*0.16);
       float vein=smoothstep(0.34,0.50,abs(n-0.50));
-      float glow=(1.0-vein)*(0.40+0.95*u_speed+0.90*u_pulse);
+      float glow=(1.0-vein)*(0.40+1.45*u_speed+0.90*u_pulse);
       vec3 base=vec3(0.036,0.020,0.062);
       vec3 vio=vec3(0.32,0.08,0.48)*n*0.85;   // gercek Kami moru (lacivert degil)
-      vec3 em=vec3(0.14,0.86,0.62)*glow*0.46;   // zumrut enerji damarlari
+      vec3 em=vec3(0.14,0.86,0.62)*glow*0.50;   // zumrut enerji damarlari
       float distA=length(p-ap);
-      float aura=exp(-distA*2.2)*(0.26+0.42*u_speed+0.55*u_pulse);
+      float aura=exp(-distA*2.2)*(0.26+0.68*u_speed+0.55*u_pulse);
       vec3 altarGlow=(vec3(0.36,0.12,0.58)+u_tint*0.65)*aura;
       float vig=smoothstep(1.35,0.12,distA);
       gl_FragColor=vec4((base+vio+em+altarGlow)*vig, 1.0);
@@ -137,7 +137,6 @@
     ST.last = now;
     const { gl, uRes, uAltar, uTime, uSpeed, uPulse, uTint } = ST.gl;
     ST.pulse = Math.max(0, ST.pulse * 0.92);
-    updateAltarCenter();
     gl.uniform2f(uRes, ST.canvas.width, ST.canvas.height);
     gl.uniform2f(uAltar, ST.altarX, ST.altarY);
     gl.uniform1f(uTime, (now - ST.t0) / 1000);

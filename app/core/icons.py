@@ -14,9 +14,9 @@ MODULES: dict[str, tuple[str, tuple[int, int, int]]] = {
     "studio": ("Kami Studio", (167, 139, 250)),    # Mor
     "picture": ("Kami Picture", (56, 189, 248)),   # Gok mavisi
     "reader": ("Kami Reader", (245, 158, 11)),     # Kehribar / Altin
-    "games": ("Kami Games", (78, 156, 255)),       # Elektrik mavi (morlardan ayrissin)
+    "games": ("Kami Games", (126, 138, 244)),      # Indigo (games.png ile birebir uyumlu)
     "music": ("Kamify", (232, 121, 249)),          # Orkide / Magenta
-    "cleaner": ("Kami Cleaner", (245, 130, 72)),   # Sicak mercan-turuncu (hata kirmizisindan ayrissin)
+    "cleaner": ("Kami Cleaner", (244, 114, 134)),  # Mercan pembe (cleaner.png ile birebir uyumlu)
 }
 
 
