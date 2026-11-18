@@ -659,6 +659,9 @@ function bindSettings() {
     if (["hotkey", "hotkey_enabled", "autostart"].includes(el.name)) setTimeout(refreshDesktop, 300);
     if (el.name === "language") { state.lang = r.value; applyI18n(); }
     if (el.name === "theme") applyTheme(r.value);
+    if (el.name in { sunak_bg_mode: 1, ui_transitions: 1, kamify_ambiance: 1, games_tilt: 1, reader_page_anim: 1 }) {
+      window.KamiFX?.applySettings?.(state.settings);
+    }
   });
   $("#dirChange").addEventListener("click", async () => {
     const dir = await api.choose_folder();
@@ -691,6 +694,7 @@ async function init() {
   state.lang = state.settings.language || "tr";
   applyTheme(state.settings.theme);
   applyI18n();
+  window.KamiFX?.applySettings?.(state.settings);
   bindEvents();
   bindSettings();
   bindRd();

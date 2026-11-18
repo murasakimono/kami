@@ -163,12 +163,28 @@ $("#rdStage").addEventListener("scroll", () => {
   if (el && +el.dataset.i !== RD.page) { RD.page = +el.dataset.i; updateUi(); dirty(); }
 }, { passive: true });
 
+let RD_PAGE_ANIM = true;
+try { window.addEventListener("pywebviewready", async () => { const s = await window.pywebview?.api?.get_settings?.(); if (s) RD_PAGE_ANIM = s.reader_page_anim !== false; }); } catch {}
+
 function go(i) {
   if (!RD.doc) return;
   i = Math.max(0, Math.min(RD.doc.count - 1, i));
   if (RD.set.mode === "scroll") { RD.page = i; $(`.rd-page[data-i="${i}"]`)?.scrollIntoView(); updateUi(); dirty(); return; }
   if (i === RD.page) return;
+  const dir = i > RD.page ? 1 : -1;
   RD.page = i; dirty(); render();
+  if (RD_PAGE_ANIM) {
+    const st = $("#rdStage");
+    if (st) {
+      st.style.transition = "none";
+      st.style.transform = `translateX(${dir * 18}px)`;
+      st.style.opacity = "0.72";
+      requestAnimationFrame(() => {
+        st.style.transition = "transform .17s cubic-bezier(.22,1,.36,1), opacity .17s ease";
+        st.style.transform = ""; st.style.opacity = "1";
+      });
+    }
+  }
 }
 function step(d) {   // d: +1 ileri / -1 geri (okuma yonune gore)
   if (!RD.doc) return;

@@ -69,6 +69,12 @@ DEFAULTS: dict[str, Any] = {
     "update_channel": "stable",    # stable | beta (GitHub prerelease)
     "auto_backup": True,           # haftada bir otomatik .kamibak yedegi (son 4'u tut)
     "auto_backup_last": 0,
+    # Gorsel efektler & animasyonlar (hepsi ayarlardan acilip kapatilabilir)
+    "sunak_bg_mode": "obsidian",   # obsidian (GLSL) | particles (klasik parcacik) | off
+    "ui_transitions": True,        # View Transitions + komut satirindan halkaya enerji kivilcimi
+    "kamify_ambiance": True,       # Kamify kapak rengine uyumlu dinamik arka plan ambiyansi
+    "games_tilt": True,            # Kami Games kartlarinda fare takipli 3D egim + krom yansima
+    "reader_page_anim": True,      # Kami Reader sayfa cevirme golge/kayma gecisi
     # Ag: bazi sunucularin IPv6 adresi bu agda cevapsiz (RD: 21 sn x adres). Kapali = aria2 sadece IPv4.
     "aria2_ipv6": False,           # degisiklik Kami yeniden acilinca gecerli
     # Asama 6b: medya ekstralari

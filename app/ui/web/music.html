@@ -151,11 +151,13 @@
     </div>
   </aside>
 
-  <main class="main">
-    <header class="m-top">
+  <main class="main" style="position:relative">
+    <div id="spAmb" style="position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0;transition:background .8s ease,opacity .5s ease"></div>
+    <header class="m-top" style="position:relative;z-index:1">
       <h2 id="viewTitle">Spotify Ara</h2>
       <input id="q" placeholder="Şarkı, albüm, çalma listesi veya klasör içi ara…">
       <button class="btn pri" id="go">Ara</button>
+      <button class="btn" id="ambBtn" title="Kapak rengi ambiyansını aç/kapat" style="font-size:11.5px;padding:6px 10px">Ambiyans</button>
     </header>
     <div class="m-body">
       <div id="subBar" class="subbar" hidden></div>
@@ -506,7 +508,16 @@
     if (typeof r.volume === "number" && document.activeElement !== spVol) spVol.value = r.volume;
     spTitle.textContent = r.title;
     spArtist.textContent = `${r.artist || ""}${r.device_name ? " · " + r.device_name : ""}`;
-    if (r.cover) { spCov.src = r.cover; spCov.hidden = false; } else spCov.hidden = true;
+    if (r.cover) {
+      if (spCov.src !== r.cover) {
+        spCov.style.transition = "transform .26s ease, opacity .26s ease";
+        spCov.style.transform = "scale(.88)"; spCov.style.opacity = ".4";
+        spCov.src = r.cover;
+        requestAnimationFrame(() => { spCov.style.transform = "scale(1)"; spCov.style.opacity = "1"; });
+        updateAmbiance(r.cover);
+      }
+      spCov.hidden = false;
+    } else { spCov.hidden = true; updateAmbiance(""); }
     spPos.textContent = fmtMs(r.progress_ms); spDur.textContent = fmtMs(r.duration_ms);
     if (!SEEK_LOCK && r.duration_ms > 0) spSeek.value = Math.round((r.progress_ms / r.duration_ms) * 1000);
     const key = `${r.artist} - ${r.title}`;
@@ -674,8 +685,43 @@
     const lp = e.target.closest("[data-locplay]");
     if (lp) api()?.music_local_play?.(lp.dataset.locplay, lp.dataset.locroot);
   };
+  let AMB_ON = true;
+  let LAST_AMB_URL = "";
+  function updateAmbiance(url) {
+    const el = document.getElementById("spAmb"); if (!el) return;
+    if (!AMB_ON || !url) { el.style.opacity = "0"; return; }
+    if (url === LAST_AMB_URL) { el.style.opacity = "1"; return; }
+    LAST_AMB_URL = url;
+    const im = new Image(); im.crossOrigin = "anonymous";
+    im.onload = () => {
+      try {
+        const cv = document.createElement("canvas"); cv.width = 8; cv.height = 8;
+        const g = cv.getContext("2d"); g.drawImage(im, 0, 0, 8, 8);
+        const d = g.getImageData(0, 0, 8, 8).data;
+        let r = 0, gr = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) { if (d[i] + d[i+1] + d[i+2] > 30) { r += d[i]; gr += d[i+1]; b += d[i+2]; n++; } }
+        if (n) {
+          r = Math.round(r / n); gr = Math.round(gr / n); b = Math.round(b / n);
+          el.style.background = `radial-gradient(circle at 75% 22%, rgba(${r},${gr},${b},.16), transparent 62%)`;
+          el.style.opacity = "1";
+        }
+      } catch { el.style.opacity = "0"; }
+    };
+    im.onerror = () => { el.style.opacity = "0"; };
+    im.src = url;
+  }
+  const ambBtn = document.getElementById("ambBtn");
+  if (ambBtn) {
+    ambBtn.onclick = () => {
+      AMB_ON = !AMB_ON;
+      ambBtn.classList.toggle("pri", AMB_ON);
+      api()?.set_setting?.("kamify_ambiance", AMB_ON);
+      updateAmbiance(CUR_TRACK?.cover || "");
+    };
+  }
   const _bootMusic = async () => {
     if (await api()?.is_selftest?.()) return;
+    try { const s = await api()?.get_settings?.(); if (s) { AMB_ON = s.kamify_ambiance !== false; ambBtn?.classList.toggle("pri", AMB_ON); } } catch {}
     refreshAuthUi(); refreshLibrespot(); pollSpotify();
     if (NAV === "sp_search" && !q.value.trim()) renderHome();
   };

@@ -79,6 +79,16 @@ FX: dict[str, dict[str, Any]] = {
                   "css": "sepia(.9) brightness(1.05)", "ov": ["bloom", "vignette-hard"]},
     "cold": {"name": "Soğuk/yalnız", "pack": "Duygu", "ff": "colorbalance=rs=-0.15:bs=0.2:rm=-0.1:bm=0.15,eq=saturation=0.7",
              "css": "saturate(.7) hue-rotate(15deg) brightness(.97)", "ov": ["blue-tint"]},
+    # HyperFrames sinematik efekt bloklari
+    "hf_portal": {"name": "Enerji Portalı (HyperFrames)", "pack": "HyperFrames",
+                  "ff": "rgbashift=rh=4:bh=-4,eq=contrast=1.18:saturation=1.22,vignette=PI/4.2",
+                  "css": "contrast(1.18) saturate(1.22)", "ov": ["rgb", "bloom", "vignette"]},
+    "hf_glitch": {"name": "Krom Glitch Giriş (HyperFrames)", "pack": "HyperFrames",
+                  "ff": "rgbashift=rh=9:gv=-4:bh=-7,eq=contrast=1.24,noise=alls=8:allf=t",
+                  "css": "contrast(1.24)", "ov": ["rgb-strong", "glitch-bars"]},
+    "hf_cinema": {"name": "Sinematik Alt Kart (HyperFrames)", "pack": "HyperFrames",
+                  "ff": "eq=contrast=1.12:saturation=1.08,drawbox=x=0:y=0:w=iw:h=ih*0.1:color=black:t=fill,drawbox=x=0:y=ih*0.9:w=iw:h=ih*0.1:color=black:t=fill",
+                  "css": "contrast(1.12) saturate(1.08)", "ov": ["vignette"]},
     "warm": {"name": "Sıcak/nostalji", "pack": "Duygu", "ff": "colorbalance=rs=0.15:bs=-0.12:rm=0.1:bm=-0.1,eq=saturation=1.1",
              "css": "sepia(.25) saturate(1.1)", "ov": ["warm-tint"]},
     # edit / AMV

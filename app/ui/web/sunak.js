@@ -99,6 +99,7 @@ function skBuild() {
   const form = $("#addForm");
   if (form) {
     form.classList.add("add"); $("#skCmd").appendChild(form);
+    form.addEventListener("submit", () => window.KamiFX?.sparkFrom?.($("#skCmd"), $("#skAltar")));
     const watch = document.createElement("button");   // indirmeden izle (yt-dlp / Real-Debrid / dogrudan)
     watch.type = "button"; watch.className = "btn sk-watch"; watch.textContent = skL("İzle", "Watch");
     watch.title = skL("İndirmeden Kami Player'da izle", "Stream in Kami Player without downloading");
@@ -539,19 +540,35 @@ function skDock(k) {
   if (k === "settings") { $("#settingsBtn")?.click(); return; }
   if (k === "pano") return;   // kami-pano.js kendi cekmecesini acar
   if (k === "library") { playerLibrary(); return; }
-  if (k === "fx") { fxToggle(!FX.on); toast(FX.on ? skL("Arka plan efektleri açık", "Background effects on") : skL("Arka plan efektleri kapalı", "Background effects off")); return; }
+  if (k === "fx") {
+    const order = ["obsidian", "particles", "off"];
+    const cur = document.body.dataset.bgMode || "obsidian";
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+    window.KamiFX?.setMode?.(next);
+    window.fxApplyMode?.(next);
+    api?.set_setting?.("sunak_bg_mode", next);
+    const names = { obsidian: skL("Arka plan: Akan Obsidian", "BG: Flowing Obsidian"), particles: skL("Arka plan: Klasik Parçacık", "BG: Classic Particles"), off: skL("Arka plan: Kapalı", "BG: Off") };
+    toast(names[next]);
+    return;
+  }
   if (k === "ai") { const d = state.items.find((x) => x.id === SK.sel); if (d) openMediaTools(d.id); else toast(skL("Önce bir video ya da şarkı seç", "Select a video or song first")); return; }
-  document.body.classList.add("sk-drawer");
-  document.body.classList.toggle("sk-list", k === "list");
-  $$("#skDock button").forEach((b) => b.classList.toggle("on", b.dataset.sk === k));
-  const nav = k === "list" ? $('.nav-item[data-filter="all"]') : $(`.nav-item[data-view="${k}"]`);
-  nav?.click();
+  const go = () => {
+    document.body.classList.add("sk-drawer");
+    document.body.classList.toggle("sk-list", k === "list");
+    $$("#skDock button").forEach((b) => b.classList.toggle("on", b.dataset.sk === k));
+    const nav = k === "list" ? $('.nav-item[data-filter="all"]') : $(`.nav-item[data-view="${k}"]`);
+    nav?.click();
+  };
+  window.KamiFX?.vt ? window.KamiFX.vt(go) : go();
 }
 function skCloseDrawer() {
-  document.body.classList.remove("sk-drawer", "sk-list");
-  $$("#skDock button").forEach((b) => b.classList.remove("on"));
-  if (typeof showRd === "function") showRd(false);
-  showView(null);
+  const go = () => {
+    document.body.classList.remove("sk-drawer", "sk-list");
+    $$("#skDock button").forEach((b) => b.classList.remove("on"));
+    if (typeof showRd === "function") showRd(false);
+    showView(null);
+  };
+  window.KamiFX?.vt ? window.KamiFX.vt(go) : go();
 }
 
 function skMood(s, active) {
@@ -604,6 +621,7 @@ function skState(s) {
     mood: moodNow,
     drop: $("#skAltar").classList.contains("drop"),
   });
+  window.KamiFX?.setSpeed?.(SK.speedFrac);
   skTrackSpeeds();
   const fc = $("#followCount")?.textContent; const fn = $("#skFollowN");
   if (fn) { fn.hidden = !fc || fc === "0"; fn.textContent = fc || ""; }
@@ -720,6 +738,19 @@ function fxInit2D() {
   document.body.classList.toggle("fx-off", !FX.on);
 }
 function fxToggle(on) { FX.on = on; window.KamiSunakGPU?.setFx?.(on); document.body.classList.toggle("fx-off", !on); try { localStorage.setItem("kami.fx", on ? "1" : "0"); } catch { /* yok */ } }
+window.fxApplyMode = function (mode) {
+  const m = (mode === "particles" || mode === "off") ? mode : "obsidian";
+  if (m === "obsidian") {
+    // Obsidian WebGL arka plan acik; klasik parcacik katmani gizlenir ki ust uste binmesin
+    window.KamiSunakGPU?.setFx?.(false);
+    document.body.classList.add("fx-off");
+    FX.on = false;
+  } else if (m === "particles") {
+    fxToggle(true);
+  } else {
+    fxToggle(false);
+  }
+};
 
 skBuild();
 fxInit();
