@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import threading
+from typing import Any
 
 from app import paths
 from app.core.bridge_server import BridgeServer, call_running_instance

@@ -61,6 +61,9 @@ class _SelfTestApiProxy:
     def is_selftest(self) -> bool:
         return True
 
+    def __dir__(self) -> list[str]:
+        return sorted(set(dir(self._inner)) | {"is_selftest"})
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
 

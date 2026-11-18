@@ -42,6 +42,19 @@ def test_selftest_runs_on_version_change_and_skips_open(tmp_path: Path):
     assert selftest.should_run("1.36.0", data_dir=tmp_path) is False
     assert selftest.should_run("1.36.1", data_dir=tmp_path) is True
 
+    # _SelfTestApiProxy dir() icinde ping ve is_selftest gorunmeli (pywebview get_functions icin)
+    class FakeRealApi:
+        def ping(self):
+            return {"ok": True}
+
+        def is_selftest(self):
+            return False
+
+    real_api = FakeRealApi()
+    proxy = selftest._SelfTestApiProxy(real_api)
+    assert "ping" in dir(proxy) and "is_selftest" in dir(proxy)
+    assert real_api.is_selftest() is False and proxy.is_selftest() is True
+
 
 def test_backup_restore_and_version_guard(tmp_path: Path):
     src_dir = tmp_path / "src"
