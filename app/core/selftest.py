@@ -119,22 +119,28 @@ def run_selftest(
     return payload
 
 
+_PING_JS = "(async()=>{try{return window.pywebview?.api?.ping?await window.pywebview.api.ping():null}catch(e){return {ok:false,error:String(e)}}})()"
+
+
+def _eval_ping(w: Any, timeout: float) -> dict[str, Any]:
+    """pywebview 6.2+: Promise sonucu evaluate_js donusune degil callback'e gelir."""
+    box: dict[str, Any] = {}
+    ev = threading.Event()
+    w.evaluate_js(_PING_JS, callback=lambda v: (box.__setitem__("v", v), ev.set()))
+    if not ev.wait(timeout=timeout):
+        return {"ok": False, "error": "ping_timeout"}
+    val = box.get("v")
+    if isinstance(val, dict) and val.get("ok"):
+        return {"ok": True}
+    return {"ok": False, "error": f"bad_ping:{val!r}"[:120]}
+
+
 def probe_pywebview_window(webview_mod: Any, api: Any, mod: str, title: str, html: str, timeout: float = 10.0) -> dict[str, Any]:
     """Gercek modul fabrika fonksiyonuyla (yoksa gizli pencere ile) ping + keep_warm/kapanis testi."""
     # Prewarm edilmis gizli Player penceresi varsa dogrudan onun uzerinde ping at (yok etme)
     existing = getattr(api, f"_{mod}_win", None)
     if existing is not None and mod == "player":
-        ex = ThreadPoolExecutor(max_workers=1)
-        try:
-            val = ex.submit(
-                existing.evaluate_js,
-                "(async()=>{try{return window.pywebview?.api?.ping?await window.pywebview.api.ping():null}catch(e){return {ok:false,error:String(e)}}})()",
-            ).result(timeout=timeout)
-            if isinstance(val, dict) and val.get("ok"):
-                return {"ok": True}
-            return {"ok": False, "error": f"bad_ping:{val!r}"[:120]}
-        finally:
-            ex.shutdown(wait=False, cancel_futures=True)
+        return _eval_ping(existing, timeout)
 
     ready = threading.Event()
     proxy = _SelfTestApiProxy(api)
@@ -159,17 +165,7 @@ def probe_pywebview_window(webview_mod: Any, api: Any, mod: str, title: str, htm
     try:
         if not ready.wait(timeout=timeout):
             return {"ok": False, "error": "load_timeout"}
-        ex = ThreadPoolExecutor(max_workers=1)
-        try:
-            val = ex.submit(
-                w.evaluate_js,
-                "(async()=>{try{return window.pywebview?.api?.ping?await window.pywebview.api.ping():null}catch(e){return {ok:false,error:String(e)}}})()",
-            ).result(timeout=timeout)
-        finally:
-            ex.shutdown(wait=False, cancel_futures=True)
-        if isinstance(val, dict) and val.get("ok"):
-            return {"ok": True}
-        return {"ok": False, "error": f"bad_ping:{val!r}"[:120]}
+        return _eval_ping(w, timeout)
     finally:
         try:
             w._kami_allow_destroy = True
