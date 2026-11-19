@@ -692,7 +692,8 @@ function plCcInit() {
   new MutationObserver(plCcSync).observe(sel, { attributes: true, attributeFilter: ["hidden"], childList: true });
   plCcSync();
 }
-plCcInit(); setInterval(plCcInit, 800);   // oynatici arayuzu sonradan kurulur
+plCcInit();
+const _plCcT = setInterval(() => { plCcInit(); if (document.getElementById("plCcBtn")) clearInterval(_plCcT); }, 800);   // kurulunca durur
 
 // ---------- ayar sekmeleri: acilir alt basliklar (son acik hatirlanir) ----------
 function pxGroupSec(sec) {

@@ -65,15 +65,17 @@ function edDraw() {
   if (ED.overlay) { g.globalAlpha = 0.55; g.drawImage(ED.overlay, 0, 0); g.globalAlpha = 1; }
   // belge kenari
   g.lineWidth = 1 / ED.z; g.strokeStyle = "rgba(139,92,246,.5)"; g.strokeRect(0, 0, ED.W, ED.H);
-  // secim: yuruyen karincalar
+  // secim: yuruyen karincalar (~18 fps ile buyuk gorsellerde CPU/GPU tasarrufu)
   if (ED.sel?.outline) {
-    g.lineWidth = 1.5 / ED.z; g.strokeStyle = "#fff"; g.setLineDash([5 / ED.z, 5 / ED.z]); g.lineDashOffset = -(performance.now() / 60) / ED.z; g.stroke(ED.sel.outline);
-    g.strokeStyle = "#000"; g.lineDashOffset += 5 / ED.z; g.stroke(ED.sel.outline); g.setLineDash([]); edRender();
+    g.lineWidth = 1.5 / ED.z; g.strokeStyle = "#fff"; g.setLineDash([5 / ED.z, 5 / ED.z]); g.lineDashOffset = -(performance.now() / 65) / ED.z; g.stroke(ED.sel.outline);
+    g.strokeStyle = "#000"; g.lineDashOffset += 5 / ED.z; g.stroke(ED.sel.outline); g.setLineDash([]);
+    if (!ED._antT) ED._antT = setTimeout(() => { ED._antT = 0; if (ED.on && ED.sel) edRender(); }, 55);
   } else if (ED.sel?.path) {
-    g.setLineDash([6 / ED.z, 6 / ED.z]); g.lineDashOffset = -(performance.now() / 60) / ED.z;
+    g.setLineDash([6 / ED.z, 6 / ED.z]); g.lineDashOffset = -(performance.now() / 65) / ED.z;
     g.strokeStyle = "#fff"; g.stroke(ED.sel.path); g.lineDashOffset += 6 / ED.z; g.strokeStyle = "#000"; g.stroke(ED.sel.path); g.setLineDash([]);
-    edRender();
+    if (!ED._antT) ED._antT = setTimeout(() => { ED._antT = 0; if (ED.on && ED.sel) edRender(); }, 55);
   }
+  if (typeof window.edDrawOverlay === "function") window.edDrawOverlay(g);
   if (ED.cropR) {
     const r = ED.cropR; g.fillStyle = "rgba(0,0,0,.55)";
     g.fillRect(0, 0, ED.W, r.y); g.fillRect(0, r.y + r.h, ED.W, ED.H - r.y - r.h); g.fillRect(0, r.y, r.x, r.h); g.fillRect(r.x + r.w, r.y, ED.W - r.x - r.w, r.h);
@@ -82,7 +84,7 @@ function edDraw() {
     for (let k = 1; k < 3; k++) { g.beginPath(); g.moveTo(r.x + r.w * k / 3, r.y); g.lineTo(r.x + r.w * k / 3, r.y + r.h); g.moveTo(r.x, r.y + r.h * k / 3); g.lineTo(r.x + r.w, r.y + r.h * k / 3); g.stroke(); }
   }
   // firca imleci
-  if (ED.hover && ["brush", "erase", "heal", "clone", "liquify"].includes(ED.tool)) {
+  if (ED.hover && ["brush", "erase", "heal", "clone", "liquify", "retouch"].includes(ED.tool)) {
     g.beginPath(); g.arc(ED.hover[0], ED.hover[1], ED.size / 2, 0, Math.PI * 2);
     g.lineWidth = 1.5 / ED.z; g.strokeStyle = "rgba(255,255,255,.85)"; g.stroke();
     g.lineWidth = 0.75 / ED.z; g.strokeStyle = "rgba(0,0,0,.8)"; g.stroke();
@@ -477,12 +479,45 @@ function edSelToLayer(cut) {
   if (!ED.sel) return; const l = cl();
   edSnapAll(cut ? edL("Kes", "Cut") : edL("Seçimden katman", "Layer from selection"));
   const c = document.createElement("canvas"); c.width = ED.W; c.height = ED.H; const g = c.getContext("2d");
-  g.save(); g.clip(ED.sel.path); g.drawImage(l.c, l.x, l.y); g.restore();
-  if (cut) { const lg = l.c.getContext("2d"); lg.save(); edClip(lg, l); lg.clearRect(0, 0, l.c.width, l.c.height); lg.restore(); }
+  if (ED.sel.maskCanvas) {
+    g.drawImage(l.c, l.x, l.y);
+    g.globalCompositeOperation = "destination-in";
+    g.drawImage(ED.sel.maskCanvas, 0, 0);
+    g.globalCompositeOperation = "source-over";
+  } else if (ED.sel.path) {
+    g.save(); g.clip(ED.sel.path); g.drawImage(l.c, l.x, l.y); g.restore();
+  }
+  if (cut) {
+    const lg = l.c.getContext("2d");
+    if (ED.sel.maskCanvas) {
+      lg.save(); lg.globalCompositeOperation = "destination-out"; lg.drawImage(ED.sel.maskCanvas, -l.x, -l.y); lg.restore();
+    } else {
+      lg.save(); edClip(lg, l); lg.clearRect(0, 0, l.c.width, l.c.height); lg.restore();
+    }
+  }
   const nl = edLayer(edL("Seçim", "Selection")); nl.c = c; ED.layers.splice(ED.cur + 1, 0, nl); ED.cur++; ED.sel = null; edLayersUi(); edRender();
 }
-function edClearSel() { if (!ED.sel) return; const l = cl(); edSnap(edL("Temizle", "Clear")); const g = l.c.getContext("2d"); g.save(); edClip(g, l); g.clearRect(0, 0, l.c.width, l.c.height); g.restore(); edRender(); edLayerThumb(ED.cur); }
-function edFillSel() { const l = cl(); edSnap(edL("Doldur", "Fill")); const g = l.c.getContext("2d"); g.save(); edClip(g, l); g.fillStyle = ED.color; g.fillRect(0, 0, l.c.width, l.c.height); g.restore(); edRender(); edLayerThumb(ED.cur); }
+function edClearSel() {
+  if (!ED.sel) return; const l = cl(); edSnap(edL("Temizle", "Clear")); const g = l.c.getContext("2d");
+  if (ED.sel.maskCanvas) {
+    g.save(); g.globalCompositeOperation = "destination-out"; g.drawImage(ED.sel.maskCanvas, -l.x, -l.y); g.restore();
+  } else {
+    g.save(); edClip(g, l); g.clearRect(0, 0, l.c.width, l.c.height); g.restore();
+  }
+  edRender(); edLayerThumb(ED.cur);
+}
+function edFillSel() {
+  const l = cl(); edSnap(edL("Doldur", "Fill")); const g = l.c.getContext("2d");
+  if (ED.sel?.maskCanvas) {
+    const tmp = document.createElement("canvas"); tmp.width = ED.W; tmp.height = ED.H;
+    const tg = tmp.getContext("2d"); tg.fillStyle = ED.color; tg.fillRect(0, 0, ED.W, ED.H);
+    tg.globalCompositeOperation = "destination-in"; tg.drawImage(ED.sel.maskCanvas, 0, 0);
+    g.drawImage(tmp, -l.x, -l.y);
+  } else {
+    g.save(); edClip(g, l); g.fillStyle = ED.color; g.fillRect(0, 0, l.c.width, l.c.height); g.restore();
+  }
+  edRender(); edLayerThumb(ED.cur);
+}
 function edFlipLayer(h) { const l = cl(); edSnap(edL("Çevir", "Flip")); const c = document.createElement("canvas"); c.width = l.c.width; c.height = l.c.height; const g = c.getContext("2d"); g.translate(h ? c.width : 0, h ? 0 : c.height); g.scale(h ? -1 : 1, h ? 1 : -1); g.drawImage(l.c, 0, 0); const lg = l.c.getContext("2d"); lg.clearRect(0, 0, c.width, c.height); lg.drawImage(c, 0, 0); edRender(); edLayerThumb(ED.cur); }
 function edFlatten() {
   const c = document.createElement("canvas"); c.width = ED.W; c.height = ED.H; const g = c.getContext("2d");
@@ -520,16 +555,44 @@ function edAdjLayerSrc(l, idx, live) {   // altindaki birlesimin ayarlanmis hali
   const out = document.createElement("canvas"); out.width = ED.W; out.height = ED.H; out.getContext("2d").drawImage(sm, 0, 0, ED.W, ED.H);
   l._adjC = out; l._adjK = key; return out;
 }
+function edStyledSrc(l, src, live) {
+  if (!l.fx || typeof EFX === "undefined" || !EFX.hasActiveStyles?.(l.fx)) return src;
+  const key = `${ED.ver}|${src.width}x${src.height}|${JSON.stringify(l.fx)}|${live && l === ED.stroke?.layer ? Math.random() : 0}`;
+  if (l._fxC && l._fxK === key) return l._fxC;
+  const styled = EFX.applyLayerStyles(src, l.fx);
+  l._fxC = styled;
+  l._fxK = key;
+  return styled;
+}
 function edComposite(g, live, upto = ED.layers.length) {
+  let clipBase = null;
   for (let i = 0; i < upto; i++) {
     const l = ED.layers[i];
-    if (!l.vis) continue;
+    if (!l.vis) {
+      if (!l.clipToBelow) clipBase = null;
+      continue;
+    }
     let src;
     if (l.adj) src = edAdjLayerSrc(l, i, live);
     else src = live ? (l === ED.stroke?.layer ? ED.stroke.preview : ED.preview && l === cl() ? ED.preview : l.c) : l.c;
     if (l.mask && !l._swapped) src = edMasked(l, src);
-    g.globalAlpha = l.op; g.globalCompositeOperation = l.adj ? "source-over" : l.blend;
-    g.drawImage(src, l.adj ? 0 : l.x, l.adj ? 0 : l.y);
+    src = edStyledSrc(l, src, live);
+    const dx = l.adj ? 0 : l.x;
+    const dy = l.adj ? 0 : l.y;
+    if (l.clipToBelow && clipBase) {
+      const tmp = document.createElement("canvas");
+      tmp.width = ED.W; tmp.height = ED.H;
+      const tg = tmp.getContext("2d");
+      tg.drawImage(src, dx, dy);
+      tg.globalCompositeOperation = "destination-in";
+      tg.drawImage(clipBase.src, clipBase.x, clipBase.y);
+      g.globalAlpha = l.op; g.globalCompositeOperation = l.adj ? "source-over" : l.blend;
+      g.drawImage(tmp, 0, 0);
+    } else {
+      g.globalAlpha = l.op; g.globalCompositeOperation = l.adj ? "source-over" : l.blend;
+      g.drawImage(src, dx, dy);
+      if (!l.adj) clipBase = { src, x: dx, y: dy };
+    }
   }
   g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
 }
@@ -640,7 +703,7 @@ function edWheelClose() { $("#edWheel").classList.remove("on"); }
 function edSerialize(raw) {
   return { v: 2, W: ED.W, H: ED.H, cur: ED.cur, name: ED.name, layers: ED.layers.map((l) => {
     const img = l._swapped ? l.mask : l.c, msk = l._swapped ? l.c : l.mask;   // maske duzenlenirken kaydedilse de dogru yere
-    return { id: l.id, name: l.name, x: l.x, y: l.y, vis: l.vis, op: l.op, blend: l.blend, text: l.text, adj: l.adj || null,
+    return { id: l.id, name: l.name, x: l.x, y: l.y, vis: l.vis, op: l.op, blend: l.blend, text: l.text, adj: l.adj || null, fx: l.fx ? JSON.parse(JSON.stringify(l.fx)) : null, clipToBelow: !!l.clipToBelow,
       w: img.width, h: img.height, png: raw ? img.getContext("2d").getImageData(0, 0, img.width, img.height) : img.toDataURL("image/png"),
       mask: msk ? (raw ? msk.getContext("2d").getImageData(0, 0, msk.width, msk.height) : msk.toDataURL("image/png")) : null };
   }) };
@@ -649,7 +712,7 @@ function edDeserialize(s) {
   // ham (ImageData) anlik goruntu = geri al/yinele: ESZAMANLI (art arda geri almada yaris olmasin); dosyadan: async
   const raw = s.layers.every((q) => q.png instanceof ImageData && (!q.mask || q.mask instanceof ImageData));
   const build = (q, put) => {
-    const l = edLayer(q.name, q.w, q.h); Object.assign(l, { id: q.id, x: q.x, y: q.y, vis: q.vis, op: q.op, blend: q.blend, text: q.text, adj: q.adj || null });
+    const l = edLayer(q.name, q.w, q.h); Object.assign(l, { id: q.id, x: q.x, y: q.y, vis: q.vis, op: q.op, blend: q.blend, text: q.text, adj: q.adj || null, fx: q.fx || null, clipToBelow: !!q.clipToBelow });
     const a = put(l.c, q.png);
     let b = null;
     if (q.mask) { l.mask = document.createElement("canvas"); l.mask.width = q.w; l.mask.height = q.h; b = put(l.mask, q.mask); l._maskV = 1; }
@@ -707,7 +770,7 @@ function edMount() {
   const d = document.createElement("div"); d.id = "ed";
   d.innerHTML = `<canvas id="edView"></canvas>
     <div class="ed-top"><b id="edName"></b><span id="edSize"></span>
-      <button data-x="new">${edL("Yeni", "New")}</button><button data-x="open">${edL("Proje aç", "Open project")}</button><button data-x="saveproj">.kami</button>
+      <button data-x="new">${edL("Yeni", "New")}</button><button data-x="open">${edL("Proje aç", "Open project")}</button><button data-x="openpsd" title="Katmanlı Adobe PSD aç">.psd</button><button data-x="saveproj">.kami</button>
       <button data-x="exp-png" class="pri">${edL("Kaydet PNG", "Save PNG")}</button><button data-x="exp-jpg">JPG</button><button data-x="exp-webp">WebP</button>
       <button data-x="undo" title="Ctrl+Z">↶</button><button data-x="redo" title="Ctrl+Y">↷</button><button data-x="close">✕</button></div>
     <div class="ed-opt" id="edOpt"></div><div class="ed-card" id="edCard" hidden></div><div class="ed-wheel" id="edWheel"></div>

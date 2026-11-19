@@ -2825,6 +2825,24 @@ class Api(StudioMixin):
         with open(r[0], encoding="utf-8") as f:
             return {"ok": True, "path": r[0], "data": f.read()}
 
+    def editor_psd_open(self, path: str = "") -> dict[str, Any]:
+        """Kami Picture: Katmanli Adobe Photoshop (.psd) dosyasini acar."""
+        from app.core.psd_reader import read_psd_layers
+        p = str(path or "").strip()
+        if not p:
+            import webview
+            w = getattr(self, "_picture_win", None)
+            if not w:
+                return {"ok": False, "error": "no_window"}
+            r = w.create_file_dialog(webview.OPEN_DIALOG, directory=self._edit_out_dir(""), file_types=("Photoshop (*.psd)",))
+            if not r:
+                return {"ok": False}
+            p = str(r[0])
+        res = read_psd_layers(p)
+        if res.get("ok"):
+            res["path"] = p
+        return res
+
     # ---------- Faz 10: Picture Pro, Lightroom, Mockup, OKLCH & Telif Imzasi ----------
 
     def pic_freq_sep(self, image: str, radius: float = 4.0) -> dict[str, Any]:

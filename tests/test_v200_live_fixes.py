@@ -151,3 +151,55 @@ def test_web_and_main_live_regression_markers():
     kami20_js = (ROOT / "app" / "ui" / "web" / "kami-20.js").read_text(encoding="utf-8")
     assert "music_whisper_lrc" in kami20_js
     assert "music_lrc_polish_ollama" in kami20_js
+
+
+def test_photopea_suite_and_psd_reader(tmp_path: Path):
+    import struct
+    from app.core.psd_reader import read_psd_layers
+
+    # Minimal gecerli 2x2 RGB 1-katmanli RAW PSD ikilisi olustur
+    w, h = 2, 2
+    r_plane = b"\x00\x00" + bytes([255, 0, 0, 255])
+    g_plane = b"\x00\x00" + bytes([0, 255, 0, 255])
+    b_plane = b"\x00\x00" + bytes([0, 0, 255, 255])
+    a_plane = b"\x00\x00" + bytes([255, 255, 255, 255])
+    ch_recs = (
+        struct.pack(">hI", 0, len(r_plane))
+        + struct.pack(">hI", 1, len(g_plane))
+        + struct.pack(">hI", 2, len(b_plane))
+        + struct.pack(">hI", -1, len(a_plane))
+    )
+    name_p = b"\x04Test\x00\x00\x00"  # 1+4=5 -> 8 byte padded
+    extra = struct.pack(">I", 0) + struct.pack(">I", 0) + name_p
+    layer_rec = (
+        struct.pack(">iiii", 0, 0, h, w)
+        + struct.pack(">H", 4)
+        + ch_recs
+        + b"8BIM" + b"norm"
+        + struct.pack(">BBBB", 200, 1, 0, 0)
+        + struct.pack(">I", len(extra)) + extra
+    )
+    layer_info = struct.pack(">h", 1) + layer_rec + r_plane + g_plane + b_plane + a_plane
+    if len(layer_info) & 1:
+        layer_info += b"\x00"
+    lm_section = struct.pack(">I", len(layer_info)) + layer_info
+    header = b"8BPS" + struct.pack(">H6sHIIHH", 1, b"\x00" * 6, 4, h, w, 8, 3)
+    psd_bytes = header + struct.pack(">I", 0) + struct.pack(">I", 0) + struct.pack(">I", len(lm_section)) + lm_section
+    psd_file = tmp_path / "ornek.psd"
+    psd_file.write_bytes(psd_bytes)
+
+    res = read_psd_layers(str(psd_file))
+    assert res["ok"] is True
+    assert res["W"] == 2 and res["H"] == 2
+    assert len(res["layers"]) == 1
+    assert res["layers"][0]["name"] == "Test"
+    assert res["layers"][0]["clip"] is True
+    assert res["layers"][0]["png"].startswith("data:image/png;base64,")
+
+    pp_js = (ROOT / "app" / "ui" / "web" / "editor-photopea.js").read_text(encoding="utf-8")
+    for token in ("computeWandMask", "runBucket", "applyGradient", "drawShapeOnCtx", "retouchDab", "openFxModal", "startInteractiveTransform", "editor_psd_open"):
+        assert token in pp_js
+
+    pic_html = (ROOT / "app" / "ui" / "web" / "picture.html").read_text(encoding="utf-8")
+    assert "editor-photopea.js" in pic_html
+

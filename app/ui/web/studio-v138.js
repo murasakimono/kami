@@ -125,7 +125,14 @@
     window.addEventListener("pointermove", (e) => { if (ovDrag) scrubOv(e.clientX); });
     window.addEventListener("pointerup", () => { ovDrag = false; });
     scroller?.addEventListener("scroll", drawOverview, { passive: true });
-    setInterval(() => { if (!document.hidden) drawOverview(); }, 250);
+    let _lastOvSig = "";
+    setInterval(() => {
+      if (document.hidden || !document.hasFocus()) return;
+      const sig = `${window.ST?.t?.toFixed?.(2) || 0}|${window.ST?.p?.clips?.length || 0}|${window.ST?.px || 0}|${scroller?.scrollLeft || 0}`;
+      if (sig === _lastOvSig) return;
+      _lastOvSig = sig;
+      drawOverview();
+    }, 300);
   }
 
   // ---- 3. Sabit Kafa & Cursor Zoom & Middle-Click Pan ----

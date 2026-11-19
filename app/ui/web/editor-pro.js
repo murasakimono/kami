@@ -189,7 +189,7 @@
     histRender();
   });
   let lastSig = "";
-  setInterval(() => { const sig = ED.undo.length + "|" + ED.redo.length; if (sig !== lastSig) { lastSig = sig; histRender(); } }, 400);
+  setInterval(() => { if (!ED.on || document.hidden) return; const sig = ED.undo.length + "|" + ED.redo.length; if (sig !== lastSig) { lastSig = sig; histRender(); } }, 500);
 
   document.addEventListener("keydown", (e) => {
     if (!ED.on || e.target.matches?.("input, textarea, select, [contenteditable=true]") || e.ctrlKey || e.metaKey || e.altKey) return;

@@ -108,7 +108,9 @@ window.addEventListener("pywebviewready", async () => {
   try { LANG = (await api.get_settings())?.language === "en" ? "en" : "tr"; } catch { /* yok */ }
   i18n();
   const poll = async () => { try { for (const it of (await api.picture_poll()) || []) { if (it.edit) { if (it.path) await open(it.path, false); window.kamiEditor.open(it.path || ""); } else await open(it.path, it.lens); } } catch { /* yok */ } };
-  poll(); setInterval(poll, 700);
+  poll();
+  window.addEventListener("focus", poll);
+  setInterval(() => { if (!document.hidden) poll(); }, 1000);
 });
 
 // v1.32.1 bos ekran: ac / yeni tuval / son acilanlar (eskiden tek satir yazi)

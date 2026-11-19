@@ -167,7 +167,8 @@
     }
   }
   if (!location.pathname.endsWith("mini-island.html") && !location.pathname.endsWith("pin.html")) {
-    setInterval(pollActiveJobs, 1800);
+    window.addEventListener("focus", pollActiveJobs);
+    setInterval(() => { if (!document.hidden && document.hasFocus()) pollActiveJobs(); }, 3000);
   }
 
   // ---- 2. A2: Zaman/Sayfa Damgali Yuzen Karalama Karti (Alt+N) ----

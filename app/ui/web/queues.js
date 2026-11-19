@@ -213,6 +213,10 @@
     if (!d.open) d.showModal();
   }
 
-  const start = () => { refresh(); setInterval(refresh, 3000); };
+  const start = () => {
+    refresh();
+    window.addEventListener("focus", refresh);
+    setInterval(() => { if (!document.hidden && document.hasFocus()) refresh(); }, 6000);
+  };
   window.addEventListener("pywebviewready", () => setTimeout(start, 500));
 })();

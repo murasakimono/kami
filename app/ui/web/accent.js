@@ -37,6 +37,7 @@ body.sunak { background: radial-gradient(ellipse 55% 50% at 32% 30%, ${glow} 0%,
     try { const s = await window.pywebview.api.get_settings(); apply(s?.accent_theme || "mor"); } catch { /* yok */ }
   }
   window.addEventListener("pywebviewready", load);
+  window.addEventListener("focus", load);
   document.addEventListener("change", (e) => { if (e.target?.name === "accent_theme") apply(e.target.value); });
-  setInterval(load, 5000);   // ayar degisince diger pencereler de uyar
+  setInterval(() => { if (!document.hidden && document.hasFocus()) load(); }, 15000);   // odaktayken senkronize et
 })();
