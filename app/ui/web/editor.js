@@ -600,7 +600,7 @@ function edComposite(g, live, upto = ED.layers.length) {
 // ---------------------------------------------------------------- katman seridi
 function edLayersUi() {
   const row = $("#edLayers .row"); if (!row) return;
-  row.innerHTML = ED.layers.map((l, i) => `<div class="ed-ly${i === ED.cur ? " on" : ""}${l.vis ? "" : " hidden"}" data-i="${i}" draggable="true">
+  row.innerHTML = ED.layers.map((l, i) => `<div class="ed-ly${i === ED.cur ? " on" : ""}${l.vis ? "" : " hidden"}" data-i="${i}" data-id="${l.id}" draggable="true">
     <canvas width="116" height="72"></canvas><div class="nm" contenteditable="true" spellcheck="false">${esc(l.name)}</div>
     <div class="ctl"><button data-l="vis" title="${edL("Göster/gizle", "Show/hide")}">${l.vis ? "◉" : "○"}</button><input type="range" min="0" max="100" value="${Math.round(l.op * 100)}" data-l="op" title="${edL("Opaklık", "Opacity")}"></div>
     <div class="ctl"><select data-l="blend">${BLEND.map((b, k) => `<option value="${b}" ${b === l.blend ? "selected" : ""}>${BLEND_TR[k]}</option>`).join("")}</select></div></div>`).reverse().join("") +
@@ -789,7 +789,7 @@ function edMount() {
   const row = $("#edLayers .row");
   row.addEventListener("dragstart", (e) => { const c = e.target.closest(".ed-ly"); if (c) e.dataTransfer.setData("text", c.dataset.i); });
   row.addEventListener("dragover", (e) => { e.preventDefault(); document.querySelectorAll(".ed-ly.drop").forEach((x) => x.classList.remove("drop")); e.target.closest(".ed-ly")?.classList.add("drop"); });
-  row.addEventListener("drop", (e) => { e.preventDefault(); const to = e.target.closest(".ed-ly"); if (!to) return; const from = +e.dataTransfer.getData("text"), dst = +to.dataset.i; if (from === dst) return; edSnapAll(edL("Sırala", "Reorder")); const [l] = ED.layers.splice(from, 1); ED.layers.splice(dst, 0, l); ED.cur = dst; edLayersUi(); edRender(); });
+  row.addEventListener("drop", (e) => { e.preventDefault(); const to = e.target.closest(".ed-ly"); if (!to) return; const from = +e.dataTransfer.getData("text"), dst = +to.dataset.i; if (from === dst) return; edSnapAll(edL("Sırala", "Reorder")); const [l] = ED.layers.splice(from, 1); ED.layers.splice(dst, 0, l); ED.cur = dst; if (window.KamiMotion?.flip) KamiMotion.flip(row, () => edLayersUi(), ".ed-ly"); else edLayersUi(); edRender(); });
   row.addEventListener("focusout", (e) => { const n = e.target.closest(".nm"); if (n) { const i = +n.closest(".ed-ly").dataset.i; ED.layers[i].name = n.textContent.trim() || ED.layers[i].name; } });
   let idle; document.addEventListener("pointermove", () => { d.classList.remove("idle"); clearTimeout(idle); idle = setTimeout(() => d.classList.add("idle"), 2500); });
   addEventListener("resize", () => ED.on && edRender());

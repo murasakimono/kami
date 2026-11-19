@@ -38,6 +38,11 @@ body.sunak { background: radial-gradient(ellipse 55% 50% at 32% 30%, ${glow} 0%,
   }
   window.addEventListener("pywebviewready", load);
   window.addEventListener("focus", load);
-  document.addEventListener("change", (e) => { if (e.target?.name === "accent_theme") apply(e.target.value); });
+  document.addEventListener("change", (e) => {
+    if (e.target?.name === "accent_theme") {
+      if (window.KamiMotion?.radialThemeTransition) KamiMotion.radialThemeTransition(e.target, () => apply(e.target.value));
+      else apply(e.target.value);
+    }
+  });
   setInterval(() => { if (!document.hidden && document.hasFocus()) load(); }, 15000);   // odaktayken senkronize et
 })();

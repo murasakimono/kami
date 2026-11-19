@@ -1,0 +1,401 @@
+/* Kami 2.0 Cohesive Motion & Micro-Interaction Layer
+ * Saf CSS linear() yay fizigi, @starting-style, interpolate-size,
+ * Hold 0.6s SVG onay halkasi, Sonner bildirim destesi, Proximity Glow, Odometer & View Transitions.
+ * Bosta %0 CPU/GPU yukü; prefers-reduced-motion ve body.no-anim uyumlu.
+ */
+
+:root {
+  interpolate-size: allow-keywords;
+  --km-spring: linear(
+    0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017,
+    1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%,
+    1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%,
+    0.997 69.8%, 1.003 76.9%, 1
+  );
+  --km-spring-snappy: linear(
+    0, 0.012, 0.048 2.4%, 0.21 6%, 0.74 16%, 0.96 24%,
+    1.035 32%, 1.038 38%, 1.012 52%, 1.001 70%, 1
+  );
+  --km-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --km-rose: #FB7185;
+  --km-rose-glow: rgba(251, 113, 133, 0.22);
+}
+
+/* ---- M1: @starting-style acilis & popover origin yay fizigi ---- */
+dialog[open],
+.sk-tools.on,
+#smartMenu:not([hidden]),
+#rdToolsMenu:not([hidden]),
+#k20Help:not([hidden]),
+#k20Scratch:not([hidden]),
+#k20JobPop:not([hidden]) {
+  transition: opacity 170ms var(--km-ease-out), transform 220ms var(--km-spring-snappy), display 170ms allow-discrete;
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+@starting-style {
+  dialog[open],
+  .sk-tools.on,
+  #smartMenu:not([hidden]),
+  #rdToolsMenu:not([hidden]),
+  #k20Help:not([hidden]),
+  #k20Scratch:not([hidden]),
+  #k20JobPop:not([hidden]) {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+}
+
+.km-pop-origin {
+  transform-origin: var(--km-ox, right) var(--km-oy, top) !important;
+}
+.km-pop-origin.on,
+.km-pop-origin:not([hidden]) {
+  transition: opacity 160ms var(--km-ease-out), transform 190ms var(--km-ease-out) !important;
+}
+@starting-style {
+  .km-pop-origin.on,
+  .km-pop-origin:not([hidden]) {
+    opacity: 0 !important;
+    transform: scale(0.92) !important;
+  }
+}
+
+/* ---- M2: Dokunsal basma hissi & yalniz gercek hata sarsintisi ---- */
+.btn:active:not(:disabled),
+.sk-tab:active:not(:disabled),
+.cl-tab:active:not(:disabled),
+.st-nav button:active:not(:disabled),
+.k20-rad-btn:active:not(:disabled),
+.pc-top button:active:not(:disabled),
+#tlbar button:active:not(:disabled) {
+  transform: scale(0.965);
+  transition: transform 80ms var(--km-ease-out);
+}
+
+@keyframes km-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+.km-err-shake {
+  animation: km-shake 260ms var(--km-ease-out) !important;
+  border-color: rgba(251, 113, 133, 0.65) !important;
+  box-shadow: 0 0 0 2px var(--km-rose-glow) !important;
+}
+
+/* ---- M4: Basili Tutarak Onayla (Hold 0.6s SVG halka dolumu) ---- */
+.km-hold-btn {
+  position: relative;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.km-hold-ring {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  transform: rotate(-90deg);
+}
+.km-hold-ring .km-hr-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 2.4;
+}
+.km-hold-ring .km-hr-fg {
+  fill: none;
+  stroke: #C4B5FD;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: 44;
+  stroke-dashoffset: 44;
+  transition: stroke-dashoffset 180ms ease-out, stroke 160ms ease;
+}
+.km-hold-btn.holding .km-hr-fg {
+  stroke: #2EE6A6;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 600ms linear, stroke 140ms ease;
+}
+.km-hold-btn.km-hold-ok {
+  border-color: rgba(46, 230, 166, 0.72) !important;
+  background: rgba(16, 185, 129, 0.22) !important;
+  color: #D1FAE5 !important;
+}
+.km-hold-btn.km-hold-ok .km-hr-fg {
+  stroke: #2EE6A6;
+  stroke-dashoffset: 0;
+}
+
+/* ---- M5: Donusen Kopyala / Kaydet onay dugmesi ---- */
+@keyframes km-check-draw {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+.km-morph-ok {
+  border-color: rgba(46, 230, 166, 0.65) !important;
+  background: rgba(16, 185, 129, 0.16) !important;
+  color: #2EE6A6 !important;
+}
+.km-morph-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  animation: km-morph-in 190ms var(--km-spring-snappy);
+}
+@keyframes km-morph-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.km-morph-svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: #2EE6A6;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: km-check-draw 220ms var(--km-ease-out) forwards;
+}
+
+/* ---- M6: Sonner Tarzi Katmanli Bildirim Destesi ---- */
+#kmToastDeck {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 9800;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  pointer-events: none;
+  width: 316px;
+  max-width: calc(100vw - 28px);
+}
+.km-toast {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 10px;
+  background: rgba(16, 12, 26, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(157, 107, 255, 0.34);
+  border-left: 3px solid #2EE6A6;
+  color: #EDE9F6;
+  font: 500 12.5px/1.35 "Chakra Petch", system-ui, sans-serif;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.56);
+  transform-origin: bottom center;
+  transform: translateY(calc(var(--i, 0) * -10px)) scale(calc(1 - var(--i, 0) * 0.045));
+  opacity: calc(1 - var(--i, 0) * 0.2);
+  z-index: calc(10 - var(--i, 0));
+  transition: transform 280ms var(--km-spring-snappy), opacity 220ms var(--km-ease-out), border-color 180ms ease;
+  cursor: pointer;
+}
+.km-toast.err {
+  border-left-color: var(--km-rose);
+  border-color: rgba(251, 113, 133, 0.45);
+}
+.km-toast.entering {
+  opacity: 0;
+  transform: translateY(16px) scale(0.95);
+}
+.km-toast.leaving {
+  opacity: 0;
+  transform: translateX(28px) scale(0.94);
+  pointer-events: none;
+}
+#kmToastDeck:hover .km-toast {
+  transform: translateY(calc(var(--i, 0) * -52px)) scale(1);
+  opacity: 1;
+}
+.km-toast-x {
+  background: none;
+  border: 0;
+  color: #9A90AB;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  flex: none;
+}
+.km-toast-x:hover { color: #EDE9F6; }
+
+/* ---- M7: Kayan Kapsul Sekme Gostergesi (Glider) ---- */
+.km-glider-host {
+  position: relative !important;
+}
+.km-glider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(157, 107, 255, 0.42);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: transform 280ms var(--km-spring-snappy), width 240ms var(--km-ease-out), height 240ms var(--km-ease-out), opacity 160ms ease;
+}
+.km-glider.on { opacity: 1; }
+.km-glider-host > :not(.km-glider) {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- M8: Imlec Yakinligi Kenar Isigi (Proximity Border Glow) ---- */
+.km-glow {
+  position: relative;
+}
+.km-glow::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(
+    220px circle at var(--km-x, -999px) var(--km-y, -999px),
+    rgba(157, 107, 255, 0.5),
+    rgba(46, 230, 166, 0.16) 45%,
+    transparent 72%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: var(--km-on, 0);
+  transition: opacity 180ms ease;
+  z-index: 2;
+}
+
+/* ---- M9: Anlik Ardisik Ipucu (#kmTip) ---- */
+#kmTip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9850;
+  pointer-events: none;
+  background: rgba(14, 10, 22, 0.96);
+  color: #EDE9F6;
+  border: 1px solid rgba(157, 107, 255, 0.38);
+  border-radius: 7px;
+  padding: 4px 9px;
+  font: 600 11.5px/1.3 "Chakra Petch", system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transform: translate3d(var(--tx, 0px), var(--ty, 0px), 0) scale(0.95);
+  transition: transform 140ms var(--km-ease-out), opacity 110ms ease;
+}
+#kmTip.on {
+  opacity: 1;
+  transform: translate3d(var(--tx, 0px), var(--ty, 0px), 0) scale(1);
+}
+
+/* ---- M10: Mekanik Sayac Rakam Donusu (Odometer) ---- */
+.km-odo {
+  display: inline-flex;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.km-odo-col {
+  display: inline-block;
+  position: relative;
+  height: 1.15em;
+  width: 0.64em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent);
+}
+.km-odo-track {
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+  transition: transform 340ms var(--km-spring-snappy);
+}
+.km-odo-track > span {
+  height: 1.15em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.km-odo-sep {
+  display: inline-block;
+  line-height: 1.15;
+}
+
+/* ---- M12: Canli SVG Mikro-Ikonlar ---- */
+@keyframes km-bell-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(13deg); }
+  40% { transform: rotate(-11deg); }
+  60% { transform: rotate(7deg); }
+  80% { transform: rotate(-3deg); }
+}
+[data-sk="notifs"] svg,
+.km-ringing svg {
+  transform-origin: top center;
+}
+[data-sk="notifs"]:hover svg,
+.km-ringing svg {
+  animation: km-bell-wiggle 520ms var(--km-ease-out);
+}
+[data-sk="settings"] svg,
+[data-pl="settings"] svg {
+  transition: transform 280ms var(--km-spring-snappy);
+}
+[data-sk="settings"]:hover svg,
+[data-pl="settings"]:hover svg {
+  transform: rotate(45deg);
+}
+[data-dock="cleaner"] svg,
+[data-tr] svg {
+  transition: transform 180ms var(--km-ease-out);
+}
+[data-dock="cleaner"]:hover svg,
+[data-tr]:hover svg {
+  transform: translateY(-1.5px);
+}
+
+/* ---- M14: Radyal Dairesel Tema Gecisi (View Transition) ---- */
+html.km-radial-vt::view-transition-old(root) {
+  animation: none !important;
+  z-index: 1;
+}
+html.km-radial-vt::view-transition-new(root) {
+  z-index: 2;
+  animation: km-radial-wipe 340ms cubic-bezier(0.22, 1, 0.36, 1) both !important;
+}
+@keyframes km-radial-wipe {
+  from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+
+/* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
+@media (prefers-reduced-motion: reduce) {
+  .km-pop-origin, .km-toast, .km-glider, .km-glow::after,
+  #kmTip, .km-odo-track, .km-hold-ring .km-hr-fg {
+    transition: none !important;
+    animation: none !important;
+  }
+  html.km-radial-vt::view-transition-new(root) { animation: none !important; }
+}
+body.no-anim *,
+body.km-reduced * {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+}

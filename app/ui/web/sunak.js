@@ -637,7 +637,10 @@ function skState(s) {
   SK.peak = Math.max(SK.peak * 0.995, spd, 1024 * 1024);
   SK.speedFrac = active.length ? Math.min(1, spd / SK.peak) : 0;
   const [num, unit] = splitBytes(spd);
-  $("#skNum").textContent = num; $("#skUnit").textContent = unit + "/s";
+  const skNumEl = $("#skNum");
+  if (window.KamiMotion?.rollNumber) KamiMotion.rollNumber(skNumEl, num);
+  else skNumEl.textContent = num;
+  $("#skUnit").textContent = unit + "/s";
   const mbit = (spd * 8) / 1e6;
   $("#skSub").textContent = active.length ? `${mbit >= 100 ? Math.round(mbit) : mbit.toFixed(1)} Mbit/s` : skL("boşta", "idle");
   const left = active.reduce((a, d) => a + Math.max(0, (d.size || 0) - d.downloaded), 0);
@@ -899,7 +902,9 @@ STATE_HOOKS.push(skState);
   function openTools() {
     const dock = $("#skDock"), tb = $("#skToolsBtn");
     if (pop?.classList.contains("on")) { pop.classList.remove("on"); tb.classList.remove("on"); return; }
-    if (!pop) { pop = document.createElement("div"); pop.className = "sk-tools"; document.body.appendChild(pop); }
+    if (!pop) { pop = document.createElement("div"); pop.className = "sk-tools km-pop-origin"; document.body.appendChild(pop); }
+    pop.style.setProperty("--km-ox", "right");
+    pop.style.setProperty("--km-oy", "center");
     const tools = [...dock.querySelectorAll(":scope > button.sk-intool")];
     pop.innerHTML = `<b class="sk-tools-h">${skL("Araçlar", "Tools")}</b><div class="sk-tools-g">${tools.map((b, i) => `<button type="button" data-i="${i}" class="${b.classList.contains("ai") ? "ai" : ""}">${b.querySelector("svg")?.outerHTML || ""}<span>${escapeHtml(label(b).replace(/\s*\(.*\)\s*$/, ""))}</span>${b.querySelector("b:not([hidden])") ? `<i>${escapeHtml(b.querySelector("b").textContent)}</i>` : ""}</button>`).join("")}</div>`;
     pop.querySelectorAll("[data-i]").forEach((x) => x.onclick = (e) => { e.stopPropagation(); pop.classList.remove("on"); tb.classList.remove("on"); tools[+x.dataset.i].click(); });
@@ -999,6 +1004,9 @@ STATE_HOOKS.push(skState);
       const b = $("#skNotifN");
       if (b) {
         const u = Number(s.notif_unread || 0);
+        const prev = Number(b.dataset.lastU || 0);
+        if (u > prev) window.KamiMotion?.ringBell?.();
+        b.dataset.lastU = String(u);
         b.hidden = u <= 0;
         if (u > 0) b.textContent = u > 9 ? "9+" : String(u);
       }

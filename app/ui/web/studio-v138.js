@@ -15,11 +15,15 @@
       smBtn.classList.toggle("on", willOpen);
       if (willOpen) {
         const r = smBtn.getBoundingClientRect();
+        smMenu.classList.add("km-pop-origin");
+        smMenu.style.setProperty("--km-ox", "left");
         smMenu.style.left = Math.max(8, Math.min(window.innerWidth - 260, r.left)) + "px";
         if (r.top > 360) {
+          smMenu.style.setProperty("--km-oy", "bottom");
           smMenu.style.bottom = (window.innerHeight - r.top + 6) + "px";
           smMenu.style.top = "auto";
         } else {
+          smMenu.style.setProperty("--km-oy", "top");
           smMenu.style.top = (r.bottom + 6) + "px";
           smMenu.style.bottom = "auto";
         }

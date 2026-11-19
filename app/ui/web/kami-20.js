@@ -577,10 +577,17 @@
       else msg.textContent = res?.error || "Ollama kapalı (Kami Doktor'dan başlat)";
     };
     ed.querySelector("#k20LqSave").onclick = async () => {
+      const saveBtn = ed.querySelector("#k20LqSave");
       const ta = ed.querySelector("#k20LqText");
       const msg = ed.querySelector("#k20LqMsg");
       const res = await callApi()?.music_lrc_save?.(path, ta.value, "", titleHint).catch(() => null);
-      msg.textContent = res?.ok ? "✓ Kaydedildi (.lrc + MP3 gömülü söz)" : (res?.error || "Kaydedilemedi");
+      if (res?.ok) {
+        msg.textContent = "✓ Kaydedildi (.lrc + MP3 gömülü söz)";
+        window.KamiMotion?.morphDone?.(saveBtn, "Kaydedildi");
+      } else {
+        msg.textContent = res?.error || "Kaydedilemedi";
+        window.KamiMotion?.shake?.(saveBtn);
+      }
     };
   }
 

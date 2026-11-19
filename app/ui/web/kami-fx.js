@@ -211,13 +211,25 @@
     if (REDUCED || !ST.transitions || !fromEl || !toEl) return;
     const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
     if (!a.width || !b.width) return;
+    const sx = a.left + a.width * 0.5, sy = a.top + a.height * 0.5;
+    const ex = b.left + b.width * 0.5, ey = b.top + b.height * 0.5;
     const dot = document.createElement("div");
-    dot.style.cssText = `position:fixed;left:${a.left + a.width * 0.5}px;top:${a.top + a.height * 0.5}px;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#2EE6A6;box-shadow:0 0 18px 4px rgba(46,230,166,.85);z-index:9500;pointer-events:none;transition:transform .48s cubic-bezier(.22,1,.36,1),opacity .48s ease`;
+    if (typeof CSS !== "undefined" && CSS.supports?.("offset-path", "path('M 0 0 Q 10 10 20 20')") && dot.animate) {
+      const cx = (sx + ex) * 0.5;
+      const cy = Math.min(sy, ey) - Math.max(46, Math.hypot(ex - sx, ey - sy) * 0.24);
+      dot.style.cssText = `position:fixed;left:0;top:0;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#2EE6A6;box-shadow:0 0 18px 4px rgba(46,230,166,.85);z-index:9500;pointer-events:none;offset-path:path("M ${Math.round(sx)} ${Math.round(sy)} Q ${Math.round(cx)} ${Math.round(cy)} ${Math.round(ex)} ${Math.round(ey)}");offset-rotate:0deg`;
+      document.body.appendChild(dot);
+      const anim = dot.animate(
+        [{ offsetDistance: "0%", transform: "scale(1.1)", opacity: 1 }, { offsetDistance: "100%", transform: "scale(0.35)", opacity: 0 }],
+        { duration: 480, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" }
+      );
+      anim.onfinish = () => { dot.remove(); ST.pulse = 1.0; };
+      return;
+    }
+    dot.style.cssText = `position:fixed;left:${sx}px;top:${sy}px;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#2EE6A6;box-shadow:0 0 18px 4px rgba(46,230,166,.85);z-index:9500;pointer-events:none;transition:transform .48s cubic-bezier(.22,1,.36,1),opacity .48s ease`;
     document.body.appendChild(dot);
     requestAnimationFrame(() => {
-      const dx = (b.left + b.width * 0.5) - (a.left + a.width * 0.5);
-      const dy = (b.top + b.height * 0.5) - (a.top + a.height * 0.5);
-      dot.style.transform = `translate(${dx}px, ${dy}px) scale(0.4)`;
+      dot.style.transform = `translate(${ex - sx}px, ${ey - sy}px) scale(0.4)`;
       dot.style.opacity = "0";
     });
     setTimeout(() => { dot.remove(); ST.pulse = 1.0; }, 500);

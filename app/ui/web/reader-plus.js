@@ -247,6 +247,9 @@
     tBtn.textContent = "Araçlar ▾";
     const menu = document.createElement("div");
     menu.id = "rdToolsMenu";
+    menu.className = "km-pop-origin";
+    menu.style.setProperty("--km-ox", "right");
+    menu.style.setProperty("--km-oy", "top");
     menu.hidden = true;
     wrap.append(tBtn, menu);
     top.insertBefore(wrap, drawerBtn || null);

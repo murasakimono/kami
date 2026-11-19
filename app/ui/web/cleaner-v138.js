@@ -283,20 +283,35 @@
   function updateBulkBtn(container) {
     const b = container.querySelector("#clBulkTrash");
     if (b) {
-      b.textContent = `Seçilenleri Çöpe Gönder (${CL.checked.size})`;
+      const lbl = b.querySelector(".km-hold-lbl") || b;
+      lbl.textContent = `Seçilenleri Çöpe Gönder (${CL.checked.size})`;
       b.disabled = CL.checked.size === 0;
     }
+  }
+
+  function wireBulkHold(stage) {
+    const b = stage.querySelector("#clBulkTrash");
+    if (!b) return;
+    if (window.KamiMotion?.attachHold) KamiMotion.attachHold(b, () => bulkTrash(stage), { ms: 600 });
+    else b.onclick = () => bulkTrash(stage);
   }
 
   async function bulkTrash(container) {
     const list = [...CL.checked];
     if (!list.length) return;
     const b = container.querySelector("#clBulkTrash");
-    if (b) { b.disabled = true; b.textContent = "Siliniyor…"; }
+    if (b) {
+      b.disabled = true;
+      const lbl = b.querySelector(".km-hold-lbl") || b;
+      lbl.textContent = "Siliniyor…";
+    }
     const r = await api()?.cleaner_trash_many?.(list).catch(() => null);
     CL.checked.clear();
     await scanActiveTab();
-    if (b && r) b.textContent = `${r.trashed || 0} öğe Geri Dönüşüm'e gitti`;
+    if (b && r) {
+      const lbl = b.querySelector(".km-hold-lbl") || b;
+      lbl.textContent = `${r.trashed || 0} öğe Geri Dönüşüm'e gitti`;
+    }
   }
 
   async function renderTreemapTab(stage) {
@@ -380,7 +395,7 @@
             <button class="btn" data-tr="${esc(x.path)}" ${x.protected ? "disabled title='Sistem/Kami korumalı'" : "title='Çöpe gönder'"}>🗑</button>
           </div>`).join("") || `<small style="color:#8A829E">Dosya bulunamadı.</small>`}
       </div>`;
-    stage.querySelector("#clBulkTrash").onclick = () => bulkTrash(stage);
+    wireBulkHold(stage);
     wireRowSelection(stage);
   }
 
@@ -421,7 +436,7 @@
       });
       updateBulkBtn(stage);
     };
-    stage.querySelector("#clBulkTrash").onclick = () => bulkTrash(stage);
+    wireBulkHold(stage);
     wireRowSelection(stage);
   }
 
@@ -462,7 +477,7 @@
       });
       updateBulkBtn(stage);
     };
-    stage.querySelector("#clBulkTrash").onclick = () => bulkTrash(stage);
+    wireBulkHold(stage);
     wireRowSelection(stage);
   }
 
@@ -494,7 +509,7 @@
       stage.querySelectorAll("[data-chk]").forEach((cb) => { cb.checked = true; CL.checked.add(cb.dataset.chk); });
       updateBulkBtn(stage);
     };
-    stage.querySelector("#clBulkTrash").onclick = () => bulkTrash(stage);
+    wireBulkHold(stage);
     wireRowSelection(stage);
   }
 
@@ -579,7 +594,7 @@
       stage.querySelectorAll("[data-chk]").forEach((cb) => { cb.checked = true; CL.checked.add(cb.dataset.chk); });
       updateBulkBtn(stage);
     };
-    stage.querySelector("#clBulkTrash").onclick = () => bulkTrash(stage);
+    wireBulkHold(stage);
     wireRowSelection(stage);
   }
 
@@ -653,6 +668,7 @@
         scanActiveTab();
       };
     });
+    window.KamiMotion?.bindGlider?.(tabs, ".cl-tab", "on");
 
     document.getElementById("scan")?.addEventListener("click", () => {
       setTimeout(() => scanActiveTab(), 30);

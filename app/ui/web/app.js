@@ -280,13 +280,24 @@ function notifyFinished(items) {
 let toastTimer = 0;
 function toast(msg, isErr = false, sticky = false) {
   const el = $("#toast");
-  el.textContent = msg;
+  if (el) el.textContent = msg;
+  if (window.KamiMotion?.toast) {
+    if (el) el.hidden = true;
+    KamiMotion.toast(msg, isErr, sticky);
+    return;
+  }
   el.classList.toggle("err", isErr);
   el.hidden = false;
   clearTimeout(toastTimer);
   if (!sticky) toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
 }
-function toastDone() { const el = $("#toast"); if (el.textContent === T("resolving")) el.hidden = true; }
+function toastDone() {
+  const el = $("#toast");
+  if (el?.textContent === T("resolving")) {
+    el.hidden = true;
+    window.KamiMotion?.dismissSticky?.(T("resolving"));
+  }
+}
 
 // ---------- olaylar ----------
 function bindEvents() {
@@ -294,7 +305,7 @@ function bindEvents() {
     e.preventDefault();
     const input = $("#addInput");
     const urls = input.value.split(/\s+/).filter(Boolean);
-    if (!urls.length) return;
+    if (!urls.length) { window.KamiMotion?.shake?.(input); input.focus(); return; }
     let ok = 0;
     for (const u of urls) {
       toast(T("resolving"), false, true);    // yavas servislerde (Pixeldrain ~20 sn) cevap gelene kadar kalir
