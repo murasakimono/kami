@@ -162,7 +162,14 @@
     box.querySelector("#rpChk").onclick = async () => { const r = await slowR("reader_series_check"); toast(r?.found?.length ? L(`${r.found.length} seride yeni bölüm`, `New chapters in ${r.found.length}`) : L("Yeni bölüm yok", "No new chapters")); panels(); };
     box.onclick = async (e) => {
       const rm = e.target.closest("[data-rm]"), seen = e.target.closest("[data-seen]"), ch = e.target.closest("[data-ch]");
-      if (rm) { if (confirm(L("Takip bırakılsın mı?", "Unfollow?"))) { await api.reader_series_remove(rm.dataset.rm); panels(); } }
+      if (rm) {
+        if (rm.dataset.arm !== "1") {
+          rm.dataset.arm = "1"; rm.textContent = L("Emin?", "Sure?");
+          setTimeout(() => { if (rm.isConnected && rm.dataset.arm === "1") { rm.dataset.arm = ""; rm.textContent = "✕"; } }, 2400);
+          return;
+        }
+        await api.reader_series_remove(rm.dataset.rm); panels();
+      }
       else if (seen) { await api.reader_series_seen(seen.dataset.seen); panels(); }
       else if (ch) {
         const [sid, k] = ch.dataset.ch.split(":"), s = ser.find((x) => x.id === sid), c = s?.new?.[+k];

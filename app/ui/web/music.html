@@ -611,13 +611,13 @@
       ITEMS = r.items || [];
       list.innerHTML = `<div class="sec-h">${esc(r.title)} · ${ITEMS.length} şarkı <button class="btn" id="ytPlDlAll">${_ICO_DL} Tümünü İndir</button></div>` +
         ITEMS.map((it, i) => `<div class="row"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.artist)}${it.dur ? " · " + esc(it.dur) : ""}</small></div><button class="btn pri" data-ytplay="${i}">${_ICO_PLAY} Çal</button><button class="btn" data-ytdl="${i}">${_ICO_DL} İndir</button></div>`).join("");
-      document.getElementById("ytPlDlAll").onclick = async (ev) => { if (ITEMS.length > 25 && !confirm(`${ITEMS.length} şarkının tamamı MP3 olarak indirilecek. Devam edilsin mi?`)) return; for (const it of ITEMS) await api()?.music_download?.(it.url, it.title, "mp3"); ev.target.textContent = "✓ Kuyruğa Eklendi"; mToast("✓ Liste MP3 olarak indiriliyor"); };
+      document.getElementById("ytPlDlAll").onclick = async (ev) => { for (const it of ITEMS) await api()?.music_download?.(it.url, it.title, "mp3"); ev.target.textContent = "✓ Kuyruğa Eklendi"; mToast("✓ Liste MP3 olarak indiriliyor"); };
     } else if (e.target.id === "ytPlToSp") {
-      const u = ytPlIn.value.trim(); if (!u) return alert("Önce YT Music Playlist linkini yapıştır.");
+      const u = ytPlIn.value.trim(); if (!u) return mToast("Önce YT Music Playlist linkini yapıştır.", true);
       e.target.textContent = "Aktarılıyor…";
       const r = await api()?.music_ytm_to_spotify?.(u, "").catch(() => null);
       e.target.textContent = "Spotify'a aktar";
-      alert(r?.ok ? `"${r.name}" listesine ${r.matched}/${r.total} şarkı Spotify'a aktarıldı!` : `Hata: ${r?.error || "aktarılamadı"}`);
+      mToast(r?.ok ? `"${r.name}" listesine ${r.matched}/${r.total} şarkı Spotify'a aktarıldı!` : `Hata: ${r?.error || "aktarılamadı"}`, !r?.ok);
     }
   };
   folderChips.onclick = async (e) => {
@@ -655,7 +655,6 @@
       const parseDur = (d) => { const ps = String(d || "").split(":").map(Number); return ps.length === 2 ? ps[0] * 60 + ps[1] : ps.length === 3 ? ps[0] * 3600 + ps[1] * 60 + ps[2] : 0; };
       subBar.querySelector("#spPlToMp3").onclick = async (ev) => {
         if (!plTracks.length) return;
-        if (plTracks.length > 25 && !confirm(`${plTracks.length} şarkının tamamı MP3 olarak indirilsin mi?`)) return;
         const b = ev.currentTarget; b.disabled = true;
         let ok = 0;
         for (let i = 0; i < plTracks.length; i++) {

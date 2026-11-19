@@ -233,13 +233,14 @@ function bindAppSettings() {
         const msg = r?.error === "newer_version"
           ? `Bu yedek daha yeni bir Kami sürümünden (${r.backup_version}). Mevcut (${r.current_version}) açamaz.`
           : `Geri yüklenemedi: ${r?.error || "?"}`;
-        alert(msg);
+        await (typeof kAlert === "function" ? kAlert(msg) : toast(msg));
         return;
       }
       const keys = (r.reenter_keys || []).length
         ? `\n\nGüvenlik nedeniyle şu anahtarları yeniden gir:\n- ${r.reenter_keys.join("\n- ")}`
         : "";
-      alert(`Yedek geri yükleme için hazırlandı (${(r.restored || []).length} dosya).\nVeritabanı ve ayarların bozulmadan uygulanması için Kami'yi şimdi kapatıp yeniden aç.${keys}`);
+      const doneMsg = `Yedek geri yükleme için hazırlandı (${(r.restored || []).length} dosya).\nVeritabanı ve ayarların bozulmadan uygulanması için Kami'yi şimdi kapatıp yeniden aç.${keys}`;
+      await (typeof kAlert === "function" ? kAlert(doneMsg) : toast(doneMsg));
     } finally { btn.disabled = false; }
   });
 }

@@ -71,7 +71,13 @@
     document.getElementById("scan").onclick = doMap;
     document.getElementById("res").onclick = async (e) => {
       const b = e.target.closest("[data-trash]");
-      if (!b || !confirm("Geri Dönüşüm Kutusu'na taşınsın mı?")) return;
+      if (!b) return;
+      if (b.dataset.arm !== "1") {
+        b.dataset.arm = "1";
+        b.textContent = "Emin misin?";
+        setTimeout(() => { if (b.isConnected && b.dataset.arm === "1") { b.dataset.arm = ""; b.textContent = "Sil"; } }, 2500);
+        return;
+      }
       const r = await api()?.cleaner_trash?.(b.dataset.trash).catch(() => null);
       if (r?.ok) b.closest(".row")?.remove();
       else b.textContent = r?.error === "protected" ? "korunuyor" : "olmadı";

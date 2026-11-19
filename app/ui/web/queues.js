@@ -130,7 +130,7 @@
       const b = ev.target.closest("[data-qa]"); if (!b) return;
       let qid = b.dataset.qa; closeMenu();
       if (qid === "__new") {
-        const name = prompt(L("Kuyruk adı", "Queue name"), L("Gece", "Night")); if (!name) return;
+        const name = typeof kPrompt === "function" ? await kPrompt(L("Kuyruk adı", "Queue name"), L("Gece", "Night")) : ""; if (!name) return;
         const before = new Set(Q.list.map((q) => q.id));
         Q.list = await api.queue_save([...Q.list, { name, max_active: 2 }]);
         qid = Q.list.find((q) => !before.has(q.id))?.id; if (!qid) return;

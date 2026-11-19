@@ -357,9 +357,11 @@
 
         // Karakter sprite katmanlari (crossfade icin prev + cur)
         const charWrap = new PIXI.Container();
+        this.charWrap = charWrap;
         this.puppet.addChild(charWrap);
         this.costumeFilter = new PIXI.ColorMatrixFilter();
-        charWrap.filters = [this.costumeFilter];
+        charWrap.filterArea = new PIXI.Rectangle(-140, -180, 280, 360);
+        charWrap.filters = null;
 
         if (eyeInstance?.img) {
           for (const [k, img] of Object.entries(eyeInstance.img)) {
@@ -514,6 +516,9 @@
     setCostume(name) {
       if (!this.costumeFilter) return;
       const p = COSTUME_PRESETS[name] || COSTUME_PRESETS.default;
+      if (this.charWrap) {
+        this.charWrap.filters = (!name || name === "default" || !COSTUME_PRESETS[name]) ? null : [this.costumeFilter];
+      }
       this.costumeFilter.reset();
       if (p.sepia) this.costumeFilter.sepia(true);
       if (p.hue) this.costumeFilter.hue(p.hue, true);

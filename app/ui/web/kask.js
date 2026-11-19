@@ -26,3 +26,32 @@ function kAsk(msg, yes, no, danger = false) {
   });
 }
 window.kAsk = kAsk;
+function kAlert(msg, ok) {
+  return kAsk(msg, ok || ((document.documentElement.lang || "").startsWith("en") ? "OK" : "Tamam"), " ").then(() => {
+    // Tek tus gorunumu icin .no gizlenmisti
+  });
+}
+function kPrompt(msg, defVal = "", yes, no) {
+  const en = (document.documentElement.lang || "").startsWith("en");
+  yes ||= en ? "OK" : "Tamam"; no ||= en ? "Cancel" : "Vazgeç";
+  return new Promise(res => {
+    kAsk(msg, yes, no).then(() => {});
+    const box = document.querySelector(".k-ask:last-of-type .box");
+    if (!box) { res(""); return; }
+    const inp = document.createElement("input");
+    inp.value = defVal;
+    inp.style.cssText = "width:100%;box-sizing:border-box;margin:-8px 0 14px;padding:9px 12px;border-radius:9px;border:1px solid #2A2140;background:#09070F;color:#EDE9F6;font:inherit;outline:none";
+    box.querySelector("p").after(inp);
+    const d = box.closest(".k-ask");
+    const go = d.querySelector(".go"), cancel = d.querySelector(".no");
+    const finish = (v) => { d.remove(); document.removeEventListener("keydown", key, true); res(v); };
+    const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); finish(""); } else if (e.key === "Enter") { e.stopPropagation(); finish(inp.value.trim()); } };
+    go.onclick = () => finish(inp.value.trim());
+    cancel.onclick = () => finish("");
+    d.onclick = (e) => { if (e.target === d) finish(""); };
+    document.addEventListener("keydown", key, true);
+    setTimeout(() => { inp.focus(); inp.select(); }, 20);
+  });
+}
+window.kAlert = kAlert;
+window.kPrompt = kPrompt;

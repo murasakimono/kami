@@ -258,7 +258,7 @@
     rndBtn.onclick = () => { const l = filtered(); if (l.length) openDetail(l[Math.floor(Math.random() * l.length)]); };
     plImpBtn.onclick = async () => {
       const r = await api()?.games_import_playnite?.().catch(() => null);
-      alert(r?.ok ? `Playnite kütüphanesinden ${r.count} oyun aktarıldı!` : `Aktarılamadı: ${r?.error || "hata"}`);
+      keyNote(r?.ok ? `✓ Playnite kütüphanesinden ${r.count} oyun aktarıldı` : `✗ Aktarılamadı: ${r?.error || "hata"}`);
       if (r?.ok) { setMode("all", fAll); load(); }
     };
     cfgBtn.onclick = () => { cfgBox.hidden = !cfgBox.hidden; };
@@ -288,7 +288,7 @@
     window.kgCovErr = (im) => { if (/library_600x900/.test(im.src)) { im.src = im.src.replace("library_600x900.jpg", "header.jpg"); im.classList.add("wide"); } else im.remove(); };
     custAdd.onclick = async () => {
       const r = await api()?.games_add_custom?.(custTitle.value, custExe.value).catch(() => null);
-      if (r?.ok) { custTitle.value = ""; custExe.value = ""; load(); } else alert(r?.error || "Eklenemedi");
+      if (r?.ok) { custTitle.value = ""; custExe.value = ""; load(); } else keyNote(r?.error || "Eklenemedi");
     };
     detMdl.onclick = (e) => { if (e.target === detMdl) detMdl.hidden = true; };
     grid.onclick = async (e) => {
@@ -309,7 +309,7 @@
         s.textContent = "…";
         const r = await api()?.games_backup_save?.(g.title).catch(() => null);
         s.textContent = r?.ok ? "✓" : "!";
-        if (r?.error === "ludusavi_missing") alert("Save yedeği için açık kaynak 'ludusavi' aracının PATH'te olması gerekir.");
+        if (r?.error === "ludusavi_missing") keyNote("Save yedeği için PATH'te 'ludusavi' gerekli");
         return;
       }
       const card = e.target.closest(".gcard");

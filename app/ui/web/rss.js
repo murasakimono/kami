@@ -116,7 +116,7 @@
       const f = R.list.find((x) => x.id === b.dataset.id); if (!f) return;
       const a = b.dataset.rss;
       if (a === "toggle") await api.rss_update(f.id, { enabled: !f.enabled });
-      else if (a === "remove") { if (!confirm(L("Akış silinsin mi?", "Remove feed?"))) return; await api.rss_remove(f.id); }
+      else if (a === "remove") { if (!(await kAsk(L("Akış silinsin mi?", "Remove feed?"), L("Sil", "Remove"), L("Vazgeç", "Cancel"), true))) return; await api.rss_remove(f.id); }
       else if (a === "check") { b.disabled = true; const r = await slow("rss_check", f.id); toast(L(`${r.new || 0} yeni`, `${r.new || 0} new`)); tick?.(); }
       else if (a === "prev") { b.disabled = true; const r = await slow("rss_preview", f.id); b.disabled = false; showPreview(r.items); return; }
       else if (a === "edit") { R.editing = R.editing === f.id ? null : f.id; refresh(); return; }
