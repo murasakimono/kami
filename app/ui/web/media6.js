@@ -30,7 +30,7 @@ extraBadges = function (d) {   // eslint-disable-line no-global-assign
 
 // ---------- medya araclari penceresi ----------
 const mt = { id: 0 };
-function mtItem() { return state.items.find((x) => x.id === mt.id); }
+function mtItem() { return (state.items || []).find((x) => x.id === mt.id); }
 
 function aiLine(x, k) {
   const st = x["ai_" + k];

@@ -134,6 +134,7 @@
 
   // ---------------------------------------------------------------- kitaplik: istatistik + seriler
   async function panels() {
+    if (!api) return;
     const homeEl = $("#rdHome"); if (!homeEl || homeEl.hidden) return;
     let box = $("#rpPanels");
     if (!box) { box = document.createElement("div"); box.id = "rpPanels"; box.className = "rp-panels"; homeEl.insertBefore(box, $("#rhShelf").previousElementSibling?.tagName === "H3" ? $("#rhShelf").previousElementSibling : $("#rhShelf")); }

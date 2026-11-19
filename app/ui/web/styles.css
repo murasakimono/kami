@@ -4,6 +4,8 @@
 /* hidden ozniteligi her zaman kazanir (display:flex kurallari onu ezmesin) */
 [hidden] { display: none !important; }
 :root {
+  color-scheme: dark;
+  accent-color: #8B5CF6;
   --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --r-sm: 6px;

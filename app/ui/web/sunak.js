@@ -270,7 +270,7 @@ function skBind() {
 const SK_ORDER = { active: 0, waiting: 1, queued: 1, confirm: 1, paused: 2, error: 3, complete: 4 };
 function skItems() {
   const key = (d) => (d.status === "active" ? 0 : d.extra?.fav ? 0.5 : SK_ORDER[d.status] ?? 5);   // favoriler aktiflerden hemen sonra
-  return state.items.filter((d) => d.status !== "removed" && !SK.hidden.has(d.id))
+  return (state.items || []).filter((d) => d.status !== "removed" && !SK.hidden.has(d.id))
     .map((d, i) => [d, i]).sort((a, b) => key(a[0]) - key(b[0]) || a[1] - b[1]).map((x) => x[0]);
 }
 // ---------- coklu secim: sil / geri al / yeniden adlandir / favori ----------

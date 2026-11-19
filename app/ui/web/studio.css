@@ -1,4 +1,5 @@
 /* ---- faz 5b: Kami ile gelen fontlar (kart onizlemeleri; disa aktarim libass ayni dosyalari kullanir) ---- */
+:root { color-scheme: dark; }
 @font-face { font-family: "Anton"; src: url("fonts/Anton.ttf"); font-display: swap; }
 @font-face { font-family: "Archivo Black"; src: url("fonts/ArchivoBlack.ttf"); font-display: swap; }
 @font-face { font-family: "Audiowide"; src: url("fonts/Audiowide.ttf"); font-display: swap; }
@@ -636,7 +637,7 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .mc-cam-live { font-size: 9.5px; background: #2EE6A6; color: #051610; padding: 1px 5px; border-radius: 4px; letter-spacing: .4px; }
 .sf-short-dur { font-size: 10.5px; padding: 2px 6px; border-radius: 999px; background: rgba(46, 230, 166, .12); color: #2EE6A6; border: 1px solid rgba(46, 230, 166, .3); font-weight: 600; white-space: nowrap; }
 /* v1.32.1 sol panel: dikey simge seridi (3 satira sikisan 13 sekme yerine) */
-#panel { display: grid !important; grid-template-columns: 58px 1fr; grid-template-rows: auto 1fr; }
+#panel { display: grid !important; grid-template-columns: 64px 1fr; grid-template-rows: auto 1fr; }
 body[data-page]:not([data-page=edit]) #panel, body.nopanel #panel { display: none !important; }
 #libtabs { grid-row: 1 / span 2; flex-direction: column; flex-wrap: nowrap; gap: 2px; padding: 8px 4px; overflow-y: auto; border-right: 1px solid rgba(139, 92, 246, .14); scrollbar-width: none; }
 #libtabs button { flex-direction: column; justify-content: center; gap: 3px; padding: 7px 2px; font-size: 9.5px; line-height: 1.1; text-align: center; width: 100%; }

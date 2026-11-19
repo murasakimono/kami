@@ -41,6 +41,7 @@ body.sunak.sk-drawer:not(.sk-list) > .layout > .main > .rd-view {
 body.sunak.sk-drawer:not(.sk-list) > .layout > .sidebar { display: none; }
 body.sunak.sk-drawer .speed { display: none; }
 .sk-drawer-close { display: none; }
+body.sunak:has(dialog[open]) .sk-drawer-close { opacity: 0; pointer-events: none; }
 body.sunak.sk-drawer .sk-drawer-close {
   display: flex; position: fixed; z-index: 41; top: 6px; right: 100px; height: 38px; padding: 0 14px; gap: 8px; align-items: center; justify-content: center;
   border: 0; background: #3B1580; color: #fff; font: 600 13px var(--font); clip-path: var(--cut-s); cursor: pointer;

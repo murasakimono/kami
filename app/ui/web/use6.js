@@ -225,7 +225,8 @@ async function rulesSave() {
 }
 
 async function refreshUseSettings() {
-  rulesCache = await api.rules_get();
+  const got = await api.rules_get();
+  rulesCache = Array.isArray(got) ? got : [];
   rulesRender();
   const p = await api.phone_info();
   const last = p.last || {};

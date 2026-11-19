@@ -150,6 +150,7 @@ function afterLoad(keepSel = false) {
     for (const id of [...ST.cutSel]) if (!(ST.p.cuts || []).some(ct => ct.id === id)) ST.cutSel.delete(id);
   }
   $("#pname").value = ST.p.name || "Proje";
+  ST.p.w = ST.p.w || 1920; ST.p.h = ST.p.h || 1080;
   const r = `${ST.p.w}x${ST.p.h}`;
   if (![...$("#ratio").options].some(o => o.value === r)) $("#ratio").add(new Option(`${ST.p.w}×${ST.p.h}`, r));
   $("#ratio").value = r;
@@ -696,6 +697,7 @@ function sourceOf(c) {
   const a = assetOf(c); if (!a) return null;
   if (a.kind === "image" || a.gif) { const m = ST.media[a.path]; return m?.img?.complete && m.img.naturalWidth ? { src: m.img, w: m.img.naturalWidth, h: m.img.naturalHeight } : null; }
   const r = ST.rt[c.id] || mediaEl(c);
+  if (r.el.seeking && r.hasLast && r.lastCv) return { src: r.lastCv, w: r.lastCv.width, h: r.lastCv.height };
   if (r.el.readyState >= 2 && r.el.videoWidth) {
     if (!r.el.seeking) {
       if (!r.lastCv) { r.lastCv = document.createElement("canvas"); r.lastCtx = r.lastCv.getContext("2d"); }
