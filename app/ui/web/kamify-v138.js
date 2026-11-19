@@ -104,7 +104,12 @@
           <audio id="kfLrcAudio" controls style="flex:1;height:32px"></audio>
           <label style="font-size:11.5px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="kfStrongChk" checked> <b>Güçlü Mod</b> (UVR5 Vokal Ayır + Tam Rap Algılama)</label>
           <button class="btn pri" id="kfRunWhisper">🎙 Whisper ile Söz Çıkar</button>
+          <button class="btn" id="kfAlignReal" title="Whisper zaman damgalarını gerçek şarkı sözleriyle hizala">🎯 Söz Eşleştir</button>
           <button class="btn" id="kfRunOllama" title="Yerel Ollama (qwen2.5:3b) ile yazım hatalarını düzelt">✨ Ollama ile Düzelt</button>
+        </div>
+        <div id="kfAlignBox" hidden style="display:flex;flex-direction:column;gap:6px;background:#0D0A16;padding:8px 10px;border-radius:10px;border:1px solid rgba(46,230,166,.38)">
+          <textarea id="kfAlignTrue" rows="5" placeholder="Gerçek şarkı sözlerini buraya yapıştır (Genius vb.) — mevcut zaman damgalarıyla eşlenecek…" style="width:100%;background:#09070F;border:1px solid var(--line);border-radius:8px;color:#EDE9F6;padding:8px;font:12px Consolas,monospace"></textarea>
+          <div style="display:flex;justify-content:flex-end"><button class="btn pri" id="kfAlignGo">⚡ Hizala &amp; Uygula</button></div>
         </div>
         <div style="font-size:11.5px;color:var(--mut);display:flex;justify-content:space-between;align-items:center">
           <span>İpucu: Şarkı çalarken <b>[Damgala (F8)]</b> tuşuyla aktif satıra anlık zaman damgası vurup alt satıra geçebilirsin.</span>
@@ -227,16 +232,52 @@
         ? "🎙 UVR5 ile vokal ayrılıyor + Whisper Güçlü Mod ile tüm satırlar çıkarılıyor…"
         : "🎙 Whisper ile zaman damgalı söz çıkarılıyor…";
       const res = await callApi()?.music_whisper_lrc?.(path, "tr", strong).catch((e) => ({ ok: false, error: String(e) }));
-      if (res?.ok) {
-        rows = (res.lines && res.lines.length)
-          ? res.lines.map((x) => ({ t: Number(x.t ?? 0), text: String(x.text || "") }))
-          : rawToRows(res.lrc_text || "");
-        rawBox.value = rowsToRaw();
-        drawRows();
-        stEl.textContent = `✓ ${rows.length} satır çıkarıldı ve .lrc olarak kaydedildi (${res.uvr_used ? "UVR5 Vokal + " : ""}Güçlü Mod)`;
-      } else {
+      if (!res?.ok) {
         stEl.textContent = "✕ Hata: " + (res?.error === "tool_missing" ? "Önce Kami AI'dan Whisper aracını kur" : (res?.error || "çıkarılamadı"));
+        return;
       }
+      let finalRes = res;
+      if (res.queued && res.job_id && callApi()?.music_lrc_job_status) {
+        for (let step = 0; step < 300; step++) {
+          await new Promise((r2) => setTimeout(r2, 1500));
+          const jst = await callApi().music_lrc_job_status(res.job_id).catch(() => null);
+          if (!jst?.ok) continue;
+          if (jst.state === "running") {
+            stEl.textContent = `${jst.msg || "İşleniyor…"} · %${Math.round((jst.p || 0) * 100)}`;
+            continue;
+          }
+          finalRes = jst.result || { ok: jst.state === "done", error: jst.msg };
+          break;
+        }
+      }
+      if (finalRes?.ok) {
+        rows = (finalRes.lines && finalRes.lines.length)
+          ? finalRes.lines.map((x) => ({ t: Number(x.t ?? 0), text: String(x.text || "") }))
+          : rawToRows(finalRes.lrc_text || "");
+        rawBox.value = finalRes.lrc_text || rowsToRaw();
+        drawRows();
+        stEl.textContent = `✓ ${rows.length} satır çıkarıldı ve .lrc olarak kaydedildi (${finalRes.uvr_used ? "UVR5 Vokal + " : ""}Güçlü Mod)`;
+      } else {
+        stEl.textContent = "✕ Hata: " + (finalRes?.error === "tool_missing" ? "Önce Kami AI'dan Whisper aracını kur" : (finalRes?.error || "çıkarılamadı"));
+      }
+    };
+
+    const kfAlignBox = ov.querySelector("#kfAlignBox");
+    ov.querySelector("#kfAlignReal").onclick = () => {
+      kfAlignBox.hidden = !kfAlignBox.hidden;
+      if (!kfAlignBox.hidden) ov.querySelector("#kfAlignTrue")?.focus();
+    };
+    ov.querySelector("#kfAlignGo").onclick = () => {
+      const trueTxt = ov.querySelector("#kfAlignTrue").value.trim();
+      const rawTxt = (!rawBox.hidden && rawBox.value.trim()) ? rawBox.value : rowsToRaw();
+      if (!trueTxt || !rawTxt.trim()) { stEl.textContent = "Hem zaman damgalı LRC hem gerçek sözler gerekli"; return; }
+      if (!window.KamiLrcAlign) { stEl.textContent = "Hizalayıcı yüklenemedi"; return; }
+      const aligned = window.KamiLrcAlign(rawTxt, trueTxt);
+      rawBox.value = aligned;
+      rows = rawToRows(aligned);
+      drawRows();
+      kfAlignBox.hidden = true;
+      stEl.textContent = "✓ Sözler kelime zamanlarıyla hizalandı — Kaydet'e bas!";
     };
 
     ov.querySelector("#kfRunOllama").onclick = async () => {
@@ -255,8 +296,9 @@
     };
 
     ov.querySelector("#kfSaveLrc").onclick = async () => {
-      const payload = rawBox.hidden ? rows : rawBox.value;
-      const res = await callApi()?.music_lrc_save?.(path, payload, "", titleHint).catch(() => null);
+      const cleanTitle = String(titleHint || "").replace(/\.(mp3|wav|flac|m4a|ogg|opus)$/i, "").trim();
+      const payload = (!rawBox.hidden && rawBox.value.trim()) ? rawBox.value : rows;
+      const res = await callApi()?.music_lrc_save?.(path, payload, "", cleanTitle).catch(() => null);
       stEl.textContent = res?.ok ? "✓ .LRC dosyasına ve MP3 USLT etiketine kaydedildi!" : ("✕ " + (res?.error || "Kaydedilemedi"));
     };
   }

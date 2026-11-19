@@ -202,9 +202,13 @@
         glider.classList.remove("on");
         return;
       }
-      glider.style.width = `${active.offsetWidth}px`;
-      glider.style.height = `${active.offsetHeight}px`;
-      glider.style.transform = `translate3d(${active.offsetLeft}px, ${active.offsetTop}px, 0)`;
+      const cr = container.getBoundingClientRect();
+      const ar = active.getBoundingClientRect();
+      const left = ar.left - cr.left + container.scrollLeft - container.clientLeft;
+      const top = ar.top - cr.top + container.scrollTop - container.clientTop;
+      glider.style.width = `${Math.round(ar.width)}px`;
+      glider.style.height = `${Math.round(ar.height)}px`;
+      glider.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
       glider.classList.add("on");
     };
 
@@ -472,7 +476,7 @@
     if (_dragBound) return;
     _dragBound = true;
     const DRAG_ZONES = ".cv-drop, .pc-stage, #rdStage";
-    const ABSORB_ZONES = "#skAltar, #k20AiDropZone, .cv-drop, .pc-stage, #rdStage, #chat";
+    const ABSORB_ZONES = "#k20AiDropZone, .cv-drop, .pc-stage, #rdStage, #chat";
     document.addEventListener("dragover", (e) => {
       if (!e.dataTransfer?.types?.includes("Files")) return;
       const z = e.target?.closest?.(DRAG_ZONES);

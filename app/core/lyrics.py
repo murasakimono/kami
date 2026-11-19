@@ -300,11 +300,13 @@ def _extract_azlyrics_html(raw_html: str) -> str:
 
 
 LRC_LINE = re.compile(r"^\s*\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]")
+_LRC_META_LINE = re.compile(r"^\s*\[(?:ar|ti|al|au|by|re|ve|length|offset)\s*:", re.I)
+_AUDIO_SUFFIX_RE = re.compile(r"\.(?:mp3|wav|flac|m4a|ogg|opus|aac|wma)$", re.I)
 AI_NOTE = "Yapay zekâ ile çıkarıldı, hatalı olabilir / AI transcribed, may contain errors"
 
 
 def is_lrc(text: str) -> bool:
-    lines = [x for x in (text or "").splitlines() if x.strip()]
+    lines = [x for x in (text or "").splitlines() if x.strip() and not _LRC_META_LINE.match(x)]
     return bool(lines) and sum(1 for x in lines if LRC_LINE.match(x)) >= max(1, len(lines) // 2)
 
 
@@ -333,10 +335,14 @@ def write_lyrics(path: str, text: str, artist: str = "", title: str = "", embed:
     text = (text or "").replace("\r\n", "\n").strip()
     if not text:
         return {"lyrics": "none"}
+    clean_title = _AUDIO_SUFFIX_RE.sub("", str(title or "").strip()).strip()
+    if artist and clean_title.lower().startswith(artist.lower() + " - "):
+        clean_title = clean_title[len(artist) + 3:].strip()
     synced = is_lrc(text)
     base = os.path.splitext(path)[0]
-    head = "".join(f"[{k}:{v}]\n" for k, v in (("ar", artist), ("ti", title)) if v)
-    if ai:
+    has_meta_head = bool(re.match(r"^\s*\[(?:ar|ti|re|by)\s*:", text, re.I | re.M))
+    head = "" if has_meta_head else "".join(f"[{k}:{v}]\n" for k, v in (("ar", artist), ("ti", clean_title)) if v)
+    if ai and not has_meta_head:
         head += f"[re:Kami AI]\n[by:{AI_NOTE}]\n"
     if synced:
         side = base + ".lrc"
@@ -347,7 +353,7 @@ def write_lyrics(path: str, text: str, artist: str = "", title: str = "", embed:
     with open(side, "w", encoding="utf-8", newline="\n") as f:
         f.write(body)
     if embed and path.lower().endswith(".mp3"):
-        media_meta.write_mp3_tags(path, lyrics=(f"({AI_NOTE})\n" if ai else "") + text)
+        media_meta.write_mp3_tags(path, lyrics=((f"({AI_NOTE})\n" if (ai and not has_meta_head) else "") + text))
     kind = "ai" if ai else ("synced" if synced else "plain")
     return {"lyrics": kind, "lrc" if synced else "txt": side}
 
@@ -533,6 +539,16 @@ def read_local_lrc(path: str) -> dict[str, Any]:
                     break
             except OSError:
                 pass
+    if not raw and p.lower().endswith(".mp3"):
+        try:
+            from mutagen.id3 import ID3
+            tags = ID3(p)
+            uslt = tags.getall("USLT")
+            if uslt and getattr(uslt[0], "text", ""):
+                raw = str(uslt[0].text).strip()
+                src = "tag"
+        except Exception:
+            pass
     lines = parse_elrc_words(raw) if raw and is_lrc(raw) else []
     if not lines and raw:
         lines = [{"t": -1.0, "text": ln.strip(), "words": []} for ln in raw.splitlines() if ln.strip() and not ln.strip().startswith("[")]

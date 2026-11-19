@@ -59,9 +59,6 @@
   .gcard:hover .cov img{transform:scale(1.04)}
   .gcard{transform-style:preserve-3d;transition:transform .16s ease,border-color .16s ease}
   .gcard.tilting::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.11),transparent 58%);z-index:4}
-  .cov-ov{position:absolute;inset:auto 8px 8px 8px;z-index:3;display:flex;gap:6px;padding:7px;border-radius:10px;background:rgba(10,8,16,.84);backdrop-filter:blur(8px);border:1px solid rgba(157,107,255,.32);opacity:0;transform:translateY(6px);transition:opacity .15s,transform .15s}
-  .gcard:hover .cov-ov{opacity:1;transform:none}
-  .cov-ov button{flex:1;padding:6px 8px;font-size:11.5px;border-radius:7px}
   .fav-b{position:absolute;top:7px;left:7px;z-index:3;width:26px;height:26px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(8,7,12,.78);color:#9E96B8;cursor:pointer;display:grid;place-items:center;font-size:13px;padding:0;transition:all .14s}
   .fav-b:hover,.fav-b.on{color:#F5B94A;border-color:rgba(245,185,74,.6)}
   .badges{position:absolute;top:7px;right:7px;z-index:2;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
@@ -206,10 +203,6 @@
           <div class="cov">${g.cover ? `<img src="${esc(g.cover)}" loading="lazy" onerror="kgCovErr(this)">` : ""}<span class="fb"><svg class="ico" style="width:28px;height:28px;opacity:.45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="5"/><path d="M7 10v4M5 12h4M15.5 11h.01M18 13h.01"/></svg></span>
             <button class="fav-b ${g.favorite ? "on" : ""}" data-fav="${esc(g.key)}" title="Favori">${g.favorite ? "★" : "☆"}</button>
             <div class="badges">${g.stores.map((s) => `<span class="bdg">${esc(s.store)}</span>`).join("")}${g.installed ? "" : `<span class="bdg em">Kütüphane</span>`}</div>
-            <div class="cov-ov">
-              <button class="btn pri" data-play="${esc(g.key)}">${g.installed ? "▶ Oyna" : "⬇ Kur"}</button>
-              <button class="btn" data-save="${esc(g.key)}" title="Ludusavi save yedeği"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save</button>
-            </div>
           </div>
           <div class="body">
             <b>${g.favorite ? "★ " : ""}${esc(g.title)}</b>
@@ -325,11 +318,12 @@
 
     q.oninput = render; storeSel.onchange = render; genreSel.onchange = render; rescan.onclick = load;
     const setMode = (m, el) => { MODE = m; [fInst, fRecent, fShort, fAll, fFav].forEach((b) => b?.classList.remove("on")); el.classList.add("on"); render(); };
-    fInst.onclick = () => setMode("inst", fInst);
-    fRecent.onclick = () => setMode("recent", fRecent);
-    fShort.onclick = () => setMode("short", fShort);
+    const toggleMode = (m, el) => (MODE === m ? setMode("all", fAll) : setMode(m, el));
+    fInst.onclick = () => toggleMode("inst", fInst);
+    fRecent.onclick = () => toggleMode("recent", fRecent);
+    fShort.onclick = () => toggleMode("short", fShort);
     fAll.onclick = () => setMode("all", fAll);
-    fFav.onclick = () => setMode("fav", fFav);
+    fFav.onclick = () => toggleMode("fav", fFav);
     document.getElementById("hideToolsBtn").onclick = (e) => { HIDE_TOOLS = !HIDE_TOOLS; e.currentTarget.classList.toggle("on", HIDE_TOOLS); render(); };
     grid.addEventListener("mouseover", (e) => {
       const c = e.target.closest(".gcard"); if (!c) return;

@@ -406,7 +406,7 @@ body.sunak.fx-off canvas.sk-fx-gpu { display: none; }
 #sunak .sk-g { display: grid; grid-template-columns: 30px 1fr; grid-template-rows: auto auto; column-gap: 10px; padding: 12px 14px; border-radius: 12px; background: rgba(20, 15, 31, .72); border: 1px solid rgba(157, 107, 255, .16); backdrop-filter: blur(6px); }
 #sunak .sk-g i { grid-row: span 2; font-style: normal; color: var(--sk-lav); display: flex; align-items: center; justify-content: center; }
 #sunak .sk-g b { font: 700 19px var(--font); color: #EDE9F6; letter-spacing: -.3px; }
-#sunak .sk-g span { font-size: 11.5px; color: var(--sk-mute); }
+#sunak .sk-g > span { font-size: 11.5px; color: var(--sk-mute); }
 #sunak .sk-g.warn { border-color: rgba(255, 107, 129, .55); }
 #sunak .sk-g.warn b { color: #FF8A9C; }
 @media (max-width: 1250px) { #sunak .sk-gauges { grid-template-columns: 1fr; } #sunak .sk-g:nth-child(n+3) { display: none; } }

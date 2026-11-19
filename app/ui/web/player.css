@@ -150,9 +150,9 @@ body.pl-open #sunak { visibility: hidden; }
 .px-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 6px 10px; border: 0; background: transparent; color: #EDE9F6; font: 500 13px "Chakra Petch", sans-serif; text-align: left; cursor: pointer; }
 .px-row:hover { background: #1A1325; }
 .px-row.cur { background: #24163A; box-shadow: inset 3px 0 0 #2EE6A6; }
-.px-row i { font-style: normal; min-width: 22px; color: #7E7593; font-size: 12px; text-align: right; }
-.px-row i.k-audio { color: #C4B5FD; } .px-row i.k-video { color: #2EE6A6; }
-.px-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.px-row > i { font-style: normal; min-width: 22px; color: #7E7593; font-size: 12px; text-align: right; }
+.px-row > i.k-audio { color: #C4B5FD; } .px-row > i.k-video { color: #2EE6A6; }
+.px-row > span:not(.km-eq) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .px-row small { color: #7E7593; }
 .px-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .px-series { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 0; background: #16101F; color: #EDE9F6; text-align: left; cursor: pointer; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }

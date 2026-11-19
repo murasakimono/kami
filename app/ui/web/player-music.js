@@ -28,6 +28,7 @@ function pmEnsureDom() {
   a.insertAdjacentHTML("afterbegin", `
     <section class="pl-lyr" id="plLyr" hidden>
       <header class="pm-head"><div class="pm-cover" id="pmCover"></div><div class="pm-meta"><b id="pmTitle"></b><span id="pmArtist"></span></div>
+        <button class="pl-b pm-edit" id="pmReload" title="${plL("Sözleri yeniden yükle (.lrc)", "Reload lyrics (.lrc)")}">↻</button>
         <button class="pl-b pm-edit" id="pmEdit" title="${plL("Sözleri yapıştır / düzenle", "Paste / edit lyrics")}">✎</button></header>
       <div class="pm-list" id="pmList"></div>
       <div class="pm-empty" id="pmEmpty" hidden></div>
@@ -36,6 +37,7 @@ function pmEnsureDom() {
     const li = e.target.closest(".pm-l[data-t]");
     if (li) plSeek(+li.dataset.t, true);
   });
+  $("#pmReload").onclick = () => window.plReloadLyrics?.();
   $("#pmEdit").onclick = pmPasteBox;
   ["click", "dblclick"].forEach((ev) => $("#plLyr").addEventListener(ev, (e) => e.stopPropagation()));
 }
@@ -61,6 +63,19 @@ function pmMeta(r) {
   }
   return { artist, title, album: tg.album || "" };
 }
+
+window.plReloadLyrics = async (changedPath = "") => {
+  if (!PL?.open || !PL?.info || PL.info.kind !== "audio" || pmCfg().lyrics === false) return;
+  const normP = (x) => String(x || "").replace(/\\/g, "/").toLowerCase();
+  if (changedPath && PL.info.path && normP(changedPath) !== normP(PL.info.path)) return;
+  const tok = ++PM.token;
+  const meta = PM.meta || pmMeta(PL.info);
+  let res;
+  try { res = await slow("player_lyrics", PL.info.path || "", meta.artist, meta.title, meta.album, PL.info.duration || 0, pmCfg().lrclib !== false); }
+  catch (e) { res = { ok: false, error: String(e) }; }
+  if (tok !== PM.token) return;
+  pmShow(res);
+};
 
 window.plMusicStart = async (r) => {
   pmEnsureDom();
@@ -112,10 +127,11 @@ function pmShow(res) {
     list.innerHTML = "";
     const L = PM.links;
     empty.innerHTML = `<p>${res?.instrumental ? plL("Enstrümantal parça.", "Instrumental track.") : plL("Söz bulunamadı.", "No lyrics found.")}</p>
-      <div class="pm-acts"><button class="pl-b" data-a="paste">${plL("Sözleri yapıştır", "Paste lyrics")}</button>
+      <div class="pm-acts"><button class="pl-b" data-a="paste">${plL("Sözleri yapıştır", "Paste lyrics")}</button><button class="pl-b" data-a="reload">↻ ${plL("Yenile", "Reload")}</button>
       ${L.genius ? `<button class="pl-b" data-u="${escapeHtml(L.genius)}">Genius</button>` : ""}${L.azlyrics ? `<button class="pl-b" data-u="${escapeHtml(L.azlyrics)}">AZLyrics</button>` : ""}</div>`;
     empty.hidden = false;
     empty.querySelector("[data-a=paste]").onclick = pmPasteBox;
+    empty.querySelector("[data-a=reload]").onclick = () => window.plReloadLyrics?.();
     empty.querySelectorAll("[data-u]").forEach((b) => b.onclick = () => api.open_link(b.dataset.u));
   }
 }
@@ -128,13 +144,29 @@ function pmPasteBox() {
   $("#pmList").innerHTML = "";
   empty.hidden = false;
   empty.innerHTML = `<textarea id="pmText" spellcheck="false" placeholder="${plL("Sözleri buraya yapıştır. [01:23.45] zamanlı LRC de olur.", "Paste lyrics here. Timed LRC ([01:23.45]) works too.")}"></textarea>
-    <div class="pm-acts"><button class="pl-b pri" data-a="save">${plL("Kaydet", "Save")}</button><button class="pl-b" data-a="cancel">${plL("Vazgeç", "Cancel")}</button></div>
+    <div id="pmAlignBox" hidden style="width:100%;display:flex;flex-direction:column;gap:6px;margin-top:6px">
+      <textarea id="pmTrueText" rows="5" spellcheck="false" placeholder="${plL("Gerçek şarkı sözlerini buraya yapıştır — mevcut Whisper LRC zamanlarıyla hizalanacak…", "Paste true lyrics here to align with Whisper timestamps…")}"></textarea>
+      <div class="pm-acts"><button class="pl-b pri" data-a="aligngo">⚡ ${plL("Hizala & Uygula", "Align & Apply")}</button></div>
+    </div>
+    <div class="pm-acts"><button class="pl-b pri" data-a="save">${plL("Kaydet", "Save")}</button><button class="pl-b" data-a="align">${plL("🎯 Söz Eşleştir", "🎯 Align Lyrics")}</button><button class="pl-b" data-a="cancel">${plL("Vazgeç", "Cancel")}</button></div>
     <p class="pm-hint">${plL("Şarkının yanına .lrc / .txt olarak kaydedilir; bir dahaki sefere oradan okunur.", "Saved next to the song as .lrc / .txt and read from there next time.")}</p>`;
   const ta = $("#pmText");
-  ta.value = PM.lines.length ? PM.lines.map((l) => `[${String(Math.floor(l.t / 60)).padStart(2, "0")}:${(l.t % 60).toFixed(2).padStart(5, "0")}]${l.text}`).join("\n") : PM.plain;
+  ta.value = PM.rawSynced || (PM.lines.length ? PM.lines.map((l) => `[${String(Math.floor(l.t / 60)).padStart(2, "0")}:${(l.t % 60).toFixed(2).padStart(5, "0")}]${l.text}`).join("\n") : PM.plain);
   ta.addEventListener("keydown", (e) => e.stopPropagation());
+  $("#pmTrueText")?.addEventListener("keydown", (e) => e.stopPropagation());
   ta.focus();
-  empty.querySelector("[data-a=cancel]").onclick = () => { empty.hidden = true; pmShow({ synced: PM.lines.length ? ta.dataset.orig : "", plain: PM.plain, source: PM.src, links: PM.links }); };
+  empty.querySelector("[data-a=align]").onclick = () => {
+    const ab = $("#pmAlignBox");
+    if (ab) { ab.hidden = !ab.hidden; if (!ab.hidden) $("#pmTrueText")?.focus(); }
+  };
+  empty.querySelector("[data-a=aligngo]").onclick = () => {
+    const tt = $("#pmTrueText")?.value?.trim() || "";
+    if (!ta.value.trim() || !tt || !window.KamiLrcAlign) return;
+    ta.value = window.KamiLrcAlign(ta.value, tt);
+    $("#pmAlignBox").hidden = true;
+    toast(plL("✓ Sözler kelime zamanlarıyla hizalandı — Kaydet'e bas", "✓ Aligned word timestamps — click Save"));
+  };
+  empty.querySelector("[data-a=cancel]").onclick = () => { empty.hidden = true; pmShow({ synced: PM.rawSynced || (PM.lines.length ? ta.dataset.orig : ""), plain: PM.plain, source: PM.src, links: PM.links }); };
   ta.dataset.orig = ta.value;
   empty.querySelector("[data-a=save]").onclick = async () => {
     const text = ta.value.trim();
@@ -143,7 +175,7 @@ function pmPasteBox() {
     if (PL.info?.path) { try { r = await api.player_lyrics_save(PL.info.path, text); } catch { /* asagida */ } }
     if (!r.ok && PL.info?.path) toast(plL("Dosyaya yazılamadı, sadece bu oturumda gösteriliyor", "Couldn't write the file, showing for this session only"), true);
     empty.hidden = true;
-    const lrc = /^\s*\[\d{1,3}:\d{2}/m.test(text);
+    const lrc = /^\s*(?:\[(?:ar|ti|al|re|by|offset)[^\]]*\]\s*)*\[\d{1,3}:\d{2}/im.test(text);
     pmShow({ synced: lrc ? text : "", plain: lrc ? "" : text, source: r.source || (lrc ? "lrc" : "txt"), links: PM.links });
   };
 }

@@ -214,6 +214,14 @@
     .rdb-card.blur-q p { filter:blur(5px); transition:filter .18s; }
     .rdb-card.blur-q:hover p { filter:none; }
     .rd-tools-wrap { position:relative; display:inline-flex; }
+    #rdToolsBtn {
+      border:1px solid rgba(157,107,255,.32); background:#171124; color:#EDE9F6;
+      border-radius:7px; padding:5px 10px; font:600 12.5px "Chakra Petch",system-ui,sans-serif;
+      cursor:pointer; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
+      transition:background .15s, border-color .15s, color .15s;
+    }
+    #rdToolsBtn:hover { background:#231838; border-color:#8B5CF6; color:#fff; }
+    #rdToolsBtn.on { background:#2A1650; border-color:#2EE6A6; color:#2EE6A6; }
     #rdToolsMenu {
       position:fixed; right:52px; top:48px; z-index:95;
       width:265px; background:#140F20; border:1px solid rgba(157,107,255,.45);

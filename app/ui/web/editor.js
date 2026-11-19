@@ -689,13 +689,27 @@ function edCurveEvents(cv) {
   cv.oncontextmenu = (e) => e.preventDefault();
 }
 
-// ---------------------------------------------------------------- radyal cark
+// ---------------------------------------------------------------- radyal cark (cift halka: ic 8 + dis kalanlar)
 function edWheel(x, y) {
   const w = $("#edWheel");
-  w.style.left = x + "px"; w.style.top = y + "px";
-  w.innerHTML = TOOLS.map((t, i) => { const a = -Math.PI / 2 + (i / TOOLS.length) * Math.PI * 2, R = 124; return `<button data-tool="${t.id}" class="${t.id === ED.tool ? "cur" : ""}" style="left:${160 + Math.cos(a) * R}px;top:${160 + Math.sin(a) * R}px" title="${t.k.toUpperCase()}"><svg viewBox="0 0 24 24">${t.ic}</svg>${edL(t.tr, t.id)}</button>`; }).join("") +
+  const cx = Math.max(230, Math.min(Math.max(230, innerWidth - 230), x));
+  const cy = Math.max(230, Math.min(Math.max(230, innerHeight - 230), y));
+  w.style.left = cx + "px"; w.style.top = cy + "px";
+  const INNER_IDS = ["brush", "erase", "select", "lasso", "wand", "move", "text", "crop"];
+  const SHORT_LBL = { wand: "Değnek", bucket: "Boya", magic: "Yapay Zekâ", gradient: "Degrade", liquify: "Sıvılaştır", remove: "Nesne Sil" };
+  const inner = INNER_IDS.map((id) => TOOLS.find((t) => t.id === id)).filter(Boolean);
+  const innerSet = new Set(inner.map((t) => t.id));
+  const outer = TOOLS.filter((t) => !innerSet.has(t.id));
+  const place = (arr, R, offset = 0) => arr.map((t, i) => {
+    const a = -Math.PI / 2 + offset + (i / Math.max(1, arr.length)) * Math.PI * 2;
+    const fullLbl = edL(t.tr, t.id);
+    const shortLbl = fullLbl.length > 10 && SHORT_LBL[t.id] ? edL(SHORT_LBL[t.id], t.id) : fullLbl;
+    return `<button data-tool="${t.id}" class="${t.id === ED.tool ? "cur" : ""}" style="left:${Math.round(220 + Math.cos(a) * R)}px;top:${Math.round(220 + Math.sin(a) * R)}px" title="${fullLbl} (${t.k.toUpperCase()})"><svg viewBox="0 0 24 24">${t.ic}</svg>${shortLbl}</button>`;
+  }).join("");
+  const outerOff = outer.length ? Math.PI / outer.length : 0;
+  w.innerHTML = place(inner, 88) + place(outer, 172, outerOff) +
     `<button class="mid" data-x="undo">↶<br>${edL("Geri al", "Undo")}</button>`;
-  w.classList.add("on"); ED.wheelAt = [x, y];
+  w.classList.add("on"); ED.wheelAt = [cx, cy];
 }
 function edWheelClose() { $("#edWheel").classList.remove("on"); }
 

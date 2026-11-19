@@ -47,9 +47,12 @@ class NotificationCenter:
             self._items.appendleft(entry)
             return dict(entry)
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self, limit: int = 0) -> list[dict[str, Any]]:
         with self._lock:
-            return [dict(x) for x in self._items]
+            items = [dict(x) for x in self._items]
+        if limit and limit > 0:
+            return items[:int(limit)]
+        return items
 
     def unread_count(self) -> int:
         with self._lock:

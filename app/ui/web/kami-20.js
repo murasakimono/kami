@@ -548,7 +548,99 @@
     });
   }
 
+  // ---- Paylasilan DP LCS Kelime Seviyesi LRC Hizalayici (Kami LRC Soz Eslestirici) ----
+  window.KamiLrcAlign = function alignWhisperWithRealLyrics(rawLrc, trueLyrics) {
+    const rawStr = String(rawLrc || "").trim();
+    const trueStr = String(trueLyrics || "").trim();
+    if (!rawStr || !trueStr) return rawStr;
+    const tsToSec = (ts) => {
+      const [m, s] = String(ts).replace(":", ".").split(/[.:]/).length === 3
+        ? [ts.split(":")[0], ts.split(":")[1] + "." + ts.split(":")[2]]
+        : ts.split(":");
+      return parseInt(m, 10) * 60 + parseFloat(s);
+    };
+    const secToTs = (sec) => {
+      const safe = Math.max(0, Number(sec) || 0);
+      return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${(safe % 60).toFixed(2).padStart(5, "0")}`;
+    };
+    const norm = (w) => String(w || "").toLocaleLowerCase("tr").replace(/[^\w\sçğıöşüâîû]/g, "");
+
+    const headers = [], seenHead = new Set(), tokens = [];
+    rawStr.split(/\r?\n/).forEach((line) => {
+      line = line.trim();
+      if (!line) return;
+      const m = line.match(/^\[(\d{1,3}:\d{2}(?:[.:]\d{1,3})?)\](.*)$/);
+      if (!m) {
+        if (line.startsWith("[")) {
+          const hk = line.split(":")[0].toLowerCase();
+          if (!seenHead.has(hk)) { seenHead.add(hk); headers.push(line); }
+        }
+        return;
+      }
+      const [, lineTs, content] = m;
+      const wMatches = [...content.matchAll(/<(\d{1,3}:\d{2}(?:[.:]\d{1,3})?)>([^<]+)/g)];
+      if (wMatches.length) {
+        wMatches.forEach((wm) => {
+          const w = wm[2].trim();
+          if (w) tokens.push({ sec: tsToSec(wm[1]), norm: norm(w) });
+        });
+      } else {
+        const words = content.split(/\s+/).filter(Boolean);
+        const baseSec = tsToSec(lineTs);
+        words.forEach((w, wi) => tokens.push({ sec: baseSec + wi * 0.25, norm: norm(w) }));
+      }
+    });
+
+    const trueLines = trueStr.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const trueWords = [], lineBounds = [];
+    trueLines.forEach((line) => {
+      const words = line.split(/\s+/).filter(Boolean);
+      const start = trueWords.length;
+      words.forEach((w) => trueWords.push({ raw: w, norm: norm(w) }));
+      lineBounds.push([start, trueWords.length]);
+    });
+
+    const n = tokens.length, m = trueWords.length;
+    if (!n || !m) return rawStr;
+    const isMatch = (a, b) => a === b || (a.length > 2 && b.length > 2 && a.slice(0, 3) === b.slice(0, 3));
+    const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        if (isMatch(tokens[i].norm, trueWords[j].norm)) dp[i][j] = 1 + dp[i + 1][j + 1];
+        else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+
+    const alignedSec = new Array(m).fill(null);
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (isMatch(tokens[i].norm, trueWords[j].norm)) { alignedSec[j] = tokens[i].sec; i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+      else j++;
+    }
+
+    for (let k = 0; k < m; k++) {
+      if (alignedSec[k] === null) {
+        let prevIdx = k - 1; while (prevIdx >= 0 && alignedSec[prevIdx] === null) prevIdx--;
+        let nextIdx = k + 1; while (nextIdx < m && alignedSec[nextIdx] === null) nextIdx++;
+        const startT = prevIdx >= 0 ? alignedSec[prevIdx] : (tokens[0]?.sec || 0);
+        const endT = nextIdx < m ? alignedSec[nextIdx] : Math.max(startT + 0.5, tokens[tokens.length - 1]?.sec || startT + 1);
+        alignedSec[k] = startT + ((endT - startT) * ((k - prevIdx) / (nextIdx - prevIdx)));
+      }
+    }
+
+    const out = [...headers];
+    lineBounds.forEach(([start, end]) => {
+      if (start >= end) return;
+      const parts = [];
+      for (let k = start; k < end; k++) parts.push(`<${secToTs(alignedSec[k])}>${trueWords[k].raw}`);
+      out.push(`[${secToTs(alignedSec[start])}]` + parts.join(" "));
+    });
+    return out.join("\n");
+  };
+
   async function openQuickLrcModal(path, titleHint) {
+    const cleanTitle = String(titleHint || "").replace(/\.(mp3|wav|flac|m4a|ogg|opus)$/i, "").trim();
     const r = await callApi()?.music_lrc_read?.(path).catch(() => null);
     const rawInit = r?.raw || (r?.lines || []).map((ln) => {
       const t = Number(ln.t ?? -1);
@@ -561,16 +653,24 @@
     ed.id = "k20LrcQuick";
     ed.style.cssText = "position:fixed;inset:0;z-index:9300;background:rgba(5,4,10,.86);display:grid;place-items:center;padding:18px";
     ed.innerHTML = `
-      <div class="k20-aibox" style="width:min(680px,95vw)">
+      <div class="k20-aibox" style="width:min(740px,95vw)">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <b>✎ Zaman Damgalı .LRC Düzenleyici · <span style="color:#2EE6A6">${esc(titleHint || path.split(/[\\/]/).pop())}</span></b>
+          <b>✎ Zaman Damgalı .LRC Düzenleyici · <span style="color:#2EE6A6">${esc(cleanTitle || path.split(/[\\/]/).pop())}</span></b>
           <button type="button" class="btn" id="k20LqClose">✕</button>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn" id="k20LqAlignToggle">🎯 Gerçek Sözlerle Hizala</button>
           <button type="button" class="btn" id="k20LqOllama">✨ Ollama (qwen2.5:3b) ile Yazım Hatalarını Düzelt</button>
           <span id="k20LqMsg" style="font-size:12px;color:#2EE6A6;align-self:center"></span>
         </div>
-        <textarea id="k20LqText" rows="14" style="width:100%;box-sizing:border-box;background:#09070F;border:1px solid #35294D;border-radius:10px;color:#EDE9F6;padding:10px;font:12.5px Consolas,monospace">${esc(rawInit)}</textarea>
+        <div id="k20LqAlignBox" hidden style="background:#0C0915;border:1px solid rgba(46,230,166,.35);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px">
+          <small style="color:#C4B5FD">Gerçek şarkı sözlerini aşağıya yapıştır — Whisper'ın kelime zaman damgalarıyla otomatik eşlenip LRC güncellenir:</small>
+          <textarea id="k20LqTrue" rows="6" placeholder="Gerçek şarkı sözlerini satır satır buraya yapıştır…" style="width:100%;box-sizing:border-box;background:#08060D;border:1px solid #2D2246;border-radius:8px;color:#EDE9F6;padding:8px;font:12.5px Consolas,monospace"></textarea>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button type="button" class="btn pri" id="k20LqAlignRun">⚡ Hizala &amp; Uygula</button>
+          </div>
+        </div>
+        <textarea id="k20LqText" rows="13" style="width:100%;box-sizing:border-box;background:#09070F;border:1px solid #35294D;border-radius:10px;color:#EDE9F6;padding:10px;font:12.5px Consolas,monospace">${esc(rawInit)}</textarea>
         <div style="display:flex;justify-content:flex-end;gap:8px">
           <button type="button" class="btn pri" id="k20LqSave">💾 .LRC + MP3 USLT Kaydet</button>
         </div>
@@ -578,12 +678,31 @@
     `;
     document.body.appendChild(ed);
     ed.querySelector("#k20LqClose").onclick = () => ed.remove();
+    const alignBox = ed.querySelector("#k20LqAlignBox");
+    ed.querySelector("#k20LqAlignToggle").onclick = () => {
+      alignBox.hidden = !alignBox.hidden;
+      if (!alignBox.hidden) ed.querySelector("#k20LqTrue")?.focus();
+    };
+    ed.querySelector("#k20LqAlignRun").onclick = () => {
+      const ta = ed.querySelector("#k20LqText");
+      const trueTa = ed.querySelector("#k20LqTrue");
+      const msg = ed.querySelector("#k20LqMsg");
+      if (!ta.value.trim() || !trueTa.value.trim()) {
+        msg.textContent = "Hem zaman damgalı LRC hem gerçek sözler gerekli";
+        return;
+      }
+      const aligned = window.KamiLrcAlign(ta.value, trueTa.value);
+      ta.value = aligned;
+      navigator.clipboard?.writeText?.(aligned).catch?.(() => {});
+      alignBox.hidden = true;
+      msg.textContent = "✓ Sözler kelime zamanlarıyla hizalandı! Kaydetmek için Kaydet'e bas.";
+    };
     ed.querySelector("#k20LqOllama").onclick = async () => {
       const ta = ed.querySelector("#k20LqText");
       const msg = ed.querySelector("#k20LqMsg");
       if (!ta.value.trim()) return;
       msg.textContent = "Ollama düzeltiyor…";
-      const res = await (callApi()?.music_lrc_polish_ollama || callApi()?.music_lrc_ollama_polish)?.(ta.value, titleHint, "").catch(() => null);
+      const res = await (callApi()?.music_lrc_polish_ollama || callApi()?.music_lrc_ollama_polish)?.(ta.value, cleanTitle, "").catch(() => null);
       if (res?.ok && res.text) { ta.value = res.text; msg.textContent = "✓ Ollama ile düzeltildi"; }
       else msg.textContent = res?.error || "Ollama kapalı (Kami Doktor'dan başlat)";
     };
@@ -591,9 +710,9 @@
       const saveBtn = ed.querySelector("#k20LqSave");
       const ta = ed.querySelector("#k20LqText");
       const msg = ed.querySelector("#k20LqMsg");
-      const res = await callApi()?.music_lrc_save?.(path, ta.value, "", titleHint).catch(() => null);
+      const res = await callApi()?.music_lrc_save?.(path, ta.value, "", cleanTitle).catch(() => null);
       if (res?.ok) {
-        msg.textContent = "✓ Kaydedildi (.lrc + MP3 gömülü söz)";
+        msg.textContent = "✓ Kaydedildi (.lrc + MP3 USLT) · Player güncellendi";
         window.KamiMotion?.morphDone?.(saveBtn, "Kaydedildi");
       } else {
         msg.textContent = res?.error || "Kaydedilemedi";

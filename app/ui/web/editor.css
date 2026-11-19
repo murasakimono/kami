@@ -23,15 +23,25 @@
 .ed-opt select, .ed-opt input[type=number], .ed-opt input[type=text] { background: #0A0810; color: #EDE9F6; border: 1px solid #2A2140; padding: 4px; font: inherit; font-size: 12px; }
 .ed-opt .tl { color: #2EE6A6; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-size: 11px; }
 
-/* radyal arac carki */
-.ed-wheel { position: fixed; width: 320px; height: 320px; margin: -160px 0 0 -160px; z-index: 10; pointer-events: none; opacity: 0; transform: scale(.7); transition: opacity .14s, transform .14s; }
+/* radyal arac carki (cift halka: ic 8 ana arac + dis ikincil araclar) */
+.ed-wheel { position: fixed; width: 440px; height: 440px; margin: -220px 0 0 -220px; z-index: 10; pointer-events: none; opacity: 0; transform: scale(.74); transition: opacity .14s, transform .14s; }
 .ed-wheel.on { opacity: 1; transform: scale(1); pointer-events: auto; }
-.ed-wheel::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, rgba(16, 12, 23, .2) 40%, rgba(16, 12, 23, .92) 42%, rgba(16, 12, 23, .92) 69%, rgba(16, 12, 23, 0) 70%); border: 1px solid #3A2D55; box-shadow: 0 0 40px rgba(109, 40, 217, .35); }
-.ed-wheel button { position: absolute; width: 52px; height: 52px; margin: -26px 0 0 -26px; border: 0; border-radius: 50%; background: transparent; color: #C4B5FD; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font: inherit; font-size: 10px; }
-.ed-wheel button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.ed-wheel button:hover, .ed-wheel button.hot { background: #6D28D9; color: #fff; box-shadow: 0 0 18px #8B5CF6; }
+.ed-wheel::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(16, 12, 23, .18) 0 14%,
+    rgba(22, 16, 34, .93) 15% 54%,
+    rgba(157, 107, 255, .36) 54.4% 55%,
+    rgba(15, 11, 24, .95) 55.4% 98%,
+    rgba(16, 12, 23, 0) 99%);
+  border: 1px solid rgba(139, 92, 246, .42);
+  box-shadow: 0 0 46px rgba(109, 40, 217, .38), inset 0 0 28px rgba(0, 0, 0, .55);
+}
+.ed-wheel button { position: absolute; width: 60px; height: 50px; margin: -25px 0 0 -30px; border: 0; border-radius: 14px; background: transparent; color: #C4B5FD; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font: 600 9.5px/1.1 "Chakra Petch", inherit; white-space: nowrap; transition: background .12s, color .12s, box-shadow .12s, transform .12s; }
+.ed-wheel button svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ed-wheel button:hover, .ed-wheel button.hot { background: #6D28D9; color: #fff; box-shadow: 0 0 18px #8B5CF6; transform: scale(1.06); }
 .ed-wheel button.cur { color: #2EE6A6; }
-.ed-wheel .mid { left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; background: #1E1730; color: #EDE9F6; }
+.ed-wheel .mid { left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%; border: 1px solid rgba(157, 107, 255, .45); background: #1E1730; color: #EDE9F6; }
 
 /* katmanlar: alttan acilan serit */
 .ed-layers { position: absolute; left: 50%; bottom: 0; transform: translate(-50%, calc(100% - 26px)); width: min(980px, 94vw); z-index: 4; background: rgba(16, 12, 23, .95); border: 1px solid #2A2140; border-bottom: 0; transition: transform .25s; }

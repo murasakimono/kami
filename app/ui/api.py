@@ -3466,6 +3466,12 @@ class Api(StudioMixin):
                 pass   # zamanli .lrc onceliklidir; duz metin yalnizca .lrc yoksa okunur
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:160]}
+        if p.suffix.lower() == ".mp3" and self._manager.settings.get("lyrics_embed", True):
+            try:
+                from app.core import media_meta
+                media_meta.write_mp3_tags(str(p), lyrics=text)
+            except Exception:
+                pass
         return {"ok": True, "source": "lrc" if lrc else "txt", "path": str(q)}
 
     # ---------- ekran ustu OCR (B6) ----------
@@ -5378,14 +5384,28 @@ class Api(StudioMixin):
         from app.core import games
         return games.estimate_hltb(str(title or ""))
 
+    def _notify_player_lyrics(self, path: str) -> None:
+        """Acik Kami Player penceresine yan .lrc / USLT degistigini aninda bildirir."""
+        w = getattr(self, "_player_win", None)
+        if w is None:
+            return
+        try:
+            js = f"window.plReloadLyrics?.({json.dumps(str(path or ''))});"
+            threading.Thread(target=lambda: w.evaluate_js(js), name="kami-plyr-reload", daemon=True).start()
+        except Exception:
+            pass
+
     def music_lrc_read(self, path: str) -> dict[str, Any]:
         from app.core import lyrics
         return lyrics.read_local_lrc(str(path or ""))
 
     def music_lrc_save(self, path: str, lines_or_text: Any, artist: str = "", title: str = "") -> dict[str, Any]:
         from app.core import lyrics
-        return lyrics.save_edited_lrc(str(path or ""), lines_or_text, artist=str(artist or ""), title=str(title or ""),
-                                      embed=bool(self._manager.settings.get("lyrics_embed", True)))
+        res = lyrics.save_edited_lrc(str(path or ""), lines_or_text, artist=str(artist or ""), title=str(title or ""),
+                                     embed=bool(self._manager.settings.get("lyrics_embed", True)))
+        if res.get("ok"):
+            self._notify_player_lyrics(str(path or ""))
+        return res
 
     def music_whisper_lrc(self, path: str, lang: str = "tr", strong: bool = True) -> dict[str, Any]:
         import uuid
@@ -5407,6 +5427,7 @@ class Api(StudioMixin):
                 "name": f"LRC: {os.path.basename(p)}",
                 "msg": "UVR5 + Whisper başlatıldı…",
                 "p": 0.05,
+                "t": time.monotonic(),
                 "result": None,
             }
 
@@ -5429,6 +5450,8 @@ class Api(StudioMixin):
                         self._jobs[jid]["p"] = 1.0 if res.get("ok") else self._jobs[jid].get("p", 0.0)
                         self._jobs[jid]["msg"] = "Hazır ✓" if res.get("ok") else str(res.get("error") or "hata")
                         self._jobs[jid]["result"] = res
+                if res.get("ok"):
+                    self._notify_player_lyrics(p)
             except Exception as exc:
                 with self._inbox_lock:
                     if jid in self._jobs:

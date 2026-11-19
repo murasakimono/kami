@@ -955,7 +955,7 @@ STATE_HOOKS.push(skState);
         if (window.KamiMotion?.rollNumber) KamiMotion.rollNumber(bEl, v);
         else bEl.textContent = v;
       }
-      const spEl = card.querySelector("span");
+      const spEl = card.querySelector(":scope > span");
       if (spEl && spEl.textContent !== t) spEl.textContent = t;
     });
   }

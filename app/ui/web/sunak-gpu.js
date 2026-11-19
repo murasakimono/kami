@@ -328,7 +328,7 @@
         app.canvas.className = "sk-altar-gpu";
         altarEl.prepend(app.canvas);
         this.altarApp = app;
-        guardApp(app, () => !document.hidden && (document.hasFocus() || (this.state.speedFrac || 0) > 0.01));
+        guardApp(app, () => !document.hidden && (document.hasFocus() || (this.state.speedFrac || 0) > 0.01 || !!this.state.drop || this.swallowT > 0));
 
         // 1. Hiz halkasi & yorunge katmani
         const ringLayer = new PIXI.Container();
@@ -514,6 +514,7 @@
 
     setState(patch) {
       Object.assign(this.state, patch || {});
+      this.altarApp?._kamiSyncRun?.();
     }
 
     setFx(on) {
@@ -526,6 +527,7 @@
 
     triggerSwallow() {
       this.swallowT = 1;
+      this.altarApp?._kamiSyncRun?.();
     }
 
     setCostume(name) {

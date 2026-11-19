@@ -337,6 +337,7 @@ dialog[open],
 }
 .km-odo-sep {
   display: inline-block;
+  white-space: pre;
   line-height: 1.15;
 }
 
@@ -399,19 +400,26 @@ html.km-radial-vt::view-transition-new(root) {
 
 /* ---- A2: Canli Calan Mini Ekolayzer Cubuklari ---- */
 .km-eq {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: flex-end;
   gap: 2px;
-  height: 12px;
-  width: 12px;
-  flex: none;
+  height: 12px !important;
+  width: 14px !important;
+  min-width: 14px !important;
+  max-width: 14px !important;
+  flex: 0 0 14px !important;
+  overflow: visible !important;
   margin-right: 6px;
   vertical-align: middle;
 }
 .km-eq i {
   display: block;
-  width: 2.5px;
-  height: 100%;
+  width: 2.5px !important;
+  min-width: 0 !important;
+  max-width: 3px !important;
+  flex: none !important;
+  height: 100% !important;
+  text-align: initial !important;
   border-radius: 1px;
   background: #2EE6A6;
   transform-origin: bottom;
@@ -549,22 +557,6 @@ body.kami-hidden .km-eq i {
   transition: transform 180ms var(--km-spring-snappy), border-color 160ms ease;
   animation: km-portal-breathe 1.3s ease-in-out infinite;
 }
-#skAltar.drop {
-  transform: scale(1.03);
-  transition: transform 200ms var(--km-spring-snappy);
-}
-#skAltar.drop::before {
-  content: "";
-  position: absolute;
-  left: 6px;
-  top: 0;
-  width: 308px;
-  height: 308px;
-  border-radius: 50%;
-  border: 2px dashed rgba(46, 230, 166, 0.72);
-  pointer-events: none;
-  animation: km-portal-breathe 1.3s ease-in-out infinite;
-}
 .km-absorb {
   animation: km-portal-absorb 280ms var(--km-spring-snappy) 1 !important;
 }
@@ -592,6 +584,13 @@ body.kami-hidden .km-eq i {
   position: relative;
   transition: height 180ms var(--km-ease-out);
 }
+#kpal .kp-l > .kp-rows {
+  position: static !important;
+}
+#kpal .kp-i {
+  position: relative;
+  z-index: 1;
+}
 #kpal .kp-l > .km-glider {
   background: rgba(109, 40, 217, 0.36);
   border: 1px solid rgba(157, 107, 255, 0.45);
@@ -614,7 +613,7 @@ body.kami-hidden .km-eq i {
   .rd-main::before, #settingsForm .dialog-head::after, .cl-scroll::before,
   #sunak .sk-strip.burst .sk-paper::after, .km-absorb,
   #k20AiDropZone.drag, .cv-drop.drag, .pc-stage.drag, #rdStage.drag, #chat.drop,
-  #skAltar.drop, #skAltar.drop::before, #kpal, #kpal .kp-w, #kpal .kp-l {
+  #kpal, #kpal .kp-w, #kpal .kp-l {
     transition: none !important;
     animation: none !important;
   }
