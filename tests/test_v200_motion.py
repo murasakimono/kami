@@ -140,3 +140,49 @@ def test_motion_selectors_and_hud_allowlist():
     assert "player_skips" not in titles
     assert "rd_status" not in titles
 
+
+def test_six_new_animations_present_and_wired():
+    css = (WEB / "kami-motion.css").read_text(encoding="utf-8")
+    for tok in (
+        ".km-cascade-item",
+        "km-cascade-in",
+        ".km-eq",
+        "km-eq-bar",
+        "animation-timeline: scroll(",
+        "timeline-scope: --km-rd-scroll",
+        "km-sheen-sweep",
+        "km-portal-breathe",
+        "km-portal-absorb",
+        ".km-absorb",
+        "#kpal .kp-l > .km-glider",
+    ):
+        assert tok in css, f"Yeni animasyon CSS tokeni eksik: {tok}"
+
+    js = (WEB / "kami-motion.js").read_text(encoding="utf-8")
+    for fn in ("function cascade(", "function eqHtml(", "function initDragPortals("):
+        assert fn in js, f"Yeni animasyon JS fonksiyonu eksik: {fn}"
+
+    pal_js = (WEB / "palette.js").read_text(encoding="utf-8")
+    assert "kp-rows" in pal_js
+    assert "bindGlider" in pal_js
+    assert "syncSel(" in pal_js
+
+    music_html = (WEB / "music.html").read_text(encoding="utf-8")
+    assert "syncPlayingRow" in music_html
+    assert "refreshListMotion" in music_html
+    assert 'data-uri="${esc(t.uri' in music_html
+
+    pl_lib = (WEB / "player-lib.js").read_text(encoding="utf-8")
+    assert "KamiMotion.eqHtml" in pl_lib
+
+    games_html = (WEB / "games.html").read_text(encoding="utf-8")
+    assert "KamiMotion?.cascade" in games_html
+
+    cl_js = (WEB / "cleaner-v138.js").read_text(encoding="utf-8")
+    assert "cl-scroll" in cl_js
+    assert "KamiMotion?.cascade" in cl_js
+
+    sunak_js = (WEB / "sunak.js").read_text(encoding="utf-8")
+    assert "KamiMotion?.cascade" in sunak_js
+
+

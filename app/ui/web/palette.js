@@ -58,8 +58,16 @@
     }
     return out;
   }
-  let box, list, inp, cur = [], sel = 0, remote = [], rq = "", rt = 0, loadingRemote = false;
+  let box, list, rows, inp, syncGlider, cur = [], sel = 0, remote = [], rq = "", rt = 0, loadingRemote = false;
   const ICON = { download: "⬇", file: "📄", book: "📖", series: "📚", studio: "🎬", rss: "📡" };
+  function syncSel(scroll = true) {
+    if (!rows) return;
+    rows.querySelectorAll(".kp-i").forEach((el) => {
+      el.classList.toggle("on", Number(el.dataset.i) === sel);
+    });
+    if (scroll) rows.querySelector(".kp-i.on")?.scrollIntoView?.({ block: "nearest" });
+    syncGlider?.();
+  }
   function fetchRemote(q) {
     clearTimeout(rt);
     if (q.length < 2) { remote = []; loadingRemote = false; return; }
@@ -77,6 +85,8 @@
     }, 180);
   }
   function render(fromRemote) {
+    if (!list || !rows) return;
+    const prevH = list.getBoundingClientRect().height;
     const q = inp.value.toLowerCase().trim(), qRaw = inp.value.trim();
     if (!fromRemote && !qRaw.startsWith(">")) fetchRemote(qRaw);
     const norm = (x) => x.toLocaleLowerCase("tr").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
@@ -92,20 +102,33 @@
     if (local.length) html += `<div class="kp-sec">${L("Komutlar", "Commands")}</div>` + local.map((x, idx) => rowHtml(x, idx)).join("");
     if (rem.length) html += `<div class="kp-sec">${L("Dosyalar ve içerik", "Files & content")}</div>` + rem.map((x, idx) => rowHtml(x, local.length + idx)).join("");
     else if (loadingRemote && qRaw.length >= 2) html += `<div class="kp-sec">${L("Dosyalar ve içerik", "Files & content")}</div><div class="kp-skel"></div><div class="kp-skel"></div>`;
-    list.innerHTML = html || `<div class="kp-e">${L("Sonuç yok", "No results")}</div>`;
+    rows.innerHTML = html || `<div class="kp-e">${L("Sonuç yok", "No results")}</div>`;
+    if (prevH > 0) {
+      list.style.height = `${prevH}px`;
+      void list.offsetHeight;
+      list.style.height = "auto";
+    }
+    syncGlider?.();
   }
-  function close() { box?.remove(); box = null; }
+  function close() { box?.remove(); box = null; list = null; rows = null; syncGlider = null; }
   function open() {
     if (box) return close();
     box = document.createElement("div"); box.id = "kpal";
-    box.innerHTML = `<div class="kp-w"><input aria-label="${L("Ara", "Search")}" placeholder="${L("Dosya, özellik ya da komut ara… (Esc kapatır)", "Search files, features, commands… (Esc)")}"><div class="kp-l"></div></div>`;
+    box.innerHTML = `<div class="kp-w"><input aria-label="${L("Ara", "Search")}" placeholder="${L("Dosya, özellik ya da komut ara… (Esc kapatır)", "Search files, features, commands… (Esc)")}"><div class="kp-l"><div class="kp-rows"></div></div></div>`;
     document.body.appendChild(box);
-    inp = box.querySelector("input"); list = box.querySelector(".kp-l");
+    inp = box.querySelector("input"); list = box.querySelector(".kp-l"); rows = box.querySelector(".kp-rows");
+    syncGlider = window.KamiMotion?.bindGlider?.(list, ".kp-i", "on") || null;
     box.addEventListener("click", (e) => { const it = e.target.closest(".kp-i"); if (it) { const x = cur[+it.dataset.i]; close(); x?.run(); } else if (e.target === box) close(); });
+    list.addEventListener("pointermove", (e) => {
+      const it = e.target.closest(".kp-i");
+      if (!it) return;
+      const idx = +it.dataset.i;
+      if (!Number.isNaN(idx) && idx !== sel) { sel = idx; syncSel(false); }
+    }, { passive: true });
     inp.addEventListener("input", () => { sel = 0; render(); });
     inp.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown") { sel = Math.min(cur.length - 1, sel + 1); render(); e.preventDefault(); }
-      else if (e.key === "ArrowUp") { sel = Math.max(0, sel - 1); render(); e.preventDefault(); }
+      if (e.key === "ArrowDown") { sel = Math.min(cur.length - 1, sel + 1); syncSel(true); e.preventDefault(); }
+      else if (e.key === "ArrowUp") { sel = Math.max(0, sel - 1); syncSel(true); e.preventDefault(); }
       else if (e.key === "Enter") { const x = cur[sel]; close(); x?.run(); }
       else if (e.key === "Escape") close();
       e.stopPropagation();

@@ -223,7 +223,7 @@
         }).join("");
       };
       if (window.KamiMotion?.flip && grid.querySelector(".gcard")) KamiMotion.flip(grid, paint, ".gcard");
-      else paint();
+      else { paint(); window.KamiMotion?.cascade?.(grid, ".gcard"); }
     }
 
     async function openDetail(g) {

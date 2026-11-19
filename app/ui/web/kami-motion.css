@@ -387,10 +387,234 @@ html.km-radial-vt::view-transition-new(root) {
   to { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
 }
 
+/* ---- A1: Kademeli Liste / Kart Girisi (Staggered Cascade — ilk 12 oge) ---- */
+@keyframes km-cascade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.km-cascade-item {
+  animation: km-cascade-in 240ms var(--km-ease-out) both;
+  animation-delay: calc(var(--km-ci, 0) * 22ms);
+}
+
+/* ---- A2: Canli Calan Mini Ekolayzer Cubuklari ---- */
+.km-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  width: 12px;
+  flex: none;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.km-eq i {
+  display: block;
+  width: 2.5px;
+  height: 100%;
+  border-radius: 1px;
+  background: #2EE6A6;
+  transform-origin: bottom;
+  will-change: transform;
+  animation: km-eq-bar 680ms ease-in-out infinite alternate;
+}
+.km-eq i:nth-child(1) { animation-duration: 540ms; animation-delay: -120ms; }
+.km-eq i:nth-child(2) { animation-duration: 720ms; animation-delay: -340ms; }
+.km-eq i:nth-child(3) { animation-duration: 480ms; animation-delay: -210ms; }
+@keyframes km-eq-bar {
+  0% { transform: scaleY(0.24); }
+  50% { transform: scaleY(0.95); }
+  100% { transform: scaleY(0.42); }
+}
+.km-eq.paused i,
+.paused .km-eq i,
+body.kami-hidden .km-eq i {
+  animation-play-state: paused;
+  transform: scaleY(0.28);
+  opacity: 0.65;
+}
+.row.is-playing {
+  border-color: rgba(46, 230, 166, 0.38) !important;
+  background: rgba(46, 230, 166, 0.06) !important;
+}
+.row.is-playing .meta b {
+  color: #2EE6A6;
+}
+
+/* ---- A3: Saf CSS Scroll-Driven Ust Ilerleme Cizgisi (0 JS) ---- */
+@keyframes km-scroll-prog {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@supports (animation-timeline: scroll()) {
+  #settingsForm .dialog-head::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    pointer-events: none;
+    background: linear-gradient(90deg, #8B5CF6 0%, #2EE6A6 100%);
+    box-shadow: 0 0 8px rgba(46, 230, 166, 0.4);
+    transform-origin: left center;
+    transform: scaleX(0);
+    animation: km-scroll-prog linear both;
+    animation-timeline: scroll(nearest block);
+  }
+  .cl-scroll::before {
+    content: "";
+    display: block;
+    position: sticky;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    margin-bottom: -2px;
+    z-index: 6;
+    pointer-events: none;
+    background: linear-gradient(90deg, #8B5CF6 0%, #2EE6A6 100%);
+    transform-origin: left center;
+    transform: scaleX(0);
+    animation: km-scroll-prog linear both;
+    animation-timeline: scroll(nearest block);
+  }
+}
+@supports (animation-timeline: scroll()) and (timeline-scope: --km-rd-scroll) {
+  .rd-main {
+    timeline-scope: --km-rd-scroll;
+  }
+  #rdStage {
+    scroll-timeline: --km-rd-scroll y;
+  }
+  .rd-main::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    z-index: 25;
+    pointer-events: none;
+    background: linear-gradient(90deg, #8B5CF6 0%, #2EE6A6 100%);
+    box-shadow: 0 0 8px rgba(46, 230, 166, 0.45);
+    transform-origin: left center;
+    transform: scaleX(0);
+    animation: km-scroll-prog linear both;
+    animation-timeline: --km-rd-scroll;
+  }
+}
+
+/* ---- A4: Indirme Bitis Isik Supurmesi (Tek Atis Sheen Sweep) ---- */
+@keyframes km-sheen-sweep {
+  0% { transform: translateX(-140%) skewX(-22deg); opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateX(220%) skewX(-22deg); opacity: 0; }
+}
+#sunak .sk-strip.burst .sk-paper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 58%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(46, 230, 166, 0.42) 48%,
+    rgba(237, 233, 246, 0.35) 54%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 6;
+  animation: km-sheen-sweep 520ms cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
+}
+
+/* ---- A5: Surukleme Sirasinda Manyetik Portal Halkasi ---- */
+@keyframes km-portal-breathe {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(46, 230, 166, 0.45), 0 0 18px rgba(46, 230, 166, 0.22); }
+  50% { box-shadow: 0 0 0 3px rgba(46, 230, 166, 0.7), 0 0 32px rgba(46, 230, 166, 0.38); }
+}
+@keyframes km-portal-absorb {
+  0% { transform: scale(1.015); }
+  45% { transform: scale(0.985); box-shadow: 0 0 28px rgba(46, 230, 166, 0.48); }
+  100% { transform: scale(1); }
+}
+#k20AiDropZone.drag,
+.cv-drop.drag,
+.pc-stage.drag,
+#rdStage.drag,
+#chat.drop {
+  border-color: #2EE6A6 !important;
+  transform: scale(1.01);
+  transition: transform 180ms var(--km-spring-snappy), border-color 160ms ease;
+  animation: km-portal-breathe 1.3s ease-in-out infinite;
+}
+#skAltar.drop {
+  transform: scale(1.03);
+  transition: transform 200ms var(--km-spring-snappy);
+}
+#skAltar.drop::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 0;
+  width: 308px;
+  height: 308px;
+  border-radius: 50%;
+  border: 2px dashed rgba(46, 230, 166, 0.72);
+  pointer-events: none;
+  animation: km-portal-breathe 1.3s ease-in-out infinite;
+}
+.km-absorb {
+  animation: km-portal-absorb 280ms var(--km-spring-snappy) 1 !important;
+}
+
+/* ---- A6: Ctrl+K Komut Paleti Akici Yukseklik & Kayan Secim ---- */
+#kpal {
+  opacity: 1;
+  transition: opacity 150ms var(--km-ease-out);
+}
+#kpal .kp-w {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  transition: opacity 160ms var(--km-ease-out), transform 200ms var(--km-spring-snappy);
+}
+@starting-style {
+  #kpal {
+    opacity: 0;
+  }
+  #kpal .kp-w {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+}
+#kpal .kp-l {
+  position: relative;
+  transition: height 180ms var(--km-ease-out);
+}
+#kpal .kp-l > .km-glider {
+  background: rgba(109, 40, 217, 0.36);
+  border: 1px solid rgba(157, 107, 255, 0.45);
+  border-left: 3px solid #2EE6A6;
+  border-radius: 8px;
+}
+#kpal .kp-l.km-glider-host .kp-i.on,
+#kpal .kp-l.km-glider-host .kp-i:hover {
+  background: transparent !important;
+}
+#kpal .kp-l.km-glider-host .kp-i.on {
+  color: #fff;
+}
+
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
 @media (prefers-reduced-motion: reduce) {
   .km-pop-origin, .km-toast, .km-glider, .km-glow::after,
-  #kmTip, .km-odo-track, .km-hold-ring .km-hr-fg {
+  #kmTip, .km-odo-track, .km-hold-ring .km-hr-fg,
+  .km-cascade-item, .km-eq i,
+  .rd-main::before, #settingsForm .dialog-head::after, .cl-scroll::before,
+  #sunak .sk-strip.burst .sk-paper::after, .km-absorb,
+  #k20AiDropZone.drag, .cv-drop.drag, .pc-stage.drag, #rdStage.drag, #chat.drop,
+  #skAltar.drop, #skAltar.drop::before, #kpal, #kpal .kp-w, #kpal .kp-l {
     transition: none !important;
     animation: none !important;
   }

@@ -19,7 +19,14 @@ window.plOnBuild = () => {
       <div><button class="pl-b pri" id="plNextNow">${plL("Şimdi oynat", "Play now")} <i id="plNextSec"></i></button><button class="pl-b" id="plNextNo">${plL("İptal", "Cancel")}</button></div></div>`);
   $("#plNextNow").onclick = () => { $("#plNextCard").hidden = true; plQueueStep(1); };
   $("#plNextNo").onclick = () => { PX.nextCancel = true; $("#plNextCard").hidden = true; };
-  $("#plVideo").addEventListener("timeupdate", pxNextWatch);
+  const pv = $("#plVideo");
+  pv.addEventListener("timeupdate", pxNextWatch);
+  const syncEqState = () => {
+    const p = !!pv.paused;
+    document.querySelectorAll("#plDrawer .km-eq").forEach((el) => el.classList.toggle("paused", p));
+  };
+  pv.addEventListener("play", syncEqState);
+  pv.addEventListener("pause", syncEqState);
   $("#plAud").addEventListener("change", (e) => pxPrefSave({ a: plLang(PL.info.audio[+e.target.value]?.lang) }));
   $("#plRate").addEventListener("change", (e) => pxPrefSave({ rate: +e.target.value }));
   window.addEventListener("resize", pxApplyVideo);
@@ -177,7 +184,9 @@ window.plPanelClose = () => {
 async function pxDrawerRender() {
   const body = $("#pxBody");
   $$("#plDrawer .px-tabs [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === PX.libTab));
-  const row = (path, i, cur, extra = "") => `<button class="px-row ${cur ? "cur" : ""}" data-play="${i}">${extra}<span>${escapeHtml(pxBase(path))}</span></button>`;
+  const paused = !!$("#plVideo")?.paused;
+  const rowLead = (cur, fallback) => (cur && window.KamiMotion?.eqHtml ? KamiMotion.eqHtml(paused) : fallback);
+  const row = (path, i, cur, extra = "") => `<button class="px-row ${cur ? "cur" : ""}" data-play="${i}">${rowLead(cur, extra)}<span>${escapeHtml(pxBase(path))}</span></button>`;
   if (PX.libTab === "queue") {
     body.innerHTML = PX.queue.length
       ? `<div class="px-list">${PX.queue.map((p, i) => row(p, i, i === PX.qi, `<i>${i + 1}</i>`)).join("")}</div>
@@ -235,10 +244,11 @@ async function pxAlbums(body) {
   if (PX.album != null && A[PX.album]) {
     const a = A[PX.album];
     PX.view = a.tracks.map((x) => x.path);
+    const paused = !!$("#plVideo")?.paused;
     body.innerHTML = `<button class="px-back" data-act="aback">‹ ${plL("Albümler", "Albums")}</button>
       <div class="px-ahead">${cover(a, "px-acover big")}<div><b>${escapeHtml(name(a))}</b><span>${escapeHtml(a.artist || "")}</span><small>${a.count} ${plL("parça", "tracks")}</small>
         <div class="px-aacts"><button class="pl-b pri" data-act="aplay">▶ ${plL("Oynat", "Play")}</button><button class="pl-b" data-act="ashuf">⤮ ${plL("Karıştır", "Shuffle")}</button></div></div></div>
-      <div class="px-list">${a.tracks.map((x, i) => `<button class="px-row ${PL.open && PL.info?.path === x.path ? "cur" : ""}" data-play="${i}"><i>${x.track || i + 1}</i><span>${escapeHtml(x.title)}${a.single || (x.artist && x.artist !== a.artist) ? `<small> · ${escapeHtml(x.artist || "")}</small>` : ""}</span></button>`).join("")}</div>`;
+      <div class="px-list">${a.tracks.map((x, i) => { const cur = PL.open && PL.info?.path === x.path; return `<button class="px-row ${cur ? "cur" : ""}" data-play="${i}">${cur && window.KamiMotion?.eqHtml ? KamiMotion.eqHtml(paused) : `<i>${x.track || i + 1}</i>`}<span>${escapeHtml(x.title)}${a.single || (x.artist && x.artist !== a.artist) ? `<small> · ${escapeHtml(x.artist || "")}</small>` : ""}</span></button>`; }).join("")}</div>`;
     return;
   }
   PX.album = null;

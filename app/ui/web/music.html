@@ -302,6 +302,7 @@
           <b>${esc(p.title)}</b><small>${esc(p.owner)} · ${p.total} şarkı</small>
         </div>`).join("")}</div>`
       : `<div style="color:var(--mut);padding:8px">Spotify kataloğunda ara veya sol alttan Spotify hesabını bağla.</div>`;
+    window.KamiMotion?.cascade?.(hp, ".acard");
   }
 
 
@@ -406,9 +407,38 @@
   const _ICO_PLAY = '<svg class="ico" style="width:14px;height:14px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   const _ICO_DL = '<svg class="ico" style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>';
   const _ICO_X = '<svg class="ico" style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  function syncPlayingRow() {
+    const curUri = CUR_TRACK?.uri || "";
+    const curTitle = (CUR_TRACK?.title || "").trim().toLowerCase();
+    const paused = !SP_PLAYING;
+    list.querySelectorAll(".row").forEach((row) => {
+      const rUri = row.dataset.uri || "";
+      const rTitle = (row.dataset.title || "").trim().toLowerCase();
+      const hit = !!(CUR_TRACK && CUR_TRACK.title && ((curUri && rUri && curUri === rUri) || (curTitle && rTitle && rTitle === curTitle && (!curUri || !rUri))));
+      row.classList.toggle("is-playing", hit);
+      const metaB = row.querySelector(".meta b");
+      if (!metaB) return;
+      let eq = metaB.querySelector(".km-eq");
+      if (hit) {
+        if (!eq && window.KamiMotion?.eqHtml) {
+          metaB.insertAdjacentHTML("afterbegin", KamiMotion.eqHtml(paused));
+          eq = metaB.querySelector(".km-eq");
+        }
+        if (eq) eq.classList.toggle("paused", paused);
+      } else if (eq) {
+        eq.remove();
+      }
+    });
+  }
+
+  function refreshListMotion() {
+    window.KamiMotion?.cascade?.(list, ".row, .acard");
+    syncPlayingRow();
+  }
+
   function trackRowHtml(t, plId) {
     return `
-      <div class="row">
+      <div class="row" data-uri="${esc(t.uri || "")}" data-title="${esc(t.title || "")}">
         ${t.cover ? `<img class="cov-sm" src="${esc(t.cover)}">` : ""}
         <div class="meta"><b>${esc(t.title)}</b><small>${esc(t.artist)}${t.album ? " · " + esc(t.album) : ""}</small></div>
         ${t.duration_ms ? `<span class="dur">${fmtMs(t.duration_ms)}</span>` : ""}
@@ -428,11 +458,12 @@
       const r = await api()?.music_search?.(qv, 15).catch(() => null);
       ITEMS = r?.items || [];
       list.innerHTML = ITEMS.length ? ITEMS.map((it, i) => `
-        <div class="row">
+        <div class="row" data-title="${esc(it.title || "")}">
           <div class="meta"><b>${esc(it.title)}</b><small>${esc(it.artist)}${it.dur ? " · " + esc(it.dur) : ""}</small></div>
           <button class="btn pri" data-ytplay="${i}">▶ Çal</button>
           <button class="btn" data-ytdl="${i}">⬇ İndir</button>
         </div>`).join("") : `<div style="color:var(--mut);padding:12px">Sonuç bulunamadı.</div>`;
+      refreshListMotion();
       return;
     }
     if (NAV !== "sp_search") setNav("sp_search");
@@ -453,6 +484,7 @@
         <b>${esc(p.title)}</b><small>${esc(p.owner)} · ${p.total} şarkı</small>
       </div>`).join("") + `</div>`;
     list.innerHTML = html || `<div style="color:var(--mut);padding:12px">Sonuç bulunamadı.</div>`;
+    refreshListMotion();
   }
 
   async function loadLib(mode) {
@@ -476,6 +508,7 @@
       if (!r?.ok) { list.innerHTML = `<div style="color:var(--mut);padding:12px">Alınamadı (${esc(r?.error || "")}).</div>`; return; }
       list.innerHTML = (r.items || []).map((t) => trackRowHtml(t, null)).join("") || `<div style="color:var(--mut);padding:12px">Liste boş.</div>`;
     }
+    refreshListMotion();
   }
 
   async function loadQueue() {
@@ -483,6 +516,7 @@
     const r = await api()?.music_spotify_queue_list?.().catch(() => null);
     if (!r?.ok) { list.innerHTML = `<div style="color:var(--mut);padding:12px">Sıra alınamadı (${esc(r?.error || "")}).</div>`; return; }
     list.innerHTML = (r.queue || []).map((t) => trackRowHtml(t, null)).join("") || `<div style="color:var(--mut);padding:12px">Sırada bekleyen parça yok.</div>`;
+    refreshListMotion();
   }
 
   async function loadLocal() {
@@ -491,7 +525,8 @@
     const r = await api()?.music_local_scan?.("", q.value.trim()).catch(() => null);
     const folders = r?.folders || [], items = r?.items || [];
     folderChips.innerHTML = folders.map((f) => `<span class="chip" title="${esc(f)}">${esc(f.split(/[\\/]/).pop() || f)}<button data-locplaydir="${esc(f)}" title="Tümünü çal">▶</button><button data-locdel="${esc(f)}" title="Listeden kaldır (dosyalara dokunmaz)">✕</button></span>`).join("");
-    list.innerHTML = items.length ? items.map((it) => `<div class="row"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.folder)} · ${esc(it.ext.toUpperCase())}</small></div><button class="btn" data-locwhisper="${esc(it.path)}" title="Whisper Güçlü Mod ile zaman damgalı .lrc çıkar">🎙 Whisper Söz (.lrc)</button><button class="btn" data-loclrcedit="${esc(it.path)}" data-loctitle="${esc(it.title)}" title="Canlı LRC & Zamanlama Düzenleyici">✎ Söz Düzenle</button><button class="btn pri" data-locplay="${esc(it.path)}" data-locroot="${esc(it.root)}">▶ Kami Player</button></div>`).join("") : `<div style="color:var(--mut);padding:14px">Henüz yerel klasör eklenmedi.</div>`;
+    list.innerHTML = items.length ? items.map((it) => `<div class="row" data-title="${esc(it.title || "")}"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.folder)} · ${esc(it.ext.toUpperCase())}</small></div><button class="btn" data-locwhisper="${esc(it.path)}" title="Whisper Güçlü Mod ile zaman damgalı .lrc çıkar">🎙 Whisper Söz (.lrc)</button><button class="btn" data-loclrcedit="${esc(it.path)}" data-loctitle="${esc(it.title)}" title="Canlı LRC & Zamanlama Düzenleyici">✎ Söz Düzenle</button><button class="btn pri" data-locplay="${esc(it.path)}" data-locroot="${esc(it.root)}">▶ Kami Player</button></div>`).join("") : `<div style="color:var(--mut);padding:14px">Henüz yerel klasör eklenmedi.</div>`;
+    refreshListMotion();
   }
 
   async function loadYtmBar() {
@@ -556,9 +591,10 @@
   async function pollSpotify() {
     const r = await api()?.music_spotify_now?.().catch(() => null);
     if (!r?.ok) return;
-    if (!r.title) { spTitle.textContent = "Çalan parça yok"; spArtist.textContent = "Spotify cihazı açık değil veya yerel çalabilirsin"; spCov.hidden = true; return; }
+    if (!r.title) { CUR_TRACK = null; SP_PLAYING = false; spTitle.textContent = "Çalan parça yok"; spArtist.textContent = "Spotify cihazı açık değil veya yerel çalabilirsin"; spCov.hidden = true; syncPlayingRow(); return; }
     CUR_TRACK = r; SP_PLAYING = !!r.playing; SP_SHUF = !!r.shuffle; SP_REP = r.repeat || "off";
     LAST_POLL_TS = Date.now();
+    syncPlayingRow();
     spPlayBtn.innerHTML = SP_PLAYING ? '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>' : '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
     spShuf.classList.toggle("on", SP_SHUF); spRep.classList.toggle("on", SP_REP !== "off");
     spRep.title = SP_REP === "track" ? "Tekrar: bu şarkı" : SP_REP === "context" ? "Tekrar: liste" : "Tekrarla"; spRep.dataset.one = SP_REP === "track" ? "1" : "";
@@ -650,7 +686,8 @@
       if (!r?.ok) { list.innerHTML = `<div style="color:var(--mut);padding:12px">Açılamadı (${esc(r?.error || "gizli veya geçersiz link")}).</div>`; return; }
       ITEMS = r.items || [];
       list.innerHTML = `<div class="sec-h">${esc(r.title)} · ${ITEMS.length} şarkı <button class="btn" id="ytPlDlAll">${_ICO_DL} Tümünü İndir</button></div>` +
-        ITEMS.map((it, i) => `<div class="row"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.artist)}${it.dur ? " · " + esc(it.dur) : ""}</small></div><button class="btn pri" data-ytplay="${i}">${_ICO_PLAY} Çal</button><button class="btn" data-ytdl="${i}">${_ICO_DL} İndir</button></div>`).join("");
+        ITEMS.map((it, i) => `<div class="row" data-title="${esc(it.title || "")}"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.artist)}${it.dur ? " · " + esc(it.dur) : ""}</small></div><button class="btn pri" data-ytplay="${i}">${_ICO_PLAY} Çal</button><button class="btn" data-ytdl="${i}">${_ICO_DL} İndir</button></div>`).join("");
+      refreshListMotion();
       document.getElementById("ytPlDlAll").onclick = async (ev) => { for (const it of ITEMS) await api()?.music_download?.(it.url, it.title, "mp3"); ev.target.textContent = "✓ Kuyruğa Eklendi"; mToast("✓ Liste MP3 olarak indiriliyor"); };
     } else if (e.target.id === "ytPlToSp") {
       const u = ytPlIn.value.trim(); if (!u) return mToast("Önce YT Music Playlist linkini yapıştır.", true);
@@ -710,6 +747,7 @@
         mToast(`✓ ${ok} şarkı MP3 olarak kuyruğa eklendi`);
       };
       list.innerHTML = plTracks.map((t) => trackRowHtml(t, CUR_PL.id)).join("") || `<div style="color:var(--mut);padding:12px">Liste boş.</div>`;
+      refreshListMotion();
       return;
     }
     const oalb = e.target.closest("[data-openalb]");
@@ -721,6 +759,7 @@
       subBar.querySelector("[data-splayctx]").onclick = (ev) => { ev.stopPropagation(); spPlay("", CUR_PL.uri, ev.currentTarget); };
       const r = await api()?.music_spotify_album_tracks?.(oalb.dataset.openalb).catch(() => null);
       list.innerHTML = (r?.items || []).map((t) => trackRowHtml(t, null)).join("") || `<div style="color:var(--mut);padding:12px">Albüm boş.</div>`;
+      refreshListMotion();
       return;
     }
     const rem = e.target.closest("[data-sprem]");

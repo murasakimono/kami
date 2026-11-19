@@ -369,9 +369,10 @@
             <div class="cl-dmeta"><span>${c.count} dosya</span><span>%${((c.size / total) * 100).toFixed(1)}</span></div>
           </div>`).join("")}
       </div>
-      <div style="max-height:240px;overflow:auto">
+      <div class="cl-scroll" style="max-height:240px;overflow:auto">
         ${(r.extensions || []).map((e) => `<div class="cl-row"><span></span><span class="name"><b>${esc(e.ext)}</b> · ${e.count} dosya</span><span>${fmt(e.size)}</span><span>%${((e.size / total) * 100).toFixed(1)}</span><span></span></div>`).join("")}
       </div>`;
+    window.KamiMotion?.cascade?.(stage, ".cl-row");
   }
 
   async function renderLargestTab(stage) {
@@ -385,7 +386,7 @@
         <b>En Büyük ${r.items.length} Dosya (${esc(r.root)})</b>
         <button class="btn" id="clBulkTrash" disabled>Seçilenleri Çöpe Gönder (0)</button>
       </div>
-      <div style="max-height:320px;overflow:auto">
+      <div class="cl-scroll" style="max-height:320px;overflow:auto">
         ${(r.items || []).map((x) => `
           <div class="cl-row" data-preview-path="${esc(x.path)}">
             <input type="checkbox" data-chk="${esc(x.path)}" ${x.protected ? "disabled" : ""}>
@@ -397,6 +398,7 @@
       </div>`;
     wireBulkHold(stage);
     wireRowSelection(stage);
+    window.KamiMotion?.cascade?.(stage, ".cl-row");
   }
 
   async function renderDuplicatesTab(stage) {
@@ -413,7 +415,7 @@
           <button class="btn pri" id="clBulkTrash" disabled>Seçilenleri Çöpe Gönder (0)</button>
         </div>
       </div>
-      <div style="max-height:320px;overflow:auto">
+      <div class="cl-scroll" style="max-height:320px;overflow:auto">
         ${(r.groups || []).map((g, gi) => `
           <div class="cl-grp">
             <div class="cl-grp-hd"><span>#${gi + 1} · Her biri ${fmt(g.size)} · SHA ${esc(g.hash)}</span><span>Boşa: ${fmt(g.wasted)}</span></div>
@@ -438,6 +440,7 @@
     };
     wireBulkHold(stage);
     wireRowSelection(stage);
+    window.KamiMotion?.cascade?.(stage, ".cl-row");
   }
 
   async function renderSimilarTab(stage) {
@@ -454,7 +457,7 @@
           <button class="btn pri" id="clBulkTrash" disabled>Seçilenleri Çöpe Gönder (0)</button>
         </div>
       </div>
-      <div style="max-height:320px;overflow:auto">
+      <div class="cl-scroll" style="max-height:320px;overflow:auto">
         ${(r.groups || []).map((g) => `
           <div class="cl-grp">
             <div class="cl-grp-hd"><span>${g.count} Benzer Görsel</span><span>Toplam ${fmt(g.total_size)}</span></div>
@@ -479,6 +482,7 @@
     };
     wireBulkHold(stage);
     wireRowSelection(stage);
+    window.KamiMotion?.cascade?.(stage, ".cl-row");
   }
 
   async function renderCachesTab(stage) {
@@ -494,7 +498,7 @@
           <button class="btn pri" id="clBulkTrash" disabled>Seçilenleri Çöpe Gönder (0)</button>
         </div>
       </div>
-      <div style="max-height:320px;overflow:auto">
+      <div class="cl-scroll" style="max-height:320px;overflow:auto">
         ${(r.items || []).map((c) => `
           <div class="cl-row" data-preview-path="${esc(c.path)}">
             <input type="checkbox" data-chk="${esc(c.path)}">
@@ -511,6 +515,7 @@
     };
     wireBulkHold(stage);
     wireRowSelection(stage);
+    window.KamiMotion?.cascade?.(stage, ".cl-row");
   }
 
   async function openQuickLook(path) {
@@ -579,7 +584,7 @@
           <button class="btn pri" id="clBulkTrash" disabled>Seçilenleri Çöpe Gönder (0)</button>
         </div>
       </div>
-      <div style="max-height:320px;overflow:auto">
+      <div class="cl-scroll" style="max-height:320px;overflow:auto">
         ${(r.items || []).map((c) => `
           <div class="cl-row" data-preview-path="${esc(c.path)}">
             <input type="checkbox" data-chk="${esc(c.path)}">
@@ -596,6 +601,7 @@
     };
     wireBulkHold(stage);
     wireRowSelection(stage);
+    window.KamiMotion?.cascade?.(stage, ".cl-row");
   }
 
   async function renderJanitorTab(stage) {
@@ -608,7 +614,7 @@
         <button class="btn pri" id="clJanRun" ${r.count ? "" : "disabled"}>Şimdi Düzenle & Taşı (${r.count || 0})</button>
       </div>
       <p style="margin:0 0 8px;font-size:11px;color:#A39BB5">Kurallar: Masaüstünde 48 saati geçen ekran görüntüleri → <code>Pictures\\Screenshots</code> · 14 günü geçen kurulum (.exe/.msi) → <code>Program\\Eski_Kurulumlar</code> · İndirilenler kökündeki 3+ günlük PDF/EPUB → <code>Belge</code> (Otomatik klasörlendirmeyle çakışmaz).</p>
-      <div style="max-height:290px;overflow:auto">
+      <div class="cl-scroll" style="max-height:290px;overflow:auto">
         ${(r.actions || []).map((a) => `
           <div class="cl-row">
             <span>✓</span>
@@ -617,6 +623,7 @@
             <span></span><span></span>
           </div>`).join("") || `<small style="color:#2EE6A6">Masaüstü ve İndirilenler kök dizini tamamen düzenli ✓</small>`}
       </div>`;
+    window.KamiMotion?.cascade?.(stage, ".cl-row");
     const runBtn = stage.querySelector("#clJanRun");
     if (runBtn) {
       runBtn.onclick = async () => {

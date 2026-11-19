@@ -441,10 +441,67 @@
     b._kmBellT = setTimeout(() => b.classList.remove("km-ringing"), 560);
   }
 
-  // 12. Bootstrap
+  // 12. A1: Kademeli liste / kart girisi (ilk 12 oge, bitince temizlenir)
+  function cascade(container, itemSel = ":scope > *", max = 12) {
+    if (!container || isReduced()) return;
+    const list = [...container.querySelectorAll(itemSel)];
+    const cap = Math.min(list.length, max);
+    for (let i = 0; i < cap; i++) {
+      const el = list[i];
+      el.style.setProperty("--km-ci", String(i));
+      el.classList.add("km-cascade-item");
+      const done = () => {
+        clearTimeout(el._kmCasT);
+        el.classList.remove("km-cascade-item");
+        el.style.removeProperty("--km-ci");
+      };
+      el.addEventListener("animationend", done, { once: true });
+      clearTimeout(el._kmCasT);
+      el._kmCasT = setTimeout(done, 280 + i * 22 + 120);
+    }
+  }
+
+  // 13. A2: Canli calan mini ekolayzer cubuklari
+  function eqHtml(paused = false) {
+    return `<span class="km-eq${paused ? " paused" : ""}" aria-hidden="true"><i></i><i></i><i></i></span>`;
+  }
+
+  // 14. A5: Surukleme sirasinda manyetik portal halkasi & birakma emilimi
+  let _dragBound = false;
+  function initDragPortals() {
+    if (_dragBound) return;
+    _dragBound = true;
+    const DRAG_ZONES = ".cv-drop, .pc-stage, #rdStage";
+    const ABSORB_ZONES = "#skAltar, #k20AiDropZone, .cv-drop, .pc-stage, #rdStage, #chat";
+    document.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer?.types?.includes("Files")) return;
+      const z = e.target?.closest?.(DRAG_ZONES);
+      if (z) z.classList.add("drag");
+    });
+    document.addEventListener("dragleave", (e) => {
+      const z = e.target?.closest?.(DRAG_ZONES);
+      if (z && (!e.relatedTarget || !z.contains(e.relatedTarget))) z.classList.remove("drag");
+    });
+    const clearDrag = (e) => {
+      document.querySelectorAll(".cv-drop.drag, .pc-stage.drag, #rdStage.drag").forEach((z) => z.classList.remove("drag"));
+      if (e?.type !== "drop" || isReduced()) return;
+      const z = e.target?.closest?.(ABSORB_ZONES);
+      if (!z) return;
+      z.classList.remove("km-absorb");
+      void z.offsetWidth;
+      z.classList.add("km-absorb");
+      clearTimeout(z._kmAbsT);
+      z._kmAbsT = setTimeout(() => z.classList.remove("km-absorb"), 300);
+    };
+    document.addEventListener("drop", clearDrag, true);
+    document.addEventListener("dragend", clearDrag, true);
+  }
+
+  // 15. Bootstrap
   function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
+    initDragPortals();
     const bindKnownGliders = () => {
       const cl = document.getElementById("clTabs");
       if (cl) bindGlider(cl, ".cl-tab", "on");
@@ -493,5 +550,8 @@
     flip,
     radialThemeTransition,
     ringBell,
+    cascade,
+    eqHtml,
+    initDragPortals,
   };
 })();

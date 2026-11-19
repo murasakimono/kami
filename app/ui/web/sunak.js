@@ -1008,6 +1008,7 @@ STATE_HOOKS.push(skState);
     };
     notifDlg.innerHTML = `<div class="sk-notif-head"><b>${skL("Bildirim Merkezi", "Notification Center")}</b><span class="spacer"></span><button type="button" class="btn ghost" id="skNMark">${skL("Okundu İşaretle", "Mark Read")}</button><button type="button" class="btn ghost" id="skNClr">${skL("Temizle", "Clear")}</button><button type="button" class="btn ghost" id="skNCls">✕</button></div>
       <div class="sk-notif-list">${its.length ? its.map((n) => `<div class="sk-notif-row${n.read ? "" : " unread"}${n.kind === "error" ? " err" : ""}"><div class="sk-notif-body"><div class="sk-notif-title">${escapeHtml(n.title || "")}</div><div class="sk-notif-msg">${escapeHtml(n.message || "")}</div></div><span class="sk-notif-time">${fmtT(n.ts)}</span></div>`).join("") : `<p class="hint" style="margin:12px 0">${skL("Henüz bildirim yok.", "No notifications yet.")}</p>`}</div>`;
+    window.KamiMotion?.cascade?.(notifDlg.querySelector(".sk-notif-list"), ".sk-notif-row");
     notifDlg.querySelector("#skNCls").onclick = () => notifDlg.close();
     notifDlg.querySelector("#skNMark").onclick = async () => { await api?.notifications_mark_read?.(); const b = $("#skNotifN"); if (b) b.hidden = true; notifDlg.close(); };
     notifDlg.querySelector("#skNClr").onclick = async () => { await api?.notifications_clear?.(); const b = $("#skNotifN"); if (b) b.hidden = true; notifDlg.close(); };
