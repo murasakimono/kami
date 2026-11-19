@@ -1556,6 +1556,24 @@ class Api(StudioMixin):
             self._shutdown.cancel()
         return {"ok": True}
 
+    def _record_portal_media(self, path: str, title: str = "") -> None:
+        p = str(path or "").strip()
+        if not p or not os.path.isfile(p):
+            return
+        ap = os.path.abspath(p)
+        rec_list = getattr(self, "_recent_portal_media", None)
+        if rec_list is None:
+            rec_list = []
+            self._recent_portal_media = rec_list
+        norm = os.path.normcase(ap)
+        rec_list[:] = [x for x in rec_list if os.path.normcase(str(x.get("path") or "")) != norm]
+        rec_list.insert(0, {"id": None, "name": title or os.path.basename(ap), "path": ap, "pct": 0, "label": "Kami Player son oynatılan"})
+        del rec_list[20:]
+
+    def phone_recent_media(self) -> list[dict[str, Any]]:
+        rec_list = getattr(self, "_recent_portal_media", [])
+        return [x for x in rec_list if x.get("path") and os.path.isfile(str(x["path"]))]
+
     # ---------- oynatici (P1) ----------
     def player_open(self, download_id: int) -> dict[str, Any]:
         """Biten indirmeyi Kami'nin kendi oynaticisinda ac: yerel medya sunucusu adresi + mod (direct/remux/transcode)."""
@@ -1564,6 +1582,7 @@ class Api(StudioMixin):
         d = self._manager.store.get(int(download_id))
         if not d or not d.path or not os.path.isfile(d.path):
             return {"ok": False, "error": "not_found"}
+        self._record_portal_media(d.path, d.filename or os.path.basename(d.path))
         x = dict(d.extra or {})
         try:
             from app.core import aitools
@@ -1576,7 +1595,9 @@ class Api(StudioMixin):
         """Surukle-birak / gecmis: kullanicinin verdigi yerel medya dosyasi."""
         if not self._media:
             return {"ok": False, "error": "player_unavailable"}
-        return self._media.register(str(path or ""))
+        p = str(path or "")
+        self._record_portal_media(p)
+        return self._media.register(p)
 
     def player_siblings(self, path: str) -> list[str]:
         """Ayni klasordeki ayni turden medya: otomatik 'siradakiler' listesi."""
@@ -3579,7 +3600,7 @@ class Api(StudioMixin):
             st = {Status.ACTIVE: "iniyor", Status.WAITING: "sırada", Status.PAUSED: "duraklatıldı",
                   Status.ERROR: "hata", Status.COMPLETE: "bitti"}.get(d.status, str(d.status))
             speed = f" · {d.speed / 1048576:.1f} MB/sn" if d.status == Status.ACTIVE and d.speed else ""
-            out.append({"id": d.id, "name": d.filename or d.url, "percent": max(0, min(100, pct)),
+            out.append({"id": d.id, "name": d.filename or d.url, "path": d.path or "", "percent": max(0, min(100, pct)),
                         "label": f"{st} · %{pct}{speed}",
                         "can_pause": d.status in (Status.ACTIVE, Status.WAITING),
                         "can_resume": d.status in (Status.PAUSED, Status.ERROR),
@@ -5349,20 +5370,73 @@ class Api(StudioMixin):
                                       embed=bool(self._manager.settings.get("lyrics_embed", True)))
 
     def music_whisper_lrc(self, path: str, lang: str = "tr", strong: bool = True) -> dict[str, Any]:
+        import uuid
         from app.core import aitools
-        return aitools.generate_mp3_lrc(
-            str(path or ""),
-            lang=str(lang or self._manager.settings.get("whisper_lang") or "tr"),
-            strong=bool(strong),
-            use_uvr=bool(strong),
-            model_name=str(self._manager.settings.get("whisper_model") or "large-v3-turbo"),
-            uvr_model=str(self._manager.settings.get("uvr_model") or ""),
-            embed=bool(self._manager.settings.get("lyrics_embed", True)),
-        )
+        p = os.path.abspath(str(path or ""))
+        if not p or not os.path.isfile(p):
+            return {"ok": False, "error": "no_file"}
+        if not aitools.installed("whisper"):
+            return {"ok": False, "error": "tool_missing", "tool": "whisper"}
+        jid = f"lrc_{uuid.uuid4().hex[:8]}"
+        lang_s = str(lang or self._manager.settings.get("whisper_lang") or "tr")
+        strong_b = bool(strong)
+        model_s = str(self._manager.settings.get("whisper_model") or "large-v3-turbo")
+        uvr_s = str(self._manager.settings.get("uvr_model") or "")
+        embed_b = bool(self._manager.settings.get("lyrics_embed", True))
+        with self._inbox_lock:
+            self._jobs[jid] = {
+                "state": "running",
+                "name": f"LRC: {os.path.basename(p)}",
+                "msg": "UVR5 + Whisper başlatıldı…",
+                "p": 0.05,
+                "result": None,
+            }
+
+        def _worker() -> None:
+            def _on_prog(frac: float, stage: str) -> None:
+                lbl = "UVR5 Vokal Ayırma…" if "uvr" in str(stage) else ("Whisper Çözümlüyor…" if stage == "whisper" else "Kaydediliyor…")
+                with self._inbox_lock:
+                    if jid in self._jobs:
+                        self._jobs[jid]["p"] = float(frac)
+                        self._jobs[jid]["msg"] = lbl
+            try:
+                res = aitools.generate_mp3_lrc(
+                    p, lang=lang_s, strong=strong_b, use_uvr=strong_b,
+                    model_name=model_s, uvr_model=uvr_s, embed=embed_b,
+                    on_progress=_on_prog,
+                )
+                with self._inbox_lock:
+                    if jid in self._jobs:
+                        self._jobs[jid]["state"] = "done" if res.get("ok") else "error"
+                        self._jobs[jid]["p"] = 1.0 if res.get("ok") else self._jobs[jid].get("p", 0.0)
+                        self._jobs[jid]["msg"] = "Hazır ✓" if res.get("ok") else str(res.get("error") or "hata")
+                        self._jobs[jid]["result"] = res
+            except Exception as exc:
+                with self._inbox_lock:
+                    if jid in self._jobs:
+                        self._jobs[jid]["state"] = "error"
+                        self._jobs[jid]["msg"] = str(exc)[:180]
+                        self._jobs[jid]["result"] = {"ok": False, "error": str(exc)[:180]}
+
+        threading.Thread(target=_worker, name=f"kami-{jid}", daemon=True).start()
+        return {"ok": True, "queued": True, "job_id": jid, "path": p}
+
+    def music_lrc_whisper(self, path: str, lang: str = "tr", strong: bool = True) -> dict[str, Any]:
+        return self.music_whisper_lrc(path, lang=lang, strong=strong)
+
+    def music_lrc_job_status(self, job_id: str) -> dict[str, Any]:
+        with self._inbox_lock:
+            j = self._jobs.get(str(job_id or ""))
+            if not j:
+                return {"ok": False, "error": "unknown_job"}
+            return {"ok": True, **j}
 
     def music_lrc_polish_ollama(self, raw_lrc: str, title: str = "", artist: str = "") -> dict[str, Any]:
         from app.core import lyrics
         return lyrics.polish_lyrics_with_ollama(str(raw_lrc or ""), title=str(title or ""), artist=str(artist or ""))
+
+    def music_lrc_ollama_polish(self, raw_lrc: str, title: str = "", artist: str = "") -> dict[str, Any]:
+        return self.music_lrc_polish_ollama(raw_lrc, title=title, artist=artist)
 
     def _scrobble_file(self) -> Path:
         from app import paths
@@ -5422,7 +5496,8 @@ class Api(StudioMixin):
         with self._inbox_lock:
             for jid, jinfo in self._jobs.items():
                 if jinfo.get("state") == "running":
-                    jobs_out.append({"id": jid, "kind": "Arka Plan", "title": jinfo.get("name", ""), "pct": 50})
+                    pct = int(round(float(jinfo.get("p") or 0.5) * 100))
+                    jobs_out.append({"id": jid, "kind": "AI" if str(jid).startswith("lrc_") else "Arka Plan", "title": jinfo.get("name", ""), "pct": pct})
         return {"ok": True, "count": len(jobs_out), "items": jobs_out}
 
     def scratchpad_load(self) -> dict[str, Any]:

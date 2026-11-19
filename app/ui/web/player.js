@@ -91,6 +91,7 @@ function plBuild() {
     toast(plL("Ses ", "Volume ") + Math.round(PL.vol * 100) + "%");
   }, { passive: false });
   el.addEventListener("auxclick", (e) => { if (e.button === 1 && !e.target.closest("button, select, input")) { e.preventDefault(); plFull(); } });
+  v.addEventListener("play", () => { if (PL.ctx) plAudioGraph(); });
   v.addEventListener("loadeddata", () => {   // kare suresi (kare kare ilerleme icin)
     if (v.requestVideoFrameCallback) {
       let last = null;
@@ -241,6 +242,7 @@ function plMediaSession() {
 }
 function plClose() {
   const v = $("#plVideo");
+  if (PL.eqRaf) { cancelAnimationFrame(PL.eqRaf); PL.eqRaf = 0; }
   clearInterval(PL.infoT); $("#plInfo")?.remove();
   plAssDestroy();   // gizli videoda JASSUB yeniden boyutlanmaya calisip hata atmasin
   if (PL.info?.path) { const t = plNow(); plPos(PL.info.path, PL.dur && t > PL.dur - 30 ? null : t); }
@@ -384,7 +386,11 @@ function plBlinkLoop() {
 
 // ---------- ekolayzir: AnalyserNode -> gozun iki yani ----------
 function plAudioGraph() {
-  if (PL.ctx) { if (PL.ctx.state === "suspended") PL.ctx.resume(); return; }
+  if (PL.ctx) {
+    if (PL.ctx.state === "suspended") PL.ctx.resume();
+    if (!PL.eqRaf) PL._eqLoop?.();
+    return;
+  }
   try {
     PL.ctx = new (window.AudioContext || window.webkitAudioContext)();
     PL.src = PL.ctx.createMediaElementSource($("#plVideo"));
@@ -400,7 +406,8 @@ function plAudioGraph() {
     const N = 7, edges = [];   // logaritmik bantlar ~40 Hz .. 16 kHz
     for (let i = 0; i <= N; i++) edges.push(Math.round(Math.pow(PL.bins.length * 0.75, i / N)));
     const loop = () => {
-      if (PL.open && !$("#plVideo").paused) {
+      const v = $("#plVideo");
+      if (PL.open && v && !v.paused && !document.hidden) {
         PL.an.getByteFrequencyData(PL.bins);
         const lv = [];
         for (let i = 0; i < N; i++) {
@@ -411,9 +418,13 @@ function plAudioGraph() {
         plEqDraw(lv); plBigEq();   // ekolayzir figurden bagimsiz (DOM cubuklari), figur sadece nefes alir
         const bass = lv[0] * 0.6 + lv[1] * 0.4;
         $("#player").style.setProperty("--pl-beat", bass.toFixed(3));
-      } else if (PL.eqOn) { PL.eqOn = false; plEqDraw(null); plBigEq(true); }
-      requestAnimationFrame(loop);
+        PL.eqRaf = requestAnimationFrame(loop);
+      } else {
+        PL.eqRaf = 0;
+        if (PL.eqOn) { PL.eqOn = false; plEqDraw(null); plBigEq(true); }
+      }
     };
+    PL._eqLoop = loop;
     loop();
   } catch (e) { console.warn("Web Audio kurulamadi", e); }
 }

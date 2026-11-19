@@ -295,18 +295,32 @@ def cached_now(allow_paused: bool = False) -> dict[str, Any] | None:
 def spotify_now(token: str) -> dict[str, Any]:
     tok = get_spotify_token(token)
     if not tok:
-        return _librespot_now() or {"ok": False, "error": "no_token"}
+        lib = _librespot_now()
+        if lib:
+            _LAST_NOW.clear()
+            _LAST_NOW.update(lib)
+            return lib
+        return {"ok": False, "error": "no_token"}
     req = urllib.request.Request("https://api.spotify.com/v1/me/player",
                                  headers={"Authorization": f"Bearer {tok}"})
     try:
         with urllib.request.urlopen(req, timeout=6) as resp:
             if resp.status == 204:
                 res = _librespot_now() or {"ok": True, "playing": False}
-                _LAST_NOW.clear()
-                _LAST_NOW.update(res)
+                if res.get("title") or not _LAST_NOW.get("title"):
+                    _LAST_NOW.clear()
+                    _LAST_NOW.update(res)
                 return res
             d = json.loads(resp.read().decode("utf-8"))
             it = d.get("item") or {}
+            title = it.get("name", "")
+            if not title:
+                lib = _librespot_now()
+                if lib and lib.get("title"):
+                    _LAST_NOW.clear()
+                    _LAST_NOW.update(lib)
+                    return lib
+                return _LAST_NOW if _LAST_NOW.get("title") else {"ok": True, "playing": False}
             imgs = ((it.get("album") or {}).get("images") or [{}])
             dev = d.get("device") or {}
             res = {
@@ -314,7 +328,7 @@ def spotify_now(token: str) -> dict[str, Any]:
                 "playing": bool(d.get("is_playing")),
                 "id": it.get("id", ""),
                 "uri": it.get("uri", ""),
-                "title": it.get("name", ""),
+                "title": title,
                 "artist": ", ".join(a.get("name", "") for a in (it.get("artists") or [])),
                 "album": (it.get("album") or {}).get("name", ""),
                 "cover": imgs[0].get("url", "") if imgs else "",
@@ -326,10 +340,21 @@ def spotify_now(token: str) -> dict[str, Any]:
                 "device_name": dev.get("name", ""),
                 "volume": int(dev.get("volume_percent") if dev.get("volume_percent") is not None else 100),
             }
+            if not res["playing"]:
+                lib = _librespot_now()
+                if lib and lib.get("playing") and lib.get("title"):
+                    _LAST_NOW.clear()
+                    _LAST_NOW.update(lib)
+                    return lib
             _LAST_NOW.clear()
             _LAST_NOW.update(res)
             return res
     except Exception as exc:
+        lib = _librespot_now()
+        if lib and lib.get("title"):
+            _LAST_NOW.clear()
+            _LAST_NOW.update(lib)
+            return lib
         return {"ok": False, "error": str(exc)[:120]}
 
 

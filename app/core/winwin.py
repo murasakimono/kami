@@ -136,7 +136,7 @@ def set_fullscreen(title: str, on: bool = True) -> bool:
     return True
 
 
-def resize_pill(title: str, width: int, height: int, hwnd: int = 0) -> bool:
+def resize_pill(title: str, width: int, height: int, hwnd: int = 0, anchor_top_center: bool = True) -> bool:
     """Mini-Ada vb. cercevesiz hapi yatay merkezini koruyarak yeniden boyutlandirir ve maskeler."""
     if not (user32 and gdi32):
         return False
@@ -153,8 +153,11 @@ def resize_pill(title: str, width: int, height: int, hwnd: int = 0) -> bool:
     rc = _RECT()
     if not user32.GetWindowRect(h, ctypes.byref(rc)):
         return False
-    cx = (rc.left + rc.right) // 2
-    nx = max(0, cx - pw // 2)
+    if anchor_top_center:
+        cx = (rc.left + rc.right) // 2
+        nx = max(0, cx - pw // 2)
+    else:
+        nx = rc.left
     user32.SetWindowPos(h, 0, nx, rc.top, pw, ph, 0x0004 | 0x0010 | 0x0020)  # NOZORDER|NOACTIVATE|FRAMECHANGED
     return round_pill(title, hwnd=h)
 

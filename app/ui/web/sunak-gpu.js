@@ -4,16 +4,25 @@
   // Kucultup geri acinca: gizliyken ticker durur (CPU/GPU bos yere calismasin), gorunur olunca yeniden boyutlanip
   // cizilir. GPU baglami kaybolursa (hibrit ekran karti, uyku) Pixi'nin geri yuklemesine izin ver; olmazsa canvas
   // gizlenir ve CSS/2B Sunak devralir (siyah kutu kalmasin).
-  function guardApp(app) {
+  function guardApp(app, shouldRun = () => !document.hidden && document.hasFocus()) {
     const cv = app.canvas;
-    cv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); cv.style.visibility = "hidden"; }, false);
-    cv.addEventListener("webglcontextrestored", () => { cv.style.visibility = ""; try { app.resize?.(); app.render(); } catch { /* yok */ } }, false);
-    document.addEventListener("visibilitychange", () => {
+    const syncRun = () => {
       try {
-        if (document.hidden) app.ticker.stop();
-        else { app.ticker.start(); app.resize?.(); app.render(); }
+        if (shouldRun()) {
+          app.ticker.start();
+          app.resize?.();
+          app.render();
+        } else {
+          app.ticker.stop();
+        }
       } catch { /* uygulama kapanmis */ }
-    });
+    };
+    app._kamiSyncRun = syncRun;
+    cv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); cv.style.visibility = "hidden"; }, false);
+    cv.addEventListener("webglcontextrestored", () => { cv.style.visibility = ""; syncRun(); }, false);
+    document.addEventListener("visibilitychange", syncRun);
+    window.addEventListener("focus", syncRun);
+    window.addEventListener("blur", syncRun);
   }
 
 
@@ -136,16 +145,17 @@
         await app.init({
           backgroundAlpha: 0,
           resizeTo: global,
-          antialias: true,
+          antialias: false,
           autoDensity: true,
-          resolution: Math.min(2, global.devicePixelRatio || 1),
-          powerPreference: "high-performance",
+          resolution: Math.min(1.5, global.devicePixelRatio || 1),
+          powerPreference: "low-power",
         });
+        app.ticker.maxFPS = 30;
         app.canvas.id = "skFxGpu";
         app.canvas.className = "sk-fx-gpu";
         document.body.prepend(app.canvas);
         this.bgApp = app;
-        guardApp(app);
+        guardApp(app, () => this.fxOn && !document.hidden && document.hasFocus() && !this.reduced);
 
         const sprNear = makePaperTexture(PIXI, 0);
         const sprMid = makePaperTexture(PIXI, 1.1);
@@ -310,14 +320,15 @@
           backgroundAlpha: 0,
           antialias: true,
           autoDensity: true,
-          resolution: Math.min(2, global.devicePixelRatio || 1),
-          powerPreference: "high-performance",
+          resolution: Math.min(1.5, global.devicePixelRatio || 1),
+          powerPreference: "low-power",
         });
+        app.ticker.maxFPS = 30;
         app.canvas.id = "skAltarGpu";
         app.canvas.className = "sk-altar-gpu";
         altarEl.prepend(app.canvas);
         this.altarApp = app;
-        guardApp(app);
+        guardApp(app, () => !document.hidden && (document.hasFocus() || (this.state.speedFrac || 0) > 0.01));
 
         // 1. Hiz halkasi & yorunge katmani
         const ringLayer = new PIXI.Container();
@@ -507,6 +518,10 @@
 
     setFx(on) {
       this.fxOn = !!on;
+      if (this.bgApp) {
+        this.bgApp.canvas.style.display = this.fxOn ? "block" : "none";
+        this.bgApp._kamiSyncRun?.();
+      }
     }
 
     triggerSwallow() {

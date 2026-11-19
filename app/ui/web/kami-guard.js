@@ -24,8 +24,14 @@
     flush();
   }
   window.addEventListener("error", (e) => {
-    if (e.target && e.target !== window && (e.target.src || e.target.href)) {   // yuklenemeyen script/css/gorsel
-      report("Kaynak yuklenemedi: " + (e.target.tagName || "?"), e.target.src || e.target.href, "");
+    const tgt = e.target;
+    if (tgt && tgt !== window && (tgt.src || tgt.href || tgt.currentSrc)) {   // yuklenemeyen script/css/gorsel/medya
+      const tag = String(tgt.tagName || "").toUpperCase();
+      if (tag === "VIDEO" || tag === "AUDIO") {
+        const err = tgt.error;
+        if (!tgt.getAttribute("src") || (err && err.code === 1)) return;  // hizli parca degisimi / abort
+      }
+      report("Kaynak yuklenemedi: " + (tag || "?"), tgt.currentSrc || tgt.src || tgt.href, "");
       return;
     }
     report(e.message, `${(e.filename || "").split("/").pop()}:${e.lineno}:${e.colno}`, e.error?.stack);

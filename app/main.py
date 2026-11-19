@@ -895,21 +895,31 @@ def main() -> int:
             log.info("Ana pencere kapandi; Kami cikiyor")
             quit_app()
 
+    main_ready = threading.Event()
+    recreate_lock = threading.Lock()
+
     def bind_main(w) -> None:
         api._set_window(w)
-        w.events.loaded += lambda: (bind_drop(w), winwin.set_caption_color("Kami"), _set_hwnd_icon("Kami", "main", (157, 107, 255)))
+        w.events.shown += lambda: main_ready.set()
+        w.events.loaded += lambda: (main_ready.set(), bind_drop(w), winwin.set_caption_color("Kami"), _set_hwnd_icon("Kami", "main", (157, 107, 255)))
         w.events.closing += on_closing
         w.events.closed += on_main_closed
 
     def recreate_main() -> None:
-        if quitting["v"]:
+        if quitting["v"] or not main_ready.is_set():
             return
-        w = webview.create_window(
-            "Kami", url=str(paths.WEB_DIR / "index.html"), js_api=api,
-            width=1445, height=850, min_size=(820, 520),
-            background_color="#0D0A12" if settings.get("theme") == "dark" else "#F5F3F9", text_select=False)
-        main_win["w"] = w
-        bind_main(w)
+        with recreate_lock:
+            if quitting["v"] or winwin.find_window("Kami"):
+                winwin.show_front("Kami")
+                return
+            if main_win.get("w") in list(webview.windows):
+                return
+            w = webview.create_window(
+                "Kami", url=str(paths.WEB_DIR / "index.html"), js_api=api,
+                width=1445, height=850, min_size=(820, 520),
+                background_color="#0D0A12" if settings.get("theme") == "dark" else "#F5F3F9", text_select=False)
+            main_win["w"] = w
+            bind_main(w)
 
     bind_main(window)
     front.on_missing = recreate_main
@@ -1042,7 +1052,7 @@ def main() -> int:
             transparent=False,
             easy_drag=True,
             on_top=True,
-            resizable=False,
+            resizable=True,
             background_color="#0B0910",
             focus=False,
         )
@@ -1263,6 +1273,7 @@ def main() -> int:
                         status=api.phone_status_items, control=api.phone_control)
     phone.on_upload = api.phone_on_upload
     phone.on_deck = api.phone_deck
+    phone.recent_media = api.phone_recent_media
     from app.core import room as _room
     _room.SERVER.phone_srv = phone
     from app.core.jobs import jobs as _jobs

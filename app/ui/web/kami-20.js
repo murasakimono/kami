@@ -419,18 +419,44 @@
       entry.msg = strong ? "UVR5 Vokal Ayırma + Whisper Güçlü Mod çalışıyor…" : "Whisper çalışıyor…";
     }
     renderAiFileList();
-    const r = await callApi()?.music_lrc_whisper?.(path, "tr", strong).catch((e) => ({ ok: false, error: String(e) }));
+    const r = await (callApi()?.music_whisper_lrc || callApi()?.music_lrc_whisper)?.(path, "tr", strong).catch((e) => ({ ok: false, error: String(e) }));
     if (!r?.ok) {
       entry.status = "error";
+      entry.toolMissing = r?.error === "tool_missing" ? (r.tool || "whisper") : "";
       entry.msg = r?.error === "tool_missing"
-        ? `Önce ${r.tool === "uvr" ? "UVR5" : "Whisper"} ortamı kurulmalı (Ayarlar > Medya)`
+        ? `Önce ${r.tool === "uvr" ? "UVR5" : "Whisper"} ortamı kurulmalı`
         : (`Hata: ${r?.error || "başlatılamadı"}`);
       renderAiFileList();
       return;
     }
-    // Arka plan isini yokla (.lrc olusana veya aktif is bitene kadar)
-    for (let step = 0; step < 180; step++) {
-      await new Promise((res) => setTimeout(res, 2000));
+    entry.toolMissing = "";
+    // Arka plan isini yokla (.lrc olusana veya is bitene kadar)
+    for (let step = 0; step < 300; step++) {
+      await new Promise((res) => setTimeout(res, 1500));
+      if (r.job_id && callApi()?.music_lrc_job_status) {
+        const jst = await callApi().music_lrc_job_status(r.job_id).catch(() => null);
+        if (jst?.ok) {
+          if (jst.state === "running") {
+            entry.msg = `${jst.msg || "İşleniyor…"} · %${Math.round((jst.p || 0) * 100)}`;
+            renderAiFileList();
+            continue;
+          }
+          if (jst.state === "error" || (jst.result && jst.result.ok === false)) {
+            entry.status = "error";
+            entry.toolMissing = jst.result?.error === "tool_missing" ? (jst.result.tool || "whisper") : "";
+            entry.msg = `Hata: ${jst.result?.error || jst.error || "işlem başarısız"}`;
+            renderAiFileList();
+            return;
+          }
+          if (jst.state === "done") {
+            const cnt = jst.result?.lines?.length || 0;
+            entry.status = "done";
+            entry.msg = cnt ? `✓ ${cnt} satır zaman damgalı (.lrc + MP3 USLT) hazır` : "İşlem tamamlandı — Söz Düzenle ile kontrol edebilirsin";
+            renderAiFileList();
+            return;
+          }
+        }
+      }
       const hudSt = await callApi()?.active_jobs_hud?.().catch(() => null);
       const running = (hudSt?.items || []).find((it) => it.kind === "AI" || it.title?.includes("LRC") || it.title?.includes("Whisper"));
       if (running) {
@@ -464,12 +490,31 @@
           <small style="color:${f.status === "done" ? "#2EE6A6" : f.status === "error" ? "#FF6B8B" : "#C4B5FD"}">${esc(f.msg)}</small>
         </div>
         <div style="display:flex;gap:6px;flex:none">
+          ${f.toolMissing ? `<button type="button" class="btn pri" data-aiinst="${idx}">⬇ ${f.toolMissing === "uvr" ? "UVR5" : "Whisper"} Kur</button>` : ""}
           <button type="button" class="btn" data-airetry="${idx}" title="Yeniden Çalıştır">↻</button>
           <button type="button" class="btn pri" data-aiedit="${idx}">✎ Söz Düzenle</button>
           <button type="button" class="btn" data-aiplay="${idx}" title="Kami Player'da Oynat">▶</button>
         </div>
       </div>
     `).join("");
+    box.querySelectorAll("[data-aiinst]").forEach((b) => {
+      b.onclick = async () => {
+        const f = aiFiles[+b.dataset.aiinst];
+        if (!f) return;
+        f.status = "running";
+        f.toolMissing = "";
+        f.msg = "Whisper / AI ortamı kuruluyor (Ayarlar > AI Araçları)…";
+        renderAiFileList();
+        const ir = await callApi()?.ai_install?.("whisper").catch((e) => ({ ok: false, error: String(e) }));
+        if (ir?.ok) {
+          f.msg = "Kurulum başlatıldı — hazır olduğunda ↻ ile tekrar dene";
+        } else {
+          f.status = "error";
+          f.msg = `Kurulum hatası: ${ir?.error || "başlatılamadı"}`;
+        }
+        renderAiFileList();
+      };
+    });
     box.querySelectorAll("[data-airetry]").forEach((b) => {
       b.onclick = () => {
         const f = aiFiles[+b.dataset.airetry];
@@ -526,7 +571,7 @@
       const msg = ed.querySelector("#k20LqMsg");
       if (!ta.value.trim()) return;
       msg.textContent = "Ollama düzeltiyor…";
-      const res = await callApi()?.music_lrc_ollama_polish?.(ta.value, titleHint, "").catch(() => null);
+      const res = await (callApi()?.music_lrc_polish_ollama || callApi()?.music_lrc_ollama_polish)?.(ta.value, titleHint, "").catch(() => null);
       if (res?.ok && res.text) { ta.value = res.text; msg.textContent = "✓ Ollama ile düzeltildi"; }
       else msg.textContent = res?.error || "Ollama kapalı (Kami Doktor'dan başlat)";
     };

@@ -473,16 +473,34 @@ class PhoneServer:
         except Exception:
             pass
         try:
+            seen_paths: set[str] = set()
+            def _push_media(mid: Any, name: str, path: str, pct: Any, label: str) -> None:
+                ap = os.path.abspath(str(path or "")) if path else ""
+                key = os.path.normcase(ap) if ap else f"id:{mid}:{name}"
+                if key in seen_paths:
+                    return
+                seen_paths.add(key)
+                videos.append({
+                    "id": mid,
+                    "name": name,
+                    "path": ap if (ap and os.path.isfile(ap)) else "",
+                    "pct": pct,
+                    "label": label,
+                })
+
+            recent_fn = getattr(self, "recent_media", None)
+            if callable(recent_fn):
+                for m in (recent_fn() or [])[:15]:
+                    nm = str(m.get("name") or "")
+                    if nm:
+                        _push_media(m.get("id"), nm, str(m.get("path") or ""), m.get("pct", 0), m.get("label", "Son oynatılan"))
+
             items = self.status() or []
             for it in items[:20]:
                 nm = str(it.get("name") or "")
-                if nm.lower().endswith((".mp4", ".mkv", ".webm", ".mp3", ".flac", ".m4a")):
-                    videos.append({
-                        "id": it.get("id"),
-                        "name": nm,
-                        "pct": it.get("percent", 100),
-                        "label": it.get("label", ""),
-                    })
+                pt = str(it.get("path") or "")
+                if (nm or pt).lower().endswith((".mp4", ".mkv", ".webm", ".mov", ".avi", ".mp3", ".flac", ".m4a", ".wav")):
+                    _push_media(it.get("id"), nm or os.path.basename(pt), pt, it.get("percent", 100), it.get("label", ""))
         except Exception:
             pass
         return {"ok": True, "books": books, "media": videos}
@@ -611,7 +629,7 @@ const qp=new URLSearchParams(location.search).get('k');
 kEl.value=qp||localStorage.getItem('kamiKey')||'';
 if(qp)localStorage.setItem('kamiKey',qp);
 const esc=(s)=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const basePrefix=location.pathname.endsWith('/portal')?location.pathname.slice(0,-7):'';
+const basePrefix=location.pathname.replace(/\\/+$/,'').replace(/\\/portal$/,'');
 async function load(){
   const kv=kEl.value.trim();
   if(!kv){stMsg.textContent='Lütfen Kami > Ayarlar > Telefon bölümündeki anahtarı gir.';return;}

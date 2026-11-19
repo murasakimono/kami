@@ -26,6 +26,11 @@
     transition: border-color .18s ease;
     overflow: hidden;
   }
+  .pill.music-mode.expanded {
+    justify-content: flex-start;
+    padding: 7px 11px 8px;
+    gap: 4px;
+  }
   .pill.music-mode {
     border-color: color-mix(in srgb, var(--cov) 45%, rgba(255,255,255,0.12));
   }
@@ -296,7 +301,7 @@ function renderMusic(st) {
   const exp = allowExpand && hovered;
   pill.className = "pill music-mode" + (exp ? " expanded" : "");
   seekBar.hidden = false;
-  if (exp) resizeWin(540, 74);
+  if (exp) resizeWin(540, 76);
   else resizeWin(allowExpand ? 390 : 440, 48);
 
   applyCoverColor(m.cover);

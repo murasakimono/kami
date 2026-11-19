@@ -145,10 +145,13 @@
   }
 
   // ---- 3. Playback Recipe Engine + Chapter Name Tick ----
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountTopControls, { once: true });
+  else mountTopControls();
   setInterval(() => {
+    if (!window.PL?.open) return;
     mountTopControls();
     const v = document.getElementById("plVideo");
-    if (!window.PL || !v) return;
+    if (!v) return;
     const t = typeof plNow === "function" ? plNow() : 0;
     const chEl = document.getElementById("plChapNow");
     if (chEl) {
@@ -176,7 +179,7 @@
         }
       }
     }
-  }, 160);
+  }, 320);
 
   // ---- 4. Library Search Filter, Unshuffle & Searchable Transcript Tab ----
   let _preShuffleQueue = null;
