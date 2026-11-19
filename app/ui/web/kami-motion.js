@@ -221,7 +221,7 @@
   function initProximityGlow() {
     if (_glowBound) return;
     _glowBound = true;
-    const SELECTOR = ".sk-g, .cl-drive, .gm-card, .eco-card";
+    const SELECTOR = ".sk-g, .cl-drive, .gcard, .qa-card, .acard, .eco-card";
     let rafId = 0;
     let lastE = null;
     const hotSet = new Set();
@@ -269,7 +269,7 @@
   function initInstantTooltips() {
     if (_tipBound) return;
     _tipBound = true;
-    const BAR_SEL = ".pc-top button, #tlbar button, #rdBar button, .pl-bar button, .sk-dock button";
+    const BAR_SEL = ".pc-top button, #tlbar button, .rd-top button, .pl-deck button, .top button, .m-top button";
     let tipEl = null;
     let showTimer = 0;
     let warmUntil = 0;
@@ -450,10 +450,20 @@
       if (cl) bindGlider(cl, ".cl-tab", "on");
       const st = document.querySelector(".st-nav");
       if (st) bindGlider(st, "button", "on");
-      const sp = document.querySelector(".sp-nav");
-      if (sp) bindGlider(sp, "button", "on");
+      const sp = document.querySelector("aside.side");
+      if (sp) bindGlider(sp, ".nav-b", "on");
+      const rd = document.querySelector("nav.rd-tabs");
+      if (rd) bindGlider(rd, "button", "on");
     };
     bindKnownGliders();
+    document.addEventListener("click", (e) => {
+      const cBtn = e.target.closest?.("[data-km-copy]");
+      if (cBtn) { morphDone(cBtn, "Kopyalandı"); return; }
+      const sg = e.target.closest?.("#sgdbSave");
+      if (sg && document.getElementById("sgdbIn")?.value?.trim()) { morphDone(sg, "Kaydedildi"); return; }
+      const sw = e.target.closest?.("#swSave");
+      if (sw && document.getElementById("swKey")?.value?.trim()) { morphDone(sw, "Kaydedildi"); return; }
+    });
     // Sonradan eklenen .st-nav / #clTabs icin hafif observer (baglaninca kendini durdurur)
     if (document.body && (!document.querySelector(".st-nav") || !document.getElementById("clTabs"))) {
       const mo = new MutationObserver(() => {

@@ -14,17 +14,17 @@
   st.id = "kami20Style";
   st.textContent = `
     [hidden] { display: none !important; }
-    /* A3: Birlesik Arka Plan Islem & Kuyruk HUD (is yokken display:none) */
+    /* A3: Birlesik Arka Plan Islem & Kuyruk HUD (is yokken display:none — ust-orta dinamik hap) */
     #k20JobHud {
-      position: fixed; right: 64px; bottom: 18px; z-index: 82;
+      position: fixed; top: 10px; left: 0; right: 0; bottom: auto; margin-inline: auto; width: fit-content; z-index: 82;
       background: rgba(15, 11, 24, .95); border: 1px solid #2EE6A6;
-      border-radius: 999px; padding: 6px 13px; color: #EDE9F6;
+      border-radius: 999px; padding: 6px 14px; color: #EDE9F6;
       font: 600 12px "Chakra Petch", system-ui, sans-serif;
       display: inline-flex; align-items: center; gap: 9px;
       box-shadow: 0 10px 28px rgba(0,0,0,.6), 0 0 18px rgba(46,230,166,.22);
       cursor: pointer; transition: transform .15s ease;
     }
-    #k20JobHud:hover { transform: translateY(-2px); }
+    #k20JobHud:hover { transform: translateY(1px); }
     #k20JobHud .spin {
       width: 12px; height: 12px; border-radius: 50%;
       border: 2px solid rgba(46,230,166,.25); border-top-color: #2EE6A6;
@@ -32,8 +32,9 @@
     }
     @keyframes k20Spin { to { transform: rotate(360deg); } }
     #k20JobPop {
-      position: fixed; right: 64px; bottom: 56px; z-index: 83;
-      width: 310px; background: rgba(16, 12, 26, .98); border: 1px solid rgba(157,107,255,.45);
+      position: fixed; top: 48px; left: 0; right: 0; bottom: auto; margin-inline: auto; z-index: 83;
+      width: 310px; max-height: 280px; overflow-y: auto;
+      background: rgba(16, 12, 26, .98); border: 1px solid rgba(157,107,255,.45);
       border-radius: 12px; padding: 11px 13px; color: #EDE9F6;
       box-shadow: 0 16px 40px rgba(0,0,0,.68); font: 500 12px "Chakra Petch", sans-serif;
     }
@@ -131,14 +132,24 @@
   hud.hidden = true;
   const pop = document.createElement("div");
   pop.id = "k20JobPop";
+  pop.className = "km-pop-origin";
+  pop.style.setProperty("--km-ox", "center");
+  pop.style.setProperty("--km-oy", "top");
   pop.hidden = true;
   document.body.append(hud, pop);
 
   let popOpen = false;
-  hud.onclick = () => {
+  hud.onclick = (e) => {
+    e.stopPropagation();
     popOpen = !popOpen;
     pop.hidden = !popOpen;
   };
+  document.addEventListener("click", (e) => {
+    if (popOpen && !e.target.closest?.("#k20JobHud, #k20JobPop")) {
+      popOpen = false;
+      pop.hidden = true;
+    }
+  });
 
   async function pollActiveJobs() {
     if (document.hidden) return;

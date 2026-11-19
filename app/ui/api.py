@@ -5510,12 +5510,37 @@ class Api(StudioMixin):
             for cj in self._conv_jobs:
                 if cj.get("state") in ("running", "queued"):
                     jobs_out.append({"id": cj["id"], "kind": "Dönüştürücü", "title": cj.get("name", ""), "pct": int(round(float(cj.get("p") or 0) * 100))})
-        # 4) Genel arka plan job_start isleri
+        # 4) Yalnızca uzun/kullanici odakli arka plan isleri (player_lyrics / player_skips / rd_status gibi sessiz RPC yoklamalari haric)
+        import time as _t
+        hud_long = frozenset({
+            "music_whisper_lrc", "pic_ai", "pic_freq_sep", "pic_seam_carve", "pic_clone_lut",
+            "pic_hdr_merge", "pic_focus_stack", "pic_ecom_pack", "pic_mockup", "editor_vectorize",
+            "editor_gif", "editor_export", "backup_export", "backup_import", "media_extract_audio",
+            "media_clip", "media_repair", "ocr_image", "ocr_translate", "cleaner_dust",
+            "cleaner_janitor", "install_update", "studio_export", "studio_render",
+            "studio_build_preview", "studio_scenes", "studio_silences", "studio_freezes", "studio_beats",
+        })
+        now_m = _t.monotonic()
         with self._inbox_lock:
             for jid, jinfo in self._jobs.items():
-                if jinfo.get("state") == "running":
-                    pct = int(round(float(jinfo.get("p") or 0.5) * 100))
-                    jobs_out.append({"id": jid, "kind": "AI" if str(jid).startswith("lrc_") else "Arka Plan", "title": jinfo.get("name", ""), "pct": pct})
+                if jinfo.get("state") != "running":
+                    continue
+                jname = str(jinfo.get("name") or "")
+                is_lrc = str(jid).startswith("lrc_")
+                if not (is_lrc or jname in hud_long):
+                    continue
+                if "t" in jinfo and (now_m - float(jinfo["t"])) >= 900:
+                    continue
+                if is_lrc or jname == "music_whisper_lrc":
+                    kind_lbl = "AI Altyazı"
+                elif jname == "cleaner_dust":
+                    kind_lbl = "Kami Dust"
+                elif jname.startswith("studio_"):
+                    kind_lbl = "Kami Studio"
+                else:
+                    kind_lbl = "İşlem"
+                pct = int(round(float(jinfo.get("p") or 0.5) * 100))
+                jobs_out.append({"id": jid, "kind": kind_lbl, "title": jname, "pct": pct})
         return {"ok": True, "count": len(jobs_out), "items": jobs_out}
 
     def scratchpad_load(self) -> dict[str, Any]:

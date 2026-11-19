@@ -197,10 +197,11 @@
       const list = filtered();
       cnt.textContent = `${list.length} oyun`;
       if (!list.length) { grid.innerHTML = `<div class="msg">Eşleşen oyun bulunamadı.</div>`; return; }
-      grid.innerHTML = list.map((g) => {
-        const pt = fmtPt(g.playtime_sec);
-        const gn = (g.genres || []).slice(0, 2).join(" · ");
-        return `
+      const paint = () => {
+        grid.innerHTML = list.map((g) => {
+          const pt = fmtPt(g.playtime_sec);
+          const gn = (g.genres || []).slice(0, 2).join(" · ");
+          return `
         <div class="gcard ${g.installed ? "" : "uninst"}" data-key="${esc(g.key)}">
           <div class="cov">${g.cover ? `<img src="${esc(g.cover)}" loading="lazy" onerror="kgCovErr(this)">` : ""}<span class="fb"><svg class="ico" style="width:28px;height:28px;opacity:.45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="5"/><path d="M7 10v4M5 12h4M15.5 11h.01M18 13h.01"/></svg></span>
             <button class="fav-b ${g.favorite ? "on" : ""}" data-fav="${esc(g.key)}" title="Favori">${g.favorite ? "★" : "☆"}</button>
@@ -219,7 +220,10 @@
             </div>
           </div>
         </div>`;
-      }).join("");
+        }).join("");
+      };
+      if (window.KamiMotion?.flip && grid.querySelector(".gcard")) KamiMotion.flip(grid, paint, ".gcard");
+      else paint();
     }
 
     async function openDetail(g) {

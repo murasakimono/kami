@@ -927,19 +927,37 @@ STATE_HOOKS.push(skState);
   boot();
 })();
 
-// v1.32.1 ust alan gosterge paneli (disk / bugun / hafta / RD) — 20 sn'de bir, ucuz
+// v1.32.1 ust alan gosterge paneli (disk / bugun / hafta / RD) — 20 sn'de bir, ucuz + Odometer guncelleme
 (() => {
-  const g = (ic, v, t, warn) => `<div class="sk-g${warn ? " warn" : ""}"><i>${ic}</i><b>${v}</b><span>${t}</span></div>`;
+  const g = (gk, ic, v, t, warn) => `<div class="sk-g${warn ? " warn" : ""}" data-gkey="${gk}"><i>${ic}</i><b>${v}</b><span>${t}</span></div>`;
   async function upd() {
     const box = $("#skGauges"); if (!box || document.hidden) return;
     let d; try { d = await api.dash_stats(); } catch { return; }
     const free = d.disk_free ?? null, pct = d.disk_total ? free / d.disk_total : 1;
-    box.innerHTML = [
-      free != null ? g(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="16" cy="12" r="2"/><path d="M7 9h4"/></svg>`, fmtBytes(free), skL("boş disk", "free disk"), pct < 0.08) : "",
-      g(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>`, d.today ? fmtBytes(d.today) : "0", skL(`bugün · ${d.today_n || 0} dosya`, `today · ${d.today_n || 0} files`)),
-      g(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18l5-6 4 3 7-8M15 7h5v5"/></svg>`, d.week ? fmtBytes(d.week) : "0", skL("son 7 gün", "last 7 days")),
-      d.rd_days != null ? g(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>`, `${d.rd_days} ${skL("gün", "d")}`, "Real-Debrid", d.rd_days < 5) : "",
-    ].join("");
+    const rows = [
+      free != null ? ["disk", `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="16" cy="12" r="2"/><path d="M7 9h4"/></svg>`, fmtBytes(free), skL("boş disk", "free disk"), pct < 0.08] : null,
+      ["today", `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>`, d.today ? fmtBytes(d.today) : "0", skL(`bugün · ${d.today_n || 0} dosya`, `today · ${d.today_n || 0} files`), false],
+      ["week", `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18l5-6 4 3 7-8M15 7h5v5"/></svg>`, d.week ? fmtBytes(d.week) : "0", skL("son 7 gün", "last 7 days"), false],
+      d.rd_days != null ? ["rd", `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>`, `${d.rd_days} ${skL("gün", "d")}`, "Real-Debrid", d.rd_days < 5] : null,
+    ].filter(Boolean);
+    const sig = rows.map((r) => r[0]).join(",");
+    if (box.dataset.gSig !== sig) {
+      box.dataset.gSig = sig;
+      box.innerHTML = rows.map(([gk, ic, v, t, warn]) => g(gk, ic, v, t, warn)).join("");
+      return;
+    }
+    rows.forEach(([gk, _ic, v, t, warn]) => {
+      const card = box.querySelector(`.sk-g[data-gkey="${gk}"]`);
+      if (!card) return;
+      card.classList.toggle("warn", !!warn);
+      const bEl = card.querySelector("b");
+      if (bEl) {
+        if (window.KamiMotion?.rollNumber) KamiMotion.rollNumber(bEl, v);
+        else bEl.textContent = v;
+      }
+      const spEl = card.querySelector("span");
+      if (spEl && spEl.textContent !== t) spEl.textContent = t;
+    });
   }
   setTimeout(upd, 1200); setInterval(upd, 20000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) upd(); });

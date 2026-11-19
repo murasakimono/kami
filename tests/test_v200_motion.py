@@ -90,3 +90,53 @@ def test_kami_motion_wired_across_modules():
 
     k20_js = (WEB / "kami-20.js").read_text(encoding="utf-8")
     assert "morphDone" in k20_js
+    assert "top: 10px" in k20_js
+
+    games_html = (WEB / "games.html").read_text(encoding="utf-8")
+    assert "KamiMotion.flip" in games_html
+
+    ps_js = (WEB / "player-shell.js").read_text(encoding="utf-8")
+    assert "KamiMotion.toast" in ps_js
+
+
+def test_motion_selectors_and_hud_allowlist():
+    import threading
+    import time as _t
+    from types import SimpleNamespace
+    from app.ui.api import Api
+
+    css = (WEB / "kami-motion.css").read_text(encoding="utf-8")
+    for sel in ("#k20Cheat:not([hidden])", ".k20-rnode:active", '[data-mod="cleaner"]', ".km-glow:not(.tilting)::after", "bottom: 76px"):
+        assert sel in css, f"Duzeltilmis CSS secici eksik: {sel}"
+
+    js = (WEB / "kami-motion.js").read_text(encoding="utf-8")
+    assert ".gcard" in js and "aside.side" in js and ".rd-top button" in js and ".pl-deck button" in js
+    assert ".sk-dock button" not in js
+
+    sunak_js = (WEB / "sunak.js").read_text(encoding="utf-8")
+    assert 'data-gkey="${gk}"' in sunak_js
+
+    api = object.__new__(Api)
+    api._inbox_lock = threading.Lock()
+    api._conv_lock = threading.Lock()
+    api._conv_jobs = []
+    api._manager = SimpleNamespace(snapshot=lambda: [])
+    now = _t.monotonic()
+    api._jobs = {
+        "j1": {"state": "running", "name": "player_lyrics", "t": now},
+        "j2": {"state": "running", "name": "player_skips", "t": now},
+        "j3": {"state": "running", "name": "rd_status", "t": now},
+        "j4": {"state": "running", "name": "cleaner_dust", "t": now - 1000},  # bayat (>15 dk)
+        "lrc_a1": {"state": "running", "name": "LRC: deneme.mp3", "p": 0.42},
+        "j5": {"state": "running", "name": "studio_export", "t": now, "p": 0.75},
+    }
+    res = api.active_jobs_hud()
+    assert res["ok"] is True
+    assert res["count"] == 2
+    kinds = {it["kind"] for it in res["items"]}
+    titles = {it["title"] for it in res["items"]}
+    assert kinds == {"AI Altyazı", "Kami Studio"}
+    assert "player_lyrics" not in titles
+    assert "player_skips" not in titles
+    assert "rd_status" not in titles
+

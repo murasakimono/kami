@@ -15,7 +15,13 @@ function escapeHtml(s) {
 }
 function toast(msg, isErr = false) {
   const el = $("#toast");
-  el.textContent = msg; el.classList.toggle("err", isErr); el.hidden = false;
+  if (el) el.textContent = msg;
+  if (window.KamiMotion?.toast) {
+    if (el) el.hidden = true;
+    KamiMotion.toast(msg, isErr);
+    return;
+  }
+  el.classList.toggle("err", isErr); el.hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
 }
 async function slow(name, ...args) {   // uzun isler: is kimligi al, sonucu yokla (app.js ile ayni)

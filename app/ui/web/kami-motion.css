@@ -26,7 +26,7 @@ dialog[open],
 .sk-tools.on,
 #smartMenu:not([hidden]),
 #rdToolsMenu:not([hidden]),
-#k20Help:not([hidden]),
+#k20Cheat:not([hidden]),
 #k20Scratch:not([hidden]),
 #k20JobPop:not([hidden]) {
   transition: opacity 170ms var(--km-ease-out), transform 220ms var(--km-spring-snappy), display 170ms allow-discrete;
@@ -39,7 +39,7 @@ dialog[open],
   .sk-tools.on,
   #smartMenu:not([hidden]),
   #rdToolsMenu:not([hidden]),
-  #k20Help:not([hidden]),
+  #k20Cheat:not([hidden]),
   #k20Scratch:not([hidden]),
   #k20JobPop:not([hidden]) {
     opacity: 0;
@@ -67,9 +67,11 @@ dialog[open],
 .sk-tab:active:not(:disabled),
 .cl-tab:active:not(:disabled),
 .st-nav button:active:not(:disabled),
-.k20-rad-btn:active:not(:disabled),
+.nav-b:active:not(:disabled),
+.k20-rnode:active:not(:disabled),
 .pc-top button:active:not(:disabled),
-#tlbar button:active:not(:disabled) {
+#tlbar button:active:not(:disabled),
+.gcard:active {
   transform: scale(0.965);
   transition: transform 80ms var(--km-ease-out);
 }
@@ -170,8 +172,8 @@ dialog[open],
 /* ---- M6: Sonner Tarzi Katmanli Bildirim Destesi ---- */
 #kmToastDeck {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
+  right: 76px;
+  bottom: 76px;
   z-index: 9800;
   display: flex;
   flex-direction: column-reverse;
@@ -260,7 +262,7 @@ dialog[open],
 .km-glow {
   position: relative;
 }
-.km-glow::after {
+.km-glow:not(.tilting)::after {
   content: "";
   position: absolute;
   inset: -1px;
@@ -362,11 +364,11 @@ dialog[open],
 [data-pl="settings"]:hover svg {
   transform: rotate(45deg);
 }
-[data-dock="cleaner"] svg,
+[data-mod="cleaner"] svg,
 [data-tr] svg {
   transition: transform 180ms var(--km-ease-out);
 }
-[data-dock="cleaner"]:hover svg,
+[data-mod="cleaner"]:hover svg,
 [data-tr]:hover svg {
   transform: translateY(-1.5px);
 }
