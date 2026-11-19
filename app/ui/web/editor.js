@@ -614,10 +614,20 @@ function edLayerThumb(i) {
   const k = Math.min(116 / ED.W, 72 / ED.H); g.drawImage(l.c, (116 - ED.W * k) / 2 + l.x * k, (72 - ED.H * k) / 2 + l.y * k, l.c.width * k, l.c.height * k);
 }
 
+const WHEEL_IDS = ["brush", "erase", "select", "lasso", "wand", "move", "text", "crop", "pick", "adjust"];
+function edRailSync() {
+  const rail = $("#edRail");
+  if (!rail) return;
+  const set = new Set(WHEEL_IDS);
+  const extra = TOOLS.filter((t) => !set.has(t.id));
+  rail.innerHTML = extra.map((t) => `<button data-tool="${t.id}" class="${t.id === ED.tool ? "cur" : ""}" title="${edL(t.tr, t.id)} (${t.k.toUpperCase()})"><svg viewBox="0 0 24 24">${t.ic}</svg></button>`).join("");
+}
+
 // ---------------------------------------------------------------- arac secenekleri kapsulu
 function edOpt() {
   const t = ED.tool, box = $("#edOpt");
   document.querySelector("#ed").className = "on tool-" + t;
+  edRailSync();
   const T = TOOLS.find((x) => x.id === t);
   let h = `<span class="tl">${edL(T.tr, T.id)}</span>`;
   if (window.edOptExtra && window.edOptExtra(t) != null) h += window.edOptExtra(t);
@@ -689,25 +699,20 @@ function edCurveEvents(cv) {
   cv.oncontextmenu = (e) => e.preventDefault();
 }
 
-// ---------------------------------------------------------------- radyal cark (cift halka: ic 8 + dis kalanlar)
+// ---------------------------------------------------------------- radyal cark (kompakt tek halka: 10 temel arac)
 function edWheel(x, y) {
   const w = $("#edWheel");
-  const cx = Math.max(230, Math.min(Math.max(230, innerWidth - 230), x));
-  const cy = Math.max(230, Math.min(Math.max(230, innerHeight - 230), y));
+  const cx = Math.max(175, Math.min(Math.max(175, innerWidth - 175), x));
+  const cy = Math.max(175, Math.min(Math.max(175, innerHeight - 175), y));
   w.style.left = cx + "px"; w.style.top = cy + "px";
-  const INNER_IDS = ["brush", "erase", "select", "lasso", "wand", "move", "text", "crop"];
-  const SHORT_LBL = { wand: "Değnek", bucket: "Boya", magic: "Yapay Zekâ", gradient: "Degrade", liquify: "Sıvılaştır", remove: "Nesne Sil" };
-  const inner = INNER_IDS.map((id) => TOOLS.find((t) => t.id === id)).filter(Boolean);
-  const innerSet = new Set(inner.map((t) => t.id));
-  const outer = TOOLS.filter((t) => !innerSet.has(t.id));
-  const place = (arr, R, offset = 0) => arr.map((t, i) => {
-    const a = -Math.PI / 2 + offset + (i / Math.max(1, arr.length)) * Math.PI * 2;
+  const SHORT_LBL = { wand: "Değnek" };
+  const list = WHEEL_IDS.map((id) => TOOLS.find((t) => t.id === id)).filter(Boolean);
+  w.innerHTML = list.map((t, i) => {
+    const a = -Math.PI / 2 + (i / list.length) * Math.PI * 2, R = 118;
     const fullLbl = edL(t.tr, t.id);
-    const shortLbl = fullLbl.length > 10 && SHORT_LBL[t.id] ? edL(SHORT_LBL[t.id], t.id) : fullLbl;
-    return `<button data-tool="${t.id}" class="${t.id === ED.tool ? "cur" : ""}" style="left:${Math.round(220 + Math.cos(a) * R)}px;top:${Math.round(220 + Math.sin(a) * R)}px" title="${fullLbl} (${t.k.toUpperCase()})"><svg viewBox="0 0 24 24">${t.ic}</svg>${shortLbl}</button>`;
-  }).join("");
-  const outerOff = outer.length ? Math.PI / outer.length : 0;
-  w.innerHTML = place(inner, 88) + place(outer, 172, outerOff) +
+    const lbl = fullLbl.length > 9 && SHORT_LBL[t.id] ? edL(SHORT_LBL[t.id], t.id) : fullLbl;
+    return `<button data-tool="${t.id}" class="${t.id === ED.tool ? "cur" : ""}" style="left:${Math.round(160 + Math.cos(a) * R)}px;top:${Math.round(160 + Math.sin(a) * R)}px" title="${fullLbl} (${t.k.toUpperCase()})"><svg viewBox="0 0 24 24">${t.ic}</svg>${lbl}</button>`;
+  }).join("") +
     `<button class="mid" data-x="undo">↶<br>${edL("Geri al", "Undo")}</button>`;
   w.classList.add("on"); ED.wheelAt = [cx, cy];
 }
@@ -787,7 +792,7 @@ function edMount() {
       <button data-x="new">${edL("Yeni", "New")}</button><button data-x="open">${edL("Proje aç", "Open project")}</button><button data-x="openpsd" title="Katmanlı Adobe PSD aç">.psd</button><button data-x="saveproj">.kami</button>
       <button data-x="exp-png" class="pri">${edL("Kaydet PNG", "Save PNG")}</button><button data-x="exp-jpg">JPG</button><button data-x="exp-webp">WebP</button>
       <button data-x="undo" title="Ctrl+Z">↶</button><button data-x="redo" title="Ctrl+Y">↷</button><button data-x="close">✕</button></div>
-    <div class="ed-opt" id="edOpt"></div><div class="ed-card" id="edCard" hidden></div><div class="ed-wheel" id="edWheel"></div>
+    <div class="ed-opt" id="edOpt"></div><div class="ed-rail" id="edRail"></div><div class="ed-card" id="edCard" hidden></div><div class="ed-wheel" id="edWheel"></div>
     <div class="ed-layers" id="edLayers"><div class="grip"><span></span> · Tab</div><div class="row"></div></div>
     <div class="ed-hint">${edL("Sağ tık / Boşluk: araç çarkı · B fırça · E silgi · M seç · L kement · V taşı · T metin · C kırp · A ayarlar · [ ] boyut · Ctrl+Z geri al · orta tuş: kaydır · tekerlek: yakınlaş", "Right-click / Space: tool wheel · B brush · E eraser · M select · L lasso · V move · T text · C crop · A adjust · [ ] size · Ctrl+Z undo · middle: pan · wheel: zoom")}</div>`;
   document.body.appendChild(d);

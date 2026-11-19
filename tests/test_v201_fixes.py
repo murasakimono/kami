@@ -13,7 +13,7 @@ WEB = ROOT / "app" / "ui" / "web"
 def test_version_201():
     from app.core import extras
 
-    assert extras.APP_VERSION == "2.0.1"
+    assert extras.APP_VERSION == "2.0.2"
 
 
 def test_notification_center_list_limit():
@@ -74,8 +74,8 @@ def test_ui_fixes_201():
 
     ed_css = (WEB / "editor.css").read_text(encoding="utf-8")
     ed_js = (WEB / "editor.js").read_text(encoding="utf-8")
-    assert "440px" in ed_css
-    assert "place(inner, 88)" in ed_js and "place(outer, 172" in ed_js
+    assert "320px" in ed_css and ".ed-rail" in ed_css
+    assert "R = 118" in ed_js and "edRail" in ed_js
 
     km_css = (WEB / "kami-motion.css").read_text(encoding="utf-8")
     km_js = (WEB / "kami-motion.js").read_text(encoding="utf-8")
