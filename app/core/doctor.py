@@ -240,7 +240,9 @@ def check_ollama() -> dict[str, Any]:
             models = [m.get("name", "") for m in json.loads(r.read()).get("models", [])]
         return _r("ollama", "Yerel yapay zeka (Ollama)", "ok", ", ".join(models[:6]) or "Calisiyor, model yok")
     except Exception:
-        return _r("ollama", "Yerel yapay zeka (Ollama)", "info", "Kapali: Copilot ve otomatik bolum basliklari kullanilamaz")
+        if shutil.which("ollama"):
+            return _r("ollama", "Yerel yapay zeka (Ollama)", "warn", "Kurulu ama kapali", "ollama_start")
+        return _r("ollama", "Yerel yapay zeka (Ollama)", "info", "Kurulu degil (istege bagli: yerel Copilot)")
 
 
 def check_network() -> dict[str, Any]:
@@ -294,7 +296,9 @@ def check_spotify() -> dict[str, Any]:
     try:
         from app.core import music_hub
         st = music_hub.spotify_oauth_status()
-        if not st.get("logged_in"):
+        if not st.get("connected"):
+            if st.get("expired"):
+                return _r("spotify", "Spotify PKCE", "warn", "Oturum suresi dolmus (Kamify'dan tekrar baglan)")
             return _r("spotify", "Spotify PKCE", "info", "Oturum acilmamis")
         ex = ThreadPoolExecutor(max_workers=1)
         try:
@@ -435,4 +439,13 @@ def run_all(engine: Any = None, ui_errors: list[dict[str, Any]] | None = None, r
             "summary": summary, "checks": results, "ui_errors": ui}
 
 
-FIXES: dict[str, Callable[[], dict[str, Any]]] = {"copy_virtual_keys": fix_copy_virtual_keys}
+def fix_ollama_start() -> dict[str, Any]:
+    exe = shutil.which("ollama")
+    if not exe:
+        return {"ok": False, "message": "Ollama bulunamadi"}
+    subprocess.Popen([exe, "serve"], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"ok": True, "message": "Ollama baslatildi"}
+
+
+FIXES: dict[str, Callable[[], dict[str, Any]]] = {"copy_virtual_keys": fix_copy_virtual_keys, "ollama_start": fix_ollama_start}

@@ -7,7 +7,7 @@
   })();
   const ST = {
     mode: "obsidian", transitions: true, speed: 0,
-    gl: null, canvas: null, raf: 0, t0: performance.now(), last: 0,
+    gl: null, canvas: null, raf: 0, t0: performance.now(), last: 0, phase: 0,
     pulse: 0, focused: true, altarX: 0.24, altarY: 0.72,
     tint: [0.0, 0.0, 0.0],
   };
@@ -43,7 +43,7 @@
       if(u_mode > 0.5){
         // Ruh Atesi: maskotun altindaki zumrut alevden yukselen keskin duman/ates telleri + kozler
         vec2 fp=p-(ap+vec2(0.0,-0.20));
-        float rise=u_time*(0.55+u_speed*1.15);
+        float rise=u_time*0.75;
         float sway=sin(fp.y*7.0-rise*1.6)*0.045*(0.4+abs(fp.y)*2.5);
         float w1=fbm(vec2((fp.x+sway)*7.5, fp.y*3.6-rise));
         float w2=fbm(vec2((fp.x-sway*0.7)*13.0, fp.y*6.0-rise*1.45)+3.1);
@@ -66,7 +66,7 @@
         return;
       }
       // Akan Obsidian: koyu cilali volkanik cam + cok ince zarif mor/zumrut kilcal damarlar
-      float t=u_time*(0.08+u_speed*0.22);
+      float t=u_time;
       vec2 q=vec2(fbm(p*2.6+vec2(t*0.30,-t*0.22)), fbm(p*2.6+vec2(-t*0.24,t*0.31)+4.7));
       float n=fbm(p*3.4+q*1.45+t*0.12);
       float fil=pow(clamp(1.0-abs(n-0.50)*9.5,0.0,1.0),3.2);
@@ -164,12 +164,14 @@
     ST.raf = 0;
     if (!isGlMode(ST.mode) || document.hidden || !ST.focused || !ST.gl) return;
     if (now - ST.last < 33) { ST.raf = requestAnimationFrame(frame); return; } // 30 fps siniri
+    const dt = ST.last ? Math.min(0.1, (now - ST.last) / 1000) : 0.033;
     ST.last = now;
+    ST.phase += dt * (0.10 + ST.speed * 0.35);
     const { gl, uRes, uAltar, uTime, uSpeed, uPulse, uTint, uMode } = ST.gl;
     ST.pulse = Math.max(0, ST.pulse * 0.92);
     gl.uniform2f(uRes, ST.canvas.width, ST.canvas.height);
     gl.uniform2f(uAltar, ST.altarX, ST.altarY);
-    gl.uniform1f(uTime, (now - ST.t0) / 1000);
+    gl.uniform1f(uTime, ST.phase);
     gl.uniform1f(uSpeed, ST.speed);
     gl.uniform1f(uPulse, ST.pulse);
     gl.uniform3f(uTint, ST.tint[0], ST.tint[1], ST.tint[2]);

@@ -132,7 +132,7 @@ DEFAULTS: dict[str, Any] = {
     "rec_record_hotkey": "alt+f9",
     "rec_fps": 60,
     "rec_mic": True,                 # mikrofon ayri ses izi
-    "watch_name": "Metehan",         # Kami Oda: odada gorunen ad
+    "watch_name": "",                # Kami Oda: odada gorunen ad (bos -> OS kullanici adi)
     "room_id": "",                   # sabit oda anahtari (ilk acilista uretilir)
     "room_worker_url": "",           # sabit adres: https://kami-oda.<hesap>.workers.dev (anahtar DPAPI: room_worker.bin)
     "room_password_hash": "",        # oda sifresi: sha256(sifre) (sifrenin kendisi saklanmaz); bos = sifresiz

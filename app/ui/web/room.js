@@ -1070,8 +1070,32 @@ function ytIn(from, m) {
   YT.lead = false;
   ytOpen(m.id, t, !!m.playing);
 }
-function ytStart() {
-  const id = ytId(prompt("YouTube linki (herkes aynı anda izler):") || "");
+function rmPromptModal(title, placeholder, okLabel = "Tamam") {
+  return new Promise((resolve) => {
+    const ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:9990;background:rgba(5,4,10,.72);backdrop-filter:blur(8px);display:grid;place-items:center";
+    ov.innerHTML = `<div style="width:min(440px,90vw);background:#130E1E;border:1px solid rgba(157,107,255,.4);border-radius:14px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.6);display:grid;gap:12px;color:#EDE9F6;font-family:inherit">
+      <b style="font-size:14.5px;color:#C4B5FD">${esc(title)}</b>
+      <input id="rmPmIn" placeholder="${esc(placeholder)}" style="background:#0A0812;border:1px solid rgba(157,107,255,.35);border-radius:9px;padding:9px 12px;color:#fff;font:inherit;outline:none">
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" class="rm-txtbtn" id="rmPmNo">İptal</button>
+        <button type="button" class="rm-txtbtn" id="rmPmOk" style="background:#6D28D9;border-color:#9D6BFF;color:#fff">${esc(okLabel)}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    const inp = ov.querySelector("#rmPmIn");
+    const done = (v) => { ov.remove(); resolve(v); };
+    ov.querySelector("#rmPmNo").onclick = () => done("");
+    ov.querySelector("#rmPmOk").onclick = () => done(inp.value.trim());
+    ov.onclick = (e) => { if (e.target === ov) done(""); };
+    inp.onkeydown = (e) => { if (e.key === "Enter") done(inp.value.trim()); else if (e.key === "Escape") done(""); };
+    setTimeout(() => inp.focus(), 20);
+  });
+}
+
+async function ytStart() {
+  const raw = await rmPromptModal("Birlikte YouTube İzle", "YouTube video linkini veya ID'sini yapıştır…", "Başlat");
+  const id = ytId(raw || "");
   if (!id) return;
   YT.lead = true;
   ytOpen(id, 0, true);
@@ -1088,27 +1112,51 @@ function ytStart() {
 // ---------- Birlikte Spotify Dinleme (Kami Oda) ----------
 const SP_SYNC = { lead: false, follow: false, timer: 0, lastUri: "", lastPos: 0, lastPlay: false, lastSyncAt: 0 };
 
-function spShowBar(title, artist, isLead) {
+function spFmtMs(ms) {
+  const s = Math.max(0, Math.floor((ms || 0) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function spShowBar(title, artist, isLead, extra = {}) {
   let bar = $("spSyncBar");
   if (!bar) {
     bar = document.createElement("div"); bar.id = "spSyncBar";
-    bar.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:7px 12px;background:#130E1D;border:1px solid #2EE6A6;border-radius:10px;margin:8px 12px 0;font-size:12.5px;color:#EDE9F6";
+    bar.style.cssText = "display:flex;align-items:center;gap:14px;padding:12px 16px;background:linear-gradient(135deg,rgba(22,16,36,.96),rgba(13,10,20,.96));border:1px solid rgba(46,230,166,.42);border-radius:14px;margin:10px 14px 0;font-size:13px;color:#EDE9F6;box-shadow:0 10px 30px rgba(0,0,0,.45)";
     $("room")?.insertBefore(bar, document.querySelector(".rm-main"));
   }
-  bar.innerHTML = `<span style="color:#2EE6A6;font-weight:700">🎧 ${isLead ? "Yayınlıyorsun" : "Birlikte Dinleme"}:</span>` +
-    `<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(artist ? artist + " — " + title : title)}</b>` +
+  const cov = extra.cover ? `<img src="${esc(extra.cover)}" alt="" style="width:54px;height:54px;border-radius:10px;object-fit:cover;flex:none;border:1px solid rgba(255,255,255,.12)">` : `<div style="width:54px;height:54px;border-radius:10px;background:#1E1530;display:grid;place-items:center;flex:none;color:#2EE6A6;font-size:20px">♪</div>`;
+  const dur = extra.duration_ms || 0, pos = extra.progress_ms || 0;
+  const pct = dur > 0 ? Math.min(100, Math.round((pos / dur) * 100)) : 0;
+  const playing = extra.playing !== false;
+  bar.innerHTML = cov +
+    `<div style="flex:1;min-width:0;display:grid;gap:4px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#2EE6A6">${isLead ? "● Yayınlıyorsun" : "● Birlikte Dinleme"}</span>
+        ${dur ? `<span style="font-size:11px;color:#9E96B8;margin-left:auto">${spFmtMs(pos)} / ${spFmtMs(dur)}</span>` : ""}
+      </div>
+      <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14.5px">${esc(title || "Bilinmeyen Parça")}</b>
+      <small style="color:#A79BBF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(artist || "Spotify")}</small>
+      <div style="height:4px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:2px"><i style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#9D6BFF,#2EE6A6);transition:width .4s linear"></i></div>
+    </div>` +
+    `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">` +
+    (isLead ? `<button class="rm-txtbtn" id="spPrev" title="Önceki">⏮</button><button class="rm-txtbtn" id="spPlayTog" title="Oynat / Duraklat">${playing ? "⏸" : "▶"}</button><button class="rm-txtbtn" id="spNext" title="Sonraki">⏭</button>` : "") +
     `<button class="rm-txtbtn" id="spJamQ">+ Sıraya Ekle</button>` +
-    (isLead ? `<button class="rm-txtbtn" id="spStopLead">Yayını Durdur</button>`
-      : `<button class="rm-txtbtn" id="spToggleFollow">${SP_SYNC.follow ? "✓ Senkrondasın" : "Katıl"}</button>`);
-  $("spJamQ").onclick = () => {
-    const q = prompt("Oda Jam sırasına eklenecek şarkı (ad / sanatçı):");
-    if (q && q.trim()) S.core?.broadcast({ k: "sp", act: "q", query: q.trim() });
+    (isLead ? `<button class="rm-txtbtn" id="spStopLead" style="border-color:rgba(255,77,106,.5);color:#FFA6B5">Yayını Durdur</button>`
+      : `<button class="rm-txtbtn" id="spToggleFollow">${SP_SYNC.follow ? "✓ Senkrondasın" : "Katıl"}</button>`) +
+    `</div>`;
+  $("spJamQ").onclick = async () => {
+    const q = await rmPromptModal("Oda Jam Sırasına Ekle", "Şarkı adı veya sanatçı yaz…", "Sıraya Ekle");
+    if (q) S.core?.broadcast({ k: "sp", act: "q", query: q });
   };
-  if (isLead) $("spStopLead").onclick = spStopLead;
-  else $("spToggleFollow").onclick = () => {
+  if (isLead) {
+    $("spPrev").onclick = () => window.pywebview?.api?.music_spotify_control?.("prev").then(() => setTimeout(spLeadTick, 350));
+    $("spPlayTog").onclick = () => window.pywebview?.api?.music_spotify_control?.(playing ? "pause" : "play").then(() => setTimeout(spLeadTick, 350));
+    $("spNext").onclick = () => window.pywebview?.api?.music_spotify_control?.("next").then(() => setTimeout(spLeadTick, 350));
+    $("spStopLead").onclick = spStopLead;
+  } else $("spToggleFollow").onclick = () => {
     SP_SYNC.follow = !SP_SYNC.follow;
     SP_SYNC.lastUri = "";
-    spShowBar(title, artist, false);
+    spShowBar(title, artist, false, extra);
   };
 }
 
@@ -1122,8 +1170,9 @@ async function spLeadTick() {
   if (!SP_SYNC.lead) return;
   const r = await window.pywebview?.api?.music_spotify_now?.().catch(() => null);
   if (!r?.ok || !r.uri) return;
-  S.core?.broadcast({ k: "sp", act: "state", uri: r.uri, title: r.title || "", artist: r.artist || "", pos: r.progress_ms || 0, playing: !!r.playing, at: Date.now() });
-  spShowBar(r.title || "", r.artist || "", true);
+  const meta = { uri: r.uri, title: r.title || "", artist: r.artist || "", cover: r.cover || "", pos: r.progress_ms || 0, dur: r.duration_ms || 0, playing: !!r.playing, at: Date.now() };
+  S.core?.broadcast({ k: "sp", act: "state", ...meta });
+  spShowBar(meta.title, meta.artist, true, { cover: meta.cover, progress_ms: meta.pos, duration_ms: meta.dur, playing: meta.playing });
 }
 
 async function spIn(from, m) {
@@ -1138,7 +1187,7 @@ async function spIn(from, m) {
     return;
   }
   if (SP_SYNC.lead) return;
-  spShowBar(m.title || "", m.artist || "", false);
+  spShowBar(m.title || "", m.artist || "", false, { cover: m.cover || "", progress_ms: m.pos || 0, duration_ms: m.dur || 0, playing: m.playing });
   if (!SP_SYNC.follow || !m.uri || !window.pywebview?.api?.music_spotify_play) return;
   const estPos = Math.max(0, (m.pos || 0) + (m.playing ? (Date.now() - (m.at || Date.now())) : 0));
   const changedTrack = m.uri !== SP_SYNC.lastUri;

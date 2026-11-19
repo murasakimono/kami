@@ -254,17 +254,17 @@ dialog[open] { animation: rise .16s ease-out; }
 .settings-form { padding: 8px 26px 26px; }
 .dialog-head { display: flex; align-items: center; position: sticky; top: 0; background: var(--panel); padding: 18px 0 12px; border-bottom: 1px solid var(--line); z-index: 1; }
 .dialog-head h2 { margin: 0; font: 600 20px/1.2 var(--font-display); letter-spacing: .3px; }
-fieldset { border: 1px solid rgba(157, 107, 255, .14); border-radius: 12px; padding: 14px 18px; margin: 18px 0 0; background: rgba(255, 255, 255, .018); }
-legend { float: left; width: 100%; padding: 0 0 8px; margin: 0 0 8px; border-bottom: 1px solid rgba(157, 107, 255, .12); font: 600 13px var(--font-display); color: var(--accent); letter-spacing: .3px; }
+fieldset { border: 1px solid rgba(157, 107, 255, .14); border-radius: 12px; padding: 16px 20px; margin: 20px 0 0; background: rgba(255, 255, 255, .018); }
+legend { float: left; width: 100%; padding: 0 0 10px; margin: 0 0 10px; border-bottom: 1px solid rgba(157, 107, 255, .12); font: 600 13px var(--font-display); color: var(--accent); letter-spacing: .3px; }
 legend + * { clear: both; }
-.row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; }
 .row.stack { flex-direction: column; align-items: stretch; gap: 6px; }
 .row input[type=number] { width: 110px; }
 .row input, .row select {
   height: 32px; padding: 0 10px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm);
 }
 .row input:focus, .row select:focus { border-color: var(--accent); outline: none; }
-.check { display: flex; gap: 10px; align-items: center; padding: 6px 0; cursor: pointer; }
+.check { display: flex; gap: 12px; align-items: center; padding: 8px 0; cursor: pointer; }
 .check input { width: 16px; height: 16px; accent-color: var(--accent); }
 .dir-row { flex-wrap: wrap; }
 .dir-ctl { display: flex; gap: 6px; align-items: center; min-width: 0; flex: 1; justify-content: flex-end; }

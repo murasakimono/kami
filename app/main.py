@@ -802,18 +802,29 @@ def main() -> int:
         api.resume_all()
 
     def quit_app() -> None:
-        # Yalnizca ana pencereyi kapatmak yetmiyordu: mini kart / Player / Studio acik kalinca surec tepside
-        # "hayalet" olarak yasiyor, sonraki acilista mutex "zaten calisiyor" deyip olmayan pencereyi one getirmeye
-        # calisiyordu ("pencere hic gelmiyor"). Hepsini kapat; takilan bir pencere sureci tutarsa 12 sn sonra cik.
         if quitting["v"]:
             return
         quitting["v"] = True
+        try:
+            tray.stop()
+        except Exception:
+            pass
+        for fn in (
+            lambda: __import__("app.core.librespot_host", fromlist=["stop"]).stop(),
+            lambda: __import__("app.core.room", fromlist=["SERVER"]).SERVER.stop(),
+            lambda: manager.stop(),
+            lambda: bridge.stop(),
+        ):
+            try:
+                fn()
+            except Exception:
+                pass
         for w in list(webview.windows):
             try:
                 w.destroy()
             except Exception:
-                log.exception("Pencere kapatilamadi")
-        t = threading.Timer(12.0, lambda: os._exit(0))
+                log.debug("Pencere kapatilamadi")
+        t = threading.Timer(1.2, lambda: os._exit(0))
         t.daemon = True
         t.start()
 
@@ -949,7 +960,7 @@ def main() -> int:
     # ---- Faz 7.5: Masaustu Mini-Ada Seridi
     def _make_island_window():
         sc = webview.screens[0] if webview.screens else None
-        w, h = 480, 52
+        w, h = 540, 50
         x, y = ((sc.x + (sc.width - w) // 2), (sc.y + 14)) if sc else (None, None)
         win = webview.create_window(
             "Kami Mini-Ada",
@@ -974,8 +985,8 @@ def main() -> int:
                 winwin.round_pill("Kami Mini-Ada")
             except Exception:
                 pass
-        win.events.loaded += _clip_island
-        win.events.shown += _clip_island
+        win.events.loaded += lambda: (_clip_island(), threading.Timer(0.18, _clip_island).start())
+        win.events.shown += lambda: (_clip_island(), threading.Timer(0.18, _clip_island).start())
         return win
 
     api._island_factory = _make_island_window
