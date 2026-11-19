@@ -217,23 +217,6 @@
   }
   window.toggleKamiScratchpad = toggleScratchpad;
 
-  // Sunak ust barina Not & Oturum dugmesi ekle
-  const skStatus = document.querySelector("#sunak .sk-status");
-  if (skStatus && !document.getElementById("skScratchBtn")) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.id = "skScratchBtn";
-    b.className = "sk-chip sk-cap-btn";
-    b.title = "Zaman/Sayfa Damgalı Karalama Kartı (Alt+N) · Sağ tık: Son Oturumu Geri Yükle";
-    b.innerHTML = "📝 <b>Not</b>";
-    b.onclick = toggleScratchpad;
-    b.oncontextmenu = async (e) => {
-      e.preventDefault();
-      await callApi()?.session_snapshot_restore?.();
-    };
-    skStatus.prepend(b);
-  }
-
   // ---- 3. A4: Basili Tutunca Acilan Baglamsal Kisayol Kopya Kagidi (F1 basili tutunca / Alt+K / Shift+*) ----
   const cheat = document.createElement("div");
   cheat.id = "k20Cheat";
