@@ -513,11 +513,52 @@
     if (on) refreshDevices("");
   }
 
+  let LAST_POLL_TS = Date.now();
+  function renderLyricsPanel(curMs) {
+    if (spLyr.hidden || !CUR_TRACK) return;
+    const sec = Math.max(0, (curMs || 0) / 1000);
+    let activeIdx = -1;
+    LYRICS.forEach((ln, idx) => { if (ln.t >= 0 && ln.t <= sec + 0.12) activeIdx = idx; });
+    const lyrTrackState = `${LAST_TRACK}|${LYRICS.length}`;
+    if (spLyr.dataset.trackState !== lyrTrackState) {
+      spLyr.dataset.trackState = lyrTrackState;
+      spLyr.dataset.activeIdx = "";
+      const hd = `<div class="lyr-hd"><span>Şarkı Sözleri${CUR_TRACK?.title ? " · " + esc(CUR_TRACK.title) : ""}</span><button class="btn" id="spLyrX" style="padding:2px 8px">${_ICO_X}</button></div>`;
+      if (!LYRICS.length) {
+        spLyr.innerHTML = hd + `<div style="color:var(--mut)">Bu parça için şarkı sözü bulunamadı.</div>`;
+      } else {
+        spLyr.innerHTML = hd + LYRICS.map((ln, idx) => `<div class="lyr-ln${idx === activeIdx ? " on" : ""}" data-idx="${idx}" data-ms="${ln.t >= 0 ? Math.round(ln.t * 1000) : ""}">${esc(ln.text)}</div>`).join("");
+      }
+      document.getElementById("spLyrX")?.addEventListener("click", () => { spLyr.hidden = true; spLyrBtn.classList.remove("on"); });
+    }
+    if (LYRICS.length && spLyr.dataset.activeIdx !== String(activeIdx)) {
+      spLyr.dataset.activeIdx = String(activeIdx);
+      spLyr.querySelectorAll(".lyr-ln.on").forEach((el) => el.classList.remove("on"));
+      const curRow = activeIdx >= 0 ? spLyr.querySelector(`.lyr-ln[data-idx="${activeIdx}"]`) : null;
+      if (curRow) {
+        curRow.classList.add("on");
+        curRow.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    }
+  }
+
+  setInterval(() => {
+    if (!CUR_TRACK || document.hidden) return;
+    const elapsed = SP_PLAYING ? Math.max(0, Date.now() - LAST_POLL_TS) : 0;
+    const curMs = Math.min(CUR_TRACK.duration_ms || 0, (CUR_TRACK.progress_ms || 0) + elapsed);
+    spPos.textContent = fmtMs(curMs);
+    if (!SEEK_LOCK && CUR_TRACK.duration_ms > 0) {
+      spSeek.value = Math.round((curMs / CUR_TRACK.duration_ms) * 1000);
+    }
+    if (!spLyr.hidden) renderLyricsPanel(curMs);
+  }, 250);
+
   async function pollSpotify() {
     const r = await api()?.music_spotify_now?.().catch(() => null);
     if (!r?.ok) return;
     if (!r.title) { spTitle.textContent = "Çalan parça yok"; spArtist.textContent = "Spotify cihazı açık değil veya yerel çalabilirsin"; spCov.hidden = true; return; }
     CUR_TRACK = r; SP_PLAYING = !!r.playing; SP_SHUF = !!r.shuffle; SP_REP = r.repeat || "off";
+    LAST_POLL_TS = Date.now();
     spPlayBtn.innerHTML = SP_PLAYING ? '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>' : '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
     spShuf.classList.toggle("on", SP_SHUF); spRep.classList.toggle("on", SP_REP !== "off");
     spRep.title = SP_REP === "track" ? "Tekrar: bu şarkı" : SP_REP === "context" ? "Tekrar: liste" : "Tekrarla"; spRep.dataset.one = SP_REP === "track" ? "1" : "";
@@ -546,24 +587,9 @@
       const lr = await api()?.music_lyrics?.(r.title, r.artist).catch(() => null);
       LYRICS = lr?.lines || [];
       if (!LYRICS.length && lr?.plain) LYRICS = lr.plain.split(/\r?\n/).filter(Boolean).map((tx) => ({ t: -1, text: tx }));
+      spLyr.dataset.trackState = "";
     }
-    if (!spLyr.hidden) {
-      const sec = (r.progress_ms || 0) / 1000;
-      let activeIdx = -1;
-      LYRICS.forEach((ln, idx) => { if (ln.t >= 0 && ln.t <= sec) activeIdx = idx; });
-      const lyrState = `${LAST_TRACK}|${activeIdx}|${LYRICS.length}`;
-      if (spLyr.dataset.state !== lyrState) {
-        spLyr.dataset.state = lyrState;
-        const hd = `<div class="lyr-hd"><span>Şarkı Sözleri${CUR_TRACK?.title ? " · " + esc(CUR_TRACK.title) : ""}</span><button class="btn" id="spLyrX" style="padding:2px 8px">${_ICO_X}</button></div>`;
-        if (!LYRICS.length) {
-          spLyr.innerHTML = hd + `<div style="color:var(--mut)">Bu parça için şarkı sözü bulunamadı.</div>`;
-        } else {
-          spLyr.innerHTML = hd + LYRICS.map((ln, idx) => `<div class="lyr-ln${idx === activeIdx ? " on" : ""}" data-ms="${ln.t >= 0 ? Math.round(ln.t * 1000) : ""}">${esc(ln.text)}</div>`).join("");
-          spLyr.querySelector(".on")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        }
-        document.getElementById("spLyrX")?.addEventListener("click", () => { spLyr.hidden = true; spLyrBtn.classList.remove("on"); });
-      }
-    }
+    if (!spLyr.hidden) renderLyricsPanel(r.progress_ms || 0);
   }
   spLyr.onclick = async (e) => {
     const ln = e.target.closest(".lyr-ln[data-ms]");

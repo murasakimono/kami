@@ -585,7 +585,15 @@ function skDock(k) {
     toast(names[next]);
     return;
   }
-  if (k === "ai") { const d = state.items.find((x) => x.id === SK.sel); if (d) openMediaTools(d.id); else toast(skL("Önce bir video ya da şarkı seç", "Select a video or song first")); return; }
+  if (k === "ai") {
+    const d = state.items.find((x) => x.id === SK.sel) || null;
+    if (typeof window.openKamiAiLyricsStudio === "function") {
+      window.openKamiAiLyricsStudio(d);
+    } else if (d) {
+      openMediaTools(d.id);
+    }
+    return;
+  }
   const go = () => {
     document.body.classList.add("sk-drawer");
     document.body.classList.toggle("sk-list", k === "list");

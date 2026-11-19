@@ -70,26 +70,70 @@ def set_caption_color(title: str = "", hwnd: int = 0, rgb: tuple[int, int, int] 
 
 
 def round_pill(title: str, hwnd: int = 0) -> bool:
-    """Mini-Ada vb. cercevesiz pencereleri tam hap (kapsul) seklinde kirpar; dis kose dikdortgeni gorunmez."""
-    if not (user32 and gdi32):
+    """Mini-Ada vb. cercevesiz pencereleri Kami Player MiniWindow ile birebir ayni Windows 11 DWM yuvarlak koseye gecirir."""
+    if not user32:
         return False
     h = int(hwnd or find_window(title))
     if not (h and user32.IsWindow(h)):
         return False
-    r = _RECT()
-    if not user32.GetClientRect(h, ctypes.byref(r)):
-        return False
-    w, hh = max(2, int(r.right - r.left)), max(2, int(r.bottom - r.top))
-    if dwmapi is not None:
-        try:   # DWMWCP_DONOTROUND (1): Win11 DWM kapsul rgn disina ikinci dikdortgen golge/cerceve cizmesin
-            pref = ctypes.c_int(1)
-            dwmapi.DwmSetWindowAttribute(h, 33, ctypes.byref(pref), ctypes.sizeof(pref))
+    try:
+        u = MiniWindow._api()
+        style = u.GetWindowLongPtrW(h, MiniWindow.GWL_STYLE)
+        if style & MiniWindow.FRAME:
+            u.SetWindowLongPtrW(h, MiniWindow.GWL_STYLE, style & ~MiniWindow.FRAME)
+            u.SetWindowPos(h, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0020 | 0x0010)
+    except Exception:
+        pass
+    if gdi32 is not None:
+        try:
+            user32.SetWindowRgn(h, 0, True)
         except Exception:
             pass
-    rgn = gdi32.CreateRoundRectRgn(0, 0, w + 1, hh + 1, hh, hh)
-    if not rgn:
+    if dwmapi is not None:
+        try:   # DWMWCP_ROUND (2): Kami Player MiniWindow ile ayni DWM donanimsal yuvarlak kose
+            pref = ctypes.c_int(2)
+            dwmapi.DwmSetWindowAttribute(wintypes.HWND(h), 33, ctypes.byref(pref), ctypes.sizeof(pref))
+            border = _colorref((58, 46, 82))
+            dwmapi.DwmSetWindowAttribute(wintypes.HWND(h), 34, ctypes.byref(border), ctypes.sizeof(border))
+        except Exception:
+            pass
+    return True
+
+
+_FS_SAVED: dict[str, tuple] = {}
+
+
+def set_fullscreen(title: str, on: bool = True) -> bool:
+    """Pencereyi (or. Kami Games Big Picture) tam ekran cercevesiz konsol moduna gecirir / eski haline dondurur."""
+    if not user32:
         return False
-    return bool(user32.SetWindowRgn(h, rgn, True))
+    hwnd = find_window(title)
+    if not hwnd:
+        return False
+    u = MiniWindow._api()
+    if on:
+        if u.IsZoomed(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
+        if title not in _FS_SAVED:
+            r = _RECT()
+            u.GetWindowRect(hwnd, ctypes.byref(r))
+            _FS_SAVED[title] = (u.GetWindowLongPtrW(hwnd, MiniWindow.GWL_STYLE), r.left, r.top, r.right - r.left, r.bottom - r.top)
+        style = _FS_SAVED[title][0]
+        u.SetWindowLongPtrW(hwnd, MiniWindow.GWL_STYLE, style & ~MiniWindow.FRAME)
+        mi = _MONINFO()
+        mi.cbSize = ctypes.sizeof(_MONINFO)
+        u.GetMonitorInfoW(u.MonitorFromWindow(hwnd, 2), ctypes.byref(mi))
+        m = mi.rcMonitor
+        u.SetWindowPos(hwnd, 0, m.left, m.top, m.right - m.left, m.bottom - m.top,
+                       MiniWindow.SWP_FRAMECHANGED | MiniWindow.SWP_SHOWWINDOW | MiniWindow.SWP_ASYNC)
+        return True
+    saved = _FS_SAVED.pop(title, None)
+    if not saved:
+        return False
+    style, x, y, w, h = saved
+    u.SetWindowLongPtrW(hwnd, MiniWindow.GWL_STYLE, style)
+    u.SetWindowPos(hwnd, -2, x, y, w, h, MiniWindow.SWP_FRAMECHANGED | MiniWindow.SWP_SHOWWINDOW | MiniWindow.SWP_ASYNC)
+    return True
 
 
 def resize_pill(title: str, width: int, height: int, hwnd: int = 0) -> bool:

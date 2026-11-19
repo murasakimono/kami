@@ -162,10 +162,16 @@ class StudioMixin:
         return str(out)
 
     def studio_peaks(self, path: str) -> dict[str, Any]:
-        return self._st().peaks(str(path))
+        p = str(path or "")
+        if not p or not os.path.isfile(p):
+            return {"per_sec": 100, "peaks": "", "missing": True}
+        return self._st().peaks(p)
 
     def studio_thumbs(self, path: str, count: int = 12) -> dict[str, Any]:
-        return self._st().thumbs(str(path), int(count))
+        p = str(path or "")
+        if not p or not os.path.isfile(p):
+            return {"thumbs": [], "missing": True}
+        return self._st().thumbs(p, int(count))
 
     def studio_beats(self, path: str) -> dict[str, Any]:
         return self._st().beats(str(path))

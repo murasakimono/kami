@@ -292,12 +292,15 @@ def check_log_errors() -> dict[str, Any]:
     from app.core.extras import APP_VERSION
     cutoff = time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() - 86400))
     ver_tag = f"Kami {APP_VERSION}"
-    start_idx = next((i for i, ln in enumerate(tail) if ver_tag in ln), 0)
-    errs = [ln for ln in tail[start_idx:] if " ERROR " in ln and ln[:16] >= cutoff]
+    start_idx = max((i for i, ln in enumerate(tail) if ver_tag in ln or "DOKTOR_LOG_TEMIZLENDI" in ln), default=0)
+    errs = [
+        ln for ln in tail[start_idx:]
+        if " ERROR " in ln and ln[:16] >= cutoff and "studio_peaks" not in ln and "studio_thumbs" not in ln
+    ]
     if not errs:
         return _r("log", "Son hatalar (24 sa)", "ok", "Hata yok")
     last = re.sub(r"^\S+ \S+ ERROR ", "", errs[-1])[:160]
-    return _r("log", "Son hatalar (24 sa)", "warn", f"{len(errs)} hata · son: {last}")
+    return _r("log", "Son hatalar (24 sa)", "warn", f"{len(errs)} hata · son: {last}", "clear_logs")
 
 
 def check_spotify() -> dict[str, Any]:
@@ -455,7 +458,30 @@ def fix_ollama_start() -> dict[str, Any]:
     env.setdefault("OLLAMA_KEEP_ALIVE", "2m")
     subprocess.Popen([exe, "serve"], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    import urllib.request
+    host = os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434"
+    for _ in range(16):
+        time.sleep(0.25)
+        try:
+            with urllib.request.urlopen(host + "/api/tags", timeout=1.0):
+                break
+        except Exception:
+            pass
     return {"ok": True, "message": "Ollama başlatıldı (2 dk VRAM koruma modu)"}
 
 
-FIXES: dict[str, Callable[[], dict[str, Any]]] = {"copy_virtual_keys": fix_copy_virtual_keys, "ollama_start": fix_ollama_start}
+def fix_clear_logs() -> dict[str, Any]:
+    f = paths.DATA_DIR / "kami.log"
+    try:
+        with f.open("a", encoding="utf-8") as fh:
+            fh.write(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} INFO DOKTOR_LOG_TEMIZLENDI\n")
+        return {"ok": True, "message": "Geçmiş hata kayıtları sıfırlandı"}
+    except OSError as exc:
+        return {"ok": False, "message": str(exc)}
+
+
+FIXES: dict[str, Callable[[], dict[str, Any]]] = {
+    "copy_virtual_keys": fix_copy_virtual_keys,
+    "ollama_start": fix_ollama_start,
+    "clear_logs": fix_clear_logs,
+}

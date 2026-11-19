@@ -73,18 +73,55 @@
     .k20-crow { display: flex; justify-content: space-between; align-items: center; padding: 5px 8px; background: rgba(255,255,255,.03); border-radius: 7px; }
     .k20-crow kbd { background: #231A3A; border: 1px solid #9D6BFF; color: #2EE6A6; border-radius: 5px; padding: 2px 7px; font: 700 11px Consolas, monospace; }
 
-    /* #13: Fitts's Law 8-Dilimli Radyal Halka */
+    /* #13: Fitts's Law 8-Dilimli Radyal Halka (Tam Simetrik Dairesel) */
     #k20Radial {
       position: fixed; inset: 0; z-index: 9995; pointer-events: auto;
+      background: rgba(6, 4, 12, .28);
     }
-    .k20-rnode {
-      position: fixed; width: 84px; height: 34px; margin-left: -42px; margin-top: -17px;
-      background: rgba(18, 13, 30, .96); border: 1px solid #9D6BFF; border-radius: 99px;
-      color: #EDE9F6; font: 600 11.5px "Chakra Petch", sans-serif;
+    .k20-rsvg {
+      position: fixed; width: 280px; height: 280px; margin-left: -140px; margin-top: -140px;
+      pointer-events: none;
+    }
+    .k20-rhub {
+      position: fixed; width: 44px; height: 44px; margin-left: -22px; margin-top: -22px;
+      border-radius: 50%; background: rgba(18, 13, 30, .96); border: 1.5px solid rgba(46,230,166,.65);
+      color: #2EE6A6; font: 700 14px "Chakra Petch", sans-serif;
       display: grid; place-items: center; cursor: pointer;
-      box-shadow: 0 8px 22px rgba(0,0,0,.65); transition: transform .12s, border-color .12s, background .12s;
+      box-shadow: 0 0 22px rgba(46,230,166,.28); transition: transform .14s ease, background .14s ease;
     }
-    .k20-rnode:hover { transform: scale(1.1); border-color: #2EE6A6; background: #2A1C4B; color: #2EE6A6; }
+    .k20-rhub:hover { transform: scale(1.1); background: #231A38; }
+    .k20-rnode {
+      position: fixed; width: 68px; height: 68px; margin-left: -34px; margin-top: -34px;
+      box-sizing: border-box; padding: 0;
+      background: rgba(18, 13, 30, .96); border: 1.5px solid rgba(157,107,255,.65); border-radius: 50%;
+      color: #EDE9F6; font: 600 11px "Chakra Petch", sans-serif;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+      cursor: pointer;
+      box-shadow: 0 10px 26px rgba(0,0,0,.72); transition: transform .14s cubic-bezier(.22,1,.36,1), border-color .14s, background .14s, color .14s;
+    }
+    .k20-rnode svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .k20-rnode:hover { transform: scale(1.13); border-color: #2EE6A6; background: #261942; color: #2EE6A6; box-shadow: 0 0 20px rgba(46,230,166,.35); }
+    /* AI MP3 Whisper + UVR5 Surukle-Birak Studyosu */
+    #k20AiModal {
+      position: fixed; inset: 0; z-index: 9100; background: rgba(6, 4, 12, .82);
+      backdrop-filter: blur(8px); display: grid; place-items: center; padding: 18px;
+    }
+    .k20-aibox {
+      width: min(680px, 94vw); max-height: 88vh; overflow-y: auto;
+      background: #120E1D; border: 1px solid rgba(157,107,255,.5); border-radius: 14px;
+      padding: 18px 20px; color: #EDE9F6; font: 500 13px "Chakra Petch", system-ui, sans-serif;
+      display: flex; flex-direction: column; gap: 12px; box-shadow: 0 24px 64px rgba(0,0,0,.75);
+    }
+    .k20-aidrop {
+      border: 1.5px dashed rgba(157,107,255,.55); border-radius: 12px; padding: 24px 18px;
+      background: rgba(24, 18, 38, .75); text-align: center; cursor: pointer;
+      transition: border-color .16s, background .16s;
+    }
+    .k20-aidrop:hover, .k20-aidrop.drag { border-color: #2EE6A6; background: rgba(46,230,166,.08); }
+    .k20-airow {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background: #181226; border: 1px solid rgba(157,107,255,.26); border-radius: 10px; padding: 10px 12px;
+    }
   `;
   document.head.appendChild(st);
 
@@ -332,33 +369,246 @@
     if (!e.altKey) return;
     e.preventDefault();
     closeRadial();
-    const cx = Math.max(130, Math.min(window.innerWidth - 130, e.clientX));
-    const cy = Math.max(130, Math.min(window.innerHeight - 130, e.clientY));
+    const cx = Math.max(155, Math.min(window.innerWidth - 155, e.clientX));
+    const cy = Math.max(155, Math.min(window.innerHeight - 155, e.clientY));
     const actions = [
-      ["▶ Player", () => callApi()?.player_show?.({ library: true })],
-      ["🎬 Studio", () => callApi()?.studio_show?.("")],
-      ["🖼 Picture", () => callApi()?.picture_open?.("")],
-      ["📖 Reader", () => callApi()?.reader_show?.("")],
-      ["🎮 Games", () => callApi()?.games_open?.()],
-      ["♪ Kamify", () => callApi()?.music_open?.()],
-      ["🧹 Cleaner", () => callApi()?.cleaner_open?.()],
-      ["📝 Not", () => toggleScratchpad()],
+      ["Player", '<svg viewBox="0 0 24 24"><polygon points="7 4 20 12 7 20 7 4"/></svg>', () => callApi()?.player_show?.({ library: true })],
+      ["Studio", '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M8 5v4M16 5v4"/></svg>', () => callApi()?.studio_show?.("")],
+      ["Picture", '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>', () => callApi()?.picture_open?.("")],
+      ["Reader", '<svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/></svg>', () => callApi()?.reader_show?.("")],
+      ["Games", '<svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="5"/><path d="M7 10v4M5 12h4M15.5 11h.01M18 13h.01"/></svg>', () => callApi()?.games_open?.()],
+      ["Kamify", '<svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>', () => callApi()?.music_open?.()],
+      ["Cleaner", '<svg viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>', () => callApi()?.cleaner_open?.()],
+      ["AI Söz", '<svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>', () => window.openKamiAiLyricsStudio?.()],
     ];
     radialEl = document.createElement("div");
     radialEl.id = "k20Radial";
-    const R = 96;
-    radialEl.innerHTML = actions.map(([lbl], i) => {
+    const R = 112;
+    const ringSvg = `<svg class="k20-rsvg" style="left:${cx}px;top:${cy}px" viewBox="0 0 280 280">
+      <circle cx="140" cy="140" r="${R}" fill="none" stroke="rgba(157,107,255,0.28)" stroke-width="1.5" stroke-dasharray="4 6"/>
+      <circle cx="140" cy="140" r="36" fill="none" stroke="rgba(46,230,166,0.18)" stroke-width="1"/>
+    </svg>`;
+    const hubHtml = `<button type="button" class="k20-rhub" style="left:${cx}px;top:${cy}px" title="Kapat">✕</button>`;
+    radialEl.innerHTML = ringSvg + hubHtml + actions.map(([lbl, ico], i) => {
       const ang = (i / actions.length) * Math.PI * 2 - Math.PI / 2;
       const x = Math.round(cx + Math.cos(ang) * R);
       const y = Math.round(cy + Math.sin(ang) * R);
-      return `<button type="button" class="k20-rnode" data-ri="${i}" style="left:${x}px;top:${y}px">${lbl}</button>`;
+      return `<button type="button" class="k20-rnode" data-ri="${i}" style="left:${x}px;top:${y}px">${ico}<span>${lbl}</span></button>`;
     }).join("");
     document.body.appendChild(radialEl);
     radialEl.onclick = (ev) => {
       const b = ev.target.closest("[data-ri]");
       const idx = b ? +b.dataset.ri : -1;
       closeRadial();
-      if (idx >= 0) actions[idx][1]();
+      if (idx >= 0) actions[idx][2]();
     };
   });
+
+  // ---- 5. Donusturucu Tarzi Surukle-Birak AI Altyazi · Vokal · MP3 Zaman Damgali Lirik Studyosu ----
+  let aiModal = null, aiDropPoll = 0;
+  const aiFiles = [];
+
+  async function processAiAudioFile(path, strong = true) {
+    if (!path) return;
+    let entry = aiFiles.find((x) => x.path === path);
+    if (!entry) {
+      entry = { path, name: path.split(/[\\/]/).pop() || path, status: "running", msg: strong ? "UVR5 Vokal Ayırma + Whisper Güçlü Mod başlatıldı…" : "Whisper başlatıldı…" };
+      aiFiles.unshift(entry);
+    } else {
+      entry.status = "running";
+      entry.msg = strong ? "UVR5 Vokal Ayırma + Whisper Güçlü Mod çalışıyor…" : "Whisper çalışıyor…";
+    }
+    renderAiFileList();
+    const r = await callApi()?.music_lrc_whisper?.(path, "tr", strong).catch((e) => ({ ok: false, error: String(e) }));
+    if (!r?.ok) {
+      entry.status = "error";
+      entry.msg = r?.error === "tool_missing"
+        ? `Önce ${r.tool === "uvr" ? "UVR5" : "Whisper"} ortamı kurulmalı (Ayarlar > Medya)`
+        : (`Hata: ${r?.error || "başlatılamadı"}`);
+      renderAiFileList();
+      return;
+    }
+    // Arka plan isini yokla (.lrc olusana veya aktif is bitene kadar)
+    for (let step = 0; step < 180; step++) {
+      await new Promise((res) => setTimeout(res, 2000));
+      const hudSt = await callApi()?.active_jobs_hud?.().catch(() => null);
+      const running = (hudSt?.items || []).find((it) => it.kind === "AI" || it.title?.includes("LRC") || it.title?.includes("Whisper"));
+      if (running) {
+        entry.msg = `${running.title} · %${running.pct || 0}`;
+        renderAiFileList();
+      }
+      const lrc = await callApi()?.music_lrc_read?.(path).catch(() => null);
+      if (lrc?.ok && lrc.lines?.length && !running) {
+        entry.status = "done";
+        entry.msg = `✓ ${lrc.lines.length} satır zaman damgalı (.lrc + MP3 USLT) hazır`;
+        renderAiFileList();
+        return;
+      }
+    }
+    entry.status = "done";
+    entry.msg = "İşlem tamamlandı — Söz Düzenle ile kontrol edebilirsin";
+    renderAiFileList();
+  }
+
+  function renderAiFileList() {
+    const box = aiModal?.querySelector("#k20AiList");
+    if (!box) return;
+    if (!aiFiles.length) {
+      box.innerHTML = `<div style="color:#8E86A3;font-size:12px;text-align:center;padding:8px">Henüz dosya bırakılmadı. Yukarıya MP3/WAV/FLAC/MP4 sürükleyip bırakabilirsin.</div>`;
+      return;
+    }
+    box.innerHTML = aiFiles.map((f, idx) => `
+      <div class="k20-airow">
+        <div style="min-width:0;flex:1">
+          <b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</b>
+          <small style="color:${f.status === "done" ? "#2EE6A6" : f.status === "error" ? "#FF6B8B" : "#C4B5FD"}">${esc(f.msg)}</small>
+        </div>
+        <div style="display:flex;gap:6px;flex:none">
+          <button type="button" class="btn" data-airetry="${idx}" title="Yeniden Çalıştır">↻</button>
+          <button type="button" class="btn pri" data-aiedit="${idx}">✎ Söz Düzenle</button>
+          <button type="button" class="btn" data-aiplay="${idx}" title="Kami Player'da Oynat">▶</button>
+        </div>
+      </div>
+    `).join("");
+    box.querySelectorAll("[data-airetry]").forEach((b) => {
+      b.onclick = () => {
+        const f = aiFiles[+b.dataset.airetry];
+        const strong = aiModal?.querySelector("#k20AiStrong")?.checked !== false;
+        if (f) processAiAudioFile(f.path, strong);
+      };
+    });
+    box.querySelectorAll("[data-aiedit]").forEach((b) => {
+      b.onclick = () => {
+        const f = aiFiles[+b.dataset.aiedit];
+        if (f) openQuickLrcModal(f.path, f.name);
+      };
+    });
+    box.querySelectorAll("[data-aiplay]").forEach((b) => {
+      b.onclick = () => {
+        const f = aiFiles[+b.dataset.aiplay];
+        if (f) callApi()?.player_show?.({ path: f.path });
+      };
+    });
+  }
+
+  async function openQuickLrcModal(path, titleHint) {
+    const r = await callApi()?.music_lrc_read?.(path).catch(() => null);
+    const rawInit = r?.raw || (r?.lines || []).map((ln) => {
+      const t = Number(ln.t ?? -1);
+      if (t < 0) return ln.text || "";
+      const mm = String(Math.floor(t / 60)).padStart(2, "0");
+      const ss = (t % 60).toFixed(2).padStart(5, "0");
+      return `[${mm}:${ss}]${ln.text || ""}`;
+    }).join("\n");
+    const ed = document.createElement("div");
+    ed.id = "k20LrcQuick";
+    ed.style.cssText = "position:fixed;inset:0;z-index:9300;background:rgba(5,4,10,.86);display:grid;place-items:center;padding:18px";
+    ed.innerHTML = `
+      <div class="k20-aibox" style="width:min(680px,95vw)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <b>✎ Zaman Damgalı .LRC Düzenleyici · <span style="color:#2EE6A6">${esc(titleHint || path.split(/[\\/]/).pop())}</span></b>
+          <button type="button" class="btn" id="k20LqClose">✕</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn" id="k20LqOllama">✨ Ollama (qwen2.5:3b) ile Yazım Hatalarını Düzelt</button>
+          <span id="k20LqMsg" style="font-size:12px;color:#2EE6A6;align-self:center"></span>
+        </div>
+        <textarea id="k20LqText" rows="14" style="width:100%;box-sizing:border-box;background:#09070F;border:1px solid #35294D;border-radius:10px;color:#EDE9F6;padding:10px;font:12.5px Consolas,monospace">${esc(rawInit)}</textarea>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button type="button" class="btn pri" id="k20LqSave">💾 .LRC + MP3 USLT Kaydet</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(ed);
+    ed.querySelector("#k20LqClose").onclick = () => ed.remove();
+    ed.querySelector("#k20LqOllama").onclick = async () => {
+      const ta = ed.querySelector("#k20LqText");
+      const msg = ed.querySelector("#k20LqMsg");
+      if (!ta.value.trim()) return;
+      msg.textContent = "Ollama düzeltiyor…";
+      const res = await callApi()?.music_lrc_ollama_polish?.(ta.value, titleHint, "").catch(() => null);
+      if (res?.ok && res.text) { ta.value = res.text; msg.textContent = "✓ Ollama ile düzeltildi"; }
+      else msg.textContent = res?.error || "Ollama kapalı (Kami Doktor'dan başlat)";
+    };
+    ed.querySelector("#k20LqSave").onclick = async () => {
+      const ta = ed.querySelector("#k20LqText");
+      const msg = ed.querySelector("#k20LqMsg");
+      const res = await callApi()?.music_lrc_save?.(path, ta.value, "", titleHint).catch(() => null);
+      msg.textContent = res?.ok ? "✓ Kaydedildi (.lrc + MP3 gömülü söz)" : (res?.error || "Kaydedilemedi");
+    };
+  }
+
+  window.openKamiAiLyricsStudio = function openKamiAiLyricsStudio(selDownloadItem = null) {
+    if (aiModal) { aiModal.remove(); aiModal = null; }
+    clearInterval(aiDropPoll);
+    callApi()?.ai_drop_view?.(true);
+    aiModal = document.createElement("div");
+    aiModal.id = "k20AiModal";
+    aiModal.innerHTML = `
+      <div class="k20-aibox">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <b style="font-size:15px">🎙 AI Altyazı · Vokal Ayırma · MP3 Zaman Damgalı Lirik Stüdyosu</b>
+            <div style="font-size:11.5px;color:#9A90AB;margin-top:2px">Dönüştürücü gibi MP3/Ses/Video dosyanı sürükleyip bırak; otomatik UVR5 ile vokali ayırıp Whisper ile zaman damgalı <code>.lrc</code> üretir.</div>
+          </div>
+          <button type="button" class="btn" id="k20AiClose">Kapat (Esc)</button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;background:#171226;padding:8px 12px;border-radius:10px;border:1px solid rgba(157,107,255,.25)">
+          <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
+            <input type="checkbox" id="k20AiStrong" checked>
+            <span><b>Güçlü Şarkı Modu:</b> Önce UVR5 ile vokali arka plan müziğinden ayır, sonra Whisper ile tam zaman damgalı <code>.lrc</code> çıkar</span>
+          </label>
+        </div>
+        <div class="k20-aidrop" id="k20AiDropZone">
+          <div style="font-size:24px;margin-bottom:6px">🎵 ⬇ 🎙</div>
+          <b style="font-size:14px;color:#EDE9F6">MP3 / WAV / FLAC / MP4 dosyasını buraya sürükleyip bırak</b>
+          <div style="font-size:12px;color:#9A90AB;margin-top:4px">veya bilgisayarından dosya seçmek için buraya tıkla (bırakınca otomatik başlar)</div>
+        </div>
+        ${selDownloadItem ? `
+          <div style="display:flex;align-items:center;justify-content:space-between;background:#1A142B;padding:8px 12px;border-radius:10px;border:1px solid rgba(46,230,166,.35)">
+            <span style="font-size:12px">Seçili İndirme: <b style="color:#2EE6A6">${esc(selDownloadItem.filename || selDownloadItem.url || "")}</b></span>
+            <button type="button" class="btn" id="k20AiOpenLegacy">Klasik Medya Araçlarını Aç</button>
+          </div>
+        ` : ""}
+        <div id="k20AiList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+    `;
+    document.body.appendChild(aiModal);
+    renderAiFileList();
+
+    const closeAi = () => {
+      clearInterval(aiDropPoll);
+      callApi()?.ai_drop_view?.(false);
+      aiModal?.remove();
+      aiModal = null;
+    };
+    aiModal.querySelector("#k20AiClose").onclick = closeAi;
+    aiModal.onclick = (e) => { if (e.target === aiModal) closeAi(); };
+    if (selDownloadItem && aiModal.querySelector("#k20AiOpenLegacy")) {
+      aiModal.querySelector("#k20AiOpenLegacy").onclick = () => {
+        closeAi();
+        if (typeof window.openMediaTools === "function") window.openMediaTools(selDownloadItem.id);
+      };
+    }
+
+    const dz = aiModal.querySelector("#k20AiDropZone");
+    dz.onclick = async () => {
+      const picked = await callApi()?.ai_drop_pick?.().catch(() => []) || [];
+      const strong = aiModal?.querySelector("#k20AiStrong")?.checked !== false;
+      for (const p of picked) processAiAudioFile(p, strong);
+    };
+    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
+    dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+    dz.addEventListener("drop", () => dz.classList.remove("drag"));
+
+    // Python DOMEventHandler on_drop ile gelen tam dosya yollarini (pywebviewFullPath) yokla
+    aiDropPoll = setInterval(async () => {
+      if (!aiModal) return;
+      const got = await callApi()?.ai_drop_inbox?.().catch(() => []) || [];
+      if (got.length) {
+        const strong = aiModal?.querySelector("#k20AiStrong")?.checked !== false;
+        for (const p of got) processAiAudioFile(p, strong);
+      }
+    }, 350);
+  };
 })();

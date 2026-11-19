@@ -611,6 +611,32 @@ def _handler(srv: RoomServer):
                 elif rest[0] == "deck" and len(rest) == 1:   # v1.31.2: Kami Deck tunel (trycloudflare) uzerinden de
                     from app.core.deck_page import DECK_HTML
                     self._send(DECK_HTML.encode("utf-8"), MIME[".html"])
+                elif rest[0] == "portal" and len(rest) == 1:
+                    from app.core.phone import _PORTAL_HTML
+                    self._send(_PORTAL_HTML.encode("utf-8"), MIME[".html"])
+                elif rest == ["portal", "data"]:
+                    ph = getattr(srv, "phone_srv", None)
+                    if not ph:
+                        return self._json({"ok": False, "error": "phone_off"}, 503)
+                    exp = ph.key()
+                    got = str(self.headers.get("X-Kami-Key") or (q.get("k") or [""])[0])
+                    if not exp or not hmac.compare_digest(got.encode(), exp.encode()):
+                        return self._json({"ok": False, "error": "key"}, 401)
+                    self._json(ph.portal_data())
+                elif rest == ["portal", "file"]:
+                    ph = getattr(srv, "phone_srv", None)
+                    if not ph:
+                        return self._err(503)
+                    exp = ph.key()
+                    got = str(self.headers.get("X-Kami-Key") or (q.get("k") or [""])[0])
+                    if not exp or not hmac.compare_digest(got.encode(), exp.encode()):
+                        return self._err(401)
+                    fpath = ph.resolve_portal_file(str((q.get("p") or [""])[0]))
+                    if not fpath or not os.path.isfile(fpath):
+                        return self._err(404)
+                    import mimetypes
+                    ctype = mimetypes.guess_type(fpath)[0] or "application/octet-stream"
+                    self._send(Path(fpath).read_bytes(), ctype)
                 elif rest[0] == "s" and len(rest) == 2 and rest[1] in STATIC:
                     f = paths.WEB_DIR / STATIC[rest[1]]
                     self._send(f.read_bytes(), MIME.get(f.suffix, "application/octet-stream"), "max-age=300")

@@ -213,28 +213,85 @@
     .rdb-card small { color:#2EE6A6; display:block; margin-bottom:4px; font-weight:700; }
     .rdb-card.blur-q p { filter:blur(5px); transition:filter .18s; }
     .rdb-card.blur-q:hover p { filter:none; }
+    .rd-tools-wrap { position:relative; display:inline-flex; }
+    #rdToolsMenu {
+      position:fixed; right:52px; top:48px; z-index:95;
+      width:265px; background:#140F20; border:1px solid rgba(157,107,255,.45);
+      border-radius:12px; padding:8px; box-shadow:0 16px 42px rgba(0,0,0,.72);
+      display:flex; flex-direction:column; gap:5px;
+    }
+    #rdToolsMenu[hidden] { display:none !important; }
+    #rdToolsMenu button, #rdToolsMenu select {
+      width:100% !important; text-align:left !important; justify-content:flex-start !important;
+      display:flex !important; align-items:center !important; gap:8px !important;
+      padding:7px 10px !important; border-radius:8px !important;
+      background:#1B142C !important; border:1px solid rgba(255,255,255,.07) !important;
+      color:#EDE9F6 !important; font:600 12px "Chakra Petch",system-ui,sans-serif !important;
+    }
+    #rdToolsMenu button:hover, #rdToolsMenu button.on { border-color:#2EE6A6 !important; color:#2EE6A6 !important; }
   `;
   document.head.appendChild(d13Style);
 
   function mountReader20Buttons() {
     const top = document.querySelector(".rd-top");
-    if (!top || document.getElementById("rdRecallBtn")) return;
+    if (!top || document.getElementById("rdToolsWrap")) return;
     const drawerBtn = top.querySelector('[data-a="drawer"]');
+
+    const wrap = document.createElement("div");
+    wrap.id = "rdToolsWrap";
+    wrap.className = "rd-tools-wrap";
+    const tBtn = document.createElement("button");
+    tBtn.type = "button";
+    tBtn.id = "rdToolsBtn";
+    tBtn.title = "Görünüm, OCR, Sesli Okuma, Pano ve Sınav Araçları";
+    tBtn.textContent = "Araçlar ▾";
+    const menu = document.createElement("div");
+    menu.id = "rdToolsMenu";
+    menu.hidden = true;
+    wrap.append(tBtn, menu);
+    top.insertBefore(wrap, drawerBtn || null);
+
+    tBtn.onclick = (e) => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+      tBtn.classList.toggle("on", !menu.hidden);
+    };
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest?.("#rdToolsWrap")) {
+        menu.hidden = true;
+        tBtn.classList.remove("on");
+      }
+    });
+
     const btnRecall = document.createElement("button");
     btnRecall.id = "rdRecallBtn";
-    btnRecall.title = "Recall (Bulanık Hatırlama Sınav Modu — Vurguları gizler, üstüne gelince açar)";
-    btnRecall.textContent = "🧠 Sınav";
+    btnRecall.textContent = "🧠 Sınav Modu (Vurguları Bulanıklaştır)";
     const btnBoard = document.createElement("button");
     btnBoard.id = "rdBoardBtn";
-    btnBoard.title = "LiquidText Alıntı & Diyagram Panosu";
-    btnBoard.textContent = "📌 Pano";
+    btnBoard.textContent = "📌 Alıntı & Diyagram Panosu";
     const btnPanel = document.createElement("button");
     btnPanel.id = "rdPanelZoomBtn";
-    btnPanel.title = "Manga Kare-Kare (Guided Panel) Yakınlaştırma";
-    btnPanel.textContent = "▣ Kare";
-    top.insertBefore(btnPanel, drawerBtn || null);
-    top.insertBefore(btnBoard, drawerBtn || null);
-    top.insertBefore(btnRecall, drawerBtn || null);
+    btnPanel.textContent = "▣ Manga Kare Yakınlaştır";
+
+    // Ust bardaki ikincil butonlari Araclar ▾ menusu icine tasi (ust bar ferah kalsin)
+    const moveSelectors = [
+      ["#rdAnimMode", null],
+      ["#rdNight", "🌙 Gece / Ters Renk Modu"],
+      ["#rdFltBtn", "◐ Tarama Filtreleri (Kontrast/Gama)"],
+      ["#rdPeekBtn", "⊞ Görsel & Tablo Özeti"],
+      ["#rdTtsBtn", "🔊 Sesli Oku (TTS)"],
+      ["#rdOcrBtn", "🔍 Sayfayı OCR Çevir"],
+      ['[data-a="exportmd"]', "📝 Vurguları Markdown (.md) İndir"],
+      ['[data-a="ocrpdf"]', "📄 Taranmış PDF'i Aranabilir Yap"],
+    ];
+    for (const [sel, lbl] of moveSelectors) {
+      const el = top.querySelector(sel);
+      if (el) {
+        if (lbl) el.textContent = lbl;
+        menu.appendChild(el);
+      }
+    }
+    menu.append(btnPanel, btnBoard, btnRecall);
 
     let recallOn = false;
     btnRecall.onclick = () => {

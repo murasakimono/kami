@@ -53,18 +53,23 @@
   let _lastPausedCueIdx = -1, _hoverPaused = false, _userBaseRate = 1;
 
   function mountTopControls() {
-    const top = document.querySelector("#player .pl-top");
-    if (!top || document.getElementById("plV138Bar")) return;
     const ttl = document.querySelector("#player .pl-title");
     if (ttl && !document.getElementById("plChapNow")) {
       const ch = document.createElement("span");
       ch.id = "plChapNow";
       ttl.appendChild(ch);
     }
+    // Eski ust bar kalabaligini kaldir; yalnizca Ayarlar (⚙) > Araclar sekmesinin icine yerlestir
+    const panel = document.getElementById("plPanel");
+    if (!panel || document.getElementById("plV138Bar")) return;
+    const secs = [...panel.querySelectorAll(".px-sec")];
+    const toolsSec = secs[secs.length - 1] || panel;
     const bar = document.createElement("div");
     bar.id = "plV138Bar";
     bar.className = "pl-v138-bar";
+    bar.style.cssText = "margin-top:10px;padding-top:10px;border-top:1px solid rgba(157,107,255,.22);display:flex;flex-wrap:wrap;gap:6px";
     bar.innerHTML = `
+      <span style="width:100%;font-size:11px;color:#9F96B8;margin-bottom:2px">Dil Öğrenme &amp; Köprü Araçları</span>
       <button type="button" class="pl-v138-pill" data-rec="focus" title="Altyazı olmayan boşlukları azalt / diyaloğa odaklan">Diyalog Odak</button>
       <button type="button" class="pl-v138-pill" data-rec="gap3x" title="Konuşmalar arası boşlukta hızı 3× yap">Boşluk 3×</button>
       <button type="button" class="pl-v138-pill" data-rec="hover" title="Altyazı üzerine gelince duraklat">Hover Duraklat</button>
@@ -73,8 +78,7 @@
       <button type="button" class="pl-v138-pill" id="plBrSt" title="Bu klibi Kami Studio'da aç">Studio</button>
       <button type="button" class="pl-v138-pill" id="plBrAnki" title="Aktif altyazı cümlesi + kareyi Anki'ye gönder">Anki</button>
     `;
-    const closeBtn = document.getElementById("plClose");
-    top.insertBefore(bar, closeBtn || null);
+    toolsSec.appendChild(bar);
 
     bar.addEventListener("click", async (e) => {
       const rb = e.target.closest("[data-rec]");

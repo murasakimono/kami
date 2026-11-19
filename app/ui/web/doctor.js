@@ -3,7 +3,7 @@
 "use strict";
 (() => {
   const ICON = { ok: "✓", warn: "!", fail: "✕", info: "i" };
-  const FIXL = { copy_virtual_keys: "Anahtarları kopyala", room_relink: "Linki yenile", open_wv2: "WebView2'yi indir", restart_aria2: "Motoru Başlat", report: "Sorun paketi" };
+  const FIXL = { copy_virtual_keys: "Anahtarları kopyala", room_relink: "Linki yenile", open_wv2: "WebView2'yi indir", restart_aria2: "Motoru Başlat", ollama_start: "Başlat", clear_logs: "Temizle", report: "Sorun paketi" };
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   function css() {
     if (document.getElementById("kdocCss")) return;

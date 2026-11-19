@@ -2328,16 +2328,25 @@ class Api(StudioMixin):
         return True
 
     def room_island_cmd(self, cmd: str) -> bool:
-        if cmd in ("mute", "deaf", "open", "leave"):
-            if cmd == "open":
+        c = "mute" if cmd == "mic" else str(cmd or "")
+        if c in ("mute", "deaf", "open", "leave"):
+            if c == "open":
                 self.room_open(True)
                 return True
-            if cmd == "leave":
+            if c == "leave":
                 self._room_island = None
                 if getattr(self, "_island_auto", False) and self._island_shown:
                     self._island_auto = False
                     self.mini_island_toggle(False)
-            self._room_island_q = (getattr(self, "_room_island_q", []) + [cmd])[-5:]
+            elif isinstance(getattr(self, "_room_island", None), dict):
+                if c == "mute":
+                    self._room_island["muted"] = not bool(self._room_island.get("muted"))
+                elif c == "deaf":
+                    new_deaf = not bool(self._room_island.get("deaf"))
+                    self._room_island["deaf"] = new_deaf
+                    if new_deaf:
+                        self._room_island["muted"] = True
+            self._room_island_q = (getattr(self, "_room_island_q", []) + [c])[-5:]
         return True
 
     def room_island_poll(self) -> list[str]:
@@ -5488,4 +5497,34 @@ class Api(StudioMixin):
         if snap.get("book") and snap["book"].get("path") and os.path.exists(snap["book"]["path"]):
             self.reader_show(snap["book"]["path"])
         return {"ok": True, "snapshot": snap}
+
+    # ---------- AI Altyazi / Vokal / MP3 Zaman Damgali Lirik Surukle-Birak Studyosu ----------
+    def ai_drop_view(self, on: bool = True) -> bool:
+        self._ai_drop_view = bool(on)
+        return self._ai_drop_view
+
+    def ai_drop_add(self, paths_list: list[str]) -> None:
+        with self._conv_lock:
+            cur = getattr(self, "_ai_drop_inbox", [])
+            self._ai_drop_inbox = cur + [str(p) for p in (paths_list or []) if p and os.path.isfile(str(p))]
+
+    def ai_drop_inbox(self) -> list[str]:
+        with self._conv_lock:
+            got = list(getattr(self, "_ai_drop_inbox", []))
+            self._ai_drop_inbox = []
+        return got
+
+    def ai_drop_pick(self) -> list[str]:
+        import webview
+        if not self._window:
+            return []
+        dialog = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        res = self._window.create_file_dialog(dialog, allow_multiple=True)
+        return [str(p) for p in (res or []) if p and os.path.isfile(str(p))]
+
+    def games_fullscreen(self, on: bool = True) -> dict[str, Any]:
+        from app.core import winwin
+        ok = winwin.set_fullscreen("Kami Games", bool(on))
+        return {"ok": bool(ok), "fullscreen": bool(on)}
+
 

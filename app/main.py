@@ -441,6 +441,10 @@ def main() -> int:
             from app.core.media_server import AUDIO_EXT, VIDEO_EXT
 
             def on_drop(e) -> None:
+                if getattr(api, "_ai_drop_view", False):   # AI Altyazi/Vokal/Lirik studyosu acik: dosyalar ona
+                    api.ai_drop_add([f.get("pywebviewFullPath") for f in (e.get("dataTransfer") or {}).get("files") or []
+                                     if f.get("pywebviewFullPath")])
+                    return
                 if api._conv_view:   # Donusturucu acik: tum dosyalar ona
                     api.convert_add([f.get("pywebviewFullPath") for f in (e.get("dataTransfer") or {}).get("files") or []
                                      if f.get("pywebviewFullPath")])
@@ -1034,12 +1038,12 @@ def main() -> int:
             x=x,
             y=y,
             frameless=True,
-            shadow=False,
-            transparent=True,
+            shadow=True,
+            transparent=False,
             easy_drag=True,
             on_top=True,
             resizable=False,
-            background_color="#09070E",
+            background_color="#0B0910",
             focus=False,
         )
 

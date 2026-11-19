@@ -275,6 +275,9 @@ class PhoneServer:
             def _key_ok(self) -> bool:
                 exp = outer.key()
                 got = str(self.headers.get("X-Kami-Key") or "")
+                if not got and "?" in self.path:
+                    q = parse_qs(self.path.split("?", 1)[1])
+                    got = str((q.get("k") or [""])[0])
                 return bool(exp) and hmac.compare_digest(got.encode(), exp.encode())
 
             def _html(self, html: str) -> None:
@@ -313,6 +316,46 @@ class PhoneServer:
                     if not self._key_ok():
                         return self._send(401, {"ok": False, "error": "key"})
                     return self._send(200, outer.portal_data())
+                if path == "/portal/file":
+                    if not self._key_ok():
+                        return self._send(401, {"ok": False, "error": "key"})
+                    q = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+                    fpath = outer.resolve_portal_file(str((q.get("p") or [""])[0]))
+                    if not fpath or not os.path.isfile(fpath):
+                        return self._send(404, {"ok": False, "error": "not_found"})
+                    import mimetypes
+                    ctype = mimetypes.guess_type(fpath)[0] or "application/octet-stream"
+                    fsize = os.path.getsize(fpath)
+                    rng = self.headers.get("Range") or ""
+                    start, end = 0, fsize - 1
+                    if rng.startswith("bytes="):
+                        try:
+                            p1, p2 = rng[6:].split("-", 1)
+                            if p1.strip():
+                                start = max(0, min(fsize - 1, int(p1)))
+                            if p2.strip():
+                                end = max(start, min(fsize - 1, int(p2)))
+                        except ValueError:
+                            pass
+                        self.send_response(206)
+                        self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
+                    else:
+                        self.send_response(200)
+                    length = max(0, end - start + 1)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Length", str(length))
+                    self.end_headers()
+                    with open(fpath, "rb") as fh:
+                        fh.seek(start)
+                        rem = length
+                        while rem > 0:
+                            chunk = fh.read(min(65536, rem))
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                            rem -= len(chunk)
+                    return
                 if path == "/status":
                     if not self._key_ok():
                         return self._send(401, {"ok": False, "error": "key", "message": "Anahtar yanlış ya da eksik."})
@@ -444,6 +487,21 @@ class PhoneServer:
             pass
         return {"ok": True, "books": books, "media": videos}
 
+    def resolve_portal_file(self, req_path: str) -> str:
+        """Yalnizca portal_data icindeki aktif kitap veya medya dosyalarinin akisina izin verir (path traversal korumasi)."""
+        target = os.path.abspath(str(req_path or ""))
+        if not target or not os.path.isfile(target):
+            return ""
+        data = self.portal_data()
+        allowed: set[str] = set()
+        for b in data.get("books") or []:
+            if b.get("path"):
+                allowed.add(os.path.abspath(str(b["path"])))
+        for m in data.get("media") or []:
+            if m.get("path"):
+                allowed.add(os.path.abspath(str(m["path"])))
+        return target if target in allowed else ""
+
     def render_portal_html(self) -> str:
         return _PORTAL_HTML
 
@@ -483,7 +541,11 @@ const qp=new URLSearchParams(location.search).get('k');
 const kEl=document.getElementById('key');
 kEl.value=qp||localStorage.getItem('kamiKey')||'';
 if(qp)localStorage.setItem('kamiKey',qp);
-const syncDeckHref=()=>{const dk=document.getElementById('deckGo'),kv=kEl.value.trim();if(dk)dk.href=kv?('deck?k='+encodeURIComponent(kv)):'deck';};
+const syncDeckHref=()=>{
+  const dk=document.getElementById('deckGo'),pt=document.getElementById('portalGo'),kv=kEl.value.trim();
+  if(dk)dk.href=kv?('deck?k='+encodeURIComponent(kv)):'deck';
+  if(pt)pt.href=kv?('portal?k='+encodeURIComponent(kv)):'portal';
+};
 syncDeckHref();
 kEl.oninput=()=>{localStorage.setItem('kamiKey',kEl.value.trim());syncDeckHref();};
 async function uploadBlob(name,kind,blob){
@@ -528,28 +590,49 @@ h2{font-size:15px;color:#C4B5FD;margin:18px 0 8px;text-transform:uppercase;lette
 .card{background:#141022;border:1px solid #2D2246;border-radius:12px;padding:12px 14px;margin-bottom:10px}
 .bar{height:5px;background:#251C3A;border-radius:99px;overflow:hidden;margin:7px 0}
 .bar i{display:block;height:100%;background:linear-gradient(90deg,#9D6BFF,#2EE6A6)}
-input,button{font:inherit;border-radius:8px;border:1px solid #352754;background:#0D0A14;color:#fff;padding:9px 12px}
-button{background:#7C4DFF;border-color:#9D6BFF;font-weight:600;cursor:pointer}
+input,button,a.btn{font:inherit;border-radius:8px;border:1px solid #352754;background:#0D0A14;color:#fff;padding:8px 12px;text-decoration:none;display:inline-block}
+button,a.btn.pri{background:#7C4DFF;border-color:#9D6BFF;font-weight:600;cursor:pointer}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 </style></head><body>
 <h1>🍿 Kami Portal — Kaldığın Yerden Devam Et</h1>
-<p style="color:#9A90AB;font-size:13px;margin:0 0 12px">PC'deki Kami Player ve Kami Reader oturumların yerel ağda iPhone / iPad ile senkron.</p>
-<div class="card"><input id="k" placeholder="X-Kami-Key (Kami > Ayarlar > Telefon)" style="width:100%;box-sizing:border-box"></div>
+<p style="color:#9A90AB;font-size:13px;margin:0 0 12px">PC'deki Kami Player ve Kami Reader oturumların iPhone / iPad Safari ile senkron.</p>
+<div class="card" style="display:flex;gap:8px">
+  <input id="k" placeholder="X-Kami-Key (Kami > Ayarlar > Telefon)" style="flex:1;min-width:0">
+  <button id="goBtn">Bağlan</button>
+</div>
+<div id="stMsg" style="font-size:12.5px;color:#F5B94A;margin-bottom:8px"></div>
 <h2>📖 Okumaya Devam Et (Kami Reader)</h2>
-<div id="books"><small style="color:#9A90AB">Anahtar girildiğinde yüklenir…</small></div>
+<div id="books"><small style="color:#9A90AB">Yükleniyor…</small></div>
 <h2>🎬 İzlemeye / Dinlemeye Devam Et (Kami Player)</h2>
-<div id="media"><small style="color:#9A90AB">Anahtar girildiğinde yüklenir…</small></div>
+<div id="media"><small style="color:#9A90AB">Yükleniyor…</small></div>
 <script>
-const kEl=document.getElementById('k');
+const kEl=document.getElementById('k'),stMsg=document.getElementById('stMsg');
 const qp=new URLSearchParams(location.search).get('k');
 kEl.value=qp||localStorage.getItem('kamiKey')||'';
+if(qp)localStorage.setItem('kamiKey',qp);
 const esc=(s)=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const basePrefix=location.pathname.endsWith('/portal')?location.pathname.slice(0,-7):'';
 async function load(){
-  if(!kEl.value.trim())return;
-  localStorage.setItem('kamiKey',kEl.value.trim());
-  const r=await fetch('/portal/data',{headers:{'X-Kami-Key':kEl.value.trim()}}).then(x=>x.json()).catch(()=>null);
-  if(!r||!r.ok)return;
-  document.getElementById('books').innerHTML=(r.books||[]).map(b=>`<div class="card"><b>${esc(b.title)}</b><div class="bar"><i style="width:${b.pct}%"></i></div><small style="color:#2EE6A6">Sayfa ${b.page} / ${b.count} (%${b.pct})</small></div>`).join('')||'<small style="color:#9A90AB">Henüz açık belge yok.</small>';
-  document.getElementById('media').innerHTML=(r.media||[]).map(m=>`<div class="card"><b>${esc(m.name)}</b><div class="bar"><i style="width:${m.pct}%"></i></div><small style="color:#C4B5FD">${esc(m.label||'Hazır')}</small></div>`).join('')||'<small style="color:#9A90AB">Henüz medya kaydı yok.</small>';
+  const kv=kEl.value.trim();
+  if(!kv){stMsg.textContent='Lütfen Kami > Ayarlar > Telefon bölümündeki anahtarı gir.';return;}
+  localStorage.setItem('kamiKey',kv);
+  const url=(basePrefix?basePrefix+'/portal/data':'portal/data')+'?k='+encodeURIComponent(kv);
+  const r=await fetch(url,{headers:{'X-Kami-Key':kv}}).then(x=>x.json()).catch((e)=>({ok:false,error:String(e)}));
+  if(!r||!r.ok){
+    stMsg.textContent=r?.error==='key'||r?.error==='password'?'Anahtar hatalı veya eksik.':'Kami PC sunucusuna ulaşılamadı.';
+    return;
+  }
+  stMsg.textContent='';
+  const fileBase=(basePrefix?basePrefix+'/portal/file':'portal/file')+'?k='+encodeURIComponent(kv);
+  document.getElementById('books').innerHTML=(r.books||[]).map(b=>{
+    const fUrl=b.path?(fileBase+'&p='+encodeURIComponent(b.path)+'#page='+b.page):'';
+    return `<div class="card"><b>${esc(b.title)}</b><div class="bar"><i style="width:${b.pct}%"></i></div><small style="color:#2EE6A6">Sayfa ${b.page} / ${b.count} (%${b.pct})</small>${fUrl?`<div class="acts"><a class="btn pri" href="${fUrl}" target="_blank">📱 Safari'de Oku (S.${b.page})</a></div>`:''}</div>`;
+  }).join('')||'<small style="color:#9A90AB">Henüz açık belge yok.</small>';
+  document.getElementById('media').innerHTML=(r.media||[]).map(m=>{
+    const fUrl=m.path?(fileBase+'&p='+encodeURIComponent(m.path)):'';
+    return `<div class="card"><b>${esc(m.name)}</b><div class="bar"><i style="width:${m.pct}%"></i></div><small style="color:#C4B5FD">${esc(m.label||'Hazır')}</small>${fUrl?`<div class="acts"><a class="btn pri" href="${fUrl}" target="_blank">▶ Safari'de Oynat</a></div>`:''}</div>`;
+  }).join('')||'<small style="color:#9A90AB">Henüz medya kaydı yok.</small>';
 }
-kEl.onchange=load;load();setInterval(load,5000);
+document.getElementById('goBtn').onclick=load;
+kEl.onchange=load;load();setInterval(load,6000);
 </script></body></html>"""

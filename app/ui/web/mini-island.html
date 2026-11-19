@@ -13,14 +13,15 @@
   * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
-    background: #09070E; color: #EDE9F6;
+    background: #0B0910; color: #EDE9F6;
     font: 600 12px "Chakra Petch", system-ui, sans-serif;
   }
   .pill {
-    position: relative; width: 100%; height: 100%;
+    position: absolute; inset: 0;
     padding: 0 11px;
-    background: #09070E;
-    border: 1px solid rgba(157,107,255,0.28);
+    background: linear-gradient(135deg, #15101F, #0B0910 75%);
+    border: 1px solid #3A2E52;
+    border-radius: 8px;
     display: flex; flex-direction: column; justify-content: center; gap: 3px;
     transition: border-color .18s ease;
     overflow: hidden;
@@ -247,8 +248,10 @@ function renderDrop(files) {
   document.getElementById("dropCancel").onclick = () => { dropFiles = null; refresh(); };
 }
 
+let lastRoomSig = "";
 function renderRoom(st) {
   curMode = "room";
+  lastMusicId = "";
   pill.className = "pill";
   seekBar.hidden = true;
   resizeWin(460, 48);
@@ -256,17 +259,31 @@ function renderRoom(st) {
   const people = r.people || [];
   const talker = people.find((p) => p.talk);
   const names = talker ? talker.name : people.map((p) => p.name).filter(Boolean).slice(0, 3).join(", ");
+  const sig = `${names}|${people.length}|${talker ? 1 : 0}|${r.muted ? 1 : 0}|${r.deaf ? 1 : 0}`;
+  if (lastRoomSig === sig && mainRow.querySelector("#rmMic")) return;
+  lastRoomSig = sig;
   mainRow.innerHTML = `
     <div class="drag-handle"><div class="dot${talker ? " talk" : ""}"></div></div>
     <span class="title" style="max-width:190px">${esc(names || "Kami Oda")}</span>
     <span class="prof">${people.length} kişi</span>
     <div style="flex:1"></div>
-    <button class="ib${r.muted ? " bad" : ""}" id="rmMic" title="Mikrofon">${r.muted ? SVG.micoff : SVG.mic}</button>
-    <button class="ib${r.deaf ? " bad" : ""}" id="rmDeaf" title="Kulaklık">${r.deaf ? SVG.earoff : SVG.ear}</button>
+    <button class="ib${r.muted ? " bad" : ""}" id="rmMic" title="${r.muted ? "Mikrofonu Aç" : "Mikrofonu Kapat"}">${r.muted ? SVG.micoff : SVG.mic}</button>
+    <button class="ib${r.deaf ? " bad" : ""}" id="rmDeaf" title="${r.deaf ? "Kulaklığı Aç" : "Kulaklığı Kapat"}">${r.deaf ? SVG.earoff : SVG.ear}</button>
     <button class="btn" id="rmOpen">Oda</button>
-    <button class="x" id="closeBtn">✕</button>`;
-  document.getElementById("rmMic").onclick = () => api()?.room_island_cmd?.("mic");
-  document.getElementById("rmDeaf").onclick = () => api()?.room_island_cmd?.("deaf");
+    <button class="x" id="closeBtn" title="Gizle">✕</button>`;
+  document.getElementById("rmMic").onclick = async () => {
+    r.muted = !r.muted;
+    lastRoomSig = "";
+    renderRoom(st);
+    await api()?.room_island_cmd?.("mute");
+  };
+  document.getElementById("rmDeaf").onclick = async () => {
+    r.deaf = !r.deaf;
+    if (r.deaf) r.muted = true;
+    lastRoomSig = "";
+    renderRoom(st);
+    await api()?.room_island_cmd?.("deaf");
+  };
   document.getElementById("rmOpen").onclick = () => api()?.room_open?.();
   document.getElementById("closeBtn").onclick = () => api()?.mini_island_toggle?.(false);
 }
