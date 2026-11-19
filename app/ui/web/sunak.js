@@ -578,6 +578,23 @@ function skMood(s, active) {
   return skL("Bekliyor. Bir bağlantı ver.", "Waiting. Give it a link.");
 }
 
+function skPlayDoneClip() {
+  if (state?.settings?.ui_transitions === false) return;
+  const altar = $("#skAltar");
+  if (!altar || altar.querySelector(".sk-done-vid")) return;
+  const v = document.createElement("video");
+  v.className = "sk-done-vid";
+  v.src = "fx/kami_done.webm";
+  v.muted = true;
+  v.playsInline = true;
+  v.autoplay = true;
+  v.onended = () => v.remove();
+  v.onerror = () => v.remove();
+  altar.appendChild(v);
+  v.play?.().catch(() => v.remove());
+  setTimeout(() => v.remove(), 2600);
+}
+
 function skState(s) {
   if (!SK.built) return;
   const its = s.items || [];
@@ -587,6 +604,7 @@ function skState(s) {
     if (p && p !== "complete" && d.status === "complete") {
       SK.happyUntil = Date.now() + 4000;
       window.KamiFX?.pulse?.();
+      skPlayDoneClip();
       if (SK.autoPlay.has(d.id)) { SK.autoPlay.delete(d.id); skAutoSave(); playerOpen(d.id); }   // bitince oynat
     }
     SK.prevStatus.set(d.id, d.status);
