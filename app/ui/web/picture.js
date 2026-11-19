@@ -15,6 +15,7 @@ async function open(path, lens) {
   if (!PC.list.includes(path)) PC.list.unshift(path);
   PC.i = PC.list.indexOf(path);
   await load();
+  window.kamiPicV138?.syncControls?.(PC);
   if (lens) runLens();
   else if (!$("#pcLens").hidden) runLens();
 }
@@ -24,6 +25,7 @@ async function load() {
   $("#pcName").textContent = p.split(/[\\/]/).pop();
   $("#pcInfo").textContent = L("yükleniyor…", "loading…");
   $("#pcEmpty").hidden = true;
+  window.kamiPicV138?.syncControls?.(PC);
   const r = await api.image_data(p);
   if (PC.list[PC.i] !== p) return;
   if (!r?.ok) { $("#pcInfo").textContent = L("Açılamadı", "Can't open"); return; }
@@ -72,12 +74,14 @@ document.addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-a]"); if (!b) return;
   const a = b.dataset.a, p = PC.list[PC.i];
   if (a === "prev") step(-1); else if (a === "next") step(1);
+  else if (a === "grab") window.kamiPicV138?.action?.("grab", p);
   else if (a === "edit") window.kamiEditor.open(p || "");
   else if (a === "new") window.kamiEditor.open("");
   else if (a === "rot") { PC.rot = (PC.rot + 90) % 360; apply(); }
   else if (a === "fit") { PC.z = 1; PC.x = PC.y = 0; apply(); }
   else if (a === "folder" && p) api.open_path_folder(p);
   else if ((a === "conv" || a === "nobg") && p) api.picture_send(p, a === "nobg" ? "img:nobg" : "");
+  else if ((a === "beautify" || a === "pin") && p) window.kamiPicV138?.action?.(a, p);
   else if (a === "lens") { if (!$("#pcLens").hidden) { $("#pcLens").hidden = true; b.classList.remove("on"); } else runLens(); }
 });
 const stage = $("#pcStage");

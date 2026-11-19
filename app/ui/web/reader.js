@@ -12,6 +12,7 @@ function i18n() { $$("[data-tr]").forEach((e) => (e.textContent = L(e.dataset.tr
 const RD = {
   doc: null, page: 0, cache: new Map(), st: null, tab: "hl", dirty: false, ratio: 1.414,
   set: { mode: "single", rtl: false, fit: "height", night: false },
+  hist: [], histIdx: -1, loupe: false,
 };
 const pdf = () => RD.doc?.kind === "pdf";
 
@@ -25,7 +26,7 @@ async function home() {
   sh.innerHTML = list.map((b, k) => {
     const p = b.count ? Math.round(((b.page + 1) / b.count) * 100) : 0;
     return `<div class="rh-book" data-path="${esc(b.path)}"><div class="rh-cover" id="cv${k}" style="--p:${p}%">${b.hl ? `<i>${b.hl} ✎</i>` : ""}</div>
-      <b>${esc(b.title)}</b><small>${b.count ? `${b.page + 1}/${b.count} · %${p}` : ""}</small></div>`;
+      <b title="${esc(b.title)}">${esc(b.title)}</b><small>${b.count ? `${b.page + 1}/${b.count} · %${p}` : ""}</small></div>`;
   }).join("");
   // kapaklar: her belgenin ilk sayfasi (sirayla, arayuzu bogmadan)
   for (let k = 0; k < Math.min(list.length, 24); k++) {
@@ -41,13 +42,14 @@ async function openDoc(path) {
   if (!r?.ok) { toast(L("Açılamadı: ", "Could not open: ") + (r?.error || "")); return; }
   stopTts();
   RD.doc = r; RD.cache.clear(); RD.st = r.state || {}; RD.st.hl ||= []; RD.st.marks ||= [];
+  RD.hist = []; RD.histIdx = -1; RD.loupe = false; $("#rdLoupe").hidden = true; $("#rdFilters").hidden = true; $("#rdPeek").hidden = true;
   RD.set = Object.assign({ mode: "single", rtl: false, fit: "height", night: false }, RD.st.settings || {}); RD.zoom = 1;
   RD.page = Math.min(RD.st.page || 0, r.count - 1);
   document.body.classList.toggle("pdf", pdf()); document.body.classList.toggle("comic", !pdf());
   $("#rdHome").hidden = true; $("#rd").hidden = false;
   $("#rdTitle").textContent = r.title; document.title = r.title + " — Kami Reader";
   $("#rdSlider").max = r.count;
-  applySet(); buildRail(); render(); renderTab();
+  applySet(); applyScanFilters(); buildRail(); render(); renderTab();
 }
 function closeDoc() { saveNow(); RD.doc = null; RD.cache.clear(); }
 
@@ -145,16 +147,17 @@ function redrawHl() { $$(".rd-page").forEach(drawHl); }
 function renderScroll() {
   const sp = $("#rdSpread"), { w } = boxSize([0]);
   const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const tok = (RD._tok = (RD._tok || 0) + 1);
   sp.innerHTML = Array.from({ length: RD.doc.count }, (_, i) => `<div class="rd-page" data-i="${i}" style="width:${w}px;height:${Math.round(w * RD.ratio)}px"><div class="ld">${i + 1}</div></div>`).join("");
   RD._io?.disconnect();
   RD._io = new IntersectionObserver((ents) => ents.forEach(async (e) => {
-    if (!e.isIntersecting || e.target.dataset.done) return;
+    if (tok !== RD._tok || !e.isIntersecting || e.target.dataset.done) return;
     e.target.dataset.done = 1;
     const i = +e.target.dataset.i, r = await pageData(i, Math.round(w * dpr));
-    if (r?.ok) fillPage(e.target, r, w);
+    if (tok === RD._tok && r?.ok) fillPage(e.target, r, w);
   }), { root: $("#rdStage"), rootMargin: "1200px 0px" });
   sp.querySelectorAll(".rd-page").forEach((p) => RD._io.observe(p));
-  requestAnimationFrame(() => { sp.querySelector(`.rd-page[data-i="${RD.page}"]`)?.scrollIntoView(); updateUi(); });
+  requestAnimationFrame(() => { if (tok === RD._tok) { sp.querySelector(`.rd-page[data-i="${RD.page}"]`)?.scrollIntoView(); updateUi(); } });
 }
 $("#rdStage").addEventListener("scroll", () => {
   if (RD.set.mode !== "scroll" || !RD.doc) return;
@@ -163,17 +166,55 @@ $("#rdStage").addEventListener("scroll", () => {
   if (el && +el.dataset.i !== RD.page) { RD.page = +el.dataset.i; updateUi(); dirty(); }
 }, { passive: true });
 
-let RD_PAGE_ANIM = true;
-try { window.addEventListener("pywebviewready", async () => { const s = await window.pywebview?.api?.get_settings?.(); if (s) RD_PAGE_ANIM = s.reader_page_anim !== false; }); } catch {}
+const normAnim = (v) => (v === false || v === "off" ? "off" : (v === "slide" ? "slide" : "curl3d"));
+let RD_PAGE_ANIM = "curl3d";
+try {
+  window.addEventListener("pywebviewready", async () => {
+    const s = await window.pywebview?.api?.get_settings?.();
+    if (s && "reader_page_anim" in s) RD_PAGE_ANIM = normAnim(s.reader_page_anim);
+    const sel = $("#rdAnimMode");
+    if (sel) sel.value = RD_PAGE_ANIM;
+  });
+} catch {}
 
-function go(i) {
+function pushHist(fromPage) {
+  if (!RD.doc) return;
+  RD.hist = RD.hist.slice(0, RD.histIdx + 1);
+  if (RD.hist[RD.hist.length - 1] !== fromPage) RD.hist.push(fromPage);
+  if (RD.hist.length > 50) RD.hist.shift();
+  RD.histIdx = RD.hist.length - 1;
+}
+function jumpHist(delta) {
+  if (!RD.doc || !RD.hist.length) return;
+  if (delta < 0) {
+    const p = RD.hist[RD.histIdx];
+    if (p == null) return;
+    RD.histIdx = Math.max(-1, RD.histIdx - 1);
+    go(p, { fromHist: true });
+  } else if (delta > 0 && RD.histIdx + 1 < RD.hist.length) {
+    RD.histIdx++;
+    go(RD.hist[RD.histIdx], { fromHist: true });
+  }
+}
+
+async function go(i, opts = {}) {
   if (!RD.doc) return;
   i = Math.max(0, Math.min(RD.doc.count - 1, i));
+  if (!opts.fromHist && Math.abs(i - RD.page) > 1) pushHist(RD.page);
   if (RD.set.mode === "scroll") { RD.page = i; $(`.rd-page[data-i="${i}"]`)?.scrollIntoView(); updateUi(); dirty(); return; }
   if (i === RD.page) return;
   const dir = i > RD.page ? 1 : -1;
-  RD.page = i; dirty(); render();
-  if (RD_PAGE_ANIM) {
+  const prevPgEl = document.querySelector(`.rd-page[data-i="${RD.page}"]`);
+  const fromSrc = prevPgEl?.querySelector("img")?.src || "";
+  const prevRect = prevPgEl?.getBoundingClientRect();
+  RD.page = i; dirty();
+  await render();
+  if (RD_PAGE_ANIM === "curl3d" && window.KamiPageCurl && fromSrc && prevRect && RD.set.mode === "single") {
+    const toSrc = document.querySelector(`.rd-page[data-i="${i}"] img`)?.src || "";
+    const curlDir = RD.set.rtl ? -dir : dir;
+    window.kamiSfx?.play?.("page");
+    window.KamiPageCurl.turn($("#rdStage"), prevRect, fromSrc, toSrc, curlDir, opts.startProg || 0.02);
+  } else if (RD_PAGE_ANIM === "slide") {
     const st = $("#rdStage");
     if (st) {
       st.style.transition = "none";
@@ -410,6 +451,8 @@ document.addEventListener("click", async (e) => {
   else if (a === "ocrpage") { rdOcrCurrentPage(); }
   else if (a === "exportmd") { rdExportMarkdown(); }
   else if (a === "ocrpdf") { rdMakeSearchablePdf(); }
+  else if (a === "filters") { toggleScanFilters(); }
+  else if (a === "peek") { togglePeek(); }
   else if (a === "popsay") { const t = RD.sel?.text; $("#rdPop").hidden = true; if (t) startTts(t); }
   else if (a === "popcopy") { navigator.clipboard?.writeText(RD.sel?.text || ""); $("#rdPop").hidden = true; toast(L("Kopyalandı", "Copied")); }
 });
@@ -494,8 +537,11 @@ document.addEventListener("keydown", (e) => {
   }
   if (!RD.doc) return;
   const k = e.key, rtl = RD.set.rtl && RD.set.mode !== "scroll";
-  if (k === "ArrowRight") step(rtl ? -1 : 1);
-  else if (k === "ArrowLeft") step(rtl ? 1 : -1);
+  if (k === "ArrowRight" && !e.altKey) step(rtl ? -1 : 1);
+  else if (k === "ArrowLeft" && !e.altKey) step(rtl ? 1 : -1);
+  else if (e.altKey && k === "ArrowLeft") { e.preventDefault(); jumpHist(-1); }
+  else if (e.altKey && k === "ArrowRight") { e.preventDefault(); jumpHist(1); }
+  else if (k === "z" || k === "Z") { RD.loupe = !RD.loupe; $("#rdLoupe").hidden = !RD.loupe; }
   else if (k === "PageDown" || k === " " || k === "ArrowDown" && RD.set.mode !== "scroll") { e.preventDefault(); step(1); }
   else if (k === "PageUp" || k === "ArrowUp" && RD.set.mode !== "scroll") { e.preventDefault(); step(-1); }
   else if (k === "Home") go(0);
@@ -552,4 +598,105 @@ async function init() {
   if (q.length) openDoc(q[q.length - 1]); else home();
   setInterval(async () => { const q2 = (await api.reader_poll()) || []; if (q2.length) openDoc(q2[q2.length - 1]); }, 700);
 }
+
+// ---------- Dalga 2: Tarama Filtreleri, Z-Lupu, Gorsel/Tablo Ozeti, Kenar Surukleme ----------
+function scanFilterKey() { return "kr.flt." + (RD.doc?.path || "default"); }
+function applyScanFilters() {
+  if (!RD.doc) return;
+  let flt = { c: 100, b: 100, w: 0, n: false };
+  try { Object.assign(flt, JSON.parse(localStorage.getItem(scanFilterKey()) || "{}")); } catch {}
+  const inv = flt.n || RD.set.night;
+  const fStr = `${inv ? (pdf() ? "invert(.9) hue-rotate(180deg) " : "brightness(.82) ") : ""}contrast(${flt.c}%) brightness(${flt.b}%) sepia(${flt.w}%)`;
+  let st = $("#rdFltStyle");
+  if (!st) { st = document.createElement("style"); st.id = "rdFltStyle"; document.head.appendChild(st); }
+  st.textContent = `.rd-page img { filter: ${fStr}; }`;
+}
+function toggleScanFilters() {
+  const pop = $("#rdFilters");
+  pop.hidden = !pop.hidden;
+  if (pop.hidden || !RD.doc) return;
+  let flt = { c: 100, b: 100, w: 0, n: false };
+  try { Object.assign(flt, JSON.parse(localStorage.getItem(scanFilterKey()) || "{}")); } catch {}
+  pop.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><b>${L("Tarama Filtreleri", "Scan Filters")}</b><button id="rdFltReset" style="border:0;background:#241b36;color:#c4b5fd;padding:3px 7px;font-size:11px">${L("Sıfırla", "Reset")}</button></div>
+    <label>${L("Kontrast", "Contrast")}: <span id="fcV">${flt.c}%</span><input type="range" id="fcR" min="60" max="170" value="${flt.c}"></label>
+    <label>${L("Parlaklık / Gama", "Brightness / Gamma")}: <span id="fbV">${flt.b}%</span><input type="range" id="fbR" min="60" max="150" value="${flt.b}"></label>
+    <label>${L("Sıcaklık (Sepya)", "Warmth (Sepia)")}: <span id="fwV">${flt.w}%</span><input type="range" id="fwR" min="0" max="65" value="${flt.w}"></label>
+    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fnC" ${flt.n ? "checked" : ""}><span>${L("Bu belge için ters çevir (Gece)", "Invert for this doc")}</span></label>`;
+  const saveF = () => {
+    const nxt = { c: +$("#fcR").value, b: +$("#fbR").value, w: +$("#fwR").value, n: $("#fnC").checked };
+    $("#fcV").textContent = nxt.c + "%"; $("#fbV").textContent = nxt.b + "%"; $("#fwV").textContent = nxt.w + "%";
+    try { localStorage.setItem(scanFilterKey(), JSON.stringify(nxt)); } catch {}
+    applyScanFilters();
+  };
+  ["fcR", "fbR", "fwR", "fnC"].forEach((id) => $("#" + id).addEventListener("input", saveF));
+  $("#rdFltReset").onclick = () => { try { localStorage.removeItem(scanFilterKey()); } catch {} pop.hidden = true; toggleScanFilters(); applyScanFilters(); };
+}
+async function togglePeek() {
+  const pk = $("#rdPeek");
+  pk.hidden = !pk.hidden;
+  if (pk.hidden || !RD.doc) return;
+  const o = (RD.doc.outline || []).filter((t) => /fig|tab|şek|resim|graf|bölüm|chapter/i.test(t.t)).slice(0, 24);
+  const picks = o.length ? o : Array.from({ length: Math.min(18, RD.doc.count) }, (_, k) => ({ t: `${L("Sayfa", "Page")} ${Math.floor((k * RD.doc.count) / Math.min(18, RD.doc.count)) + 1}`, page: Math.floor((k * RD.doc.count) / Math.min(18, RD.doc.count)) }));
+  pk.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><b>${L("Görsel, Tablo & Bölüm Özeti", "Figures, Tables & Sections Overview")} (${picks.length})</b><button id="rdPeekCls" style="border:0;background:#241b36;color:#fff;padding:4px 10px">✕</button></div><div class="rd-peek-grid" id="rdPeekG">${picks.map((x) => `<div class="rd-peek-card" data-p="${x.page}"><img alt="" id="pkImg${x.page}"><b>${esc(x.t)}</b><small style="color:var(--mute)">S.${x.page + 1}</small></div>`).join("")}</div>`;
+  pk.querySelector("#rdPeekCls").onclick = () => { pk.hidden = true; };
+  pk.querySelectorAll(".rd-peek-card").forEach((c) => { c.onclick = () => { pk.hidden = true; go(+c.dataset.p); }; });
+  for (const x of picks) {
+    if (pk.hidden) break;
+    const src = await api.reader_thumb(x.page);
+    const im = $("#pkImg" + x.page);
+    if (im && src) im.src = src;
+  }
+}
+$("#rdAnimMode")?.addEventListener("change", (e) => {
+  RD_PAGE_ANIM = normAnim(e.target.value);
+  api?.set_setting?.("reader_page_anim", RD_PAGE_ANIM);
+});
+$("#rdStage").addEventListener("mousemove", (e) => {
+  const lp = $("#rdLoupe");
+  if (!RD.loupe || !RD.doc) { lp.hidden = true; return; }
+  const pg = e.target.closest?.(".rd-page");
+  const img = pg?.querySelector("img");
+  if (!pg || !img?.src) { lp.hidden = true; return; }
+  const r = img.getBoundingClientRect();
+  lp.hidden = false;
+  lp.style.left = e.clientX + "px";
+  lp.style.top = e.clientY + "px";
+  lp.style.backgroundImage = `url("${img.src}")`;
+  lp.style.backgroundSize = `${Math.round(r.width * 2)}px ${Math.round(r.height * 2)}px`;
+  lp.style.backgroundPosition = `${Math.round(95 - (e.clientX - r.left) * 2)}px ${Math.round(95 - (e.clientY - r.top) * 2)}px`;
+});
+let _curlDrag = null;
+$("#rdStage").addEventListener("pointerdown", (e) => {
+  if (e.button !== 0 || !RD.doc || RD_PAGE_ANIM !== "curl3d" || RD.set.mode !== "single") return;
+  if (e.target.closest?.(".rd-text span, button")) return;
+  const pg = e.target.closest?.(".rd-page");
+  if (!pg) return;
+  const r = pg.getBoundingClientRect();
+  const relX = (e.clientX - r.left) / Math.max(1, r.width);
+  if (relX > 0.14 && relX < 0.86) return;
+  const side = relX >= 0.86 ? 1 : -1;
+  _curlDrag = { rect: r, src: pg.querySelector("img")?.src || "", side, startX: e.clientX, t0: Date.now() };
+});
+window.addEventListener("pointermove", (e) => {
+  if (!_curlDrag || !window.KamiPageCurl) return;
+  const dx = (_curlDrag.startX - e.clientX) * _curlDrag.side;
+  const p = Math.max(0.02, Math.min(0.85, dx / Math.max(80, _curlDrag.rect.width)));
+  window.KamiPageCurl.ensureCanvas($("#rdStage"));
+  const im = new Image(); im.src = _curlDrag.src;
+  if (im.complete) window.KamiPageCurl._drawFrame(_curlDrag.rect, im, null, p, _curlDrag.side);
+});
+window.addEventListener("pointerup", (e) => {
+  if (!_curlDrag) return;
+  const d = _curlDrag; _curlDrag = null;
+  const dx = (d.startX - e.clientX) * d.side;
+  const p = dx / Math.max(80, d.rect.width);
+  const vel = dx / Math.max(16, Date.now() - d.t0);
+  if (p > 0.25 || vel > 0.45) {
+    const dir = RD.set.rtl ? -d.side : d.side;
+    go(RD.page + dir, { startProg: Math.max(0.05, Math.min(0.8, p)) });
+  } else {
+    window.KamiPageCurl?.cancel?.();
+  }
+});
+
 if (window.pywebview?.api) init(); else window.addEventListener("pywebviewready", init);

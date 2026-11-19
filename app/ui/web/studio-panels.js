@@ -74,7 +74,15 @@ P.media = async () => {
       <button class="ad" data-add="${id}" title="Oynatma kafasına ekle">＋</button>${a.kind !== "image" || a.gif ? `<span class="du">${fmt(a.dur, false)}</span>` : ""}<span class="nm">${esc(a.name)}</span></div>`;
   }).join("")}</div>`;
   const rec = await api.studio_recent();
-  if (rec.length) h += sec("Son projeler") + rec.slice(0, 8).map(r => `<div class="snd" data-open="${esc(r.path)}"><b>${esc(r.name || r.path.split(/[\\/]/).pop())}</b><button title="Aç">↗</button></div>`).join("");
+  if (rec.length) {
+    let yeniDone = false;
+    const cleanRec = rec.filter(r => {
+      const nm = (r.name || "").trim().toLowerCase();
+      if (nm === "yeni proje") { if (yeniDone) return false; yeniDone = true; }
+      return true;
+    }).slice(0, 8);
+    if (cleanRec.length) h += sec("Son projeler") + cleanRec.map(r => `<div class="snd" data-open="${esc(r.path)}"><b>${esc(r.name || r.path.split(/[\\/]/).pop())}</b><button title="Aç">↗</button></div>`).join("");
+  }
   pb.innerHTML = h;
   if ($("#medQ")) $("#medQ").oninput = e => { P.media.q = e.target.value; P.media(); };
   $("#medFlt")?.addEventListener("click", e => { const b = e.target.closest("[data-mk]"); if (b) { P.media.kind = b.dataset.mk; P.media(); } });

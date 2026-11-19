@@ -665,6 +665,11 @@ class DownloadManager:
             return sum(v["speed"] for v in self._live.values()) + \
                 sum(v.get("speed", 0) for v in self._media_live.values())
 
+    def live_pieces(self, download_id: int) -> tuple[str, int]:
+        with self._lock:
+            info = self._live.get(download_id) or {}
+            return str(info.get("bitfield") or ""), int(info.get("num_pieces") or 0)
+
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
@@ -719,10 +724,13 @@ class DownloadManager:
             fields["error"] = s["error"] or f"aria2 hata kodu {s['error_code']}"
         if new_status in (Status.COMPLETE, Status.ERROR) and not d.finished_at:
             fields["finished_at"] = time.time()
-        if new_status in (Status.ACTIVE, Status.WAITING):
-            live[d.id] = {"speed": s["speed"], "connections": s["connections"],
+        if new_status in (Status.ACTIVE, Status.WAITING, Status.PAUSED):
+            live[d.id] = {"speed": s["speed"] if new_status != Status.PAUSED else 0,
+                          "connections": s["connections"] if new_status != Status.PAUSED else 0,
                           "phase": "seeding" if s.get("seeder") else "",
-                          "upload": s.get("upload_speed", 0)}
+                          "upload": s.get("upload_speed", 0),
+                          "bitfield": str(s.get("bitfield") or ""),
+                          "num_pieces": int(s.get("num_pieces") or 0)}
 
         completing = new_status == Status.COMPLETE and d.status != Status.COMPLETE
         if completing:

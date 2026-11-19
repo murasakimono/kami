@@ -282,12 +282,14 @@ def _librespot_now() -> dict[str, Any] | None:
 _LAST_NOW: dict[str, Any] = {}
 
 
-def cached_now() -> dict[str, Any] | None:
+def cached_now(allow_paused: bool = False) -> dict[str, Any] | None:
     """Ag cagrisi yapmadan mevcut yerel (go-librespot) veya son bilinen oynatma durumunu dondurur."""
     loc = _librespot_now()
     if loc and loc.get("title"):
         return loc
-    return dict(_LAST_NOW) if _LAST_NOW.get("playing") and _LAST_NOW.get("title") else None
+    if _LAST_NOW.get("title") and (allow_paused or _LAST_NOW.get("playing")):
+        return dict(_LAST_NOW)
+    return None
 
 
 def spotify_now(token: str) -> dict[str, Any]:
@@ -873,33 +875,29 @@ def spotify_control(token: str, action: str) -> dict[str, Any]:
 
 
 def fetch_track_lyrics(title: str, artist: str = "") -> dict[str, Any]:
-    import re as _re
     t = str(title or "").strip()
     a = str(artist or "").strip()
     if not t:
-        return {"ok": False, "lines": [], "plain": ""}
+        return {"ok": False, "lines": [], "plain": "", "word_synced": False}
     try:
-        from app.core.lyrics import lrclib_find
+        from app.core.lyrics import amll_ttml_find, lrclib_find, parse_elrc_words
+        word_lines = amll_ttml_find(a, t)
+        if word_lines:
+            return {"ok": True, "synced": True, "word_synced": True, "lines": word_lines, "plain": "\n".join(x["text"] for x in word_lines), "source": "amll/elrc"}
         res = lrclib_find(a, t)
         if not res:
-            return {"ok": False, "lines": [], "plain": ""}
+            return {"ok": False, "lines": [], "plain": "", "word_synced": False}
         synced_raw = str(res.get("synced") or "").strip()
         plain_raw = str(res.get("plain") or "").strip()
-        lines: list[dict[str, Any]] = []
-        if synced_raw:
-            for row in synced_raw.splitlines():
-                m = _re.match(r"\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)", row.strip())
-                if m:
-                    sec = int(m.group(1)) * 60 + float(m.group(2))
-                    tx = m.group(3).strip()
-                    if tx:
-                        lines.append({"t": sec, "text": tx})
+        lines = parse_elrc_words(synced_raw) if synced_raw else []
+        word_synced = any(bool(ln.get("words")) for ln in lines)
         return {
             "ok": bool(lines or plain_raw),
             "synced": bool(lines),
+            "word_synced": word_synced,
             "lines": lines,
             "plain": plain_raw,
             "source": "lrclib",
         }
     except Exception as exc:
-        return {"ok": False, "error": str(exc)[:120], "lines": [], "plain": ""}
+        return {"ok": False, "error": str(exc)[:120], "lines": [], "plain": "", "word_synced": False}

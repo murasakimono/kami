@@ -12,22 +12,26 @@
     <header class="pc-top">
       <span class="pc-logo">KAMI <b>Picture</b></span>
       <b id="pcName">—</b><span id="pcInfo"></span><span class="sp"></span>
-      <button data-a="edit" class="edit" title="E">✎ <span data-tr="Düzenle" data-en="Edit"></span></button>
+      <button data-a="grab" title="Ekran Yakala (Lens / Beautify / Sabitle)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 9h6v6H9z"/></svg> <span data-tr="Yakala" data-en="Capture"></span></button>
+      <button data-a="edit" class="edit" title="E" data-need-img disabled>✎ <span data-tr="Düzenle" data-en="Edit"></span></button>
       <button data-a="new" title="N">＋ <span data-tr="Yeni" data-en="New"></span></button>
-      <button data-a="rot" title="R">⟳ <span data-tr="Döndür" data-en="Rotate"></span></button>
-      <button data-a="fit" title="0"><span data-tr="Sığdır" data-en="Fit"></span></button>
-      <button data-a="nobg">✦ <span data-tr="Arka planı kaldır" data-en="Remove background"></span></button>
-      <button data-a="conv">⇄ <span data-tr="Dönüştür" data-en="Convert"></span></button>
-      <button data-a="folder"><span data-tr="Klasör" data-en="Folder"></span></button>
-      <button data-a="lens" class="lens">◎ Kami Lens</button>
+      <button data-a="rot" title="R" data-need-img disabled>⟳ <span data-tr="Döndür" data-en="Rotate"></span></button>
+      <button data-a="fit" title="0" data-need-img disabled><span data-tr="Sığdır" data-en="Fit"></span></button>
+      <button data-a="nobg" data-need-img disabled><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v18M3 9h18" opacity=".5"/></svg> <span data-tr="Arka planı kaldır" data-en="Remove background"></span></button>
+      <button data-a="beautify" title="B" data-need-img disabled><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><rect x="4" y="4" width="16" height="16" rx="4"/><rect x="8" y="8" width="8" height="8" rx="2"/></svg> <span data-tr="Beautify" data-en="Beautify"></span></button>
+      <button data-a="pin" title="P" data-need-img disabled><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M12 17v5M7 4h10l-1.5 6 2 3H6.5l2-3z"/></svg> <span data-tr="Sabitle" data-en="Pin"></span></button>
+      <button data-a="conv" data-need-img disabled>⇄ <span data-tr="Dönüştür" data-en="Convert"></span></button>
+      <button data-a="folder" data-need-img disabled><span data-tr="Klasör" data-en="Folder"></span></button>
+      <button data-a="lens" class="lens" data-need-img disabled>◎ Kami Lens</button>
     </header>
     <main class="pc-main">
       <section class="pc-stage" id="pcStage">
         <img id="pcImg" alt="">
         <p class="pc-empty" id="pcEmpty"><span data-tr="Bir görseli buraya bırak ya da Kami'de aç" data-en="Drop an image here or open one in Kami"></span></p>
-        <button class="pc-nav l" data-a="prev">‹</button><button class="pc-nav r" data-a="next">›</button>
+        <button class="pc-nav l" data-a="prev" hidden>‹</button><button class="pc-nav r" data-a="next" hidden>›</button>
       </section>
       <aside class="pc-lens" id="pcLens" hidden></aside>
+      <aside class="pc-beautify" id="pcBeautify" hidden></aside>
     </main>
   </div>
   <script src="kami-embed.js"></script>
@@ -40,5 +44,6 @@
   <script src="editor.js"></script>
   <script src="editor-ai.js"></script>
   <script src="editor-pro.js"></script>
+  <script src="picture-v138.js"></script>
 </body>
 </html>

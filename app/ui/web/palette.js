@@ -6,7 +6,46 @@
   const extra = () => [
     { t: L("Kami Player'ı aç (kütüphane)", "Open Kami Player (library)"), run: () => window.pywebview?.api?.player_show({ library: true }) },
     { t: L("Ayarlar", "Settings"), run: () => document.getElementById("settings")?.showModal?.() },
+    { t: L("Bildirim Merkezini Aç", "Open Notification Center"), run: () => document.querySelector('#skDock button[data-sk="notifs"]')?.click() },
+    { t: L("Mini-Ada'yı Aç/Gizle", "Toggle Mini-Island"), run: () => window.pywebview?.api?.mini_island_toggle?.() },
+    { t: L("Reader'ı Aç", "Open Kami Reader"), run: () => window.pywebview?.api?.reader_open?.() },
+    { t: L("Kamify'ı Aç", "Open Kamify"), run: () => window.pywebview?.api?.music_open?.() },
+    { t: L("Studio'yu Aç", "Open Kami Studio"), run: () => window.pywebview?.api?.studio_open?.() },
+    { t: L("Picture'ı Aç", "Open Kami Picture"), run: () => window.pywebview?.api?.picture_open?.("") },
+    { t: L("Games'i Aç", "Open Kami Games"), run: () => window.pywebview?.api?.games_open?.() },
+    { t: L("Cleaner'ı Aç", "Open Kami Cleaner"), run: () => window.pywebview?.api?.cleaner_open?.() },
   ];
+  const parseParamCmd = (raw) => {
+    const s = String(raw || "").trim();
+    if (!s.startsWith(">")) return [];
+    const arg = s.slice(1).trim();
+    const low = arg.toLocaleLowerCase("tr");
+    const mSpd = low.match(/^h[ıi]z\s+(\d+(?:\.\d+)?)\s*(k|kb|kib|m|mb|mib)?$/i);
+    if (mSpd) {
+      const val = parseFloat(mSpd[1]);
+      const unit = (mSpd[2] || "m").toLowerCase();
+      const kib = Math.round(unit.startsWith("k") ? val : val * 1024);
+      return [{ t: L(`Hız sınırını ${kib ? kib + " KB/s" : "sınırsız"} yap`, `Set speed limit to ${kib ? kib + " KB/s" : "unlimited"}`), ic: "⚡", run: async () => { await window.pywebview?.api?.set_setting?.("speed_limit_kib", kib); if (typeof toast === "function") toast(L("Hız güncellendi", "Speed updated")); } }];
+    }
+    const pMap = { tam: "full", full: "full", yayin: "stream", yayın: "stream", stream: "stream", oyun: "game", game: "game", oda: "room", room: "room", gece: "night", night: "night" };
+    const mProf = low.match(/^profil\s+(\S+)/i);
+    if (mProf && pMap[mProf[1]]) {
+      const pk = pMap[mProf[1]];
+      return [{ t: L(`Hız profilini '${pk}' yap`, `Switch speed profile to '${pk}'`), ic: "⚡", run: () => window.pywebview?.api?.speed_profile_set?.(pk) }];
+    }
+    const quick = [
+      { k: "temizle", t: L("Bitenleri Temizle", "Clear Finished"), ic: "🧹", run: () => window.pywebview?.api?.clear_finished?.() },
+      { k: "ada", t: L("Mini-Ada Aç / Kapat", "Toggle Mini-Island"), ic: "◎", run: () => window.pywebview?.api?.mini_island_toggle?.() },
+      { k: "bildirim", t: L("Bildirim Merkezi", "Notification Center"), ic: "🔔", run: () => document.querySelector('#skDock button[data-sk="notifs"]')?.click() },
+      { k: "reader", t: L("Kami Reader'ı Aç", "Open Kami Reader"), ic: "📖", run: () => window.pywebview?.api?.reader_open?.() },
+      { k: "kamify", t: L("Kamify'ı Aç", "Open Kamify"), ic: "♪", run: () => window.pywebview?.api?.music_open?.() },
+      { k: "studio", t: L("Kami Studio'yu Aç", "Open Kami Studio"), ic: "🎬", run: () => window.pywebview?.api?.studio_open?.() },
+      { k: "player", t: L("Kami Player'ı Aç", "Open Kami Player"), ic: "▶", run: () => window.pywebview?.api?.player_show?.({ library: true }) },
+      { k: "games", t: L("Kami Games'i Aç", "Open Kami Games"), ic: "🎮", run: () => window.pywebview?.api?.games_open?.() },
+      { k: "picture", t: L("Kami Picture'ı Aç", "Open Kami Picture"), ic: "🖼", run: () => window.pywebview?.api?.picture_open?.("") },
+    ];
+    return quick.filter((x) => !low || x.k.includes(low) || x.t.toLocaleLowerCase("tr").includes(low));
+  };
   const label = (b) => (b.getAttribute("title") || b.getAttribute("aria-label") || b.textContent || "").replace(/\s+/g, " ").trim();
   function items() {
     const seen = new Set(), out = [];
@@ -39,11 +78,12 @@
   }
   function render(fromRemote) {
     const q = inp.value.toLowerCase().trim(), qRaw = inp.value.trim();
-    if (!fromRemote) fetchRemote(qRaw);
+    if (!fromRemote && !qRaw.startsWith(">")) fetchRemote(qRaw);
     const norm = (x) => x.toLocaleLowerCase("tr").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
+    const cmdHits = parseParamCmd(qRaw);
     const qq = norm(q).split(/\s+/).filter(Boolean);
-    const local = items().filter((x) => { const h = norm(x.t + " " + (x.sub || "")); return qq.every((w) => h.includes(w)); }).slice(0, 10);
-    const rem = (rq && qRaw === rq) ? remote.slice(0, 14) : [];
+    const local = qRaw.startsWith(">") ? cmdHits : items().filter((x) => { const h = norm(x.t + " " + (x.sub || "")); return qq.every((w) => h.includes(w)); }).slice(0, 10);
+    const rem = (!qRaw.startsWith(">") && rq && qRaw === rq) ? remote.slice(0, 14) : [];
     cur = [...local, ...rem];
     sel = Math.min(sel, Math.max(0, cur.length - 1));
     const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));

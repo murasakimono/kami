@@ -401,3 +401,115 @@ def fetch_for_file(path: str, title_hint: str = "", embed: bool = True,
     if session is None:
         _MISS_CACHE[miss_key] = time.time()
     return out
+
+
+def _parse_ts_sec(ts: str) -> float:
+    ts = str(ts or "").strip()
+    if not ts:
+        return 0.0
+    if ts.endswith("s") and ":" not in ts:
+        try:
+            return float(ts[:-1])
+        except ValueError:
+            return 0.0
+    parts = ts.split(":")
+    try:
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + float(parts[1])
+        return float(parts[0])
+    except ValueError:
+        return 0.0
+
+
+def parse_ttml_words(ttml: str) -> list[dict[str, Any]]:
+    """AMLL / Apple Music TTML XML'inden satir ve kelime zamanlamalarini cikarir."""
+    import xml.etree.ElementTree as ET
+    raw = str(ttml or "").strip()
+    if not raw or "<p" not in raw.lower():
+        return []
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return []
+    lines: list[dict[str, Any]] = []
+    for elem in root.iter():
+        if not str(elem.tag).lower().endswith("}p") and elem.tag.lower() != "p":
+            continue
+        p_beg = _parse_ts_sec(elem.attrib.get("begin", ""))
+        p_end = _parse_ts_sec(elem.attrib.get("end", ""))
+        words: list[dict[str, Any]] = []
+        txt_parts: list[str] = []
+        if elem.text and elem.text.strip():
+            txt_parts.append(elem.text.strip())
+        for sp in elem:
+            st = (sp.text or "").strip()
+            if st and (str(sp.tag).lower().endswith("}span") or sp.tag.lower() == "span"):
+                wb = _parse_ts_sec(sp.attrib.get("begin", ""))
+                we = _parse_ts_sec(sp.attrib.get("end", ""))
+                if sp.attrib.get("begin"):
+                    words.append({"t": wb, "end": max(wb, we), "w": st})
+                txt_parts.append(st)
+            if sp.tail and sp.tail.strip():
+                txt_parts.append(sp.tail.strip())
+        full = " ".join(p for p in txt_parts if p).strip()
+        if not full:
+            continue
+        if not p_beg and words:
+            p_beg = words[0]["t"]
+        if not p_end and words:
+            p_end = words[-1]["end"]
+        lines.append({"t": round(p_beg, 3), "end": round(max(p_beg, p_end), 3), "text": full, "words": words})
+    return lines
+
+
+def parse_elrc_words(text: str) -> list[dict[str, Any]]:
+    """[mm:ss.xx] + istege bagli <mm:ss.xx> kelime etiketlerini cozer."""
+    out: list[dict[str, Any]] = []
+    for raw_ln in str(text or "").splitlines():
+        ln = raw_ln.strip()
+        m = re.match(r"\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)", ln)
+        if not m:
+            continue
+        t0 = int(m.group(1)) * 60 + float(m.group(2))
+        body = m.group(3).strip()
+        if not body:
+            continue
+        words: list[dict[str, Any]] = []
+        w_matches = list(re.finditer(r"<(\d+):(\d+(?:\.\d+)?)>([^<]+)", body))
+        if w_matches:
+            clean_parts = []
+            for idx, wm in enumerate(w_matches):
+                wt = int(wm.group(1)) * 60 + float(wm.group(2))
+                wtxt = wm.group(3).strip()
+                wend = (int(w_matches[idx + 1].group(1)) * 60 + float(w_matches[idx + 1].group(2))) if idx + 1 < len(w_matches) else wt + 0.45
+                if wtxt:
+                    words.append({"t": round(wt, 3), "end": round(max(wt, wend), 3), "w": wtxt})
+                    clean_parts.append(wtxt)
+            clean = " ".join(clean_parts)
+        else:
+            clean = re.sub(r"<\d+:\d+(?:\.\d+)?>", "", body).strip()
+        if clean:
+            out.append({"t": round(t0, 3), "text": clean, "words": words})
+    return out
+
+
+def amll_ttml_find(artist: str, title: str, session: requests.Session | None = None) -> list[dict[str, Any]]:
+    """LRCLIB uzerinde TTML/ELRC veya AMLL JSON arayarak kelime zamanli satir dondurmeye calisir."""
+    if not title:
+        return []
+    s = session or requests.Session()
+    try:
+        r = s.get(f"{LRCLIB}/search", params={"track_name": title, "artist_name": artist} if artist else {"q": title},
+                  headers={"User-Agent": _ua()}, timeout=6)
+        if r.status_code == 200:
+            for item in (r.json() or []):
+                syn = str(item.get("syncedLyrics") or "")
+                if "<" in syn and ">" in syn:
+                    parsed = parse_elrc_words(syn)
+                    if any(x.get("words") for x in parsed):
+                        return parsed
+    except (requests.RequestException, ValueError):
+        pass
+    return []

@@ -374,3 +374,57 @@ def speech_suggestions(words: list[dict[str, Any]], gap_ok: float = 0.08, long_p
             out.append({"kind": "pause", "i0": -1, "i1": -1, "s": round(s, 3), "e": round(e, 3), "text": f"{g:.1f} sn",
                         "label": "Uzun duraklama", "safe": True})
     return sorted(out, key=lambda x: x["s"])
+
+
+def detect_silences(ffmpeg: str, path: str, db: float = -35.0, min_len: float = 0.45) -> list[list[float]]:
+    """FFmpeg silencedetect ile sessiz araliklari [[basla, bitis], ...] dondurur."""
+    if not ffmpeg or not path:
+        return []
+    txt = _ff(ffmpeg, ["-i", path, "-af", f"silencedetect=n={float(db)}dB:d={max(0.05, float(min_len)):.2f}",
+                       "-f", "null", "-"], timeout=600)
+    return _pairs(txt, "silence", _duration(txt))
+
+
+def format_ffmetadata_chapters(chapters: list[dict[str, Any]], total_dur: float = 0.0) -> str:
+    """Bolum listesini FFmpeg ;FFMETADATA1 formatina donusturur."""
+    def _esc(val: str) -> str:
+        return re.sub(r"([=;#\\\n])", r"\\\1", str(val or "").strip())
+
+    lines = [";FFMETADATA1"]
+    clean = sorted([c for c in (chapters or []) if isinstance(c, dict)], key=lambda x: float(x.get("t") or 0))
+    for i, ch in enumerate(clean):
+        start_s = max(0.0, float(ch.get("t") or 0))
+        nxt_s = float(clean[i + 1].get("t") or start_s + 1.0) if i + 1 < len(clean) else max(start_s + 1.0, float(total_dur or start_s + 1.0))
+        start_ms = int(round(start_s * 1000))
+        end_ms = max(start_ms + 100, int(round(nxt_s * 1000)))
+        title = str(ch.get("title") or ch.get("label") or f"Bolum {i + 1}")
+        lines.extend(["[CHAPTER]", "TIMEBASE=1/1000", f"START={start_ms}", f"END={end_ms}", f"title={_esc(title)}"])
+    return "\n".join(lines) + "\n"
+
+
+def build_preview_proxy(ffmpeg: str, src_path: str, out_dir: Path | str) -> dict[str, Any]:
+    """Hizli timeline taramasi icin 720p dusuk keyframe'li proxy MP4 olusturur (varsa onbellekten doner)."""
+    import hashlib
+    if not ffmpeg or not src_path:
+        return {"ok": False, "error": "missing_input"}
+    src = Path(src_path)
+    if not src.is_file():
+        return {"ok": False, "error": "file_not_found"}
+    dest_dir = Path(out_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha1(f"{src.resolve()}|{src.stat().st_mtime_ns}|{src.stat().st_size}".encode("utf-8")).hexdigest()[:16]
+    dest = dest_dir / f"proxy_{key}.mp4"
+    if dest.is_file() and dest.stat().st_size > 1024:
+        return {"ok": True, "path": str(dest), "cached": True}
+    tmp = dest.with_suffix(".tmp.mp4")
+    r = subprocess.run([
+        ffmpeg, "-y", "-hide_banner", "-nostdin", "-i", str(src),
+        "-vf", "scale=-2:720", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+        "-g", "15", "-keyint_min", "15", "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart", str(tmp),
+    ], capture_output=True, timeout=600, creationflags=NO_WINDOW)
+    if r.returncode != 0 or not tmp.is_file():
+        tmp.unlink(missing_ok=True)
+        return {"ok": False, "error": r.stderr.decode("utf-8", "replace")[-220:]}
+    tmp.replace(dest)
+    return {"ok": True, "path": str(dest), "cached": False}

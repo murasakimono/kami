@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami Yakalama</title>
+<style>
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+    background: #0B0812; color: #EDE9F6;
+    font: 500 12px "Chakra Petch", system-ui, sans-serif;
+  }
+  .lq {
+    position: relative; width: 100%; height: 100%; padding: 10px 12px;
+    border: 1px solid rgba(157,107,255,.45);
+    background: radial-gradient(circle at 12% 15%, rgba(139,92,246,.22), rgba(11,8,18,.98) 65%);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .lq-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .lq-thumb {
+    width: 68px; height: 52px; border-radius: 6px; object-fit: cover; flex: none;
+    border: 1px solid rgba(255,255,255,.14); background: #07050C; -webkit-app-region: drag;
+  }
+  .lq-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; -webkit-app-region: drag; }
+  .lq-meta b { font-size: 12.5px; color: #C4B5FD; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lq-meta small { font-size: 11px; color: #8A829E; }
+  .lq-x { background: none; border: 0; color: #8A829E; cursor: pointer; font-size: 14px; padding: 2px 6px; }
+  .lq-x:hover { color: #EDE9F6; }
+  .lq-acts { display: flex; gap: 5px; flex-wrap: nowrap; }
+  .lq-acts button {
+    flex: 1; padding: 6px 5px; border-radius: 6px; cursor: pointer;
+    border: 1px solid rgba(157,107,255,.32); background: #19132B; color: #EDE9F6;
+    font: 600 11px "Chakra Petch", system-ui, sans-serif; white-space: nowrap;
+  }
+  .lq-acts button:hover { border-color: #2EE6A6; color: #2EE6A6; }
+  .lq-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255,255,255,.08); }
+  .lq-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #8B5CF6, #2EE6A6); transition: width .12s linear; }
+</style>
+</head>
+<body>
+  <div class="lq" id="lqCard">
+    <div class="lq-top">
+      <img class="lq-thumb" id="lqImg" alt="">
+      <div class="lq-meta">
+        <b>Kami Hızlı Yakalama</b>
+        <small id="lqInfo">Hazırlanıyor...</small>
+      </div>
+      <button class="lq-x" id="lqClose" title="Kapat (Esc)">✕</button>
+    </div>
+    <div class="lq-acts">
+      <button data-do="copy">Kopyala</button>
+      <button data-do="pin">Sabitle</button>
+      <button data-do="beautify">Beautify</button>
+      <button data-do="ocr">OCR</button>
+      <button data-do="lens">Lens</button>
+      <button data-do="save">Kaydet</button>
+    </div>
+    <div class="lq-bar"><div class="lq-fill" id="lqFill"></div></div>
+  </div>
+<script>
+(() => {
+  const fill = document.getElementById("lqFill");
+  const info = document.getElementById("lqInfo");
+  let msLeft = 8000, paused = false, lastTs = performance.now(), path = "";
+
+  async function init() {
+    const api = window.pywebview?.api;
+    if (!api?.lens_quick_info) return;
+    const d = await api.lens_quick_info();
+    if (!d?.ok) return;
+    path = d.path || "";
+    document.getElementById("lqImg").src = d.url || "";
+    info.textContent = `${d.width || "?"}×${d.height || "?"} px · 8 sn içinde kapanır`;
+  }
+
+  function tick(now) {
+    const dt = now - lastTs; lastTs = now;
+    if (!paused) {
+      msLeft = Math.max(0, msLeft - dt);
+      fill.style.width = `${(msLeft / 8000) * 100}%`;
+      if (msLeft <= 0) { window.pywebview?.api?.lens_quick_action?.("close"); return; }
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  const card = document.getElementById("lqCard");
+  card.addEventListener("mouseenter", () => { paused = true; });
+  card.addEventListener("mouseleave", () => { paused = false; lastTs = performance.now(); });
+  document.getElementById("lqClose").onclick = () => window.pywebview?.api?.lens_quick_action?.("close");
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") window.pywebview?.api?.lens_quick_action?.("close"); });
+
+  card.querySelectorAll("[data-do]").forEach((btn) => {
+    btn.onclick = async () => {
+      paused = true;
+      const r = await window.pywebview?.api?.lens_quick_action?.(btn.dataset.do);
+      if (btn.dataset.do === "ocr" && r?.text) {
+        try { await navigator.clipboard?.writeText?.(r.text); } catch {}
+        info.textContent = "Metin panoya kopyalandı ✓";
+      } else if (r?.message) {
+        info.textContent = r.message;
+      }
+      if (btn.dataset.do !== "ocr") {
+        setTimeout(() => window.pywebview?.api?.lens_quick_action?.("close"), 350);
+      }
+    };
+  });
+
+  if (window.pywebview?.api) init();
+  window.addEventListener("pywebviewready", init);
+})();
+</script>
+</body>
+</html>

@@ -161,6 +161,17 @@
       toast(r?.ok ? L("Takipte: ", "Following: ") + r.series.title : L("Eklenemedi: ", "Failed: ") + (r?.error || "")); panels();
     };
     box.querySelector("#rpChk").onclick = async () => { const r = await slowR("reader_series_check"); toast(r?.found?.length ? L(`${r.found.length} seride yeni bölüm`, `New chapters in ${r.found.length}`) : L("Yeni bölüm yok", "No new chapters")); panels(); };
+    let resBox = $("#rpResurface");
+    if (!resBox) { resBox = document.createElement("div"); resBox.id = "rpResurface"; box.after(resBox); }
+    if (st.sample_hl?.text) {
+      resBox.className = "rp-hl-resurface";
+      const hlTitle = st.sample_hl.title || st.sample_hl.book || L("Belge", "Document");
+      resBox.innerHTML = `<div><small style="color:var(--em);letter-spacing:2px;text-transform:uppercase;font-size:10.5px">${L("Günün Vurgusu · ", "Daily Highlight · ")}${esc(hlTitle)} (S.${(st.sample_hl.page || 0) + 1})</small><blockquote>“${esc(st.sample_hl.text)}”</blockquote></div><button type="button" class="btn" id="rpGoHl" style="background:#2A1650;border:1px solid rgba(157,107,255,.45);color:#EDE9F6;padding:8px 14px;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);white-space:nowrap;flex:none">${L("Belgeye Git", "Jump to Doc")}</button>`;
+      resBox.querySelector("#rpGoHl").onclick = async () => { await openDoc(st.sample_hl.path); go(st.sample_hl.page); };
+    } else {
+      resBox.className = "";
+      resBox.innerHTML = "";
+    }
     box.onclick = async (e) => {
       const rm = e.target.closest("[data-rm]"), seen = e.target.closest("[data-seen]"), ch = e.target.closest("[data-ch]");
       if (rm) {

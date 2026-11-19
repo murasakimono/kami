@@ -119,6 +119,9 @@ class ClipboardWatcher:
                     self.ignore_next = False
                     continue
                 text = ""
+                skip_fn = getattr(self, "should_ignore", None)
+                if callable(skip_fn) and skip_fn():
+                    continue
                 if self.on_text:
                     try:
                         if not is_private():

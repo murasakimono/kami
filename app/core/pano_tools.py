@@ -7,9 +7,13 @@ from __future__ import annotations
 import json
 import math
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
+
+_SHELF_LOCK = threading.Lock()
+_OCR_IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
 
 def _shelf_path(data_dir: Path | None = None) -> Path:
@@ -19,8 +23,7 @@ def _shelf_path(data_dir: Path | None = None) -> Path:
     return paths.DATA_DIR / "pano_shelf.json"
 
 
-def list_shelf(data_dir: Path | None = None) -> list[dict[str, Any]]:
-    p = _shelf_path(data_dir)
+def _read_shelf_unlocked(p: Path) -> list[dict[str, Any]]:
     if not p.is_file():
         return []
     try:
@@ -30,35 +33,81 @@ def list_shelf(data_dir: Path | None = None) -> list[dict[str, Any]]:
         return []
 
 
-def add_shelf_item(kind: str, value: str, label: str = "", data_dir: Path | None = None) -> dict[str, Any]:
-    items = [it for it in list_shelf(data_dir) if it.get("value") != value]   # ayni sey tekrar kopyalanirsa en uste cikar
-    entry = {
-        "id": f"p_{int(time.time() * 1000)}_{len(items)}",
-        "kind": kind,
-        "value": value,
-        "label": label or (Path(value).name if kind == "file" else " ".join(value.split())[:80]),
-        "ts": int(time.time()),
-    }
-    items.insert(0, entry)
-    items = items[:60]
+def list_shelf(data_dir: Path | None = None) -> list[dict[str, Any]]:
     p = _shelf_path(data_dir)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _SHELF_LOCK:
+        return _read_shelf_unlocked(p)
+
+
+def index_shelf_item_ocr(item_id: str, image_path: str, data_dir: Path | None = None) -> str:
+    """Raftaki gorsel oge icin OCR metnini okur ve entry['ocr_text'] alanina yazar."""
+    try:
+        from app.core import ocr
+        res = ocr.read_text(str(image_path))
+        txt = str((res or {}).get("text") or "").strip()
+    except Exception:
+        return ""
+    if not txt:
+        return ""
+    p = _shelf_path(data_dir)
+    with _SHELF_LOCK:
+        items = _read_shelf_unlocked(p)
+        changed = False
+        for it in items:
+            if it.get("id") == item_id:
+                it["ocr_text"] = txt[:2000]
+                changed = True
+                break
+        if changed:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    return txt
+
+
+def add_shelf_item(kind: str, value: str, label: str = "", data_dir: Path | None = None,
+                   async_ocr: bool = True) -> dict[str, Any]:
+    p = _shelf_path(data_dir)
+    with _SHELF_LOCK:
+        items = [it for it in _read_shelf_unlocked(p) if it.get("value") != value]   # ayni sey tekrar kopyalanirsa en uste cikar
+        entry: dict[str, Any] = {
+            "id": f"p_{int(time.time() * 1000)}_{len(items)}",
+            "kind": kind,
+            "value": value,
+            "label": label or (Path(value).name if kind == "file" else " ".join(value.split())[:80]),
+            "ts": int(time.time()),
+        }
+        items.insert(0, entry)
+        items = items[:60]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        vp = Path(str(value or ""))
+        if kind in ("file", "image") and vp.suffix.lower() in _OCR_IMG_EXTS and vp.is_file():
+            if async_ocr:
+                threading.Thread(target=index_shelf_item_ocr, args=(entry["id"], str(vp), data_dir), daemon=True).start()
+            else:
+                txt = index_shelf_item_ocr(entry["id"], str(vp), data_dir)
+                if txt:
+                    entry["ocr_text"] = txt[:2000]
+    except Exception:
+        pass
     return {"ok": True, "item": entry, "count": len(items)}
 
 
 def clear_shelf(data_dir: Path | None = None) -> dict[str, Any]:
     p = _shelf_path(data_dir)
-    if p.exists():
-        p.write_text("[]", encoding="utf-8")
+    with _SHELF_LOCK:
+        if p.exists():
+            p.write_text("[]", encoding="utf-8")
     return {"ok": True, "count": 0}
 
 
 def remove_shelf_item(item_id: str, data_dir: Path | None = None) -> dict[str, Any]:
-    items = [it for it in list_shelf(data_dir) if it.get("id") != item_id]
     p = _shelf_path(data_dir)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _SHELF_LOCK:
+        items = [it for it in _read_shelf_unlocked(p) if it.get("id") != item_id]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"ok": True, "count": len(items)}
 
 

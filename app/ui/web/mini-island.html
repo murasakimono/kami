@@ -1,157 +1,401 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="tr">
 <head>
 <meta charset="utf-8">
 <title>Kami Mini-Ada</title>
-<link rel="stylesheet" href="scroll.css">
-<link rel="stylesheet" href="sunak.css">
 <style>
-  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; font-family: "Chakra Petch", sans-serif; }
-  .island {
-    position: absolute; inset: 0;
-    display: flex; align-items: center; gap: 9px;
-    padding: 0 11px; box-sizing: border-box;
-    background: linear-gradient(135deg, #171128 0%, #0A0812 80%);
-    border: 1px solid rgba(167,139,250,.34); border-radius: 999px;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 0 22px rgba(124,58,237,.18);
+  @font-face { font-family: "Chakra Petch"; src: url("fonts/ChakraPetch-Medium.ttf"); font-weight: 500; }
+  @font-face { font-family: "Chakra Petch"; src: url("fonts/ChakraPetch-Bold.ttf"); font-weight: 700; }
+  :root {
+    --cov: #A855F7;
+    --cov2: #2EE6A6;
   }
-  .eye {
-    width: 26px; height: 26px; flex: none; border-radius: 50%;
-    background: #120D1F url("eye/assets/idle.webp") center/125% no-repeat;
-    border: 1.5px solid #8B5CF6;
-    cursor: pointer; transition: transform .15s, border-color .15s;
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+    background: #09070E; color: #EDE9F6;
+    font: 600 12px "Chakra Petch", system-ui, sans-serif;
   }
-  .eye:hover { transform: scale(1.06); border-color: #2EE6A6; }
-  .island.in-room .eye { border-color: #2EE6A6; }
-  .metric { display: flex; align-items: baseline; gap: 4px; color: #F2EEFA; font-size: 13px; font-weight: 700; white-space: nowrap; }
-  .metric small { font-size: 10px; color: #9D93B3; font-weight: 600; }
-  .sep { width: 1px; height: 18px; background: rgba(255,255,255,.1); flex: none; }
-  .vram { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(46,230,166,.12); color: #2EE6A6; border: 1px solid rgba(46,230,166,.28); white-space: nowrap; }
-  .vram.warn { background: rgba(245,166,91,.15); color: #F5A65B; border-color: rgba(245,166,91,.35); }
-  .vram.critical { background: rgba(239,68,68,.18); color: #F87171; border-color: rgba(239,68,68,.4); }
-  .prof { font-size: 11px; color: #C4B5FD; max-width: 78px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .spacer { flex: 1; }
+  .pill {
+    position: relative; width: 100%; height: 100%;
+    padding: 0 11px;
+    background: #09070E;
+    border: 1px solid rgba(157,107,255,0.28);
+    display: flex; flex-direction: column; justify-content: center; gap: 3px;
+    transition: border-color .18s ease;
+    overflow: hidden;
+  }
+  .pill.music-mode {
+    border-color: color-mix(in srgb, var(--cov) 45%, rgba(255,255,255,0.12));
+  }
+  .pill::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at 18% 50%, color-mix(in srgb, var(--cov) 32%, transparent), transparent 68%),
+                radial-gradient(circle at 88% 50%, color-mix(in srgb, var(--cov2) 18%, transparent), transparent 60%);
+    transition: opacity .22s ease;
+  }
+  .pill.music-mode.expanded::before { opacity: 1; }
+  .row {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; gap: 8px; min-width: 0; height: 34px;
+  }
+  .subrow {
+    position: relative; z-index: 1;
+    display: none; align-items: center; gap: 8px; height: 22px; padding-left: 36px;
+  }
+  .pill.music-mode.expanded .subrow { display: flex; }
+  .dot {
+    width: 14px; height: 14px; border-radius: 50%; flex: none;
+    background: #0B0912; border: 1.5px solid #2EE6A6;
+    box-shadow: 0 0 8px rgba(46,230,166,0.45);
+    -webkit-app-region: drag;
+  }
+  .dot.talk { border-color: #34D399; box-shadow: 0 0 12px #34D399; }
+  .drag-handle {
+    cursor: grab; -webkit-app-region: drag;
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  }
+  .cover {
+    width: 28px; height: 28px; border-radius: 6px; flex: none; object-fit: cover;
+    border: 1px solid rgba(255,255,255,0.12); background: #140F20;
+  }
+  .cover-fb {
+    width: 28px; height: 28px; border-radius: 6px; flex: none;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, #271645, #12101B);
+    border: 1px solid rgba(168,85,247,0.35); color: #C4B5FD;
+  }
+  .meta {
+    flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.15;
+    cursor: grab; -webkit-app-region: drag;
+  }
+  .title { font-size: 12px; color: #F5F3FF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .artist { font-size: 10.5px; color: #9F96B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .spd { color: #2EE6A6; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .vram {
+    font-size: 10.5px; color: #B4FFD8; background: rgba(46,230,166,0.12);
+    border: 1px solid rgba(46,230,166,0.22); padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+  }
+  .prof {
+    font-size: 10.5px; color: #D8B4FE; background: rgba(168,85,247,0.14);
+    border: 1px solid rgba(168,85,247,0.24); padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+    max-width: 96px; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sep { width: 1px; height: 15px; background: rgba(255,255,255,0.10); flex: none; }
+  .ctrls { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+  .ib {
+    width: 24px; height: 24px; border-radius: 6px; border: 1px solid transparent;
+    background: transparent; color: #D6CFE8; display: grid; place-items: center;
+    cursor: pointer; padding: 0; flex: none; transition: background .12s, color .12s, border-color .12s;
+  }
+  .ib:hover { background: rgba(168,85,247,0.22); color: #fff; border-color: rgba(168,85,247,0.35); }
+  .ib.pri { background: rgba(255,255,255,0.08); color: #fff; }
+  .ib.pri:hover { background: var(--cov); color: #09070E; }
+  .ib.bad { background: rgba(244,63,94,0.18); color: #FDA4AF; }
+  .ib svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ib svg.fill { fill: currentColor; stroke: none; }
   .btn {
-    border: 1px solid rgba(167,139,250,.35); background: rgba(124,58,237,.22);
-    color: #EDE9FE; font: 700 11px "Chakra Petch", sans-serif;
-    padding: 4px 9px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+    background: #1B1329; color: #EDE9F6; border: 1px solid rgba(157,107,255,0.32);
+    border-radius: 7px; height: 24px; padding: 0 9px; cursor: pointer;
+    font: inherit; font-size: 11px; white-space: nowrap; flex: none;
   }
-  .btn:hover { background: rgba(124,58,237,.42); }
-  .btn.clip { border-color: rgba(46,230,166,.38); background: rgba(20,184,138,.18); color: #A7F3D0; }
-  .btn.clip:hover { background: rgba(20,184,138,.36); }
-  /* oda seridi (Discord oyun ici kapsulu) */
-  .room { display: none; align-items: center; gap: 6px; min-width: 0; }
-  .island.in-room .room { display: flex; } .island.in-room .dl { display: none; }
-  .av { width: 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; flex: none;
-    background: #3B2A5C; box-shadow: 0 0 0 2px transparent; transition: box-shadow .12s, transform .12s; position: relative; }
-  .av.talk { box-shadow: 0 0 0 2px #2EE6A6, 0 0 10px rgba(46,230,166,.65); transform: scale(1.06); }
-  .av.muted::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 9px; height: 9px; border-radius: 50%; background: #FF4D6A; border: 1.5px solid #09070E; }
-  .rname { font-size: 11px; font-weight: 600; color: #D8CCF8; max-width: 82px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-  .rb { width: 25px; height: 25px; border-radius: 50%; border: 1px solid rgba(167,139,250,.35); background: rgba(124,58,237,.18); color: #EDE9FE; cursor: pointer; display: grid; place-items: center; padding: 0; flex: none; }
-  .rb svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; }
-  .rb.off { background: rgba(255,77,106,.22); border-color: rgba(255,77,106,.5); color: #FFB3C0; }
-  .rb.leave { background: rgba(239,68,68,.22); border-color: rgba(248,113,113,.48); color: #FCA5A5; }
-  .rb.leave:hover { background: rgba(239,68,68,.42); color: #fff; }
+  .btn:hover { background: #332154; border-color: rgba(196,181,253,0.55); }
   .x {
-    width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent;
-    color: #7D7394; font-size: 12px; cursor: pointer; flex: none;
+    background: none; border: 0; color: #8A81A3; cursor: pointer; font-size: 13px;
+    width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; flex: none;
   }
-  .x:hover { background: rgba(255,255,255,.08); color: #fff; }
+  .x:hover { color: #fff; background: rgba(255,255,255,0.08); }
+  .seekbar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+    background: rgba(255,255,255,0.08); cursor: pointer; z-index: 3;
+  }
+  .pill.music-mode.expanded .seekbar { height: 4px; }
+  .seekfill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--cov), var(--cov2));
+    transition: width .3s linear;
+  }
+  .tm { font-size: 10.5px; color: #A69EC0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .lyric {
+    flex: 1; min-width: 0; font-size: 11px; color: #E9D5FF;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .drop-bar {
+    position: relative; z-index: 2;
+    display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%;
+  }
+  .drop-lbl { font-size: 11.5px; color: #C4B5FD; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drop-acts { display: flex; gap: 5px; flex: none; }
 </style>
 </head>
 <body>
-<div class="island" id="island">
-  <div class="eye" id="openBtn" title="Kami'yi Aç"></div>
-  <div class="metric dl"><span id="spd">0,0</span><small>Mb/s</small></div>
-  <div class="sep dl"></div>
-  <div class="vram dl" id="vram" title="VRAM / RAM">VRAM —</div>
-  <div class="prof dl" id="prof" title="Aktif Profil">Kişisel</div>
-  <button class="btn" id="musBtn" hidden title="Kamify arka planda çalıyor — duraklatmak için tıkla" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;border-color:rgba(46,230,166,.45);background:rgba(20,184,138,.18);color:#A7F3D0">⏸ …</button>
-  <div class="room" id="room">
-    <div id="avs" style="display:flex;gap:4px"></div><span class="rname" id="rname"></span>
-    <button class="rb" id="rMic" title="Mikrofon (Kami Oda)"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
-    <button class="rb" id="rDeaf" title="Kulaklık (Kami Oda)"><svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H4zM17 14h3v6h-3z"/></svg></button>
-    <button class="rb leave" id="rLeave" title="Odadan Ayrıl"><svg viewBox="0 0 24 24"><path d="M3 15c5-5 13-5 18 0l-3 3-3-2v-2a10 10 0 0 0-6 0v2l-3 2z"/></svg></button>
+<div class="pill" id="pill">
+  <div class="row" id="mainRow">
+    <div class="drag-handle" id="idleGrip"><div class="dot" id="dot"></div><span class="spd" id="spd">0 MB/s</span></div>
+    <span class="vram" id="vram">VRAM —</span>
+    <span class="prof" id="prof">Kişisel</span>
+    <div style="flex:1"></div>
+    <button class="btn" id="openMain">Aç</button>
+    <button class="x" id="closeBtn" title="Mini-Ada'yı Gizle">✕</button>
   </div>
-  <div class="spacer"></div>
-  <button class="btn clip" id="clipBtn" title="Son 30 sn anlik klip kaydet">30sn Klip</button>
-  <button class="btn" id="mainBtn" title="Ana Pencere">Aç</button>
-  <button class="x" id="closeBtn" title="Mini-Ada'yı Gizle">✕</button>
+  <div class="subrow" id="subRow">
+    <span class="tm" id="tmLbl">0:00 / 0:00</span>
+    <span class="lyric" id="lyricLbl"></span>
+  </div>
+  <div class="seekbar" id="seekBar" hidden><div class="seekfill" id="seekFill"></div></div>
 </div>
 <script>
-  const $ = (s) => document.querySelector(s);
-  const api = () => window.pywebview && window.pywebview.api;
+const api = () => window.pywebview?.api;
+const pill = document.getElementById("pill");
+const mainRow = document.getElementById("mainRow");
+const subRow = document.getElementById("subRow");
+const seekBar = document.getElementById("seekBar");
+const seekFill = document.getElementById("seekFill");
+const tmLbl = document.getElementById("tmLbl");
+const lyricLbl = document.getElementById("lyricLbl");
 
-  async function tick() {
-    const a = api();
-    if (!a) return;
+let curMode = "idle";
+let curSize = "460x48";
+let hovered = false;
+let collapseTimer = 0;
+let lastState = null;
+let dropFiles = null;
+let dropTimer = 0;
+const coverColors = new Map();
+
+const SVG = {
+  prev: '<svg viewBox="0 0 24 24"><path class="fill" d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path class="fill" d="M7 5v14l11-7z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><path class="fill" d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>',
+  next: '<svg viewBox="0 0 24 24"><path class="fill" d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>',
+  note: '<svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>',
+  mic: '<svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/></svg>',
+  micoff: '<svg viewBox="0 0 24 24"><path d="M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V6a3 3 0 0 0-5.9-.7M17 14a7 7 0 0 1-10.7 1.3M3 3l18 18"/></svg>',
+  ear: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 16 0"/><rect x="3" y="13" width="4" height="7" rx="2"/><rect x="17" y="13" width="4" height="7" rx="2"/></svg>',
+  earoff: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6M3 3l18 18"/><rect x="3" y="13" width="4" height="7" rx="2"/><rect x="17" y="15" width="4" height="5" rx="2"/></svg>',
+  app: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9 15V9l7 3-7 3z" class="fill"/></svg>',
+};
+
+function fmtMs(ms) {
+  const s = Math.max(0, Math.floor((ms || 0) / 1000));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+}
+function esc(t) {
+  return String(t || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function resizeWin(w, h) {
+  const key = w + "x" + h;
+  if (curSize === key) return;
+  curSize = key;
+  api()?.mini_island_resize?.(w, h);
+}
+function applyCoverColor(url) {
+  if (!url) { pill.style.setProperty("--cov", "#A855F7"); return; }
+  if (coverColors.has(url)) { pill.style.setProperty("--cov", coverColors.get(url)); return; }
+  // deterministic hue fallback + image sample if CORS allows
+  let hash = 0;
+  for (let i = 0; i < url.length; i++) hash = (hash * 31 + url.charCodeAt(i)) | 0;
+  const fallback = `hsl(${Math.abs(hash) % 360}, 78%, 62%)`;
+  coverColors.set(url, fallback);
+  pill.style.setProperty("--cov", fallback);
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
     try {
-      const st = await a.mini_island_state();
-      const mbit = ((st.speed || 0) * 8) / 1e6;
-      $("#spd").textContent = (mbit >= 100 ? Math.round(mbit) : mbit.toFixed(1).replace(".", ","));
-      const v = st.telemetry || {};
-      const vb = $("#vram");
-      vb.classList.remove("warn", "critical");
-      if (v.level === "warn" || v.level === "critical") vb.classList.add(v.level);
-      if (v.gpu_available) {
-        vb.textContent = `VRAM ${Math.round(v.vram_pct || 0)}%`;
-        vb.title = `${v.gpu_name || "GPU"} · ${v.vram_used_mb}/${v.vram_total_mb} MB · NVENC ${v.enc_util || 0}%`;
-      } else {
-        vb.textContent = `RAM ${Math.round(v.ram_pct || 0)}%`;
-        vb.title = `CPU ${Math.round(v.cpu_pct || 0)}% · RAM ${v.ram_used_mb || 0}/${v.ram_total_mb || 0} MB`;
+      const c = document.createElement("canvas");
+      c.width = 4; c.height = 4;
+      const g = c.getContext("2d");
+      g.drawImage(img, 0, 0, 4, 4);
+      const d = g.getImageData(0, 0, 4, 4).data;
+      let r = 0, gr = 0, b = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i] + d[i+1] + d[i+2] > 70) { r += d[i]; gr += d[i+1]; b += d[i+2]; n++; }
       }
-      if (st.profile && st.profile.name) {
-        $("#prof").textContent = st.profile.name;
+      if (n) {
+        const col = `rgb(${Math.round(r/n)},${Math.round(gr/n)},${Math.round(b/n)})`;
+        coverColors.set(url, col);
+        pill.style.setProperty("--cov", col);
       }
-      const mb = $("#musBtn"), mu = st.music, profEl = $("#prof");
-      if (mb) {
-        const showMus = !!(mu && mu.playing && mu.title);
-        mb.hidden = !showMus;
-        if (profEl) profEl.hidden = showMus;
-        if (showMus) {
-          mb.textContent = "⏸ " + mu.title;
-          mb.title = "Kamify çalıyor: " + (mu.artist ? mu.artist + " — " : "") + mu.title + " (duraklatmak için tıkla)";
-        }
-      }
-      const r = st.room, isl = $("#island");
-      isl.classList.toggle("in-room", !!(r && r.people && r.people.length > 1));
-      if (r && r.people) {
-        const esc = (t) => String(t || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-        $("#avs").innerHTML = r.people.slice(0, 5).map((p) => `<div class="av ${p.talk ? "talk" : ""} ${p.muted ? "muted" : ""}" title="${esc(p.name)}">${esc((p.name || "?").trim().charAt(0).toUpperCase())}</div>`).join("");
-        const talking = r.people.filter((p) => p.talk && !p.me).map((p) => p.name);
-        $("#rname").textContent = talking.length ? talking.join(", ") : "Kami Oda";
-        $("#rMic").classList.toggle("off", !!r.muted);
-        $("#rDeaf").classList.toggle("off", !!r.deaf);
-      }
-    } catch (_) {}
+    } catch {}
+  };
+  img.src = url;
+}
+
+function renderDrop(files) {
+  curMode = "drop";
+  pill.className = "pill";
+  seekBar.hidden = true;
+  resizeWin(520, 74);
+  const name = files?.length ? files[0].split(/[\\/]/).pop() : "Dosya";
+  mainRow.innerHTML = `<div class="drop-bar">
+    <span class="drop-lbl" title="${esc(name)}">⊕ ${esc(name)}${files && files.length > 1 ? ` (+${files.length - 1})` : ""}</span>
+    <div class="drop-acts">
+      <button class="btn" data-drop="player">Oynat</button>
+      <button class="btn" data-drop="studio">Studio</button>
+      <button class="btn" data-drop="picture">Picture</button>
+      <button class="btn" data-drop="convert">Dönüştür</button>
+      <button class="x" id="dropCancel">✕</button>
+    </div>
+  </div>`;
+  mainRow.querySelectorAll("[data-drop]").forEach((b) => {
+    b.onclick = async () => {
+      await api()?.mini_island_drop_action?.(b.dataset.drop, dropFiles || []);
+      dropFiles = null;
+      refresh();
+    };
+  });
+  document.getElementById("dropCancel").onclick = () => { dropFiles = null; refresh(); };
+}
+
+function renderRoom(st) {
+  curMode = "room";
+  pill.className = "pill";
+  seekBar.hidden = true;
+  resizeWin(460, 48);
+  const r = st.room;
+  const people = r.people || [];
+  const talker = people.find((p) => p.talk);
+  const names = talker ? talker.name : people.map((p) => p.name).filter(Boolean).slice(0, 3).join(", ");
+  mainRow.innerHTML = `
+    <div class="drag-handle"><div class="dot${talker ? " talk" : ""}"></div></div>
+    <span class="title" style="max-width:190px">${esc(names || "Kami Oda")}</span>
+    <span class="prof">${people.length} kişi</span>
+    <div style="flex:1"></div>
+    <button class="ib${r.muted ? " bad" : ""}" id="rmMic" title="Mikrofon">${r.muted ? SVG.micoff : SVG.mic}</button>
+    <button class="ib${r.deaf ? " bad" : ""}" id="rmDeaf" title="Kulaklık">${r.deaf ? SVG.earoff : SVG.ear}</button>
+    <button class="btn" id="rmOpen">Oda</button>
+    <button class="x" id="closeBtn">✕</button>`;
+  document.getElementById("rmMic").onclick = () => api()?.room_island_cmd?.("mic");
+  document.getElementById("rmDeaf").onclick = () => api()?.room_island_cmd?.("deaf");
+  document.getElementById("rmOpen").onclick = () => api()?.room_open?.();
+  document.getElementById("closeBtn").onclick = () => api()?.mini_island_toggle?.(false);
+}
+
+let lastMusicId = "";
+function renderMusic(st) {
+  curMode = "music";
+  const m = st.music;
+  const allowExpand = st.island_music_expand !== false;
+  const exp = allowExpand && hovered;
+  pill.className = "pill music-mode" + (exp ? " expanded" : "");
+  seekBar.hidden = false;
+  if (exp) resizeWin(540, 74);
+  else resizeWin(allowExpand ? 390 : 440, 48);
+
+  applyCoverColor(m.cover);
+  const pct = m.duration_ms > 0 ? Math.min(100, Math.max(0, (m.progress_ms / m.duration_ms) * 100)) : 0;
+  seekFill.style.width = pct.toFixed(1) + "%";
+  tmLbl.textContent = `${fmtMs(m.progress_ms)} / ${fmtMs(m.duration_ms)}`;
+  lyricLbl.textContent = m.lyric_line || (m.playing ? "Çalıyor" : "Duraklatıldı");
+
+  const sig = `${m.id}|${m.playing ? 1 : 0}|${m.cover}`;
+  if (lastMusicId === sig && mainRow.querySelector("#muPlay")) {
+    const tEl = mainRow.querySelector("#muTitle");
+    const aEl = mainRow.querySelector("#muArtist");
+    if (tEl && tEl.textContent !== m.title) tEl.textContent = m.title;
+    if (aEl && aEl.textContent !== (m.artist || "")) aEl.textContent = m.artist || "";
+    return;
   }
+  lastMusicId = sig;
+  const covHtml = m.cover
+    ? `<img class="cover" src="${esc(m.cover)}" alt="" onerror="this.style.display='none'">`
+    : `<div class="cover-fb">${SVG.note}</div>`;
+  mainRow.innerHTML = `
+    ${covHtml}
+    <div class="meta">
+      <span class="title" id="muTitle">${esc(m.title)}</span>
+      <span class="artist" id="muArtist">${esc(m.artist || "Kamify")}</span>
+    </div>
+    <div class="ctrls">
+      <button class="ib" id="muPrev" title="Önceki">${SVG.prev}</button>
+      <button class="ib pri" id="muPlay" title="${m.playing ? "Duraklat" : "Oynat"}">${m.playing ? SVG.pause : SVG.play}</button>
+      <button class="ib" id="muNext" title="Sonraki">${SVG.next}</button>
+    </div>
+    <div class="sep"></div>
+    <button class="ib" id="muApp" title="Kamify'ı Aç">${SVG.app}</button>
+    <button class="x" id="closeBtn" title="Gizle">✕</button>`;
+  document.getElementById("muPrev").onclick = () => api()?.mini_island_music_cmd?.("previous");
+  document.getElementById("muPlay").onclick = () => api()?.mini_island_music_cmd?.("toggle");
+  document.getElementById("muNext").onclick = () => api()?.mini_island_music_cmd?.("next");
+  document.getElementById("muApp").onclick = () => api()?.music_open?.();
+  document.getElementById("closeBtn").onclick = () => api()?.mini_island_toggle?.(false);
+}
 
-  window.addEventListener("pywebviewready", () => {
-    tick();
-    setInterval(tick, 500);
-  });
+function renderIdle(st) {
+  curMode = "idle";
+  lastMusicId = "";
+  pill.className = "pill";
+  seekBar.hidden = true;
+  resizeWin(460, 48);
+  const spdMb = (st.speed || 0) / (1024 * 1024);
+  const vram = st.telemetry?.vram_used_pct != null ? `VRAM ${st.telemetry.vram_used_pct}%` : `RAM ${st.telemetry?.ram_used_pct || 0}%`;
+  const profMap = { kisisel: "Kişisel", icerik: "İçerik", magaza: "Mağaza" };
+  const pName = profMap[st.profile?.id] || st.profile?.name || "Kişisel";
+  const spdTxt = st.active > 0 ? `${spdMb.toFixed(1)} MB/s (${st.active})` : `${spdMb.toFixed(1)} MB/s`;
+  mainRow.innerHTML = `
+    <div class="drag-handle"><div class="dot"></div><span class="spd">${esc(spdTxt)}</span></div>
+    <span class="vram">${esc(vram)}</span>
+    <span class="prof">${esc(pName)}</span>
+    <div style="flex:1"></div>
+    <button class="btn" id="openRoom">Oda</button>
+    <button class="btn" id="openMain">Aç</button>
+    <button class="x" id="closeBtn" title="Gizle">✕</button>`;
+  document.getElementById("openRoom").onclick = () => api()?.room_open?.();
+  document.getElementById("openMain").onclick = () => api()?.mini_island_open_main?.();
+  document.getElementById("closeBtn").onclick = () => api()?.mini_island_toggle?.(false);
+}
 
-  $("#openBtn").addEventListener("click", () => api()?.card_open());
-  $("#mainBtn").addEventListener("click", () => api()?.card_open());
-  $("#musBtn")?.addEventListener("click", () => api()?.music_spotify_control?.("pause"));
-  $("#closeBtn").addEventListener("click", () => api()?.mini_island_toggle(false));
-  $("#rMic").addEventListener("click", () => api()?.room_island_cmd("mute"));
-  $("#rDeaf").addEventListener("click", () => api()?.room_island_cmd("deaf"));
-  $("#rLeave").addEventListener("click", () => api()?.room_island_cmd("leave"));
-  $("#rname").addEventListener("click", () => api()?.room_island_cmd("open"));
-  $("#clipBtn").addEventListener("click", async () => {
-    const btn = $("#clipBtn");
-    btn.textContent = "Kaydediliyor…";
-    try {
-      await api()?.job_start("rec_save_replay");
-      btn.textContent = "Klip ✓";
-    } catch (_) {
-      btn.textContent = "Hata";
-    }
-    setTimeout(() => { btn.textContent = "30sn Klip"; }, 1800);
-  });
+seekBar.addEventListener("click", (e) => {
+  if (!lastState?.music?.duration_ms) return;
+  const r = seekBar.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - r.left) / Math.max(1, r.width)));
+  api()?.mini_island_music_cmd?.("seek", Math.round(ratio * lastState.music.duration_ms));
+});
+
+pill.addEventListener("mouseenter", () => {
+  clearTimeout(collapseTimer);
+  hovered = true;
+  if (curMode === "music" && lastState) renderMusic(lastState);
+});
+pill.addEventListener("mouseleave", () => {
+  clearTimeout(collapseTimer);
+  collapseTimer = setTimeout(() => {
+    hovered = false;
+    if (curMode === "music" && lastState) renderMusic(lastState);
+  }, 180);
+});
+
+window.kamiIslandExternalDrop = (files) => {
+  dropFiles = files && files.length ? files : [];
+  clearTimeout(dropTimer);
+  renderDrop(dropFiles);
+  dropTimer = setTimeout(() => { dropFiles = null; refresh(); }, 8000);
+};
+document.addEventListener("dragenter", (e) => { e.preventDefault(); renderDrop([]); });
+document.addEventListener("dragover", (e) => { e.preventDefault(); });
+document.addEventListener("dragleave", (e) => {
+  if (!e.relatedTarget) { clearTimeout(dropTimer); dropTimer = setTimeout(() => { dropFiles = null; refresh(); }, 600); }
+});
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const fs = [...(e.dataTransfer?.files || [])].map((f) => f.path || f.name).filter(Boolean);
+  if (fs.length) window.kamiIslandExternalDrop(fs);
+});
+
+async function refresh() {
+  if (dropFiles) return;
+  try {
+    const st = await api()?.mini_island_state?.();
+    if (!st) return;
+    lastState = st;
+    if (st.room && Array.isArray(st.room.people) && st.room.people.length >= 1) renderRoom(st);
+    else if (st.music && st.music.title) renderMusic(st);
+    else renderIdle(st);
+  } catch {}
+}
+
+setInterval(refresh, 1000);
+window.addEventListener("pywebviewready", refresh);
 </script>
-<script src="kami-guard.js"></script>
-  <script src="accent.js"></script>
 </body>
 </html>

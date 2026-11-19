@@ -591,6 +591,10 @@ def add_custom_game(title: str, exe_path: str, store: str = "Özel") -> dict[str
 _NOT_GAME = re.compile(r"\b(test server|experimental server|public test|dedicated server|sdk|redistributables?|benchmark)\b|\(test\)$", re.I)
 # arka planda surekli acik duran uygulamalar oynama suresi saymasin
 _TRACK_IGNORE = re.compile(r"^(wallpaper engine|steamvr|soundpad|blender|obs studio|aseprite|fpsvr|lossless scaling)\b", re.I)
+_TOOL_PATTERNS = re.compile(
+    r"^(wallpaper engine|steamvr|soundpad|blender|obs studio|aseprite|fpsvr|lossless scaling|sharex|vtube studio|ovr toolkit|borderless gaming|displayfusion|3dmark|pcmark|krita|substance|godot engine)\b",
+    re.I,
+)
 
 
 def list_games(include_owned: bool = True) -> dict[str, Any]:
@@ -622,6 +626,7 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
     favs = _load_json(_favorites_path())
     sgdb_key = _token_store("sgdb_key.bin").load() or ""
     cov_cache = _load_json(_covers_cache_path())
+    cov_custom = _load_json(Path(os.path.dirname(_covers_cache_path())) / "game_covers_custom.json")
     cov_dirty = False
     sgdb_deadline = time.monotonic() + 2.0
     sgdb_later: list[str] = []
@@ -668,13 +673,14 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
                 "stores": [{"store": g["store"], "launch": g.get("launch", ""), "path": g.get("path", ""), "installed": bool(g.get("installed", True))}],
                 "installed": bool(g.get("installed", True)),
                 "size": int(g.get("size") or 0),
-                "cover": cover,
+                "cover": str(cov_custom.get(key) or cover),
                 "path": g.get("path") or "",
                 "playtime_sec": pt_sec,
                 "last_played": int(last_played.get(key, 0)),
                 "genres": list(dict.fromkeys(g.get("genres") or [])),
                 "categories": list(dict.fromkeys(g.get("categories") or [])),
                 "favorite": bool(favs[key]) if key in favs else bool(g.get("favorite")),
+                "is_tool": bool(_TOOL_PATTERNS.search(title_clean)),
             }
         else:
             if g.get("installed"):
@@ -756,6 +762,147 @@ def backup_save_ludusavi(title: str, out_dir: str = "") -> dict[str, Any]:
         return {"ok": False, "error": str(exc)[:120]}
 
 
+def sgdb_search_covers(query: str, sgdb_key: str = "") -> dict[str, Any]:
+    """SteamGridDB (anahtar varsa) + Steam Store aramasi ile kapak secenekleri dondurur."""
+    q = str(query or "").strip()
+    if not q:
+        return {"ok": False, "items": []}
+    key = sgdb_key or (_token_store("sgdb_key.bin").load() or "")
+    out: list[dict[str, Any]] = []
+    if key:
+        headers = {"Authorization": f"Bearer {key}", "User-Agent": "Kami/1.38"}
+        try:
+            req = urllib.request.Request(f"https://www.steamgriddb.com/api/v2/search/autocomplete/{urllib.parse.quote(q)}", headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as r:
+                hits = (json.loads(r.read().decode("utf-8")).get("data") or [])[:2]
+            for h in hits:
+                gid = h.get("id")
+                if not gid:
+                    continue
+                req2 = urllib.request.Request(f"https://www.steamgriddb.com/api/v2/grids/game/{gid}?dimensions=600x900", headers=headers)
+                with urllib.request.urlopen(req2, timeout=5) as r2:
+                    for g in (json.loads(r2.read().decode("utf-8")).get("data") or [])[:8]:
+                        if g.get("url"):
+                            out.append({"url": g["url"], "thumb": g.get("thumb") or g["url"], "source": "SteamGridDB", "title": h.get("name", q)})
+        except Exception:
+            pass
+    try:
+        req3 = urllib.request.Request(
+            f"https://store.steampowered.com/api/storesearch/?term={urllib.parse.quote(q)}&l=english&cc=US",
+            headers={"User-Agent": "Kami/1.38"},
+        )
+        with urllib.request.urlopen(req3, timeout=5) as r3:
+            for item in (json.loads(r3.read().decode("utf-8")).get("items") or [])[:8]:
+                aid = item.get("id")
+                if not aid:
+                    continue
+                out.append({
+                    "url": f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{aid}/library_600x900.jpg",
+                    "thumb": item.get("tiny_image") or f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{aid}/header.jpg",
+                    "source": "Steam Store",
+                    "title": item.get("name", q),
+                })
+    except Exception:
+        pass
+    seen: set[str] = set()
+    uniq = []
+    for x in out:
+        if x["url"] not in seen:
+            seen.add(x["url"])
+            uniq.append(x)
+    return {"ok": True, "items": uniq[:16]}
+
+
+def set_custom_cover(key: str, cover_url: str) -> dict[str, Any]:
+    k = str(key or "").strip()
+    u = str(cover_url or "").strip()
+    if not k or not u:
+        return {"ok": False, "error": "empty"}
+    p = Path(os.path.dirname(_covers_cache_path())) / "game_covers_custom.json"
+    cur = _load_json(p)
+    cur[k] = u
+    _save_json(p, cur)
+    return {"ok": True, "key": k, "cover": u}
+
+
+def _snap_dir(key: str) -> Path:
+    from app import paths
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(key or "game")).strip("_") or "game"
+    return paths.DATA_DIR / "save_backups" / slug
+
+
+def create_save_snapshot(key: str, title: str = "", src_dir: str = "") -> dict[str, Any]:
+    """Zaman damgali save snapshot'i olusturur (verilen klasor veya Ludusavi)."""
+    import shutil
+    root = _snap_dir(key)
+    snap_id = time.strftime("%Y%m%d_%H%M%S")
+    dest = root / snap_id
+    dest.mkdir(parents=True, exist_ok=True)
+    src = Path(src_dir) if src_dir else None
+    copied = 0
+    total_sz = 0
+    if src and src.is_dir():
+        files_dest = dest / "files"
+        shutil.copytree(src, files_dest, dirs_exist_ok=True)
+        for fp in files_dest.rglob("*"):
+            if fp.is_file():
+                copied += 1
+                total_sz += fp.stat().st_size
+        meta = {"id": snap_id, "key": key, "title": title, "src_dir": str(src), "ts": int(time.time()), "files": copied, "size": total_sz, "method": "folder"}
+        _save_json(dest / "meta.json", meta)
+        return {"ok": True, **meta}
+    lud = backup_save_ludusavi(title or key, str(dest / "ludusavi"))
+    for fp in dest.rglob("*"):
+        if fp.is_file():
+            copied += 1
+            total_sz += fp.stat().st_size
+    meta = {"id": snap_id, "key": key, "title": title, "src_dir": "", "ts": int(time.time()), "files": copied, "size": total_sz, "method": "ludusavi", "ludusavi_ok": bool(lud.get("ok")), "error": lud.get("error", "")}
+    _save_json(dest / "meta.json", meta)
+    return {"ok": bool(lud.get("ok")), **meta}
+
+
+def list_save_snapshots(key: str) -> list[dict[str, Any]]:
+    root = _snap_dir(key)
+    if not root.is_dir():
+        return []
+    out: list[dict[str, Any]] = []
+    for d in sorted(root.iterdir(), reverse=True):
+        if not d.is_dir():
+            continue
+        meta = _load_json(d / "meta.json")
+        out.append({
+            "id": d.name,
+            "ts": int(meta.get("ts") or d.stat().st_mtime),
+            "files": int(meta.get("files") or 0),
+            "size": int(meta.get("size") or 0),
+            "src_dir": meta.get("src_dir", ""),
+            "method": meta.get("method", "folder"),
+        })
+    return out
+
+
+def restore_save_snapshot(key: str, snap_id: str, dest_dir: str = "") -> dict[str, Any]:
+    """Secili save snapshot'ini geri yuklemeden once mevcut durumu otomatik yedekler."""
+    import shutil
+    snap_dir = _snap_dir(key) / os.path.basename(str(snap_id or ""))
+    if not snap_dir.is_dir():
+        return {"ok": False, "error": "snapshot_not_found"}
+    meta = _load_json(snap_dir / "meta.json")
+    target = Path(dest_dir or meta.get("src_dir") or "")
+    files_src = snap_dir / "files"
+    if not target or not files_src.is_dir():
+        return {"ok": False, "error": "missing_target_dir"}
+    pre_snap = ""
+    if target.is_dir():
+        pre_dir = _snap_dir(key) / f"pre_restore_{time.strftime('%Y%m%d_%H%M%S')}"
+        pre_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(target, pre_dir / "files", dirs_exist_ok=True)
+        _save_json(pre_dir / "meta.json", {"id": pre_dir.name, "key": key, "src_dir": str(target), "ts": int(time.time()), "method": "pre_restore"})
+        pre_snap = pre_dir.name
+    shutil.copytree(files_src, target, dirs_exist_ok=True)
+    return {"ok": True, "restored": snap_id, "target": str(target), "pre_backup": pre_snap}
+
+
 class GamePlayTracker:
     """Kurulu oyun sureclerini arka planda izleyip oynama suresini kaydeder ve istege bagli Replay Buffer baslatir."""
 
@@ -767,6 +914,7 @@ class GamePlayTracker:
         self._active_title = ""
         self._replay_started_for = ""
         self._thread: threading.Thread | None = None
+        self.on_active_change: Any = None
 
     def ensure_started(self, auto_replay: bool | None = None) -> None:
         with self._lock:
@@ -829,8 +977,14 @@ class GamePlayTracker:
                 except Exception:
                     continue
 
+        prev_key = self._active_key
         self._active_key = found_key
         self._active_title = found_title
+        if found_key != prev_key and callable(self.on_active_change):
+            try:
+                self.on_active_change(found_key, found_title)
+            except Exception:
+                pass
         if found_key:
             pt = _load_json(_playtime_path())
             pt[found_key] = int(pt.get(found_key, 0)) + 10

@@ -1730,8 +1730,8 @@ function projInsp() {
     `<div class="sec">Tuval (Arka plan)</div>` +
     `<label class="fld w2"><span>Mod</span><select class="in" data-pk="bgMode"><option value="color"${bm === "color" ? " selected" : ""}>Renk</option><option value="blur"${bm === "blur" ? " selected" : ""}>Bulanıklık (%)</option><option value="pattern"${bm === "pattern" ? " selected" : ""}>Desen</option></select></label>` +
     (bm === "blur" ? `<label class="fld"><span>Bulanıklık %</span><input type="range" data-pk="bgBlur" min="0" max="100" step="1" value="${ST.p.bgBlur ?? 45}"><input class="num" type="number" data-pk="bgBlur" min="0" max="100" value="${ST.p.bgBlur ?? 45}"></label>` : "") +
-    (bm === "pattern" ? `<label class="fld w2"><span>Desen</span><select class="in" data-pk="bgPattern">${pats.map(([k, n]) => `<option value="${k}"${(ST.p.bgPattern || "gradient-violet") === k ? " selected" : ""}>${n}</option>`).join("")}</select></label><label class="fld w2"><span>Ana renk</span><input type="color" data-pk="bg" value="${ST.p.bg || "#140D24"}"></label><label class="fld w2"><span>İkinci renk</span><input type="color" data-pk="bg2" value="${ST.p.bg2 || "#5B21B6"}"></label>` : "") +
-    (bm === "color" ? `<label class="fld w2"><span>Arka plan</span><input type="color" data-pk="bg" value="${ST.p.bg || "#000000"}"></label>` : "") +
+    (bm === "pattern" ? `<label class="fld w2"><span>Desen</span><select class="in" data-pk="bgPattern">${pats.map(([k, n]) => `<option value="${k}"${(ST.p.bgPattern || "gradient-violet") === k ? " selected" : ""}>${n}</option>`).join("")}</select></label><label class="fld w2"><span>Ana renk</span><span style="display:flex;align-items:center"><input type="color" data-pk="bg" value="${ST.p.bg || "#140D24"}"><b class="st-hex-lbl">${esc((ST.p.bg || "#140D24").toUpperCase())}</b></span></label><label class="fld w2"><span>İkinci renk</span><span style="display:flex;align-items:center"><input type="color" data-pk="bg2" value="${ST.p.bg2 || "#5B21B6"}"><b class="st-hex-lbl">${esc((ST.p.bg2 || "#5B21B6").toUpperCase())}</b></span></label>` : "") +
+    (bm === "color" ? `<label class="fld w2"><span>Arka plan</span><span style="display:flex;align-items:center"><input type="color" data-pk="bg" value="${ST.p.bg || "#000000"}"><b class="st-hex-lbl">${esc((ST.p.bg || "#000000").toUpperCase())}</b></span></label>` : "") +
     `<div class="sec">Özet</div><div class="hint">${ST.p.clips.length} klip · ${Object.keys(ST.p.assets).length} medya · ${fmt(projEnd())}<br>${(ST.p.markers || []).length} işaret ${(ST.p.markers || []).length ? '· <a href="#" data-a2="clearmk" style="color:var(--em)">temizle</a>' : ""}</div>` +
     `<div class="sec">İpucu</div><div class="hint">Klibe tıkla: ayarları burada. Çift tıkla: odaklan.<br>Boşluk oynat · S böl · Q/W solu/sağı sil · Del sil · Ctrl+Z geri · 1-9 hızlı ses.<br>Kami AI (MCP) bağlıysa ona “şu videoyu kes, altyazı ekle” diyebilirsin; değişiklikler burada anında görünür.</div>` +
     (ST.path ? `<div class="sec">Dosya</div><div class="hint" style="word-break:break-all">${esc(ST.path)}</div>` : "");
@@ -2342,7 +2342,15 @@ async function renderEmptyRecent() {
   try {
     const rec = (await api.studio_recent()) || [];
     if (!rec.length) return;
-    box.innerHTML = rec.slice(0, 4).map(r => `<button data-ehp="${esc(r.path)}" title="${esc(r.path)}">📁 ${esc(r.name || "Proje")}</button>`).join("");
+    const ico = '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+    const seen = new Set();
+    const uniq = rec.filter(r => {
+      const k = (r.name || "Proje").trim().toLowerCase();
+      if (seen.has(k) && k === "yeni proje") return false;
+      seen.add(r.path);
+      return true;
+    }).slice(0, 4);
+    box.innerHTML = uniq.map(r => `<button data-ehp="${esc(r.path)}" title="${esc(r.path)}">${ico}${esc(r.name || "Proje")}</button>`).join("");
     box.onclick = (e) => {
       const b = e.target.closest("[data-ehp]");
       if (b) openProject(b.dataset.ehp);

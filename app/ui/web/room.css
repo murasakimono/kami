@@ -88,7 +88,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .rm-chat { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); }
 .rm-msgs { flex: 1; min-height: 0; overflow: hidden auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; overflow-wrap: anywhere; }
 .msg { line-height: 1.45; color: var(--text); }
-.msg b { color: #C4B5FD; margin-right: 6px; } .msg.me b { color: var(--em); }
+.msg b { color: #C4B5FD; } .msg.me b { color: var(--em); }
 .msg.sys { color: var(--mute); font-size: 12px; } .msg.sys b { color: var(--mute); font-weight: 500; }
 .msg time { color: #5E5673; font-size: 10px; margin-left: 6px; }
 .rm-send { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); }
@@ -239,3 +239,16 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .yt-bar button:hover { background: #6D28D9; border-color: #9D6BFF; }
 .msg.file .fdl { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: #140F20; border: 1px solid #2E2346; border-radius: 8px; text-decoration: none; transition: border-color .15s; }
 .msg.file .fdl:hover { border-color: #2EE6A6; }
+#spSyncBar { position: relative; z-index: 6; }
+.rm-rxbar { position: absolute; left: 12px; bottom: 12px; z-index: 5; display: flex; gap: 5px; background: rgba(11,8,17,.82); border: 1px solid rgba(157,107,255,.28); border-radius: 999px; padding: 4px 8px; backdrop-filter: blur(8px); }
+.rm-rxbar button { border: 0; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; padding: 3px 5px; border-radius: 50%; transition: transform .14s; }
+.rm-rxbar button:hover { transform: scale(1.28); background: rgba(157,107,255,.18); }
+.rm-float-rx { position: absolute; bottom: 52px; z-index: 15; pointer-events: none; font-size: 26px; display: flex; align-items: center; gap: 5px; animation: rmFloatUp 1.9s cubic-bezier(.22,1,.36,1) forwards; }
+.rm-float-rx small { font-size: 10px; background: rgba(11,8,17,.82); color: #EDE9F6; padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(157,107,255,.35); }
+@keyframes rmFloatUp { 0% { opacity: 0; transform: translateY(10px) scale(.6); } 18% { opacity: 1; transform: translateY(-14px) scale(1.1); } 100% { opacity: 0; transform: translateY(-120px) scale(.9); } }
+.rm-qbox { position: absolute; right: 12px; top: 12px; z-index: 12; width: min(320px, 85%); max-height: 56vh; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: rgba(14,10,22,.96); border: 1px solid rgba(157,107,255,.42); border-radius: 12px; box-shadow: 0 14px 36px rgba(0,0,0,.6); }
+.rm-qlist { overflow: auto; display: flex; flex-direction: column; gap: 6px; max-height: 36vh; }
+.rm-qrow { display: flex; align-items: center; gap: 8px; padding: 7px 9px; background: #171224; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+.rm-qrow b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rm-qrow button { border: 0; background: none; color: var(--mute); cursor: pointer; font-size: 13px; }
+.rm-qrow button:hover { color: #fff; }

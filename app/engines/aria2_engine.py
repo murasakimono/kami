@@ -297,7 +297,8 @@ class Aria2Engine(Engine):
             pass
 
     _KEYS = ["gid", "status", "totalLength", "completedLength", "downloadSpeed",
-             "connections", "errorCode", "errorMessage", "files", "dir", "seeder", "uploadSpeed"]
+             "connections", "errorCode", "errorMessage", "files", "dir", "seeder", "uploadSpeed",
+             "bitfield", "numPieces"]
 
     def status(self, gids: list[str]) -> dict[str, dict[str, Any]]:
         results = self.multicall([("aria2.tellStatus", [g, self._KEYS]) for g in gids])
@@ -319,6 +320,8 @@ class Aria2Engine(Engine):
                 "path": path,
                 "seeder": r.get("seeder") == "true",
                 "upload_speed": int(r.get("uploadSpeed", 0) or 0),
+                "bitfield": str(r.get("bitfield") or ""),
+                "num_pieces": int(r.get("numPieces", 0) or 0),
             }
         return out
 

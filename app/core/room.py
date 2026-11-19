@@ -48,16 +48,30 @@ class Room:
         self.events: list[dict[str, Any]] = []           # sohbet + sistem satirlari
         self.seq = 0
         self.peers: dict[str, dict[str, Any]] = {}       # id -> {name, kind, seen, muted, deaf, sharing, q}
+        self.media_queue: list[dict[str, Any]] = []
+        self.queue_v = 0
         self.cv = threading.Condition()
         self.on_join: Callable[[str], None] | None = None
 
     def say(self, who: str, text: str, kind: str = "chat", reply: int = 0) -> None:
-        text = str(text or "").strip()[:800]
+        who_c = re.sub(r"\s+", " ", str(who or "")).strip()[:40]
+        text = re.sub(r"\s+", " ", str(text or "")).strip()[:800] if kind == "sys" else str(text or "").strip()[:800]
         if not text:
             return
         with self.cv:
+            now = time.time()
+            if kind == "sys":
+                # Ayni kisi icin 12 sn icindeki ardarda giris/cikis tekrarlarini filtrele
+                for prev in reversed(self.events[-6:]):
+                    if prev.get("kind") == "sys" and prev.get("who") == who_c and (now - float(prev.get("t") or 0)) < 12.0:
+                        if prev.get("text") == text or (
+                            prev.get("text") in ("odaya girdi", "ayrıldı", "bağlantısı koptu")
+                            and text in ("odaya girdi", "ayrıldı", "bağlantısı koptu")
+                        ):
+                            return
+                        break
             self.seq += 1
-            e: dict[str, Any] = {"n": self.seq, "who": who[:40], "text": text, "kind": kind, "t": time.time()}
+            e: dict[str, Any] = {"n": self.seq, "who": who_c, "text": text, "kind": kind, "t": now}
             if reply:
                 tgt = next((x for x in self.events if x["n"] == int(reply) and x.get("kind") == "chat"), None)
                 if tgt:
@@ -67,6 +81,33 @@ class Room:
             self.cv.notify_all()
         if kind == "chat":
             self._persist()
+
+    def queue_add(self, title: str, url: str, added_by: str, kind: str = "yt") -> dict[str, Any]:
+        t = str(title or "").strip()[:140]
+        u = str(url or "").strip()[:600]
+        if not (t or u):
+            return {"ok": False, "error": "empty"}
+        with self.cv:
+            item = {"id": secrets.token_hex(4), "title": t or u[:60], "url": u, "by": str(added_by or "Misafir")[:40], "kind": kind}
+            self.media_queue.append(item)
+            self.media_queue = self.media_queue[-60:]
+            self.queue_v += 1
+            self.cv.notify_all()
+        return {"ok": True, "item": item, "queue": list(self.media_queue), "qv": self.queue_v}
+
+    def queue_remove(self, item_id: str) -> dict[str, Any]:
+        with self.cv:
+            self.media_queue = [x for x in self.media_queue if x.get("id") != item_id]
+            self.queue_v += 1
+            self.cv.notify_all()
+        return {"ok": True, "queue": list(self.media_queue), "qv": self.queue_v}
+
+    def queue_next(self) -> dict[str, Any]:
+        with self.cv:
+            nxt = self.media_queue.pop(0) if self.media_queue else None
+            self.queue_v += 1
+            self.cv.notify_all()
+        return {"ok": True, "next": nxt, "queue": list(self.media_queue), "qv": self.queue_v}
 
     def update(self, n: int, who: str, emoji: str = "", pin: bool | None = None) -> bool:
         """Tepki (ayni kisi ayni emojiye tekrar basinca geri alir) ya da sabitleme. Istemcilere 'upd' olayi gider."""
@@ -226,7 +267,7 @@ class Room:
                     self.seq += 1
                     self.events.append({"n": self.seq, "who": nm, "text": "bağlantısı koptu", "kind": "sys", "t": now})
             return {"signals": sig, "events": [e for e in self.events if e["n"] > since_n], "roster": ros, "rv": rv,
-                    "now": now, "host": self.host_name}
+                    "now": now, "host": self.host_name, "queue": list(self.media_queue), "qv": self.queue_v}
 
 
 def soundboard_list() -> list[dict[str, str]]:
@@ -539,10 +580,12 @@ def _handler(srv: RoomServer):
                     self._send(json.dumps(m).encode(), "application/manifest+json")
                 elif rest[0] == "info":
                     self._json({"host": r.host_name, "id": r.id, "locked": srv.locked()})
-                elif rest[0] in ("ice", "poll", "sb") and not self._key_ok(q):
+                elif rest[0] in ("ice", "poll", "sb", "queue") and not self._key_ok(q):
                     return self._json({"ok": False, "error": "password"}, 401)
                 elif rest[0] == "sb" and len(rest) == 1:
                     self._json({"sounds": soundboard_list()})
+                elif rest[0] == "queue" and len(rest) == 1:
+                    self._json({"ok": True, "queue": list(r.media_queue), "qv": r.queue_v})
                 elif rest[0] == "sb" and len(rest) == 2:
                     data = soundboard_file(rest[1])
                     if data is None:
@@ -693,6 +736,17 @@ def _handler(srv: RoomServer):
                 return self._json({"ok": ok})
             elif k == "me":
                 r.set_me(pid, **{x: body[x] for x in ("muted", "deaf", "sharing", "bg") if x in body})
+            elif k == "queue_add":
+                p = r.peers.get(pid)
+                return self._json(r.queue_add(str(body.get("title") or ""), str(body.get("url") or ""),
+                                              p["name"] if p else "Misafir", str(body.get("kind") or "yt")[:16]))
+            elif k == "queue_remove":
+                return self._json(r.queue_remove(str(body.get("item_id") or "")))
+            elif k == "queue_next":
+                return self._json(r.queue_next())
+            elif k == "stage_react":
+                p = r.peers.get(pid)
+                r.say(p["name"] if p else "Misafir", str(body.get("emoji") or "🔥")[:8], "stage_rx")
             elif k == "leave":
                 r.leave(pid)
             else:

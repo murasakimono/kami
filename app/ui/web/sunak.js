@@ -48,7 +48,7 @@ function skBuild() {
         <button type="button" class="sk-tab" data-mod="music" title="Kamify (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span>Kamify</span></button>
         <button type="button" class="sk-tab" data-mod="cleaner" title="Cleaner (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg><span>Cleaner</span></button>
       </nav>
-      <div class="sk-status"><button type="button" class="sk-docdot" id="skDocDot" hidden title="Kami Doktor: Sorun tespit edildi (tıkla)" aria-label="Kami Doktor uyarısı"></button><button type="button" class="sk-room sk-roompill" data-mod="room" id="skRoomPill" title="Kami Oda: sesli oda, ekran paylaşımı, birlikte izleme"><i class="sk-dot"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg><span>${skL("Oda", "Room")}</span><i class="sk-tab-badge" id="skRoomN"></i></button><span class="sk-chip">${skL("motor", "engine")} <b id="skEngine">…</b></span><span class="sk-chip">${skL("köprü", "bridge")} <b id="skBridge">…</b></span></div></div>
+      <div class="sk-status"><button type="button" class="sk-docdot" id="skDocDot" hidden title="Kami Doktor: Sorun tespit edildi (tıkla)" aria-label="Kami Doktor uyarısı"></button><button type="button" class="sk-chip sk-cap-btn" id="skProfCap" title="${skL("Hız profili (tıkla: değiştir)", "Speed profile (click to cycle)")}">⚡ <b id="skProfLbl">Tam</b></button><button type="button" class="sk-room sk-roompill" data-mod="room" id="skRoomPill" title="Kami Oda: sesli oda, ekran paylaşımı, birlikte izleme"><i class="sk-dot"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg><span>${skL("Oda", "Room")}</span><i class="sk-tab-badge" id="skRoomN"></i></button><span class="sk-chip">${skL("motor", "engine")} <b id="skEngine">…</b></span><span class="sk-chip">${skL("köprü", "bridge")} <b id="skBridge">…</b></span></div></div>
     <div class="sk-top">
       <div class="sk-altar" id="skAltar">
         <svg class="sk-ring" viewBox="0 0 300 300">
@@ -82,6 +82,7 @@ function skBuild() {
   <nav class="sk-dock" id="skDock">
     <button data-sk="library" title="${skL("Kütüphane (Kami Player)", "Library (Kami Player)")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l4 1-3 14-4-1z"/></svg></button>
     <button data-sk="list" title="${skL("Liste", "List")}">${skIcon.list}</button>
+    <button data-sk="notifs" title="${skL("Bildirimler", "Notifications")}" style="position:relative"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><b class="sk-notif-badge" id="skNotifN" hidden></b></button>
     <button data-sk="rd" title="Real-Debrid">${skIcon.rd}</button>
     <button data-sk="follow" title="${skL("Takip", "Follow")}">${skIcon.follow}<b id="skFollowN" hidden></b></button>
     <button data-sk="history" title="${skL("Geçmiş", "History")}">${skIcon.hist}</button>
@@ -407,7 +408,21 @@ function skRender(onlyMove) {
   track.style.transform = `translateX(${-SK.page * SK_STRIP_W}px)`;
   $("#skPrev").classList.toggle("on", SK.page > 0);
   $("#skNext").classList.toggle("on", SK.page + per < its.length);
-  $("#skDots").innerHTML = its.length > per ? its.map((d, i) => `<i data-i="${i}" class="${d.id === SK.sel ? "sel" : i >= SK.page && i < SK.page + per ? "vis" : ""}"></i>`).join("") : "";
+  const dotsBox = $("#skDots");
+  if (its.length > per) {
+    const maxDots = 9;
+    const half = Math.floor(maxDots / 2);
+    const start = Math.max(0, Math.min(SK.page - 1, its.length - maxDots));
+    const end = Math.min(its.length, start + maxDots);
+    const curPage = Math.floor(SK.page / Math.max(1, per)) + 1;
+    const totPages = Math.max(1, Math.ceil(its.length / Math.max(1, per)));
+    dotsBox.innerHTML = its.slice(start, end).map((d, j) => {
+      const i = start + j;
+      return `<i data-i="${i}" class="${d.id === SK.sel ? "sel" : i >= SK.page && i < SK.page + per ? "vis" : ""}"></i>`;
+    }).join("") + `<span class="sk-dot-count">${curPage} / ${totPages}</span>`;
+  } else {
+    dotsBox.innerHTML = "";
+  }
   skRenderBar(its.find((d) => d.id === SK.sel));
 }
 // seritleri yeniden kurmadan guncelle (dalga animasyonu kesilmesin)
@@ -509,8 +524,26 @@ function skRenderDetail(d) {
   if (x.sha256) rows.push(["SHA-256", x.sha256.slice(0, 16) + "…", x.sha256]);
   if (x.scan) rows.push([skL("Tarama", "Scan"), String(x.scan)]);
   const hist = SK_HIST.get(d.id) || [];
+  let chunkHtml = "";
+  if (["active", "waiting", "paused"].includes(d.status) && d.bitfield) {
+    const bits = [];
+    for (let i = 0; i < d.bitfield.length; i++) {
+      const nib = parseInt(d.bitfield[i], 16) || 0;
+      bits.push((nib >> 3) & 1, (nib >> 2) & 1, (nib >> 1) & 1, nib & 1);
+    }
+    const cols = 32;
+    const cells = Array.from({ length: cols }, (_, ci) => {
+      const s0 = Math.floor((ci * bits.length) / cols);
+      const s1 = Math.max(s0 + 1, Math.floor(((ci + 1) * bits.length) / cols));
+      let hit = 0;
+      for (let bi = s0; bi < s1 && bi < bits.length; bi++) hit += bits[bi];
+      const on = hit > 0 && hit >= (s1 - s0) / 2;
+      return `<i class="sk-chunk-cell${on ? " on" : ""}"></i>`;
+    }).join("");
+    chunkHtml = `<div class="sk-chunk-bar" title="${skL("Parça Doluluk Haritası (32 Segment)", "Piece Completion Heatmap (32 Segments)")}">${cells}</div>`;
+  }
   box.innerHTML = `<div class="sk-dt-grid">${rows.map(([k, v, full]) => `<div><span>${escapeHtml(k)}</span><b title="${escapeHtml(full || v)}">${escapeHtml(v)}</b></div>`).join("")}</div>
-    <div class="sk-dt-graph"><span>${skL("Bu indirmenin hızı", "This download's speed")}</span>${hist.length > 1 ? skSparkSvg(hist) : `<em>${d.status === "complete" ? skL("İndirme bitti", "Finished") : skL("Hız verisi bekleniyor", "Waiting for speed data")}</em>`}</div>`;
+    <div class="sk-dt-graph"><span>${skL("Bu indirmenin hızı", "This download's speed")}</span>${hist.length > 1 ? skSparkSvg(hist) : `<em>${d.status === "complete" ? skL("İndirme bitti", "Finished") : skL("Hız verisi bekleniyor", "Waiting for speed data")}</em>`}${chunkHtml}</div>`;
 }
 function skSparkSvg(h) {
   const max = Math.max(...h, 1), w = 400, ht = 70;
@@ -538,6 +571,7 @@ function skAutoSave() { try { localStorage.setItem("kami.autoplay", JSON.stringi
 
 function skDock(k) {
   if (k === "settings") { $("#settingsBtn")?.click(); return; }
+  if (k === "notifs") { skOpenNotifs(); return; }
   if (k === "pano") return;   // kami-pano.js kendi cekmecesini acar
   if (k === "library") { playerLibrary(); return; }
   if (k === "fx") {
@@ -814,7 +848,7 @@ STATE_HOOKS.push(skState);
 // v1.32.1 Sag ray sadelestirme: 12 dugme -> ana isler + "Araclar" izgarasi + Ayarlar.
 // Orijinal dugmeler DOM'da (gizli) kalir; dosemeler onlara tiklatir -> tum mevcut isleyiciler aynen calisir.
 (() => {
-  const CORE = ["library", "list", "history", "pano"];
+  const CORE = ["library", "list", "notifs", "history", "pano"];
   const isTool = (b) => b.id !== "skToolsBtn" && !CORE.includes(b.dataset.sk) && b.dataset.sk !== "settings";
   let pop = null;
   const SHORT = { fx: ["Efektler", "Effects"], ai: ["AI altyazı · vokal", "AI subs · vocals"], kfDockBtn: ["Akış & Copilot", "Flow & Copilot"] };
@@ -896,4 +930,73 @@ STATE_HOOKS.push(skState);
   }
   setTimeout(upd, 1200); setInterval(upd, 20000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) upd(); });
+})();
+
+// v1.38.0 Dalga 1: Hiz profili kapsulu, Bildirim Merkezi cekmecesi ve arka planda animasyon duraklatma
+(() => {
+  const PROF_ORDER = ["full", "stream", "game", "room", "night"];
+  const PROF_NAMES = {
+    full: skL("Tam Hız", "Full Speed"),
+    stream: skL("Yayın", "Stream"),
+    game: skL("Oyun", "Game"),
+    room: skL("Oda", "Room"),
+    night: skL("Gece", "Night"),
+  };
+  let curProf = "full";
+  function applyProfUi(prof, autoReason) {
+    curProf = prof || "full";
+    const btn = $("#skProfCap"), lbl = $("#skProfLbl");
+    if (!btn || !lbl) return;
+    lbl.textContent = (PROF_NAMES[curProf] || curProf) + (autoReason ? " · Oto" : "");
+    btn.classList.toggle("is-auto", !!autoReason);
+    btn.classList.toggle("is-throttle", curProf !== "full" && curProf !== "night");
+  }
+  document.addEventListener("click", async (e) => {
+    const cap = e.target.closest?.("#skProfCap");
+    if (!cap) return;
+    const next = PROF_ORDER[(PROF_ORDER.indexOf(curProf) + 1) % PROF_ORDER.length];
+    try {
+      const r = await api?.speed_profile_set?.(next, false);
+      if (r?.current) applyProfUi(r.current, r.auto_reason);
+      if (typeof toast === "function") toast(`${skL("Hız profili", "Speed profile")}: ${PROF_NAMES[next] || next}`);
+    } catch {}
+  });
+  let notifDlg = null;
+  window.skOpenNotifs = async function skOpenNotifs() {
+    if (!notifDlg) {
+      notifDlg = document.createElement("dialog");
+      notifDlg.id = "skNotifDlg";
+      notifDlg.style.cssText = "background:#110E17;color:#EDE9F6;border:1px solid rgba(157,107,255,.35);border-radius:12px;width:min(520px,92vw);padding:16px;";
+      document.body.appendChild(notifDlg);
+      notifDlg.addEventListener("click", (e) => { if (e.target === notifDlg) notifDlg.close(); });
+    }
+    const r = await api?.notifications_list?.(60) || { items: [] };
+    const its = r.items || [];
+    const fmtT = (ts) => {
+      try { return new Date(ts * 1000).toLocaleTimeString(skTr() ? "tr-TR" : "en-GB", { hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
+    };
+    notifDlg.innerHTML = `<div class="sk-notif-head"><b>${skL("Bildirim Merkezi", "Notification Center")}</b><span class="spacer"></span><button type="button" class="btn ghost" id="skNMark">${skL("Okundu İşaretle", "Mark Read")}</button><button type="button" class="btn ghost" id="skNClr">${skL("Temizle", "Clear")}</button><button type="button" class="btn ghost" id="skNCls">✕</button></div>
+      <div class="sk-notif-list">${its.length ? its.map((n) => `<div class="sk-notif-row${n.read ? "" : " unread"}${n.kind === "error" ? " err" : ""}"><div class="sk-notif-body"><div class="sk-notif-title">${escapeHtml(n.title || "")}</div><div class="sk-notif-msg">${escapeHtml(n.message || "")}</div></div><span class="sk-notif-time">${fmtT(n.ts)}</span></div>`).join("") : `<p class="hint" style="margin:12px 0">${skL("Henüz bildirim yok.", "No notifications yet.")}</p>`}</div>`;
+    notifDlg.querySelector("#skNCls").onclick = () => notifDlg.close();
+    notifDlg.querySelector("#skNMark").onclick = async () => { await api?.notifications_mark_read?.(); const b = $("#skNotifN"); if (b) b.hidden = true; notifDlg.close(); };
+    notifDlg.querySelector("#skNClr").onclick = async () => { await api?.notifications_clear?.(); const b = $("#skNotifN"); if (b) b.hidden = true; notifDlg.close(); };
+    if (!notifDlg.open) notifDlg.showModal();
+    await api?.notifications_mark_read?.();
+    const b = $("#skNotifN");
+    if (b) b.hidden = true;
+  };
+  if (typeof STATE_HOOKS !== "undefined" && Array.isArray(STATE_HOOKS)) {
+    STATE_HOOKS.push((s) => {
+      applyProfUi(s.speed_profile, s.speed_profile_auto);
+      const b = $("#skNotifN");
+      if (b) {
+        const u = Number(s.notif_unread || 0);
+        b.hidden = u <= 0;
+        if (u > 0) b.textContent = u > 9 ? "9+" : String(u);
+      }
+    });
+  }
+  const syncVis = () => document.body.classList.toggle("kami-hidden", !!document.hidden);
+  document.addEventListener("visibilitychange", syncVis);
+  syncVis();
 })();

@@ -9,6 +9,7 @@
   @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-SemiBold.ttf");font-weight:600}
   @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-Bold.ttf");font-weight:700}
   :root{color-scheme:dark;accent-color:#8B5CF6;--bg:#08070C;--side:#0C0913;--card:#141020;--line:#261D3D;--tx:#EDE9F6;--mut:#9E96B8;--ac:#9D6BFF;--em:#2EE6A6}
+  [hidden]{display:none !important}
   *{box-sizing:border-box}
   ::-webkit-scrollbar{width:7px;height:7px}
   ::-webkit-scrollbar-track{background:transparent}
@@ -149,6 +150,7 @@
       <div id="lsBox" style="border-top:1px solid var(--line);padding-top:6px;display:grid;gap:4px">
         <small id="lsSt" style="color:var(--mut)">Dahili oynatıcı başlatılıyor…</small>
         <button class="btn" id="lsPairBtn" hidden style="font-size:11.5px;padding:5px 8px">Dahili Oynatıcıyı Eşleştir</button>
+        <a href="#" id="lsRePairLink" hidden style="font-size:11px;color:#8E86A3;text-decoration:underline;width:fit-content">Yeniden eşleştir</a>
       </div>
     </div>
   </aside>
@@ -160,6 +162,7 @@
       <input id="q" placeholder="Şarkı, albüm, çalma listesi veya klasör içi ara…">
       <button class="btn pri" id="go">Ara</button>
       <button class="btn" id="ambBtn" title="Kapak rengi ambiyansını aç/kapat" style="font-size:11.5px;padding:6px 10px">Ambiyans</button>
+      <button class="btn" id="kfDynAdaBtn" title="Mini-Ada hover'da kapak rengiyle genişlesin" style="font-size:11.5px;padding:6px 10px">Dinamik Ada</button>
     </header>
     <div class="m-body">
       <div id="subBar" class="subbar" hidden></div>
@@ -340,10 +343,14 @@
     }
     if (st.paired) {
       lsSt.textContent = "✓ Dahili Oynatıcı: Kami (Hazır)"; lsSt.style.color = "#2EE6A6";
-      lsPairBtn.hidden = true; _lsPairUrl = "";
+      lsPairBtn.hidden = true; _lsPairUrl = st.pair_url || "";
+      const rl = document.getElementById("lsRePairLink");
+      if (rl) rl.hidden = false;
       refreshDevices("");
       return;
     }
+    const rl = document.getElementById("lsRePairLink");
+    if (rl) rl.hidden = true;
     _lsPairUrl = st.pair_url || "";
     lsSt.textContent = st.pair_code ? `Dahili Oynatıcı: Eşleştir (${st.pair_code})` : "Dahili Oynatıcı: Eşleştirme gerekli";
     lsSt.style.color = "#F5B94A";
@@ -363,6 +370,12 @@
     }, 2500);
     setTimeout(() => clearInterval(t), 120000);
   };
+  document.getElementById("lsRePairLink")?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    await api()?.music_librespot_reset?.().catch(() => {});
+    refreshLibrespot();
+    mToast("Dahili oynatıcı yeniden eşleştirme için sıfırlandı.");
+  });
   async function loadPlaylistsCache() {
     const r = await api()?.music_spotify_playlists?.().catch(() => null);
     if (r?.ok) PLAYLISTS = r.items || [];
@@ -776,5 +789,6 @@
     document.addEventListener("visibilitychange", () => { if (!document.hidden && SP_PLAYING && !raf) raf = requestAnimationFrame(drawFrame); });
   })();
 </script>
+<script src="kamify-v138.js"></script>
 </body>
 </html>

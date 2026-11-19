@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami Pin</title>
+<style>
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+    background: #09070D;
+  }
+  .pin-wrap {
+    position: relative; width: 100%; height: 100%;
+    border: 1px solid rgba(157,107,255,.42);
+    background: #09070D; display: grid; place-items: center;
+    overflow: hidden; -webkit-app-region: drag;
+  }
+  .pin-wrap img {
+    width: 100%; height: 100%; object-fit: contain; display: block;
+    pointer-events: none;
+  }
+  .pin-bar {
+    position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; align-items: center;
+    opacity: 0; transition: opacity .15s ease; -webkit-app-region: no-drag;
+    background: rgba(13,10,20,.82); border: 1px solid rgba(157,107,255,.35);
+    border-radius: 6px; padding: 2px 6px; color: #EDE9F6;
+    font: 600 10.5px "Chakra Petch", system-ui, sans-serif;
+  }
+  .pin-wrap:hover .pin-bar { opacity: 1; }
+  .pin-bar button {
+    background: none; border: 0; color: #EDE9F6; cursor: pointer;
+    font: 700 11px inherit; padding: 1px 4px;
+  }
+  .pin-bar button:hover { color: #2EE6A6; }
+  .pin-hint {
+    position: absolute; bottom: 6px; left: 8px; right: 8px; text-align: center;
+    font: 600 10px "Chakra Petch", system-ui, sans-serif; color: rgba(237,233,246,.78);
+    background: rgba(9,7,13,.75); padding: 2px 6px; border-radius: 4px;
+    opacity: 0; transition: opacity .16s ease; pointer-events: none;
+  }
+  .pin-wrap:hover .pin-hint { opacity: 1; }
+</style>
+</head>
+<body>
+  <div class="pin-wrap" id="pinWrap">
+    <img id="pinImg" alt="Pinned Image">
+    <div class="pin-bar">
+      <span id="pinOp">100%</span>
+      <button id="pinClose" title="Kapat (Esc / Çift Tık)">✕</button>
+    </div>
+    <div class="pin-hint" id="pinHint">Tekerlek: Boyut · Alt+Tekerlek: Şeffaflık · Çift tık: Kapat</div>
+  </div>
+<script>
+(() => {
+  const pid = new URLSearchParams(location.search).get("pid") || "";
+  const wrap = document.getElementById("pinWrap");
+  const img = document.getElementById("pinImg");
+  const opEl = document.getElementById("pinOp");
+  let opacity = 1.0, curW = 360, curH = 270, ratio = 4 / 3, baseW = 360;
+
+  async function init() {
+    const api = window.pywebview?.api;
+    if (!api?.pin_info) return;
+    const info = await api.pin_info(pid);
+    if (!info?.ok || !info.url) return;
+    img.src = info.url;
+    curW = Number(info.w) || 360;
+    curH = Number(info.h) || 270;
+    baseW = curW;
+    ratio = Math.max(0.2, curW / Math.max(1, curH));
+  }
+
+  document.getElementById("pinClose").onclick = () => window.pywebview?.api?.pin_close?.(pid);
+  wrap.addEventListener("dblclick", () => window.pywebview?.api?.pin_close?.(pid));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") window.pywebview?.api?.pin_close?.(pid);
+    if (e.key === "r" || e.key === "R") {
+      opacity = 1.0; wrap.style.opacity = "1"; opEl.textContent = "100%";
+      curW = baseW; curH = Math.round(curW / ratio);
+      window.pywebview?.api?.pin_resize?.(pid, curW, curH);
+    }
+  });
+  wrap.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const dir = e.deltaY < 0 ? 1 : -1;
+    if (e.altKey) {
+      opacity = Math.max(0.25, Math.min(1.0, Number((opacity + dir * 0.08).toFixed(2))));
+      wrap.style.opacity = String(opacity);
+      opEl.textContent = `${Math.round(opacity * 100)}%`;
+      return;
+    }
+    const factor = dir > 0 ? 1.1 : 0.91;
+    curW = Math.max(160, Math.min(1400, Math.round(curW * factor)));
+    curH = Math.max(120, Math.min(1100, Math.round(curW / ratio)));
+    window.pywebview?.api?.pin_resize?.(pid, curW, curH);
+  }, { passive: false });
+
+  if (window.pywebview?.api) init();
+  window.addEventListener("pywebviewready", init);
+})();
+</script>
+</body>
+</html>

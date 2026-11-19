@@ -376,6 +376,8 @@ function onAppMsg(from, m) {
   if (m?.k === "yt") return ytIn(from, m);
   if (m?.k === "sp") return spIn(from, m);
   if (m?.k === "sb") return sbIn(from, m);
+  if (m?.k === "qsync") return rmRefreshQueue();
+  if (m?.k === "srx") return spawnStageRx(m.em, nameOf(from));
   if (m?.k === "draw") return drawIn(from, m);
   if (m?.k === "file") return fileIn(from, m);
   if (m?.k !== "pl") return;
@@ -456,13 +458,36 @@ function meterFor(pid, stream) {
 }
 const buf = new Uint8Array(512);
 function level(an) { an.getByteTimeDomainData(buf); let m = 0; for (const v of buf) m = Math.max(m, Math.abs(v - 128)); return m / 128; }
+let _duckUntil = 0, _ducked = false;
+function applyVoiceDuck(speaking) {
+  if (speaking) _duckUntil = Date.now() + 650;
+  const want = Date.now() < _duckUntil;
+  if (want === _ducked && !want) return;
+  _ducked = want;
+  const target = want ? 0.38 : 1.0;
+  document.querySelectorAll(".vt video").forEach((v) => {
+    try {
+      if (!v.muted && v.readyState > 0) v.volume = target;
+    } catch {}
+  });
+  try {
+    if (YT?.p?.setVolume) YT.p.setVolume(want ? 38 : 100);
+  } catch {}
+}
 function talkLoop() {
   if (S.core) {
     const lv = S.micAn ? level(S.micAn) : 0;
     if ($("set")?.hidden === false && $("sMeter")) $("sMeter").style.width = Math.min(100, lv * 220) + "%";
     const meEl = document.querySelector(`.tk[data-id="${S.core.id}"]`);
-    meEl?.classList.toggle("talk", micOpen() && lv > 0.06);
-    for (const [pid, an] of S.meters) document.querySelector(`.tk[data-id="${pid}"]`)?.classList.toggle("talk", level(an) > 0.05);
+    const iTalk = micOpen() && lv > 0.06;
+    meEl?.classList.toggle("talk", iTalk);
+    let anyTalk = iTalk;
+    for (const [pid, an] of S.meters) {
+      const pTalk = level(an) > 0.05;
+      if (pTalk) anyTalk = true;
+      document.querySelector(`.tk[data-id="${pid}"]`)?.classList.toggle("talk", pTalk);
+    }
+    applyVoiceDuck(anyTalk);
   }
   requestAnimationFrame(talkLoop);
 }
@@ -502,7 +527,9 @@ function rxHtml(e) {
 }
 function msgHtml(e) {
   const t = new Date(e.t * 1000);
-  return `${e.re ? `<div class="quote"><b>${esc(e.re.who)}</b>${esc(e.re.text)}</div>` : ""}<b>${esc(e.who)}</b>${esc(e.text)}<time>${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}</time>` +
+  const who = esc((e.who || "").trim());
+  const txt = esc((e.text || "").trim());
+  return `${e.re ? `<div class="quote"><b>${esc((e.re.who || "").trim())}</b> ${esc((e.re.text || "").trim())}</div>` : ""}<b>${who}</b> ${txt}<time>${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}</time>` +
     (e.kind === "chat" ? `<span class="mact"><button data-ma="reply" title="Yanıtla">↩</button><button data-ma="react" title="Tepki">☺</button><button data-ma="pin" title="${e.pin ? "Sabitlemeyi kaldır" : "Sabitle"}">📌</button></span><div class="rxs">${rxHtml(e)}</div>` : "");
 }
 const EV = new Map();   // n -> olay (tepki/sabitleme guncellemeleri icin)
@@ -519,6 +546,10 @@ function onEvents(evs) {
       tgt.rx = e.rx; tgt.pin = e.pin;
       const el = box.querySelector(`.msg[data-n="${e.target}"]`); if (el) el.innerHTML = msgHtml(tgt);
       renderPins();
+      continue;
+    }
+    if (e.kind === "stage_rx") {
+      if (!box.querySelector(`.msg[data-n="${e.n}"]`)) { EV.set(e.n, e); spawnStageRx(e.text, e.who); }
       continue;
     }
     if (box.querySelector(`.msg[data-n="${e.n}"]`)) continue;
@@ -1122,7 +1153,7 @@ function spShowBar(title, artist, isLead, extra = {}) {
   if (!bar) {
     bar = document.createElement("div"); bar.id = "spSyncBar";
     bar.style.cssText = "display:flex;align-items:center;gap:14px;padding:12px 16px;background:linear-gradient(135deg,rgba(22,16,36,.96),rgba(13,10,20,.96));border:1px solid rgba(46,230,166,.42);border-radius:14px;margin:10px 14px 0;font-size:13px;color:#EDE9F6;box-shadow:0 10px 30px rgba(0,0,0,.45)";
-    $("room")?.insertBefore(bar, document.querySelector(".rm-main"));
+    $("stage")?.prepend(bar);
   }
   const cov = extra.cover ? `<img src="${esc(extra.cover)}" alt="" style="width:54px;height:54px;border-radius:10px;object-fit:cover;flex:none;border:1px solid rgba(255,255,255,.12)">` : `<div style="width:54px;height:54px;border-radius:10px;background:#1E1530;display:grid;place-items:center;flex:none;color:#2EE6A6;font-size:20px">♪</div>`;
   const dur = extra.duration_ms || 0, pos = extra.progress_ms || 0;
@@ -1191,7 +1222,7 @@ async function spIn(from, m) {
   if (!SP_SYNC.follow || !m.uri || !window.pywebview?.api?.music_spotify_play) return;
   const estPos = Math.max(0, (m.pos || 0) + (m.playing ? (Date.now() - (m.at || Date.now())) : 0));
   const changedTrack = m.uri !== SP_SYNC.lastUri;
-  const drift = Math.abs(estPos - SP_SYNC.lastPos) > 4500 && (Date.now() - SP_SYNC.lastSyncAt > 6000);
+  const drift = Math.abs(estPos - SP_SYNC.lastPos) > 1200 && (Date.now() - SP_SYNC.lastSyncAt > 4000);
   if (changedTrack || drift || (m.playing !== SP_SYNC.lastPlay)) {
     SP_SYNC.lastUri = m.uri; SP_SYNC.lastPos = estPos; SP_SYNC.lastPlay = !!m.playing; SP_SYNC.lastSyncAt = Date.now();
     if (m.playing) await window.pywebview.api.music_spotify_play(m.uri, "", estPos).catch(() => {});
@@ -1215,3 +1246,101 @@ async function spIn(from, m) {
   };
   dock.insertBefore(b, $("bSet"));
 })();
+
+// ---------- Dalga 2: Ortak Medya Sirasi & Sahne Emoji Tepkileri ----------
+let RM_QUEUE = [];
+function rmRoomUrl(ep) {
+  const k = new URLSearchParams(location.search).get("k") || "";
+  return (typeof BASE !== "undefined" ? BASE : ".") + "/" + ep + (k ? `?k=${encodeURIComponent(k)}` : "");
+}
+async function rmPostRoom(ep, body) {
+  if (!S.core) return null;
+  try {
+    const r = await fetch(rmRoomUrl(ep), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: S.core.id, ...(body || {}) }),
+    });
+    return await r.json();
+  } catch { return null; }
+}
+async function rmRefreshQueue() {
+  try {
+    const r = await fetch(rmRoomUrl("queue")).then((x) => x.json());
+    if (r?.ok) { RM_QUEUE = r.queue || []; renderRmQueue(); }
+  } catch {}
+}
+function renderRmQueue() {
+  const qb = $("rmQueueBox"); if (!qb || qb.hidden) return;
+  const lst = qb.querySelector("#rmQList"); if (!lst) return;
+  lst.innerHTML = RM_QUEUE.length ? RM_QUEUE.map((it) => `<div class="rm-qrow"><b title="${esc(it.url)}">${esc(it.title)}</b><small style="color:var(--mute)">${esc(it.by)}</small><button data-qgo="${esc(it.id)}" title="Oynat">▶</button><button data-qdel="${esc(it.id)}" title="Sil">✕</button></div>`).join("")
+    : `<div style="color:var(--mute);font-size:12px;padding:8px 0">Ortak medya sırası boş.</div>`;
+}
+(function initQueueAndRx() {
+  const stEl = $("stage"); if (!stEl) return;
+  const rxBar = document.createElement("div");
+  rxBar.className = "rm-rxbar";
+  rxBar.innerHTML = ["🔥", "👏", "😂", "❤️", "🎉"].map((em) => `<button type="button" data-srx="${em}" title="Sahne tepkisi">${em}</button>`).join("");
+  stEl.appendChild(rxBar);
+  rxBar.onclick = (e) => {
+    const b = e.target.closest("[data-srx]"); if (!b) return;
+    const em = b.dataset.srx;
+    spawnStageRx(em, PREF?.name || "Ben");
+    S.core?.broadcast?.({ k: "srx", em });
+    rmPostRoom("stage_react", { emoji: em });
+  };
+
+  const dock = document.querySelector(".rm-dock");
+  if (dock && !$("bQueue")) {
+    const bq = document.createElement("button"); bq.id = "bQueue"; bq.title = "Ortak Medya Sırası";
+    bq.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 6h14M4 12h10M4 18h8M17 13l4 3-4 3z"/></svg>';
+    dock.insertBefore(bq, $("bSet"));
+    const qb = document.createElement("div"); qb.id = "rmQueueBox"; qb.className = "rm-qbox"; qb.hidden = true;
+    qb.innerHTML = `<div style="display:flex;align-items:center;gap:6px"><b style="flex:1">Ortak Medya Sırası</b><button class="rm-txtbtn" id="rmQNext">Sonraki ⏭</button><button class="rm-txtbtn" id="rmQCls">✕</button></div>
+      <div style="display:flex;gap:6px"><input id="rmQIn" placeholder="YouTube linki ekle…" style="flex:1;background:#0A0810;border:1px solid var(--line);padding:6px 8px;border-radius:7px;font-size:12px"><button class="rm-txtbtn" id="rmQAdd">Ekle</button></div>
+      <div class="rm-qlist" id="rmQList"></div>`;
+    stEl.appendChild(qb);
+    bq.onclick = () => { qb.hidden = !qb.hidden; if (!qb.hidden) rmRefreshQueue(); };
+    qb.querySelector("#rmQCls").onclick = () => { qb.hidden = true; };
+    qb.querySelector("#rmQAdd").onclick = async () => {
+      const u = qb.querySelector("#rmQIn").value.trim(); if (!u) return;
+      const vid = typeof ytId === "function" ? ytId(u) : u;
+      await rmPostRoom("queue_add", { title: vid ? `YouTube (${vid})` : u, url: u, kind: "yt" });
+      qb.querySelector("#rmQIn").value = "";
+      S.core?.broadcast?.({ k: "qsync" });
+      rmRefreshQueue();
+    };
+    qb.querySelector("#rmQNext").onclick = async () => {
+      const r = await rmPostRoom("queue_next", {});
+      S.core?.broadcast?.({ k: "qsync" });
+      rmRefreshQueue();
+      if (r?.next?.url) {
+        const id = typeof ytId === "function" ? ytId(r.next.url) : "";
+        if (id) { YT.lead = true; ytOpen(id, 0, true); ytSend({ act: "state", id, t: 0, playing: true }); }
+      }
+    };
+    qb.querySelector("#rmQList").onclick = async (e) => {
+      const del = e.target.closest("[data-qdel]");
+      if (del) { await rmPostRoom("queue_remove", { item_id: del.dataset.qdel }); S.core?.broadcast?.({ k: "qsync" }); rmRefreshQueue(); return; }
+      const goBtn = e.target.closest("[data-qgo]");
+      if (goBtn) {
+        const it = RM_QUEUE.find((x) => x.id === goBtn.dataset.qgo);
+        if (it?.url) {
+          const id = typeof ytId === "function" ? ytId(it.url) : "";
+          if (id) { YT.lead = true; ytOpen(id, 0, true); ytSend({ act: "state", id, t: 0, playing: true }); }
+          await rmPostRoom("queue_remove", { item_id: it.id });
+          S.core?.broadcast?.({ k: "qsync" }); rmRefreshQueue();
+        }
+      }
+    };
+  }
+})();
+function spawnStageRx(emoji, who) {
+  const st = $("stage"); if (!st) return;
+  const el = document.createElement("div");
+  el.className = "rm-float-rx";
+  el.style.left = (16 + Math.random() * 58) + "%";
+  el.innerHTML = `<span>${esc(emoji || "🔥")}</span>${who ? `<small>${esc(who)}</small>` : ""}`;
+  st.appendChild(el);
+  setTimeout(() => el.remove(), 1950);
+}

@@ -25,9 +25,9 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 WV2_GUID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 KEY_FILES = {   # dosya -> ne ise yarar (degeri okunmaz)
     "room_worker.bin": "Kami Oda sabit linki",
-    "turn_key.bin": "Kami Oda TURN (mobil veri baglantisi)",
+    "turn_key.bin": "Kami Oda TURN (mobil veri bağlantısı)",
     "rd_token.bin": "Real-Debrid",
-    "yt_cookies.bin": "YouTube cerezleri",
+    "yt_cookies.bin": "YouTube çerezleri",
 }
 
 
@@ -50,7 +50,7 @@ def _run(cmd: list[str], timeout: float = 8.0) -> str:
 # ---------------------------------------------------------------- sistem
 def check_webview2() -> dict[str, Any]:
     if os.name != "nt":
-        return _r("webview2", "WebView2", "info", "Windows disi")
+        return _r("webview2", "WebView2", "info", "Windows dışı")
     import winreg
     ver = ""
     for hive, key in ((winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{WV2_GUID}"),
@@ -64,44 +64,44 @@ def check_webview2() -> dict[str, Any]:
         except OSError:
             continue
     if not ver or ver == "0.0.0.0":
-        return _r("webview2", "WebView2", "fail", "WebView2 Runtime bulunamadi: arayuz acilmaz.", "open_wv2")
+        return _r("webview2", "WebView2", "fail", "WebView2 Runtime bulunamadı: arayüz açılmaz.", "open_wv2")
     major = int(ver.split(".")[0]) if ver.split(".")[0].isdigit() else 0
     args = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
     occl = "CalculateNativeWinOcclusion" in args
     if major and major < 120:
-        return _r("webview2", "WebView2", "warn", f"Surum {ver} eski; guncelleme onerilir.", "open_wv2")
+        return _r("webview2", "WebView2", "warn", f"Sürüm {ver} eski; güncelleme önerilir.", "open_wv2")
     return _r("webview2", "WebView2", "ok" if occl else "warn",
-              f"Surum {ver}" + ("" if occl else " · kucultme duzeltmesi (occlusion) devre disi"))
+              f"Sürüm {ver}" + ("" if occl else " · küçültme düzeltmesi (occlusion) devre dışı"))
 
 
 def check_gpu() -> dict[str, Any]:
     if os.name != "nt":
-        return _r("gpu", "Ekran karti", "info", "Windows disi")
+        return _r("gpu", "Ekran kartı", "info", "Windows dışı")
     out = _run(["powershell", "-NoProfile", "-Command",
                 "Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name + '|' + $_.DriverVersion + '|' + $_.DriverDate }"],
                timeout=12)
     rows = [ln.split("|") for ln in out.splitlines() if "|" in ln]
     if not rows:
-        return _r("gpu", "Ekran karti", "warn", "Ekran karti bilgisi okunamadi")
+        return _r("gpu", "Ekran kartı", "warn", "Ekran kartı bilgisi okunamadı")
     names = [r[0].strip() for r in rows]
     hybrid = len(rows) > 1 and any("nvidia" in n.lower() or "radeon rx" in n.lower() for n in names)
     detail = " + ".join(f"{r[0].strip()} ({r[1].strip()})" for r in rows)
     if hybrid:
-        detail += " · hibrit: Kami'yi NVIDIA Denetim Masasi'ndan yuksek performansli GPU'ya atamak beyaz ekran riskini azaltir"
-    return _r("gpu", "Ekran karti", "ok", detail)
+        detail += " · hibrit: Kami'yi NVIDIA Denetim Masası'ndan yüksek performanslı GPU'ya atamak beyaz ekran riskini azaltır"
+    return _r("gpu", "Ekran kartı", "ok", detail)
 
 
 def check_disk(download_dir: str = "") -> dict[str, Any]:
     probs, parts = [], []
-    for label, p in (("Indirme", download_dir or str(paths.downloads_dir())), ("Veri", str(paths.DATA_DIR))):
+    for label, p in (("İndirme", download_dir or str(paths.downloads_dir())), ("Veri", str(paths.DATA_DIR))):
         try:
             free = shutil.disk_usage(p).free / 1024**3
-            parts.append(f"{label}: {free:.0f} GB bos")
+            parts.append(f"{label}: {free:.0f} GB boş")
             if free < 10:
                 probs.append(label)
         except OSError:
-            parts.append(f"{label}: okunamadi")
-    return _r("disk", "Disk alani", "warn" if probs else "ok", " · ".join(parts))
+            parts.append(f"{label}: okunamadı")
+    return _r("disk", "Disk alanı", "warn" if probs else "ok", " · ".join(parts))
 
 
 def check_data_dir() -> dict[str, Any]:
@@ -111,9 +111,9 @@ def check_data_dir() -> dict[str, Any]:
         t = d / f".doctor_{os.getpid()}.tmp"
         t.write_text("ok", encoding="utf-8")
         t.unlink()
-        return _r("datadir", "Veri klasoru", "ok", str(d))
+        return _r("datadir", "Veri klasörü", "ok", str(d))
     except OSError as exc:
-        return _r("datadir", "Veri klasoru", "fail", f"{d} yazilamiyor: {exc}")
+        return _r("datadir", "Veri klasörü", "fail", f"{d} yazılamıyor: {exc}")
 
 
 # ---------------------------------------------------------------- MSIX sanal kopya tuzagi (13.11 sabit link sorunu)
@@ -140,10 +140,10 @@ def check_virtual_copies() -> dict[str, Any]:
                 missing.append(f"{KEY_FILES[name]} ({vd.parents[3].name})")
     if missing:
         return _r("virtual", "Gizli (sanal) kopya", "fail",
-                  "Baska bir uygulamanin icinden calisan Kami ayarlari gizli klasore kaydetmis, gercek Kami goremiyor: "
+                  "Başka bir uygulamanın içinden çalışan Kami ayarları gizli klasöre kaydetmiş, gerçek Kami göremiyor: "
                   + ", ".join(missing), "copy_virtual_keys")
     return _r("virtual", "Gizli (sanal) kopya", "warn",
-              "Gizli klasorde eski bir Kami kopyasi var (zararsiz, silinebilir): " + ", ".join(str(v) for v in vdirs))
+              "Gizli klasörde eski bir Kami kopyası var (zararsız, silinebilir): " + ", ".join(str(v) for v in vdirs))
 
 
 def fix_copy_virtual_keys() -> dict[str, Any]:
@@ -160,8 +160,8 @@ def fix_copy_virtual_keys() -> dict[str, Any]:
 def check_keys() -> dict[str, Any]:
     have = [v for k, v in KEY_FILES.items() if (paths.DATA_DIR / k).is_file()]
     miss = [v for k, v in KEY_FILES.items() if not (paths.DATA_DIR / k).is_file()]
-    return _r("keys", "Kayitli anahtarlar", "info",
-              ("Var: " + ", ".join(have) if have else "Hicbiri yok") + (" · Yok: " + ", ".join(miss) if miss else ""))
+    return _r("keys", "Kayıtlı anahtarlar", "info",
+              ("Var: " + ", ".join(have) if have else "Hiçbiri yok") + (" · Yok: " + ", ".join(miss) if miss else ""))
 
 
 # ---------------------------------------------------------------- araclar
@@ -172,13 +172,13 @@ def check_ffmpeg() -> dict[str, Any]:
     except Exception:
         ff = shutil.which("ffmpeg") or ""
     if not ff:
-        return _r("ffmpeg", "FFmpeg", "fail", "Bulunamadi: donusturme, Studio ve birlestirme calismaz")
+        return _r("ffmpeg", "FFmpeg", "fail", "Bulunamadı: dönüştürme, Studio ve birleştirme çalışmaz")
     m = re.search(r"ffmpeg version (?:n)?(\d+)\.(\d+)", _run([ff, "-hide_banner", "-version"]))
     if not m:
-        return _r("ffmpeg", "FFmpeg", "warn", f"Surum okunamadi: {ff}")
+        return _r("ffmpeg", "FFmpeg", "warn", f"Sürüm okunamadı: {ff}")
     ver = (int(m.group(1)), int(m.group(2)))
     if ver < (7, 1):
-        return _r("ffmpeg", "FFmpeg", "warn", f"{ver[0]}.{ver[1]}: Studio'nun uzun projeleri icin 7.1+ gerekir ({ff})")
+        return _r("ffmpeg", "FFmpeg", "warn", f"{ver[0]}.{ver[1]}: Studio'nun uzun projeleri için 7.1+ gerekir ({ff})")
     return _r("ffmpeg", "FFmpeg", "ok", f"{ver[0]}.{ver[1]}")
 
 
@@ -187,20 +187,20 @@ def check_ytdlp() -> dict[str, Any]:
         import yt_dlp.version as v
         ver = v.__version__
     except Exception:
-        return _r("ytdlp", "yt-dlp", "fail", "Yuklu degil: video sitelerinden indirme calismaz")
+        return _r("ytdlp", "yt-dlp", "fail", "Yüklü değil: video sitelerinden indirme çalışmaz")
     m = re.match(r"(\d{4})\.(\d{2})\.(\d{2})", ver)
     if m:
         age = (time.time() - time.mktime((int(m.group(1)), int(m.group(2)), int(m.group(3)), 0, 0, 0, 0, 0, -1))) / 86400
         if age > 60:
-            return _r("ytdlp", "yt-dlp", "warn", f"{ver} ({age:.0f} gun once): YouTube degisikliklerinde bozulabilir; Kami'yi guncelle")
+            return _r("ytdlp", "yt-dlp", "warn", f"{ver} ({age:.0f} gün önce): YouTube değişikliklerinde bozulabilir; Kami'yi güncelle")
     return _r("ytdlp", "yt-dlp", "ok", ver)
 
 
 def check_bins() -> dict[str, Any]:
-    want = {"aria2c": "indirme motoru", "deno": "YouTube imza cozucu"}
+    want = {"aria2c": "indirme motoru", "deno": "YouTube imza çözücü"}
     miss = [f"{n} ({why})" for n, why in want.items()
             if not ((paths.BIN_DIR / f"{n}.exe").is_file() or (paths.BIN_DIR / n).is_file() or shutil.which(n))]
-    return _r("bins", "Yardimci programlar", "fail" if miss else "ok", "Eksik: " + ", ".join(miss) if miss else "aria2c, deno")
+    return _r("bins", "Yardımcı programlar", "fail" if miss else "ok", "Eksik: " + ", ".join(miss) if miss else "aria2c, deno")
 
 
 def check_engine(engine: Any) -> dict[str, Any]:
@@ -208,14 +208,14 @@ def check_engine(engine: Any) -> dict[str, Any]:
         ok = bool(engine and engine.running)
     except Exception:
         ok = False
-    return _r("aria2", "Indirme motoru (aria2)", "ok" if ok else "fail",
-              "Calisiyor" if ok else "Calismiyor: indirmeler baslamaz",
+    return _r("aria2", "İndirme motoru (aria2)", "ok" if ok else "fail",
+              "Çalışıyor" if ok else "Çalışmıyor: indirmeler başlamaz",
               "" if ok else "restart_aria2")
 
 
 def check_native_host() -> dict[str, Any]:
     if os.name != "nt":
-        return _r("host", "Tarayici eklentisi baglantisi", "info", "Windows disi")
+        return _r("host", "Tarayıcı eklentisi bağlantısı", "info", "Windows dışı")
     import winreg
     found = []
     for br, key in (("Brave", r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.metehan.kami"),
@@ -229,8 +229,8 @@ def check_native_host() -> dict[str, Any]:
         except OSError:
             continue
     if not found:
-        return _r("host", "Tarayici eklentisi baglantisi", "warn", "Hicbir tarayiciya kayitli degil (sag tik / otomatik yakalama calismaz)")
-    return _r("host", "Tarayici eklentisi baglantisi", "ok", ", ".join(found))
+        return _r("host", "Tarayıcı eklentisi bağlantısı", "warn", "Hiçbir tarayıcıya kayıtlı değil (sağ tık / otomatik yakalama çalışmaz)")
+    return _r("host", "Tarayıcı eklentisi bağlantısı", "ok", ", ".join(found))
 
 
 def check_ollama() -> dict[str, Any]:
@@ -238,11 +238,11 @@ def check_ollama() -> dict[str, Any]:
         import urllib.request
         with urllib.request.urlopen((os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434") + "/api/tags", timeout=1.5) as r:
             models = [m.get("name", "") for m in json.loads(r.read()).get("models", [])]
-        return _r("ollama", "Yerel yapay zeka (Ollama)", "ok", ", ".join(models[:6]) or "Calisiyor, model yok")
+        return _r("ollama", "Yerel yapay zeka (Ollama)", "ok", ", ".join(models[:6]) or "Çalışıyor, model yok")
     except Exception:
         if shutil.which("ollama"):
-            return _r("ollama", "Yerel yapay zeka (Ollama)", "warn", "Kurulu ama kapali", "ollama_start")
-        return _r("ollama", "Yerel yapay zeka (Ollama)", "info", "Kurulu degil (istege bagli: yerel Copilot)")
+            return _r("ollama", "Yerel yapay zeka (Ollama)", "warn", "Kurulu ama kapalı", "ollama_start")
+        return _r("ollama", "Yerel yapay zeka (Ollama)", "info", "Kurulu değil (isteğe bağlı: yerel Copilot)")
 
 
 def check_network() -> dict[str, Any]:
@@ -253,9 +253,9 @@ def check_network() -> dict[str, Any]:
             socket.create_connection((host, 443), timeout=3).close()
             res.append(f"{host} {int((time.monotonic() - t0) * 1000)} ms")
         except OSError:
-            res.append(f"{host} ULASILAMIYOR")
-    bad = any("ULASILAMIYOR" in x for x in res)
-    return _r("net", "Internet", "warn" if bad else "ok", " · ".join(res))
+            res.append(f"{host} ULAŞILAMIYOR")
+    bad = any("ULAŞILAMIYOR" in x for x in res)
+    return _r("net", "İnternet", "warn" if bad else "ok", " · ".join(res))
 
 
 def check_room() -> dict[str, Any]:
@@ -263,12 +263,12 @@ def check_room() -> dict[str, Any]:
         from app.core import room
         st = room.SERVER.status()
     except Exception as exc:
-        return _r("room", "Kami Oda", "info", f"Durum okunamadi: {type(exc).__name__}")
+        return _r("room", "Kami Oda", "info", f"Durum okunamadı: {type(exc).__name__}")
     if not st.get("on"):
-        return _r("room", "Kami Oda", "info", "Kapali")
+        return _r("room", "Kami Oda", "info", "Kapalı")
     if st.get("stable"):
-        return _r("room", "Kami Oda", "ok", "Acik · sabit link calisiyor" + (" · TURN var" if st.get("turn") else " · TURN yok (mobil veride baglanamayabilir)"))
-    return _r("room", "Kami Oda", "warn", "Acik ama gecici link kullaniliyor (sabit link guncellenemedi)", "room_relink")
+        return _r("room", "Kami Oda", "ok", "Açık · sabit link çalışıyor" + (" · TURN var" if st.get("turn") else " · TURN yok (mobil veride bağlanamayabilir)"))
+    return _r("room", "Kami Oda", "warn", "Açık ama geçici link kullanılıyor (sabit link güncellenemedi)", "room_relink")
 
 
 def check_log_errors() -> dict[str, Any]:
@@ -280,7 +280,7 @@ def check_log_errors() -> dict[str, Any]:
             fh.seek(max(0, f.stat().st_size - 400_000))
             tail = fh.read().decode("utf-8", "replace").splitlines()
     except OSError:
-        return _r("log", "Son hatalar", "info", "Log okunamadi")
+        return _r("log", "Son hatalar", "info", "Log okunamadı")
     from app.core.extras import APP_VERSION
     cutoff = time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() - 86400))
     ver_tag = f"Kami {APP_VERSION}"
@@ -298,8 +298,8 @@ def check_spotify() -> dict[str, Any]:
         st = music_hub.spotify_oauth_status()
         if not st.get("connected"):
             if st.get("expired"):
-                return _r("spotify", "Spotify PKCE", "warn", "Oturum suresi dolmus (Kamify'dan tekrar baglan)")
-            return _r("spotify", "Spotify PKCE", "info", "Oturum acilmamis")
+                return _r("spotify", "Spotify PKCE", "warn", "Oturum süresi dolmuş (Kamify'dan tekrar bağlan)")
+            return _r("spotify", "Spotify PKCE", "info", "Oturum açılmamış")
         ex = ThreadPoolExecutor(max_workers=1)
         try:
             res = ex.submit(music_hub.spotify_devices).result(timeout=3.0) or {}
@@ -307,9 +307,9 @@ def check_spotify() -> dict[str, Any]:
             ex.shutdown(wait=False, cancel_futures=True)
         devs = res.get("devices") or [] if isinstance(res, dict) else (res or [])
         active = sum(1 for d in devs if d.get("active") or d.get("is_active"))
-        return _r("spotify", "Spotify PKCE", "ok", f"Bagli · {len(devs)} cihaz ({active} aktif)")
+        return _r("spotify", "Spotify PKCE", "ok", f"Bağlı · {len(devs)} cihaz ({active} aktif)")
     except Exception as exc:
-        return _r("spotify", "Spotify PKCE", "warn", f"Durum alinamadi: {type(exc).__name__}")
+        return _r("spotify", "Spotify PKCE", "warn", f"Durum alınamadı: {type(exc).__name__}")
 
 
 def check_librespot() -> dict[str, Any]:
@@ -317,16 +317,16 @@ def check_librespot() -> dict[str, Any]:
         from app.core import librespot_host
         has_bin = bool(librespot_host.find_binary())
         if not has_bin:
-            return _r("librespot", "Dahili oynatici (go-librespot)", "info", "Binary yok (Kamify acilinca indirilir)")
+            return _r("librespot", "Dahili oynatıcı (go-librespot)", "info", "Binary yok (Kamify açılınca indirilir)")
         running = bool(librespot_host.is_running())
         paired = bool(librespot_host.has_credentials())
         if running:
-            return _r("librespot", "Dahili oynatici (go-librespot)", "ok",
-                      "Calisiyor" + (" · eslesmis" if paired else " · eslesme bekliyor"))
-        return _r("librespot", "Dahili oynatici (go-librespot)", "info",
-                  "Hazir (kapali)" + (" · eslesmis" if paired else ""))
+            return _r("librespot", "Dahili oynatıcı (go-librespot)", "ok",
+                      "Çalışıyor" + (" · eşleşmiş" if paired else " · eşleşme bekliyor"))
+        return _r("librespot", "Dahili oynatıcı (go-librespot)", "info",
+                  "Hazır (kapalı)" + (" · eşleşmiş" if paired else ""))
     except Exception as exc:
-        return _r("librespot", "Dahili oynatici (go-librespot)", "warn", f"Durum okunamadi: {type(exc).__name__}")
+        return _r("librespot", "Dahili oynatıcı (go-librespot)", "warn", f"Durum okunamadı: {type(exc).__name__}")
 
 
 def check_playnite() -> dict[str, Any]:
@@ -343,27 +343,27 @@ def check_playnite() -> dict[str, Any]:
                 data = json.loads(imp.read_text("utf-8"))
                 cnt = len(data.get("games") or data) if isinstance(data, (dict, list)) else 0
                 ts = time.strftime("%d.%m %H:%M", time.localtime(imp.stat().st_mtime))
-                parts.append(f"son ice aktarma: {ts} ({cnt} kayit)")
+                parts.append(f"son içe aktarma: {ts} ({cnt} kayıt)")
             except Exception:
-                parts.append("playnite_import.json okunamadi")
+                parts.append("playnite_import.json okunamadı")
         else:
-            parts.append("ice aktarma yok")
+            parts.append("içe aktarma yok")
         st = "ok" if db.is_file() else "info"
-        return _r("playnite", "Playnite kutuphanesi", st, " · ".join(parts))
+        return _r("playnite", "Playnite kütüphanesi", st, " · ".join(parts))
     except Exception as exc:
-        return _r("playnite", "Playnite kutuphanesi", "warn", f"Okunamadi: {type(exc).__name__}")
+        return _r("playnite", "Playnite kütüphanesi", "warn", f"Okunamadı: {type(exc).__name__}")
 
 
 def check_media_server(media: Any = None) -> dict[str, Any]:
     port = int(getattr(media, "port", 0) or 0)
     if not port:
         return _r("media", "Medya sunucusu", "fail" if media is not None else "info",
-                  "Medya sunucusu kapali" if media is not None else "Baslatilmadi")
+                  "Medya sunucusu kapalı" if media is not None else "Başlatılmadı")
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=2.0):
             return _r("media", "Medya sunucusu", "ok", f"127.0.0.1:{port} dinliyor")
     except OSError:
-        return _r("media", "Medya sunucusu", "fail", f"127.0.0.1:{port} yanit vermiyor")
+        return _r("media", "Medya sunucusu", "fail", f"127.0.0.1:{port} yanıt vermiyor")
 
 
 def check_bridge_server(bridge: Any = None) -> dict[str, Any]:
@@ -374,17 +374,17 @@ def check_bridge_server(bridge: Any = None) -> dict[str, Any]:
         except Exception:
             port = 0
     if not port:
-        return _r("bridge", "Tarayici koprusu", "fail" if bridge is not None else "info", "Port yok")
+        return _r("bridge", "Tarayıcı köprüsü", "fail" if bridge is not None else "info", "Port yok")
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=2.0):
-            return _r("bridge", "Tarayici koprusu", "ok", f"127.0.0.1:{port} dinliyor")
+            return _r("bridge", "Tarayıcı köprüsü", "ok", f"127.0.0.1:{port} dinliyor")
     except OSError:
-        return _r("bridge", "Tarayici koprusu", "fail", f"127.0.0.1:{port} yanit vermiyor")
+        return _r("bridge", "Tarayıcı köprüsü", "fail", f"127.0.0.1:{port} yanıt vermiyor")
 
 
 def check_module_windows(api: Any = None) -> dict[str, Any]:
     if api is None:
-        return _r("modwins", "Modul pencereleri", "info", "Kontrol disi")
+        return _r("modwins", "Modül pencereleri", "info", "Kontrol dışı")
     mods = ("player", "studio", "picture", "reader", "games", "music", "cleaner")
     open_ok, bad = [], []
     for m in mods:
@@ -403,10 +403,10 @@ def check_module_windows(api: Any = None) -> dict[str, Any]:
         finally:
             ex.shutdown(wait=False, cancel_futures=True)
     if bad:
-        return _r("modwins", "Modul pencereleri", "fail", "Yanit vermeyen: " + ", ".join(bad))
+        return _r("modwins", "Modül pencereleri", "fail", "Yanıt vermeyen: " + ", ".join(bad))
     if open_ok:
-        return _r("modwins", "Modul pencereleri", "ok", "Acik & saglam: " + ", ".join(open_ok))
-    return _r("modwins", "Modul pencereleri", "info", "Acik modul penceresi yok")
+        return _r("modwins", "Modül pencereleri", "ok", "Açık & sağlam: " + ", ".join(open_ok))
+    return _r("modwins", "Modül pencereleri", "info", "Açık modül penceresi yok")
 
 
 # ---------------------------------------------------------------- calistirici
@@ -424,15 +424,15 @@ def run_all(engine: Any = None, ui_errors: list[dict[str, Any]] | None = None, r
         try:
             return fn()
         except Exception as exc:
-            log.exception("Doktor kontrolu patladi")
-            return _r(getattr(fn, "__name__", "?"), getattr(fn, "__name__", "?"), "warn", f"Kontrol calismadi: {type(exc).__name__}")
+            log.exception("Doktor kontrolü patladı")
+            return _r(getattr(fn, "__name__", "?"), getattr(fn, "__name__", "?"), "warn", f"Kontrol çalışmadı: {type(exc).__name__}")
 
     with ThreadPoolExecutor(max_workers=6) as ex:
         results = list(ex.map(safe, checks))
     ui = list(ui_errors or [])[-10:]
-    results.append(_r("ui", "Arayuz (JS) hatalari", "warn" if ui else "ok",
+    results.append(_r("ui", "Arayüz (JS) hataları", "warn" if ui else "ok",
                       (f"{len(ui)} hata · son: [{ui[-1]['page']}] {ui[-1]['msg'][:140]}" if ui else "Bu oturumda yok")
-                      + (f" · {recoveries} kez kendini toparladi" if recoveries else "")))
+                      + (f" · {recoveries} kez kendini toparladı" if recoveries else "")))
     from app.core.extras import APP_VERSION
     summary = {s: sum(1 for r in results if r["status"] == s) for s in ("ok", "warn", "fail", "info")}
     return {"ok": True, "version": APP_VERSION, "python": sys.version.split()[0], "at": int(time.time()),
@@ -442,10 +442,10 @@ def run_all(engine: Any = None, ui_errors: list[dict[str, Any]] | None = None, r
 def fix_ollama_start() -> dict[str, Any]:
     exe = shutil.which("ollama")
     if not exe:
-        return {"ok": False, "message": "Ollama bulunamadi"}
+        return {"ok": False, "message": "Ollama bulunamadı"}
     subprocess.Popen([exe, "serve"], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return {"ok": True, "message": "Ollama baslatildi"}
+    return {"ok": True, "message": "Ollama başlatıldı"}
 
 
 FIXES: dict[str, Callable[[], dict[str, Any]]] = {"copy_virtual_keys": fix_copy_virtual_keys, "ollama_start": fix_ollama_start}

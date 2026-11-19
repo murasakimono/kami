@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections import defaultdict
+from collections import defaultdict, deque
+import time
 from typing import Any, Callable
 
 log = logging.getLogger(__name__)
@@ -20,10 +21,56 @@ log = logging.getLogger(__name__)
 Handler = Callable[..., Any]
 
 
+class NotificationCenter:
+    """Son 100 kritik olayi zaman damgali ve aksiyonlu halka tamponda tutar."""
+
+    def __init__(self, maxlen: int = 100) -> None:
+        self._items: deque[dict[str, Any]] = deque(maxlen=maxlen)
+        self._lock = threading.Lock()
+        self._seq = 0
+
+    def push(self, kind: str, title: str, detail: str = "", *, path: str = "",
+             url: str = "", download_id: int = 0) -> dict[str, Any]:
+        with self._lock:
+            self._seq += 1
+            entry = {
+                "id": self._seq,
+                "ts": time.time(),
+                "kind": str(kind or "info"),
+                "title": str(title or "")[:160],
+                "detail": str(detail or "")[:240],
+                "path": str(path or ""),
+                "url": str(url or ""),
+                "download_id": int(download_id or 0),
+                "read": False,
+            }
+            self._items.appendleft(entry)
+            return dict(entry)
+
+    def list(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(x) for x in self._items]
+
+    def unread_count(self) -> int:
+        with self._lock:
+            return sum(1 for x in self._items if not x.get("read"))
+
+    def mark_all_read(self) -> int:
+        with self._lock:
+            for x in self._items:
+                x["read"] = True
+            return len(self._items)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+
+
 class EventBus:
     def __init__(self) -> None:
         self._handlers: dict[str, list[Handler]] = defaultdict(list)
         self._lock = threading.Lock()
+        self.notifications = NotificationCenter()
 
     def on(self, event: str, handler: Handler) -> Callable[[], None]:
         """Abone ol. Aboneligi iptal eden fonksiyonu dondurur."""

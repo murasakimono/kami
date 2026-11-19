@@ -38,6 +38,10 @@ if os.name == "nt":
     user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.GetWindowLongW.restype = ctypes.c_long
     user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.c_void_p]
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.c_void_p]
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    user32.GetDpiForWindow.argtypes = [wintypes.HWND]
+    user32.GetDpiForWindow.restype = wintypes.UINT
     user32.SetWindowRgn.argtypes = [wintypes.HWND, wintypes.HANDLE, wintypes.BOOL]
     gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
     gdi32.CreateRoundRectRgn.restype = wintypes.HANDLE
@@ -77,8 +81,8 @@ def round_pill(title: str, hwnd: int = 0) -> bool:
         return False
     w, hh = max(2, int(r.right - r.left)), max(2, int(r.bottom - r.top))
     if dwmapi is not None:
-        try:   # Win11 DWM koseleri de yuvarla (1 = DWMWCP_DONOTROUND veya 2 = DWMWCP_ROUND)
-            pref = ctypes.c_int(2)
+        try:   # DWMWCP_DONOTROUND (1): Win11 DWM kapsul rgn disina ikinci dikdortgen golge/cerceve cizmesin
+            pref = ctypes.c_int(1)
             dwmapi.DwmSetWindowAttribute(h, 33, ctypes.byref(pref), ctypes.sizeof(pref))
         except Exception:
             pass
@@ -86,6 +90,56 @@ def round_pill(title: str, hwnd: int = 0) -> bool:
     if not rgn:
         return False
     return bool(user32.SetWindowRgn(h, rgn, True))
+
+
+def resize_pill(title: str, width: int, height: int, hwnd: int = 0) -> bool:
+    """Mini-Ada vb. cercevesiz hapi yatay merkezini koruyarak yeniden boyutlandirir ve maskeler."""
+    if not (user32 and gdi32):
+        return False
+    h = int(hwnd or find_window(title))
+    if not (h and user32.IsWindow(h)):
+        return False
+    try:
+        dpi = user32.GetDpiForWindow(h) or 96
+    except Exception:
+        dpi = 96
+    scale = dpi / 96.0
+    pw = max(120, int(round(width * scale)))
+    ph = max(28, int(round(height * scale)))
+    rc = _RECT()
+    if not user32.GetWindowRect(h, ctypes.byref(rc)):
+        return False
+    cx = (rc.left + rc.right) // 2
+    nx = max(0, cx - pw // 2)
+    user32.SetWindowPos(h, 0, nx, rc.top, pw, ph, 0x0004 | 0x0010 | 0x0020)  # NOZORDER|NOACTIVATE|FRAMECHANGED
+    return round_pill(title, hwnd=h)
+
+
+def foreground_process_name() -> str:
+    """Aktif on plan penceresinin surec adini dondurur (parola yoneticisi pano dislama icin)."""
+    if not user32:
+        return ""
+    try:
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value:
+            return ""
+        hproc = kernel32.OpenProcess(0x1000, False, pid.value)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not hproc:
+            return ""
+        try:
+            buf = ctypes.create_unicode_buffer(512)
+            sz = wintypes.DWORD(512)
+            if kernel32.QueryFullProcessImageNameW(hproc, 0, buf, ctypes.byref(sz)):
+                return os.path.basename(buf.value).lower()
+        finally:
+            kernel32.CloseHandle(hproc)
+    except Exception:
+        pass
+    return ""
 
 
 def find_window(title: str, pid: int | None = None) -> int:

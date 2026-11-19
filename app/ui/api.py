@@ -92,7 +92,15 @@ class Api(StudioMixin):
         self._island_factory = None
         self._warns: list[dict[str, Any]] = []
         self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
+        self._manual_speed_profile = str(manager.settings.get("speed_profile") or "full")
+        self._auto_speed_reason = ""
+        self._island_drop_files: list[str] = []
+        self._island_sp_t = 0.0
+        self._island_lyric_cache: tuple[str, str, list[dict[str, Any]]] = ("", "", [])
+        self._thumb_playing: bool | None = None
         manager.events.on("ui.warn", lambda **kw: self._on_warn(kw))
+        manager.events.on("download.completed", lambda download=None, **_: self._on_notify_dl("completed", "İndirme tamamlandı", download))
+        manager.events.on("download.failed", lambda download=None, **_: self._on_notify_dl("error", "İndirme başarısız", download))
 
     # ---------- arka plan isleri ----------
     # Ag/uzun isler arayuzu bekletmesin: job_start hemen is kimligi doner, arayuz job_result ile sorar.
@@ -175,6 +183,16 @@ class Api(StudioMixin):
         with self._inbox_lock:
             if self._update_info and not self._update_shown:   # yeni surum bilgisi arayuze bir kez
                 upd, self._update_shown = self._update_info, True
+        pub_items = []
+        for d in items:
+            pub = self._public(d)
+            if pub.get("status") in ("active", "waiting", "paused"):
+                bp, np = self._manager.live_pieces(d.id)
+                if bp:
+                    pub["bitfield"] = bp
+                    pub["num_pieces"] = np
+            pub_items.append(pub)
+        notifs = getattr(self._manager.events, "notifications", None)
         return {
             "play_requests": plays,
             "ai_events": ai_events,
@@ -187,10 +205,13 @@ class Api(StudioMixin):
             "torrent_requests": torrents,
             "media_requests": inbox,
             "clip_offers": offers,
-            "items": [self._public(d) for d in items],
+            "items": pub_items,
             "total_speed": self._manager.total_speed(),
             "engine_ok": self._engine.running,
             "bridge_port": self._bridge_port(),
+            "speed_profile": str(self._manager.settings.get("speed_profile") or "full"),
+            "speed_profile_auto": getattr(self, "_auto_speed_reason", ""),
+            "notif_unread": notifs.unread_count() if notifs else 0,
         }
 
     @staticmethod
@@ -240,6 +261,19 @@ class Api(StudioMixin):
 
         self._clip_watcher = ClipboardWatcher(
             self.link_supported, offer, lambda: bool(self._manager.settings.get("clipboard_watch")), on_text=shelf)
+
+        def _skip_excluded() -> bool:
+            try:
+                excl = [str(x).strip().lower() for x in (self._manager.settings.get("pano_exclude_apps") or []) if str(x).strip()]
+                if not excl:
+                    return False
+                from app.core.winwin import foreground_process_name
+                fg = foreground_process_name()
+                return bool(fg and fg in excl)
+            except Exception:
+                return False
+
+        self._clip_watcher.should_ignore = _skip_excluded
         self._clip_watcher.start()
 
     def read_clipboard(self) -> str:
@@ -1200,6 +1234,8 @@ class Api(StudioMixin):
         return s
 
     def set_setting(self, key: str, value: Any) -> dict[str, Any]:
+        if key == "speed_profile":
+            return self.speed_profile_set(str(value or "full"), auto=False)
         try:
             self._manager.settings.set(key, value)
             return {"ok": True, "value": self._manager.settings.get(key)}
@@ -2206,6 +2242,8 @@ class Api(StudioMixin):
         st = state if isinstance(state, dict) else {}
         if st.get("left"):
             self._room_island = None
+            if getattr(self, "_auto_speed_reason", "") == "room":
+                self.speed_profile_set(getattr(self, "_manual_speed_profile", "full"), auto=True, reason="")
             if getattr(self, "_island_auto", False) and self._island_shown:
                 self._island_auto = False
                 self.mini_island_toggle(False, persist=False)
@@ -2214,16 +2252,20 @@ class Api(StudioMixin):
                    "me": bool(p.get("me"))} for p in (st.get("people") or [])[:8] if isinstance(p, dict)]
         if not people:
             self._room_island = None
+            if getattr(self, "_auto_speed_reason", "") == "room":
+                self.speed_profile_set(getattr(self, "_manual_speed_profile", "full"), auto=True, reason="")
             if getattr(self, "_island_auto", False) and self._island_shown:
                 self._island_auto = False
                 self.mini_island_toggle(False, persist=False)
             return True
         self._room_island = {"t": _t.time(), "people": people, "muted": bool(st.get("muted")), "deaf": bool(st.get("deaf"))}
+        if getattr(self, "_auto_speed_reason", "") != "game":
+            self.speed_profile_set("room", auto=True, reason="room")
         others = sum(1 for p in people if not p["me"])
-        if self._manager.settings.get("room_island") and others and not self._island_shown:
-            self.mini_island_toggle(True, persist=False)   # birisi odaya girdi: seridi kendiligimizden ac
+        if self._manager.settings.get("room_island") and (others or len(people) >= 1) and not self._island_shown:
+            self.mini_island_toggle(True, persist=False)   # odaya girildi: seridi kendiligimizden ac
             self._island_auto = True
-        elif not others and getattr(self, "_island_auto", False) and self._island_shown:
+        elif not people and getattr(self, "_island_auto", False) and self._island_shown:
             self._island_auto = False
             self.mini_island_toggle(False, persist=False)
         return True
@@ -4058,15 +4100,34 @@ class Api(StudioMixin):
         from app.core.vram_guard import snapshot
         from app.core import music_hub
         card = self.card_state()
-        mus = music_hub.cached_now()
+        try:
+            mus = music_hub.cached_now(allow_paused=True)
+        except TypeError:
+            mus = music_hub.cached_now()
+        mus_out = None
+        if mus and mus.get("title"):
+            prog = int(mus.get("progress_ms") or 0)
+            dur = int(mus.get("duration_ms") or 0)
+            mus_out = {
+                "id": mus.get("id", ""),
+                "playing": bool(mus.get("playing")),
+                "title": mus.get("title", ""),
+                "artist": mus.get("artist", ""),
+                "cover": mus.get("cover", ""),
+                "progress_ms": prog,
+                "duration_ms": dur,
+                "lyric_line": self._island_lyric_for(mus.get("title", ""), mus.get("artist", ""), prog),
+            }
         return {
             "speed": card.get("speed", 0),
             "active": card.get("n", 0),
             "telemetry": snapshot(),
             "profile": self._profile_store().active_profile(),
+            "speed_profile": str(self._manager.settings.get("speed_profile") or "full"),
+            "island_music_expand": bool(self._manager.settings.get("island_music_expand", True)),
             "visible": bool(self._island_shown),
             "room": self._room_island_live(),
-            "music": {"playing": bool(mus.get("playing")), "title": mus.get("title", ""), "artist": mus.get("artist", "")} if mus else None,
+            "music": mus_out,
         }
 
     def _room_island_live(self) -> dict[str, Any] | None:
@@ -4103,14 +4164,26 @@ class Api(StudioMixin):
         return {"ok": True, "visible": self._island_shown}
 
     def music_island_tick(self) -> None:
-        """v1.37.5: Kamify penceresi gizliyken muzik caliyorsa mini-adayi gecici ac (ayari degistirmeden);
-        muzik durunca ya da Kamify one gelince otomatik actigi adayi geri kapat. Kullanicinin elle actigi
-        adaya hic dokunmaz. Eskiden ada varsayilan kapali oldugu icin '♪ sarki' dugmesi hic gorunmuyordu."""
+        """v1.38.0: Kamify gizliyken arka planda Spotify/librespot durumunu tazeler, Mini-Ada'yi ve gorev cubugu ThumbButtons'u senkronlar."""
+        import time as _t
         from app.core import music_hub, winwin
+        now_t = _t.monotonic()
+        if now_t - float(getattr(self, "_island_sp_t", 0.0)) >= 4.0:
+            self._island_sp_t = now_t
+            try:
+                has_sp = bool(music_hub.get_spotify_token("")) or bool(music_hub._librespot_now())
+                if has_sp:
+                    music_hub.spotify_now("")
+            except Exception:
+                pass
+        try:
+            m = music_hub.cached_now(allow_paused=True)
+        except TypeError:
+            m = music_hub.cached_now()
+        playing = bool(m and m.get("playing") and m.get("title"))
+        self._update_music_thumbbar(playing)
         if self._island_shown and not getattr(self, "_island_auto", False):
             return
-        m = music_hub.cached_now()
-        playing = bool(m and m.get("playing") and m.get("title"))
         h = winwin.find_window("Kamify")
         kamify_open = bool(h) and winwin.is_visible(h)
         want = playing and not kamify_open
@@ -4118,8 +4191,9 @@ class Api(StudioMixin):
             self.mini_island_toggle(True, persist=False)
             self._island_auto = True
         elif not want and self._island_shown and getattr(self, "_island_auto", False) and not getattr(self, "_room_island", None):
-            self.mini_island_toggle(False, persist=False)
-            self._island_auto = False
+            if not m or not m.get("title") or kamify_open:
+                self.mini_island_toggle(False, persist=False)
+                self._island_auto = False
 
     # ---------- Faz 11: LinkCrawler, Canli DVR, Web Arsivi, Medya Sagligi ----------
     def crawler_rules_list(self) -> dict[str, Any]:
@@ -4721,3 +4795,463 @@ class Api(StudioMixin):
     def cleaner_trash(self, path: str) -> dict[str, Any]:
         from app.core.cleaner import trash_path
         return trash_path(path)
+
+    # ---------- v1.38.0 Dalga 1: Hiz Profili, Bildirim Merkezi, Mini-Ada Kontrolleri ----------
+    def _on_notify_dl(self, kind: str, title: str, download: Any) -> None:
+        try:
+            notifs = getattr(getattr(self._manager, "events", None), "notifications", None)
+            if not notifs:
+                return
+            fname = str(getattr(download, "filename", "") or (download.get("filename", "") if isinstance(download, dict) else "") or getattr(download, "url", ""))
+            did = getattr(download, "id", None) if not isinstance(download, dict) else download.get("id")
+            notifs.push(kind, title, fname, {"id": did} if did is not None else None)
+        except Exception:
+            pass
+
+    def notifications_list(self, limit: int = 60) -> dict[str, Any]:
+        notifs = getattr(getattr(self._manager, "events", None), "notifications", None)
+        if not notifs:
+            return {"ok": True, "items": [], "unread": 0}
+        return {"ok": True, "items": notifs.list(limit=int(limit)), "unread": notifs.unread_count()}
+
+    def notifications_mark_read(self) -> dict[str, Any]:
+        notifs = getattr(getattr(self._manager, "events", None), "notifications", None)
+        if notifs:
+            notifs.mark_all_read()
+        return {"ok": True, "unread": 0}
+
+    def notifications_clear(self) -> dict[str, Any]:
+        notifs = getattr(getattr(self._manager, "events", None), "notifications", None)
+        if notifs:
+            notifs.clear()
+        return {"ok": True, "unread": 0}
+
+    def speed_profile_state(self) -> dict[str, Any]:
+        profs = self._manager.settings.get("speed_profiles") or {}
+        cur = str(self._manager.settings.get("speed_profile") or "full")
+        return {
+            "ok": True,
+            "current": cur,
+            "manual": getattr(self, "_manual_speed_profile", cur),
+            "auto_reason": getattr(self, "_auto_speed_reason", ""),
+            "profiles": profs,
+        }
+
+    def speed_profile_set(self, name: str, auto: bool = False, reason: str = "") -> dict[str, Any]:
+        profs = self._manager.settings.get("speed_profiles") or {"full": 0, "stream": 15000, "game": 4000, "room": 8000, "night": 0}
+        key = name if name in profs else "full"
+        if not auto:
+            self._manual_speed_profile = key
+            self._auto_speed_reason = ""
+        else:
+            self._auto_speed_reason = reason
+        try:
+            self._manager.settings.set("speed_profile", key)
+            kib = int(profs.get(key, 0) or 0)
+            self._manager.settings.set("speed_limit_kib", kib)
+            if self._engine and self._engine.running:
+                self._engine.set_global(max_overall_download_limit=f"{kib}K")
+        except Exception:
+            pass
+        return self.speed_profile_state()
+
+    def _on_game_active_change(self, key: str, title: str = "") -> None:
+        try:
+            if key:
+                self.speed_profile_set("game", auto=True, reason="game")
+            elif getattr(self, "_auto_speed_reason", "") == "game":
+                self.speed_profile_set(getattr(self, "_manual_speed_profile", "full"), auto=True, reason="")
+        except Exception:
+            pass
+
+    def _island_lyric_for(self, title: str, artist: str, prog_ms: int) -> str:
+        t, a = str(title or "").strip(), str(artist or "").strip()
+        if not t:
+            return ""
+        ct, ca, clines = getattr(self, "_island_lyric_cache", ("", "", []))
+        if (t, a) != (ct, ca):
+            try:
+                from app.core.music_hub import fetch_track_lyrics
+                res = fetch_track_lyrics(t, a)
+                clines = res.get("lines") or []
+            except Exception:
+                clines = []
+            self._island_lyric_cache = (t, a, clines)
+        sec = max(0.0, float(prog_ms or 0) / 1000.0)
+        cur = ""
+        for ln in clines:
+            ts = float(ln.get("time") or ln.get("t") or 0.0)
+            if ts <= sec + 0.35:
+                cur = str(ln.get("text") or "").strip()
+            else:
+                break
+        return cur[:90]
+
+    def _update_music_thumbbar(self, playing: bool) -> None:
+        if getattr(self, "_thumb_playing", None) is playing:
+            return
+        self._thumb_playing = playing
+        try:
+            from app.core import winwin, taskbar
+            hwnd = winwin.find_window("Kamify")
+            if hwnd:
+                taskbar.set_thumb_buttons(hwnd, playing, lambda cmd: self.mini_island_music_cmd(cmd))
+        except Exception:
+            pass
+
+    def mini_island_resize(self, w: int, h: int) -> dict[str, Any]:
+        try:
+            from app.core import winwin
+            ok = winwin.resize_pill("Kami Mini-Ada", int(w), int(h), anchor_top_center=True)
+            return {"ok": bool(ok)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:100]}
+
+    def mini_island_music_cmd(self, act: str, pos_ms: int | None = None) -> dict[str, Any]:
+        from app.core import music_hub
+        a = str(act or "").lower().strip()
+        if a == "seek" and pos_ms is not None:
+            r = music_hub.spotify_seek(max(0, int(pos_ms)))
+            try:
+                if music_hub._LAST_NOW:
+                    music_hub._LAST_NOW["progress_ms"] = max(0, int(pos_ms))
+            except Exception:
+                pass
+            return r
+        if a in ("prev", "previous"):
+            a = "previous"
+        elif a == "toggle":
+            try:
+                cur = music_hub.cached_now(allow_paused=True) or {}
+            except TypeError:
+                cur = music_hub.cached_now() or {}
+            a = "pause" if cur.get("playing") else "play"
+        r = music_hub.spotify_control("", a)
+        try:
+            if a in ("play", "pause") and music_hub._LAST_NOW:
+                music_hub._LAST_NOW["playing"] = (a == "play")
+                self._update_music_thumbbar(a == "play")
+        except Exception:
+            pass
+        return r
+
+    def mini_island_drop_action(self, action: str, paths: list[str] | None = None) -> dict[str, Any]:
+        files = [str(p) for p in (paths or getattr(self, "_island_drop_files", []) or []) if str(p).strip()]
+        if not files:
+            return {"ok": False, "error": "no_files"}
+        self._island_drop_files = []
+        act = str(action or "player").lower().strip()
+        first = files[0]
+        try:
+            if act == "player":
+                self._play_request(first)
+                return {"ok": True}
+            if act == "picture":
+                return self.picture_open(first)
+            if act == "studio":
+                res = self._open_mod_window("studio")
+                try:
+                    self.studio_import_media(first)
+                except Exception:
+                    pass
+                return res
+            if act == "convert":
+                if hasattr(self, "convert_add"):
+                    return self.convert_add(files)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+        return {"ok": False, "error": "bad_action"}
+
+    # ---------- v1.38.0 Dalga 3: Player (AnkiConnect / Picture / Studio Kopruleri) ----------
+    def player_anki_mine(self, word: str, sentence: str, reading: str = "", meaning: str = "",
+                         deck: str = "Kami", model: str = "Basic", audio_b64: str = "", image_b64: str = "") -> dict[str, Any]:
+        from app.core.player_plus import anki_connect_mine
+        return anki_connect_mine(word, sentence, reading=reading, meaning=meaning, deck=deck,
+                                 model=model, audio_b64=audio_b64, image_b64=image_b64)
+
+    def player_pick_file(self) -> str:
+        w = self._player_win or self._window
+        if not w:
+            return ""
+        try:
+            import webview
+            res = w.create_file_dialog(webview.OPEN_DIALOG, file_types=("Medya (*.mp4;*.mkv;*.webm;*.mov;*.avi;*.mp3;*.flac;*.wav;*.m4a)", "Tümü (*.*)"))
+            return res[0] if res else ""
+        except Exception:
+            return ""
+
+    def player_send_frame_picture(self, data_url: str, beautify: bool = True) -> dict[str, Any]:
+        import base64, time as _t
+        from app import paths
+        raw = str(data_url or "")
+        if "," in raw[:60]:
+            raw = raw.split(",", 1)[1]
+        if not raw:
+            return {"ok": False, "error": "empty_image"}
+        out = paths.DATA_DIR / "exports" / f"player_frame_{int(_t.time())}.png"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(base64.b64decode(raw))
+        r = self.picture_open(str(out))
+        return {**r, "path": str(out), "beautify": bool(beautify)}
+
+    def player_send_clip_studio(self, path: str, at_sec: float = 0.0) -> dict[str, Any]:
+        res = self._open_mod_window("studio")
+        try:
+            if path:
+                self.studio_import_media(str(path))
+        except Exception:
+            pass
+        return {**res, "at": float(at_sec or 0.0)}
+
+    # ---------- v1.38.0 Dalga 3: Kami Games (SGDB Kapak Secici + Save Snapshot Timeline) ----------
+    def games_search_covers(self, query: str) -> dict[str, Any]:
+        from app.core.games import sgdb_search_covers
+        return sgdb_search_covers(str(query or ""))
+
+    def games_set_cover(self, key: str, cover_url: str) -> dict[str, Any]:
+        from app.core.games import set_custom_cover
+        return set_custom_cover(str(key or ""), str(cover_url or ""))
+
+    def games_save_snapshot(self, key: str, title: str = "", src_dir: str = "") -> dict[str, Any]:
+        from app.core.games import create_save_snapshot
+        return create_save_snapshot(str(key or ""), str(title or ""), str(src_dir or ""))
+
+    def games_list_snapshots(self, key: str) -> list[dict[str, Any]]:
+        from app.core.games import list_save_snapshots
+        return list_save_snapshots(str(key or ""))
+
+    def games_restore_snapshot(self, key: str, snap_id: str, dest_dir: str = "") -> dict[str, Any]:
+        from app.core.games import restore_save_snapshot
+        return restore_save_snapshot(str(key or ""), str(snap_id or ""), str(dest_dir or ""))
+
+    # ---------- v1.38.0 Dalga 4: Picture Beautify / Pin / Lens Quick & Cleaner Pro ----------
+    def picture_data_url(self, path: str) -> dict[str, Any]:
+        import base64
+        p = Path(str(path or ""))
+        if not p.is_file():
+            return {"ok": False, "error": "no_file"}
+        ext = p.suffix.lower().lstrip(".")
+        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp",
+                "gif": "image/gif", "bmp": "image/bmp"}.get(ext, "image/png")
+        try:
+            raw = p.read_bytes()
+            return {"ok": True, "url": f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"}
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    def picture_save_data_url(self, data_url: str, orig_path: str = "", suffix: str = "_beautify") -> dict[str, Any]:
+        import base64
+        import io
+        import time
+        from PIL import Image
+        s = str(data_url or "")
+        if "," not in s or not s.startswith("data:image/"):
+            return {"ok": False, "error": "bad_data_url"}
+        try:
+            raw = base64.b64decode(s.split(",", 1)[1], validate=True)
+            im = Image.open(io.BytesIO(raw))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+        op = Path(str(orig_path)) if orig_path else None
+        if op and op.parent.is_dir():
+            out_dir = op.parent
+            stem = re.sub(r'[<>:"/\\|?*]', "_", op.stem)[:60] or "kami_image"
+        else:
+            out_dir = Path.home() / "Pictures" / "Kami"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            stem = f"kami_{int(time.time())}"
+        suf = re.sub(r'[^A-Za-z0-9_-]', "", str(suffix or "_beautify")) or "_beautify"
+        target = out_dir / f"{stem}{suf}.png"
+        idx = 2
+        while target.exists():
+            target = out_dir / f"{stem}{suf}_{idx}.png"
+            idx += 1
+        im.save(target, format="PNG")
+        return {"ok": True, "path": str(target)}
+
+    def picture_pin(self, path: str) -> dict[str, Any]:
+        import base64
+        import time
+        from PIL import Image
+        p = Path(str(path or ""))
+        if not p.is_file():
+            return {"ok": False, "error": "no_file"}
+        try:
+            with Image.open(p) as im:
+                iw, ih = im.size
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+        scale = min(1.0, 480.0 / max(1, iw, ih))
+        ww = max(180, int(round(iw * scale)))
+        wh = max(135, int(round(ih * scale)))
+        pid = f"pin_{int(time.time() * 1000)}"
+        pins = getattr(self, "_pins", None)
+        if pins is None:
+            pins = {}
+            self._pins = pins
+        pins[pid] = {"path": str(p), "w": ww, "h": wh}
+        maker = getattr(self, "_make_pin_window", None)
+        if maker is not None:
+            win = maker(pid, ww, wh)
+            wins = getattr(self, "_pin_wins", None)
+            if wins is None:
+                wins = {}
+                self._pin_wins = wins
+            wins[pid] = win
+        return {"ok": True, "pid": pid, "w": ww, "h": wh}
+
+    def pin_info(self, pid: str = "") -> dict[str, Any]:
+        pins = getattr(self, "_pins", {}) or {}
+        if not pins:
+            return {"ok": False}
+        key = pid if pid in pins else next(reversed(pins))
+        rec = pins[key]
+        d = self.picture_data_url(rec["path"])
+        return {"ok": bool(d.get("ok")), "pid": key, "url": d.get("url", ""), "w": rec["w"], "h": rec["h"]}
+
+    def pin_resize(self, pid: str = "", w: int = 360, h: int = 270) -> dict[str, Any]:
+        wins = getattr(self, "_pin_wins", {}) or {}
+        key = pid if pid in wins else (next(reversed(wins)) if wins else "")
+        win = wins.get(key)
+        if win is not None and hasattr(win, "resize"):
+            win.resize(max(160, int(w)), max(120, int(h)))
+        return {"ok": win is not None}
+
+    def pin_close(self, pid: str = "") -> dict[str, Any]:
+        wins = getattr(self, "_pin_wins", {}) or {}
+        pins = getattr(self, "_pins", {}) or {}
+        key = pid if pid in wins else (next(reversed(wins)) if wins else "")
+        pins.pop(key, None)
+        win = wins.pop(key, None)
+        if win is not None:
+            threading.Thread(target=win.destroy, daemon=True).start()
+        return {"ok": True}
+
+    def lens_capture_quick(self) -> dict[str, Any]:
+        shot = self.lens_screen_grab()
+        if not shot:
+            return {"ok": False, "error": "cancelled"}
+        return self.lens_quick_show(shot)
+
+    def lens_quick_show(self, path: str) -> dict[str, Any]:
+        p = Path(str(path or ""))
+        if not p.is_file():
+            return {"ok": False, "error": "no_file"}
+        self._lens_quick_path = str(p)
+        maker = getattr(self, "_make_lens_quick_window", None)
+        if maker is not None:
+            old = getattr(self, "_lens_quick_win", None)
+            if old is not None:
+                try:
+                    threading.Thread(target=old.destroy, daemon=True).start()
+                except Exception:
+                    pass
+            maker()
+        return {"ok": True, "path": str(p)}
+
+    def lens_quick_info(self) -> dict[str, Any]:
+        p = str(getattr(self, "_lens_quick_path", "") or "")
+        if not p or not os.path.isfile(p):
+            return {"ok": False}
+        from PIL import Image
+        with Image.open(p) as im:
+            w, h = im.size
+        d = self.picture_data_url(p)
+        return {"ok": True, "path": p, "width": w, "height": h, "url": d.get("url", "")}
+
+    def lens_quick_action(self, action: str) -> dict[str, Any]:
+        p = str(getattr(self, "_lens_quick_path", "") or "")
+        act = str(action or "").strip().lower()
+        if act == "close":
+            win = getattr(self, "_lens_quick_win", None)
+            self._lens_quick_win = None
+            if win is not None:
+                threading.Thread(target=win.destroy, daemon=True).start()
+            return {"ok": True}
+        if not p or not os.path.isfile(p):
+            return {"ok": False, "error": "no_file"}
+        if act == "pin":
+            return self.picture_pin(p)
+        if act == "lens":
+            return self.picture_open(p, lens=True)
+        if act == "beautify":
+            self.picture_open(p, lens=False)
+            return {"ok": True, "message": "Picture penceresinde açıldı"}
+        if act == "ocr":
+            try:
+                from app.core import ocr
+                r = ocr.read_text(p)
+                return {"ok": True, "text": str((r or {}).get("text") or "").strip()}
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)[:120]}
+        if act == "copy":
+            if os.name == "nt":
+                ps = (
+                    "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; "
+                    f"$img = [System.Drawing.Image]::FromFile('{p.replace(chr(39), chr(39)*2)}'); "
+                    "[System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()"
+                )
+                subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=8,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                return {"ok": True, "message": "Panoya kopyalandı ✓"}
+            return {"ok": False, "error": "unsupported"}
+        if act == "save":
+            import shutil
+            import time
+            dst_dir = Path.home() / "Pictures" / "Kami Captures"
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            dst = dst_dir / f"KamiCapture_{time.strftime('%Y%m%d_%H%M%S')}.png"
+            shutil.copy2(p, dst)
+            return {"ok": True, "path": str(dst), "message": f"Kaydedildi: {dst.name}"}
+        return {"ok": False, "error": "bad_action"}
+
+    def cleaner_drives(self) -> dict[str, Any]:
+        from app.core import cleaner
+        return cleaner.drive_summary()
+
+    def cleaner_by_ext(self, root: str = "") -> dict[str, Any]:
+        from app.core import cleaner
+        return cleaner.by_ext(str(root or ""))
+
+    def cleaner_largest(self, root: str = "", limit: int = 100) -> dict[str, Any]:
+        from app.core import cleaner
+        return cleaner.largest_files(str(root or ""), limit=int(limit or 100))
+
+    def cleaner_duplicates(self, root: str = "") -> dict[str, Any]:
+        from app.core import cleaner
+        return cleaner.find_duplicates(str(root or ""))
+
+    def cleaner_similar_images(self, root: str = "", threshold: int = 8) -> dict[str, Any]:
+        from app.core import cleaner
+        return cleaner.find_similar_images(str(root or ""), threshold=int(threshold or 8))
+
+    def cleaner_caches(self) -> dict[str, Any]:
+        from app.core import cleaner
+        return cleaner.scan_safe_caches()
+
+    def cleaner_preview(self, path: str) -> dict[str, Any]:
+        from app.core import cleaner
+        return cleaner.preview_file(str(path or ""))
+
+    def cleaner_trash_many(self, paths_list: list[str]) -> dict[str, Any]:
+        from app.core import cleaner
+        ok_n, fail_n, errors = 0, 0, []
+        for p in (paths_list or [])[:200]:
+            r = cleaner.trash_path(str(p or ""))
+            if r.get("ok"):
+                ok_n += 1
+            else:
+                fail_n += 1
+                errors.append(r.get("error", "fail"))
+        return {"ok": fail_n == 0 or ok_n > 0, "trashed": ok_n, "failed": fail_n, "errors": errors[:5]}
+
+    def cleaner_open_folder(self, path: str) -> bool:
+        p = Path(str(path or ""))
+        if not p.exists():
+            return False
+        if p.is_file():
+            return self.open_path_folder(str(p))
+        if os.name == "nt":
+            subprocess.Popen(["explorer", str(p)], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            return True
+        return False

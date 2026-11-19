@@ -565,3 +565,57 @@ def cast_control(dev: dict[str, Any], action: str, value: float = 0) -> dict[str
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200]}
+
+
+def anki_connect_mine(word: str, sentence: str, reading: str = "", meaning: str = "",
+                      deck: str = "Kami", model: str = "Basic",
+                      audio_b64: str = "", image_b64: str = "") -> dict[str, Any]:
+    """Yerel AnkiConnect (127.0.0.1:8765) uzerinden cumle + ekran goruntusu karti gonderir."""
+    w = str(word or "").strip()
+    sent = str(sentence or "").strip()
+    if not (w or sent):
+        return {"ok": False, "error": "empty_card"}
+    url = "http://127.0.0.1:8765"
+
+    def _post(action: str, params: dict[str, Any]) -> Any:
+        body = json.dumps({"action": action, "version": 6, "params": params}).encode("utf-8")
+        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        try:
+            _post("createDeck", {"deck": deck or "Kami"})
+        except Exception:
+            pass
+        ts = int(time.time() * 1000)
+        front = w or sent
+        back_parts = [p for p in (meaning, reading, sent if w else "") if p]
+        if image_b64:
+            raw_img = image_b64.split(",", 1)[1] if "," in image_b64[:60] else image_b64
+            fname = f"kami_snap_{ts}.png"
+            _post("storeMediaFile", {"filename": fname, "data": raw_img})
+            back_parts.append(f'<br><img src="{fname}">')
+        if audio_b64:
+            raw_aud = audio_b64.split(",", 1)[1] if "," in audio_b64[:60] else audio_b64
+            aname = f"kami_clip_{ts}.mp3"
+            _post("storeMediaFile", {"filename": aname, "data": raw_aud})
+            back_parts.append(f"[sound:{aname}]")
+        res = _post("addNote", {
+            "note": {
+                "deckName": deck or "Kami",
+                "modelName": model or "Basic",
+                "fields": {"Front": front, "Back": "<br>".join(back_parts) or sent},
+                "options": {"allowDuplicate": True},
+                "tags": ["kami-player"],
+            }
+        })
+        if isinstance(res, dict) and res.get("error"):
+            return {"ok": False, "error": str(res["error"])[:140]}
+        return {"ok": True, "id": res.get("result") if isinstance(res, dict) else res}
+    except urllib.error.URLError:
+        return {"ok": False, "error": "anki_offline"}
+    except OSError:
+        return {"ok": False, "error": "anki_offline"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:140]}

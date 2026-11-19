@@ -85,22 +85,22 @@
   <div id="split" title="Sürükle: zaman çizelgesi yüksekliği"></div>
   <footer id="tl">
     <div id="tlbar">
-      <button class="tb" data-a="split" title="Böl (S)">✂ Böl</button>
-      <button class="tb" data-a="trimL" title="Oynatma kafasının solundaki kısmı sil (Q)">⇤ Solu sil</button>
-      <button class="tb" data-a="trimR" title="Oynatma kafasının sağındaki kısmı sil (W)">Sağı sil ⇥</button>
-      <button class="tb" data-a="del" title="Sil (Del) · Shift+Del boşluğu kapatır">🗑</button>
+      <button class="tb" data-a="split" title="Böl (S)"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg>Böl</button>
+      <button class="tb" data-a="trimL" title="Oynatma kafasının solundaki kısmı sil (Q)">⇤ Sol</button>
+      <button class="tb" data-a="trimR" title="Oynatma kafasının sağındaki kısmı sil (W)">Sağ ⇥</button>
+      <button class="tb" data-a="del" title="Sil (Del) · Shift+Del boşluğu kapatır"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
       <button class="tb" data-a="dup" title="Çoğalt (Ctrl+D)">⧉</button>
       <button class="tb" data-a="transformMenu" title="Döndür / Ters çevir / Ayna">↻ Dönüşüm</button>
       <button class="tb" data-a="freeze" title="Kare dondur + zoom + tık (Shift+F)">❄ Dondur</button>
       <button class="tb" data-a="marker" title="İşaret (M)">⚑</button>
       <span class="sep"></span>
-      <button class="tb on" data-a="link" id="linkBtn" title="Bağlı video ve ses kliplerini birlikte taşı (Ctrl+L)">🔗 Bağlı</button>
-      <button class="tb on" data-a="snap" id="snapBtn" title="Mıknatıs">🧲</button>
-      <button class="tb" data-a="ripple" id="rippleBtn" title="Silince sonrakileri kaydır">⇤</button>
+      <button class="tb on" data-a="link" id="linkBtn" title="Bağlı video ve ses kliplerini birlikte taşı (Ctrl+L)">Bağlı</button>
+      <button class="tb on" data-a="snap" id="snapBtn" title="Mıknatıs">Mıknatıs</button>
+      <button class="tb" data-a="ripple" id="rippleBtn" title="Silince sonrakileri kaydır">Kaydır</button>
       <button class="tb" data-a="loopIn" title="Döngü Girişi (I)">[ I</button>
       <button class="tb" data-a="loopOut" title="Döngü Çıkışı (O)">O ]</button>
-      <button class="tb" data-a="loopToggle" id="loopBtn" title="I-O Döngü Oynat / Aç-Kapat (L)">🔁</button>
-      <button class="tb" data-a="scrub" id="scrubBtn" title="Timeline sürüklerken sesi dinle (Scrub)">🔊</button>
+      <button class="tb" data-a="loopToggle" id="loopBtn" title="I-O Döngü Oynat / Aç-Kapat (L)">I–O</button>
+      <button class="tb" data-a="scrub" id="scrubBtn" title="Timeline sürüklerken sesi dinle (Scrub)">Scrub</button>
       <span class="sep"></span>
       <span id="compCrumb" class="comp-crumb" hidden></span>
       <select class="tb" id="editModeSel" title="Premiere Kurgu Modu">
@@ -111,15 +111,23 @@
         <option value="slide">Slide</option>
       </select>
       <span class="sep"></span>
-      <button class="tb" data-a="smartcut" title="Anahtar karelerden hızlı kesim (Keyframe Copy)">⚡ Hızlı Kes</button>
-      <button class="tb" data-a="enhance" title="Konuşma netleştir + -14 LUFS">🎙 Netleştir</button>
-      <button class="tb" data-a="compound" title="Seçili klipleri Bileşik Klip yap / aç">⧉ Bileşik</button>
-      <button class="tb" data-a="scopes" title="Colorist Scopes (Waveform / Parade / Vectorscope)">📊 Scopes</button>
-      <span class="sep"></span>
-      <button class="tb" data-a="viral" title="Viral Kurgu Paketleri (seçili klibe veya tümüne)">🔥 Viral</button>
-      <button class="tb" data-a="autostyle" title="Kanal / Tür Tarzı Otomatik Kurgu (Roblox, Rap Klip, Belgesel...)">🤖 Oto-Kurgu</button>
-      <span class="sep"></span>
+      <div class="st-dd-wrap" id="smartMenuWrap">
+        <button class="tb" id="smartMenuBtn" type="button" title="Akıllı Kurgu, Sessizlik, Chapter ve Proxy Araçları"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/></svg>Akıllı Araçlar ▾</button>
+        <div class="st-dd" id="smartMenu" hidden>
+          <button type="button" data-a="smartcut">Hızlı Kes (Keyframe Copy)</button>
+          <button type="button" data-a="enhance">Konuşma Netleştir (-14 LUFS)</button>
+          <button type="button" data-smart="silences">Sessizlikleri Tespit Et &amp; Böl</button>
+          <button type="button" data-smart="chapters">İşaretlerden Bölüm (FFMETADATA)</button>
+          <button type="button" data-smart="proxy">720p Önizleme Proxy Oluştur</button>
+          <button type="button" data-a="compound">Bileşik Klip Oluştur</button>
+          <button type="button" data-a="scopes">Colorist Scopes</button>
+          <button type="button" data-a="viral">Viral Kurgu Paketleri</button>
+          <button type="button" data-a="autostyle">Oto-Kurgu Tarzları</button>
+        </div>
+      </div>
       <button class="tb" data-a="addtrack" title="İz ekle">＋ İz</button>
+      <button class="tb" id="stLockHeadBtn" type="button" title="Oynatma Kafası Merkezde Kalsın (Sabit Kafa)">Sabit Kafa</button>
+      <button class="tb" id="stZoomModeBtn" type="button" title="Ctrl+Tekerlek Zoom Odağı: İmleç / Kafa">Zoom: İmleç</button>
       <span class="sp"></span>
       <span id="selInfo" class="hint"></span>
       <button class="tb icon" data-a="zout" title="Uzaklaş (-)">－</button>
@@ -127,6 +135,7 @@
       <button class="tb icon" data-a="zin" title="Yakınlaş (+)">＋</button>
       <button class="tb icon" data-a="zfit" title="Hepsini sığdır">⇔</button>
     </div>
+    <canvas id="tlOverview" height="22"></canvas>
     <div id="tlBody">
       <div id="tlHeads"></div>
       <div id="tlScroll"><div id="tlInner"><div id="ruler"><canvas></canvas></div><div id="lanes"></div><div id="playhead"></div></div></div>
@@ -171,5 +180,6 @@
 <script src="studio-ux.js"></script>
 <script src="studio-finish.js"></script>
 <script src="studio-extra30.js"></script>
+<script src="studio-v138.js"></script>
 </body>
 </html>

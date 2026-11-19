@@ -26,7 +26,7 @@ function plBuild() {
       <canvas id="plBig" width="403" height="614"></canvas>
       <div class="pl-bigeq r" id="plBigEqR">${"<i></i>".repeat(16)}</div>
     </div>
-    <div class="pl-empty" id="plEmpty" hidden><div><b>Kami Player</b><span>${plL("Bir video ya da şarkı sürükleyip bırak, ya da kütüphaneden seç.", "Drop a video or song here, or pick one from the library.")}</span><button class="pl-b" data-pl="queue">${plL("Kütüphaneyi aç", "Open library")}</button></div></div>
+    <div class="pl-empty" id="plEmpty" hidden><div><b>Kami Player</b><span>${plL("Bir video ya da şarkı sürükleyip bırak, dosya/URL aç veya kütüphaneden seç.", "Drop a video or song here, open a file/URL, or pick from library.")}</span><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="pl-b" id="plEmptyPick">${plL("Dosya Aç", "Open File")}</button><button class="pl-b" id="plEmptyUrl">${plL("URL İzle", "Stream URL")}</button><button class="pl-b" data-pl="queue">${plL("Kütüphaneyi Aç", "Open Library")}</button></div></div></div>
     <div class="pl-subs2" id="plSubs2"></div>
     <div class="pl-subs" id="plSubs"></div>
     <div class="pl-spin" id="plSpin"></div>
@@ -78,7 +78,16 @@ function plBuild() {
     if (e.target.closest(".pl-panel, .pl-deck select, #plDrawer, #pmEmpty")) return;
     const lyr = e.target.closest("#pmList");   // sozler kayabiliyorsa tekerlek sozleri kaydirsin (ses degil)
     if (lyr && lyr.scrollHeight > lyr.clientHeight + 4) return;
-    e.preventDefault(); plSetVol((PL.vol ?? 1) + (e.deltaY < 0 ? 0.05 : -0.05)); plWake();
+    e.preventDefault();
+    if (e.clientX < innerWidth * 0.28 && typeof PX !== "undefined" && typeof pxApplyVideo === "function") {
+      PX.cfg.vid.bright = Math.max(50, Math.min(160, (PX.cfg.vid.bright ?? 100) + (e.deltaY < 0 ? 5 : -5)));
+      pxApplyVideo();
+      if (typeof pxSave === "function") pxSave();
+      plWake();
+      toast(plL("Parlaklık ", "Brightness ") + PX.cfg.vid.bright + "%");
+      return;
+    }
+    plSetVol((PL.vol ?? 1) + (e.deltaY < 0 ? 0.05 : -0.05)); plWake();
     toast(plL("Ses ", "Volume ") + Math.round(PL.vol * 100) + "%");
   }, { passive: false });
   el.addEventListener("auxclick", (e) => { if (e.button === 1 && !e.target.closest("button, select, input")) { e.preventDefault(); plFull(); } });

@@ -637,7 +637,7 @@ body.osdrag #tl { outline: 2px dashed var(--em); outline-offset: -2px; }
 .mc-cam-live { font-size: 9.5px; background: #2EE6A6; color: #051610; padding: 1px 5px; border-radius: 4px; letter-spacing: .4px; }
 .sf-short-dur { font-size: 10.5px; padding: 2px 6px; border-radius: 999px; background: rgba(46, 230, 166, .12); color: #2EE6A6; border: 1px solid rgba(46, 230, 166, .3); font-weight: 600; white-space: nowrap; }
 /* v1.32.1 sol panel: dikey simge seridi (3 satira sikisan 13 sekme yerine) */
-#panel { display: grid !important; grid-template-columns: 64px 1fr; grid-template-rows: auto 1fr; }
+#panel { display: grid !important; grid-template-columns: 74px 1fr; grid-template-rows: auto 1fr; }
 body[data-page]:not([data-page=edit]) #panel, body.nopanel #panel { display: none !important; }
 #libtabs { grid-row: 1 / span 2; flex-direction: column; flex-wrap: nowrap; gap: 2px; padding: 8px 4px; overflow-y: auto; border-right: 1px solid rgba(139, 92, 246, .14); scrollbar-width: none; }
 #libtabs button { flex-direction: column; justify-content: center; gap: 3px; padding: 7px 2px; font-size: 9.5px; line-height: 1.1; text-align: center; width: 100%; }
@@ -667,3 +667,15 @@ body[data-page]:not([data-page=edit]) #panel, body.nopanel #panel { display: non
 .antune{display:grid;grid-template-columns:86px 1fr 52px;align-items:center;gap:8px;font-size:12px;padding:3px 0}
 .antune input[type=range]{width:100%;accent-color:var(--acc,#8b5cf6)}
 .antune output{text-align:right;font-variant-numeric:tabular-nums;opacity:.8}
+
+/* ---- v1.38.0 Dalga 3: 2-tier tlbar, Smart Tools dropdown, Overview Canvas, Hex Swatch ---- */
+#tlbar { gap: 4px 5px; padding: 5px 10px; }
+#tlbar .tb svg { width: 14px; height: 14px; flex: none; display: block; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.eh-rec button svg { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+.st-dd-wrap { position: relative; display: inline-flex; }
+.st-dd { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 45; min-width: 215px; padding: 6px; background: #140F20; border: 1px solid rgba(139,92,246,.45); border-radius: 10px; box-shadow: 0 14px 36px rgba(0,0,0,.65); display: flex; flex-direction: column; gap: 3px; }
+.st-dd button { text-align: left; border: 0; background: transparent; color: #EDE9F6; padding: 7px 10px; border-radius: 7px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+.st-dd button:hover { background: rgba(139,92,246,.22); }
+#tlOverview { width: 100%; height: 22px; background: #08060D; border-bottom: 1px solid var(--line); display: block; cursor: pointer; flex: none; }
+.st-hex-lbl { font: 600 10.5px "Chakra Petch", monospace; color: #C4B5FD; background: #0A0810; border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; margin-left: 6px; letter-spacing: .04em; user-select: text; }
+.card[data-tr]:hover { border-color: var(--em); }

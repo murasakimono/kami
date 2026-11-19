@@ -16,7 +16,7 @@ from typing import Any
 log = logging.getLogger(__name__)
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"
 
-STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "studio_silences", "studio_freezes", "studio_scenes",
+STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "studio_silences", "studio_freezes", "studio_scenes", "studio_build_preview",
                "studio_myinstants", "studio_myinstants_trending", "studio_tr_meme_bank", "studio_meme_video_search", "studio_meme_video_fetch",
                "studio_fetch_sound", "studio_freesound", "studio_tts", "studio_pack_add", "studio_save", "studio_open",
                "studio_stock", "studio_stock_get", "studio_fonts_download", "studio_template", "studio_sfx", "studio_lut_read",
@@ -342,7 +342,24 @@ class StudioMixin:
             items = json.loads((CACHE / "recent.json").read_text("utf-8"))
         except (OSError, ValueError):
             return []
-        return [i for i in items if os.path.isfile(i.get("path", ""))]
+        out: list[dict[str, Any]] = []
+        seen_paths: set[str] = set()
+        yeni_seen = False
+        for it in items:
+            p = str(it.get("path") or "")
+            if not p or not os.path.isfile(p):
+                continue
+            np = os.path.normcase(os.path.abspath(p))
+            if np in seen_paths:
+                continue
+            seen_paths.add(np)
+            nm = str(it.get("name") or "").strip() or os.path.splitext(os.path.basename(p))[0]
+            if nm.lower() in ("yeni proje", "proje"):
+                if yeni_seen:
+                    continue
+                yeni_seen = True
+            out.append({**it, "name": nm})
+        return out
 
     def _studio_dialog(self, kind: str, types: tuple = (), name: str = "", folder: str = "") -> list[str]:
         import webview
@@ -1750,3 +1767,23 @@ class StudioMixin:
         if res.get("ok") and self._st():
             return {**res, **self._st().info(res["path"])}
         return res
+
+    def studio_build_preview(self, path: str) -> dict[str, Any]:
+        from app.core import studio, studio_finish
+        ff = self._st().ffmpeg() if self._st() else ""
+        return studio_finish.build_preview_proxy(ff, str(path or ""), studio.CACHE / "previews")
+
+    def studio_detect_silences(self, path: str, db: float = -35.0, min_len: float = 0.45) -> list[list[float]]:
+        from app.core import studio_finish
+        ff = self._st().ffmpeg() if self._st() else ""
+        return studio_finish.detect_silences(ff, str(path or ""), float(db), float(min_len))
+
+    def studio_export_chapters_meta(self, chapters: list[dict[str, Any]], total_dur: float = 0.0, name: str = "") -> dict[str, Any]:
+        from app.core import studio, studio_finish
+        txt = studio_finish.format_ffmetadata_chapters(chapters or [], float(total_dur or 0.0))
+        out_dir = studio.export_dir()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        safe = re.sub(r'[<>:"/\\|?*]+', "_", str(name or "chapters")).strip() or "chapters"
+        dst = out_dir / f"{safe}_chapters.txt"
+        dst.write_text(txt, encoding="utf-8")
+        return {"ok": True, "path": str(dst), "text": txt}

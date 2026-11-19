@@ -414,6 +414,11 @@ def main() -> int:
     events.on("ui.attention", lambda reason: show_window())
 
     api = Api(manager, engine, registry, lambda: bridge.port)
+    try:
+        from app.core.games import TRACKER as _GAME_TRACKER
+        _GAME_TRACKER.on_active_change = api._on_game_active_change
+    except Exception:
+        pass
     start_hidden = "--tray" in sys.argv[1:] or bool(play)   # Gezgin'den dosya: sadece Kami Player penceresi
     window = webview.create_window(
         "Kami",
@@ -573,7 +578,20 @@ def main() -> int:
                 w.events.closed += _on_closed
                 keep_warm(w)
                 if not selftest:
-                    w.events.loaded += lambda: (_set_hwnd_app_id(t, f"Murasakimono.Kami.{k.title()}"), _set_hwnd_icon(t, k, col), fr.request(), threading.Timer(0.5, fr.request).start())
+                    def _on_mod_loaded(win_t=t, win_k=k, win_col=col, mod_fr=fr) -> None:
+                        _set_hwnd_app_id(win_t, f"Murasakimono.Kami.{win_k.title()}")
+                        _set_hwnd_icon(win_t, win_k, win_col)
+                        if win_k == "music":
+                            try:
+                                from app.core import taskbar
+                                hwnd = winwin.find_window(win_t)
+                                if hwnd:
+                                    taskbar.set_thumb_buttons(hwnd, bool(getattr(api, "_thumb_playing", False)), lambda cmd: api.mini_island_music_cmd(cmd))
+                            except Exception:
+                                pass
+                        mod_fr.request()
+                        threading.Timer(0.5, mod_fr.request).start()
+                    w.events.loaded += _on_mod_loaded
                 return w
             setattr(api, f"_make_{k}_window", _make)
             setattr(api, f"_front_{k}", fr.request)
@@ -743,6 +761,32 @@ def main() -> int:
         api._grab_win = webview.create_window("Kami Lens", url=str(paths.WEB_DIR / "grab.html"), js_api=api, frameless=True,
                                               on_top=True, fullscreen=True, background_color="#000000")
     api._make_grab_window = make_grab_window
+
+    def make_pin_window(pid: str, w_px: int = 380, h_px: int = 280):
+        win = webview.create_window("Kami Pin", url=f"{(paths.WEB_DIR / 'pin.html').as_uri()}?pid={pid}",
+                                    js_api=api, frameless=True, easy_drag=False, on_top=True,
+                                    width=max(160, int(w_px)), height=max(120, int(h_px)),
+                                    background_color="#09070D")
+        win.events.closed += lambda: getattr(api, "_pin_wins", {}).pop(pid, None)
+        return win
+    api._make_pin_window = make_pin_window
+
+    def make_lens_quick_window():
+        w_card, h_card = 408, 152
+        try:
+            sw = int(ctypes.windll.user32.GetSystemMetrics(0))
+            sh = int(ctypes.windll.user32.GetSystemMetrics(1))
+            px, py = max(20, sw - w_card - 24), max(20, sh - h_card - 72)
+        except Exception:
+            px, py = 820, 620
+        win = webview.create_window("Kami Yakalama", url=str(paths.WEB_DIR / "lens_quick.html"),
+                                    js_api=api, frameless=True, easy_drag=False, on_top=True,
+                                    width=w_card, height=h_card, x=px, y=py,
+                                    background_color="#0B0812")
+        win.events.closed += lambda: setattr(api, "_lens_quick_win", None)
+        api._lens_quick_win = win
+        return win
+    api._make_lens_quick_window = make_lens_quick_window
 
     bridge.on_play = play_request
     bridge.on_uri = lambda u: api.handle_uri(u)
@@ -960,7 +1004,7 @@ def main() -> int:
     # ---- Faz 7.5: Masaustu Mini-Ada Seridi
     def _make_island_window():
         sc = webview.screens[0] if webview.screens else None
-        w, h = 540, 50
+        w, h = 460, 48
         x, y = ((sc.x + (sc.width - w) // 2), (sc.y + 14)) if sc else (None, None)
         win = webview.create_window(
             "Kami Mini-Ada",
@@ -968,6 +1012,7 @@ def main() -> int:
             js_api=api,
             width=w,
             height=h,
+            min_size=(220, 36),
             x=x,
             y=y,
             frameless=True,
@@ -985,7 +1030,26 @@ def main() -> int:
                 winwin.round_pill("Kami Mini-Ada")
             except Exception:
                 pass
-        win.events.loaded += lambda: (_clip_island(), threading.Timer(0.18, _clip_island).start())
+
+        def _bind_island_drop() -> None:
+            try:
+                from webview.dom import DOMEventHandler
+                import json as _json
+
+                def _on_drop(e) -> None:
+                    fs = [f.get("pywebviewFullPath") for f in (e.get("dataTransfer") or {}).get("files") or [] if f.get("pywebviewFullPath")]
+                    if fs:
+                        api._island_drop_files = fs
+                        try:
+                            win.run_js(f"window.kamiIslandExternalDrop && window.kamiIslandExternalDrop({_json.dumps(fs)})")
+                        except Exception:
+                            pass
+
+                win.dom.document.events.drop += DOMEventHandler(_on_drop, True, False)
+            except Exception:
+                pass
+
+        win.events.loaded += lambda: (_clip_island(), _bind_island_drop(), threading.Timer(0.18, _clip_island).start())
         win.events.shown += lambda: (_clip_island(), threading.Timer(0.18, _clip_island).start())
         return win
 

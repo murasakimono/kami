@@ -55,7 +55,10 @@ DEFAULTS: dict[str, Any] = {
     "hotkey_enabled": True,
     "hotkey": "ctrl+alt+k",        # genel kisayol: Kami'yi one getir + panodaki linki sor
     "speed_limit_preset_kib": 2048,# arac cubugundaki "hiz siniri" dugmesinin degeri
+    "speed_profile": "full",       # baglam hiz profili: full | game | room | night
+    "speed_profiles": {"full": 0, "game": 12288, "room": 8192, "night": 4096},
     "pano_shelf_record": True,     # v1.31.2: kopyalanan metin/linkler Pano rafina (parola yoneticisi kopyalari haric)
+    "pano_exclude_apps": ["keepass", "bitwarden", "1password", "enpass", "lastpass", "dashlane"],
     "prewarm_player": True,        # v1.35.2: Player arka planda gizli hazirlanir; ilk acilis aninda (~100 MB RAM)
     "integrity_check": True,       # v1.29: bitince dosya saglam mi (arsiv test, video bas+son cozum, boyut)
     "integrity_redownload": True,  # bozuksa bir kez otomatik yeniden indir
@@ -74,8 +77,9 @@ DEFAULTS: dict[str, Any] = {
     "ui_transitions": True,        # View Transitions + komut satirindan halkaya enerji kivilcimi
     "kamify_ambiance": True,       # Kamify kapak rengine uyumlu dinamik arka plan ambiyansi
     "games_tilt": True,            # Kami Games kartlarinda fare takipli 3D egim + krom yansima
-    "reader_page_anim": True,      # Kami Reader sayfa cevirme golge/kayma gecisi
+    "reader_page_anim": "curl3d",  # Kami Reader sayfa cevirme: curl3d | slide | off
     "sunak_kamify_sync": False,    # Kamify calarken kapak rengini Sunak arka planina hafifce yansit
+    "island_music_expand": True,   # Kamify Mini-Ada: ustune gelince kapak rengiyle genisleyen Dinamik Ada (secilebilir)
     # Ag: bazi sunucularin IPv6 adresi bu agda cevapsiz (RD: 21 sn x adres). Kapali = aria2 sadece IPv4.
     "aria2_ipv6": False,           # degisiklik Kami yeniden acilinca gecerli
     # Asama 6b: medya ekstralari
@@ -168,6 +172,16 @@ class Settings:
                     if isinstance(stored, dict):
                         for k, v in stored.items():
                             if k in DEFAULTS:
+                                if k == "reader_page_anim" and isinstance(v, bool):
+                                    v = "curl3d" if v else "off"
+                                elif k == "speed_profiles" and isinstance(v, dict):
+                                    merged = dict(DEFAULTS["speed_profiles"])
+                                    for pk, pv in v.items():
+                                        try:
+                                            merged[str(pk)] = max(0, int(pv))
+                                        except Exception:
+                                            pass
+                                    v = merged
                                 self._data[k] = v
                 except Exception:
                     log.exception("Ayarlar okunamadi, varsayilanlar kullaniliyor")
@@ -232,6 +246,24 @@ def _coerce(key: str, value: Any) -> Any:
         if not isinstance(value, list):
             raise ValueError("site_rules")
         return [clean_rule(r) for r in value if isinstance(r, dict)][:50]
+    if isinstance(default, dict):
+        if not isinstance(value, dict):
+            raise ValueError(key)
+        if key == "speed_profiles":
+            merged = dict(default)
+            for pk, pv in value.items():
+                merged[str(pk)] = max(0, int(pv))
+            return merged
+        return dict(value)
+    if key == "reader_page_anim":
+        if isinstance(value, bool):
+            return "curl3d" if value else "off"
+        sv = str(value).strip().lower()
+        if sv not in ("curl3d", "slide", "off"):
+            raise ValueError("reader_page_anim")
+        return sv
+    if key == "speed_profile" and str(value) not in ("full", "game", "room", "night"):
+        raise ValueError("speed_profile")
     if isinstance(default, list):
         if isinstance(value, str):
             value = [x.strip() for x in value.replace("\n", ",").split(",")]

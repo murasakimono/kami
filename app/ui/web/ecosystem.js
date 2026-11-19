@@ -32,6 +32,33 @@
 
   function ensureModal() {
     if (root) return root;
+    if (!document.getElementById("ecoV138Style")) {
+      const st = document.createElement("style");
+      st.id = "ecoV138Style";
+      st.textContent = `
+        .eco-tabs {
+          display: flex !important; flex-direction: column !important;
+          justify-content: flex-start !important; align-items: stretch !important;
+          align-content: flex-start !important; padding-top: 8px !important;
+          overflow-y: auto !important; gap: 4px !important;
+        }
+        .eco-tgrp {
+          font-size: 9.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+          color: #8A829E; padding: 8px 6px 2px; border-top: 1px solid rgba(157,107,255,.14); margin-top: 4px;
+          flex: none;
+        }
+        .eco-tgrp:first-of-type { border-top: 0; margin-top: 0; padding-top: 2px; }
+        .eco-tgrp[hidden], .eco-tab[hidden] { display: none !important; }
+        .eco-tfind {
+          width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 4px;
+          border-radius: 6px; border: 1px solid rgba(157,107,255,.3);
+          background: #0D0A14; color: #EDE9F6; font: 500 11.5px "Chakra Petch", sans-serif;
+          outline: none; flex: none;
+        }
+        .eco-tfind:focus { border-color: #2EE6A6; }
+      `;
+      document.head.appendChild(st);
+    }
     root = document.createElement("div");
     root.className = "eco-ov";
     root.hidden = true;
@@ -42,22 +69,42 @@
           <button class="eco-btn sec" data-close>Kapat (Esc)</button>
         </div>
         <div class="eco-tabs">
-          <button class="eco-tab on" data-tab="rec">Ekran Kaydedici & Geçiş</button>
-          <button class="eco-tab" data-tab="bypass">Kami Bypass</button>
-          <button class="eco-tab" data-tab="season">Sezon Kazıyıcı</button>
-          <button class="eco-tab" data-tab="grab">Kami Grab-All</button>
-          <button class="eco-tab" data-tab="hardsub">Kami Hardsub</button>
-          <button class="eco-tab" data-tab="ghost">Kami Ghost</button>
-          <button class="eco-tab" data-tab="beat">Kami Beat</button>
-          <button class="eco-tab" data-tab="hunter">Kami Hunter</button>
-          <button class="eco-tab" data-tab="mod">Kami Mod</button>
-          <button class="eco-tab" data-tab="bridge">Köprü & Sunak</button>
-          <button class="eco-tab" data-tab="doctor">Kami Doktor</button>
-          <button class="eco-tab" data-tab="jobs">İşler</button>
+          <input class="eco-tfind" id="ecoTabFilter" type="search" placeholder="Araç ara..." autocomplete="off">
+          <div class="eco-tgrp" data-grp="medya">Medya & Yakalama</div>
+          <button class="eco-tab on" data-tab="rec" data-grp="medya">Ekran Kaydedici & Geçiş</button>
+          <button class="eco-tab" data-tab="hardsub" data-grp="medya">Kami Hardsub</button>
+          <button class="eco-tab" data-tab="ghost" data-grp="medya">Kami Ghost</button>
+          <div class="eco-tgrp" data-grp="arac">Araç & İndirme</div>
+          <button class="eco-tab" data-tab="bypass" data-grp="arac">Kami Bypass</button>
+          <button class="eco-tab" data-tab="season" data-grp="arac">Sezon Kazıyıcı</button>
+          <button class="eco-tab" data-tab="grab" data-grp="arac">Kami Grab-All</button>
+          <div class="eco-tgrp" data-grp="ses">Ses & Oyun</div>
+          <button class="eco-tab" data-tab="beat" data-grp="ses">Kami Beat</button>
+          <button class="eco-tab" data-tab="hunter" data-grp="ses">Kami Hunter</button>
+          <button class="eco-tab" data-tab="mod" data-grp="ses">Kami Mod</button>
+          <div class="eco-tgrp" data-grp="sistem">Sistem</div>
+          <button class="eco-tab" data-tab="bridge" data-grp="sistem">Köprü & Sunak</button>
+          <button class="eco-tab" data-tab="doctor" data-grp="sistem">Kami Doktor</button>
+          <button class="eco-tab" data-tab="jobs" data-grp="sistem">İşler</button>
         </div>
         <div class="eco-bd"></div>
       </div>`;
     document.body.appendChild(root);
+    const tabsEl = root.querySelector(".eco-tabs");
+    if (tabsEl) tabsEl.scrollTop = 0;
+    const fEl = root.querySelector("#ecoTabFilter");
+    if (fEl) {
+      fEl.addEventListener("input", () => {
+        const q = fEl.value.trim().toLowerCase();
+        const grpVisible = {};
+        root.querySelectorAll(".eco-tab").forEach((b) => {
+          const hit = !q || b.textContent.toLowerCase().includes(q) || (b.dataset.tab || "").includes(q);
+          b.hidden = !hit;
+          if (hit) grpVisible[b.dataset.grp] = true;
+        });
+        root.querySelectorAll(".eco-tgrp").forEach((g) => { g.hidden = !grpVisible[g.dataset.grp]; });
+      });
+    }
     // v1.32.1: dikey menu — her modulde simge + tek satir aciklama
     const I = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${d}</svg>`;
     const META = {
@@ -87,6 +134,8 @@
     ensureModal();
     activeTab = tab;
     root.hidden = false;
+    const tabsEl = root.querySelector(".eco-tabs");
+    if (tabsEl) tabsEl.scrollTop = 0;
     renderTab();
   }
   function closeModal() {
@@ -131,7 +180,7 @@
           </div>
           <div class="eco-row">
             <label class="eco-hint">Replay (sn): <input class="eco-in" id="ecoRecSec" type="number" min="15" max="600" value="${Number(ch.rec_replay_seconds) || 30}" style="width:75px"></label>
-            <input class="eco-in" id="ecoRecWin" placeholder="Pencere başlığı (opsiyonel, boş=tam ekran)" style="max-width:240px">
+            <input class="eco-in" id="ecoRecWin" placeholder="Pencere başlığı (opsiyonel, boş=tam ekran)" style="flex:1;min-width:290px;max-width:none">
             <button class="eco-btn sec" id="ecoRecWinGo">Pencere/Bölge Kaydet</button>
           </div>
           <div class="eco-row">

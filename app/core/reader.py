@@ -277,9 +277,24 @@ def stats() -> dict[str, Any]:
         streak += 1
     week = sum(days.get((today - dt.timedelta(days=i)).isoformat(), 0) for i in range(7))
     last14 = [{"d": (today - dt.timedelta(days=i)).isoformat(), "s": round(days.get((today - dt.timedelta(days=i)).isoformat(), 0))} for i in range(13, -1, -1)]
+    sample_hl = None
+    try:
+        pool = []
+        for f in (ROOT.glob("*.json") if ROOT.exists() else []):
+            try:
+                dd = json.loads(f.read_text(encoding="utf-8"))
+                for h in (dd.get("hl") or []):
+                    if isinstance(h, dict) and h.get("text"):
+                        pool.append({"path": dd.get("path", ""), "title": dd.get("title", ""), "page": int(h.get("page") or 0), "text": str(h.get("text", ""))[:220], "note": str(h.get("note") or "")[:140]})
+            except (OSError, ValueError):
+                continue
+        if pool:
+            sample_hl = pool[today.toordinal() % len(pool)]
+    except Exception:
+        sample_hl = None
     return {"total": round(total), "pages": int(pages), "today": round(days.get(today.isoformat(), 0)), "week": round(week),
             "streak": streak, "finished": sum(b["done"] for b in books), "days": last14,
-            "top": sorted(books, key=lambda b: -b["secs"])[:5]}
+            "top": sorted(books, key=lambda b: -b["secs"])[:5], "sample_hl": sample_hl}
 
 
 # ---------------------------------------------------------------- seri / yeni bolum takibi
