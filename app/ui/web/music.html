@@ -138,6 +138,7 @@
     <button class="nav-b" data-nav="recent"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Son Çalınanlar</button>
     <button class="nav-b" data-nav="sp_queue"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h7M17 14l4 3-4 3z"/></svg>Çalma Sırası</button>
     <button class="nav-b" data-nav="local"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Yerel Klasörler</button>
+    <button class="nav-b" data-nav="scrobble"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M8 7v10M4 11v2M16 7v10M20 11v2"/></svg>Dinleme Günlüğü</button>
     <button class="nav-b" data-nav="ytm"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg>YouTube Music</button>
     <div class="side-sp"></div>
     <div class="sp-card">
@@ -490,7 +491,7 @@
     const r = await api()?.music_local_scan?.("", q.value.trim()).catch(() => null);
     const folders = r?.folders || [], items = r?.items || [];
     folderChips.innerHTML = folders.map((f) => `<span class="chip" title="${esc(f)}">${esc(f.split(/[\\/]/).pop() || f)}<button data-locplaydir="${esc(f)}" title="Tümünü çal">▶</button><button data-locdel="${esc(f)}" title="Listeden kaldır (dosyalara dokunmaz)">✕</button></span>`).join("");
-    list.innerHTML = items.length ? items.map((it) => `<div class="row"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.folder)} · ${esc(it.ext.toUpperCase())}</small></div><button class="btn pri" data-locplay="${esc(it.path)}" data-locroot="${esc(it.root)}">▶ Kami Player</button></div>`).join("") : `<div style="color:var(--mut);padding:14px">Henüz yerel klasör eklenmedi.</div>`;
+    list.innerHTML = items.length ? items.map((it) => `<div class="row"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.folder)} · ${esc(it.ext.toUpperCase())}</small></div><button class="btn" data-locwhisper="${esc(it.path)}" title="Whisper Güçlü Mod ile zaman damgalı .lrc çıkar">🎙 Whisper Söz (.lrc)</button><button class="btn" data-loclrcedit="${esc(it.path)}" data-loctitle="${esc(it.title)}" title="Canlı LRC & Zamanlama Düzenleyici">✎ Söz Düzenle</button><button class="btn pri" data-locplay="${esc(it.path)}" data-locroot="${esc(it.root)}">▶ Kami Player</button></div>`).join("") : `<div style="color:var(--mut);padding:14px">Henüz yerel klasör eklenmedi.</div>`;
   }
 
   async function loadYtmBar() {

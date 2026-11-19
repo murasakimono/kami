@@ -513,3 +513,93 @@ def amll_ttml_find(artist: str, title: str, session: requests.Session | None = N
     except (requests.RequestException, ValueError):
         pass
     return []
+
+
+def read_local_lrc(path: str) -> dict[str, Any]:
+    """Kami 2.0: Yerel ses dosyasinin yanindaki .lrc / .txt soz dosyasini ya da gomulu USLT etiketini okur."""
+    p = os.path.abspath(str(path or ""))
+    if not p or not os.path.isfile(p):
+        return {"ok": False, "error": "no_file", "lines": [], "raw": ""}
+    base = os.path.splitext(p)[0]
+    raw = ""
+    src = ""
+    for ext in (".lrc", ".txt"):
+        cand = base + ext
+        if os.path.isfile(cand):
+            try:
+                raw = open(cand, encoding="utf-8", errors="replace").read().strip()
+                src = ext.lstrip(".")
+                if raw:
+                    break
+            except OSError:
+                pass
+    lines = parse_elrc_words(raw) if raw and is_lrc(raw) else []
+    if not lines and raw:
+        lines = [{"t": -1.0, "text": ln.strip(), "words": []} for ln in raw.splitlines() if ln.strip() and not ln.strip().startswith("[")]
+    return {"ok": True, "path": p, "source": src or "none", "raw": raw, "synced": bool(raw and is_lrc(raw)), "lines": lines}
+
+
+def save_edited_lrc(path: str, lines_or_text: Any, artist: str = "", title: str = "", embed: bool = True) -> dict[str, Any]:
+    """Kami 2.0 Canli LRC Editoru: Duzenlenen [{t, text}] satir listesini ya da ham LRC metnini .lrc + MP3 USLT olarak kaydeder."""
+    from app.core import media_meta
+    p = os.path.abspath(str(path or ""))
+    if not p or not os.path.isfile(p):
+        return {"ok": False, "error": "no_file"}
+    if isinstance(lines_or_text, list):
+        formatted: list[str] = []
+        for item in lines_or_text:
+            if not isinstance(item, dict):
+                continue
+            txt = str(item.get("text") or "").strip()
+            if not txt:
+                continue
+            t = float(item.get("t", -1.0) if item.get("t") is not None else -1.0)
+            if t >= 0:
+                mm = int(t // 60)
+                ss = t % 60
+                formatted.append(f"[{mm:02d}:{ss:05.2f}]{txt}")
+            else:
+                formatted.append(txt)
+        body_text = "\n".join(formatted)
+    else:
+        body_text = str(lines_or_text or "").strip()
+    if not body_text:
+        return {"ok": False, "error": "empty_lyrics"}
+    g = media_meta.guess(p, "")
+    ar = artist or g.get("artist", "")
+    ti = title or g.get("title", "")
+    res = write_lyrics(p, body_text, ar, ti, embed=bool(embed), ai=False)
+    return {"ok": True, **res, "lines": parse_elrc_words(body_text) if is_lrc(body_text) else [], "raw": body_text}
+
+
+def polish_lyrics_with_ollama(raw_lrc: str, title: str = "", artist: str = "") -> dict[str, Any]:
+    """Kami 2.0: Yerel Ollama (qwen2.5:3b) kuruluysa Whisper'in cikardigi LRC satirlarinin zaman damgalarini ([mm:ss.xx])
+    bozmadan yazim ve Turkce karakter hatalarini duzeltir."""
+    from app.core import local_copilot
+    st = local_copilot.copilot_status(timeout=1.2)
+    if not st.get("ollama_running"):
+        return {"ok": False, "error": "ollama_offline"}
+    model = local_copilot.pick_best_model()
+    prompt = (
+        f"Şarkı: {artist} - {title}\n"
+        "Aşağıdaki zaman damgalı şarkı sözlerindeki ([dd:ss.xx] etiketlerini KESİNLİKLE koruyarak) "
+        "bariz Türkçe harf/yazım hatalarını düzelt, ek açıklama yazmadan sadece düzeltilmiş LRC satırlarını döndür:\n\n"
+        f"{raw_lrc[:6000]}"
+    )
+    try:
+        import urllib.request
+        url = f"{local_copilot._ollama_host()}/api/generate"
+        payload = __import__("json").dumps({
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "keep_alive": "2m",
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = __import__("json").loads(resp.read().decode("utf-8", errors="replace"))
+        cleaned = str(data.get("response") or "").strip()
+        return {"ok": bool(cleaned), "text": cleaned or raw_lrc, "model": model}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:140]}
+

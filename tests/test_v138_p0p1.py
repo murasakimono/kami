@@ -270,3 +270,56 @@ def test_api_picture_beautify_and_pin(tmp_path: Path):
     info = api.pin_info(pin["pid"])
     assert info["ok"] is True and info["url"].startswith("data:image/png;base64,")
     assert api.pin_close(pin["pid"])["ok"] is True
+
+
+def test_kami_20_icons_m3_s4_blue_o1_and_dust_janitor_lrc(tmp_path: Path, monkeypatch):
+    from app import paths
+    from app.core import cleaner, extras, games, icons, lyrics, settings
+
+    assert extras.APP_VERSION == "2.0.0"
+
+    # 1) Kami 2.0 Settings defaults
+    s = settings.Settings(tmp_path / "settings20.json")
+    assert s.get("rec_cursor_zoom") is True
+    assert s.get("studio_safe_zone") is False
+    assert s.get("media_dearrow") is False
+    assert s.get("whisper_strong_song") is True
+    assert s.get("scrobbler_hotkey") == "ctrl+shift+g"
+
+    # 2) Kami 2.0 Icons (Main M3, Studio S4 all-blue, Oda O1)
+    for k in ("main", "player", "studio", "picture", "reader", "games", "music", "cleaner", "room"):
+        im = icons.render_icon_image(k, size=32)
+        assert im.size == (32, 32)
+    ico_out = icons.write_ico("studio", tmp_path / "studio.ico")
+    assert ico_out.is_file() and ico_out.stat().st_size > 1000
+
+    # 3) Editable LRC read/save for local MP3
+    mp3_p = tmp_path / "underground_track.mp3"
+    mp3_p.write_bytes(b"ID3" + b"\x00" * 128)
+    saved_lrc = lyrics.save_edited_lrc(
+        str(mp3_p),
+        [{"t": 12.5, "text": "Birinci bar satırı"}, {"t": 16.25, "text": "İkinci bar satırı"}],
+        artist="Saian",
+        title="Yeraltı",
+        embed=False,
+    )
+    assert saved_lrc["ok"] is True
+    rd_lrc = lyrics.read_local_lrc(str(mp3_p))
+    assert rd_lrc["ok"] is True and rd_lrc["synced"] is True
+    assert len(rd_lrc["lines"]) == 2
+    assert rd_lrc["lines"][0]["t"] == 12.5
+
+    # 4) C12 Kami Dust & C9 Janitor dry-run
+    dust = cleaner.scan_kami_dust(min_idle_days=3650, min_size_kb=999999)
+    assert dust["ok"] is True and dust["feature"] == "Kami Dust"
+    jan = cleaner.run_folder_janitor(download_dir=str(tmp_path), dry_run=True)
+    assert jan["ok"] is True and jan["dry_run"] is True
+
+    # 5) Games Shelf folder scanner
+    gdir = tmp_path / "GamesRoot" / "Fellah Kombat"
+    gdir.mkdir(parents=True)
+    (gdir / "FellahKombat.exe").write_bytes(b"MZ" + b"\x00" * 4096)
+    monkeypatch.setattr(paths, "DATA_DIR", tmp_path / "data20")
+    shelf = games.scan_folder_for_games(str(tmp_path / "GamesRoot"), auto_add=False)
+    assert shelf["ok"] is True and shelf["count"] == 1 and shelf["found"][0]["title"] == "Fellah Kombat"
+

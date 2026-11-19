@@ -95,6 +95,7 @@
     <button class="btn" id="plImpBtn" title="Playnite veritabanından Epic/GOG/Riot/Türleri aktar"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Playnite</button>
     <button class="btn" id="rescan" title="Yeniden tara"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg></button>
     <button class="btn" id="tiltBtn" title="3D Kart Eğimi & Parlama">3D Kart</button>
+    <button class="btn" id="bigPicBtn" title="Tam Ekran Gamepad Konsol Modu (Big Picture)">🎮 Big Picture</button>
     <button class="btn" id="cfgBtn" title="API / Ayarlar"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.02 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <span id="cnt" style="color:var(--mut);font-size:12px"></span>
   </div>
@@ -117,6 +118,10 @@
       <input id="custTitle" placeholder="Özel oyun adı (Emülatör / diğer)">
       <input id="custExe" placeholder=".exe veya .lnk tam yolu">
       <button class="btn pri" id="custAdd">+ Ekle</button>
+    </div>
+    <div class="row">
+      <input id="shelfDirIn" placeholder="Mağazasız oyun klasörü (ör: C:\Games veya D:\Oyunlar)" style="flex:1">
+      <button class="btn pri" id="shelfScanBtn">📂 Klasörü Tara & Ekle (Shelf)</button>
     </div>
   </div>
   <div class="hero" id="hero" hidden></div>
@@ -419,6 +424,85 @@
     });
     setTimeout(async () => { if (!GAMES.length && window.pywebview && !(await window.pywebview.api?.is_selftest?.())) { try { const s = await window.pywebview.api?.get_settings?.(); if (s) { TILT_ON = s.games_tilt !== false; tiltBtn?.classList.toggle("on", TILT_ON); } } catch {} load(); } }, 350);
     setInterval(refreshStatus, 10000);
+
+    // ---- Kami 2.0: Shelf Klasor Tarayici + Gamepad Big Picture Modu ----
+    document.getElementById("shelfScanBtn")?.addEventListener("click", async () => {
+      const dir = document.getElementById("shelfDirIn")?.value.trim();
+      if (!dir) return keyNote("Lütfen taranacak oyun klasörünü yaz (ör: C:\\Games)");
+      const r = await api()?.games_scan_folder?.(dir).catch(() => null);
+      if (r?.ok) {
+        keyNote(`✓ ${r.count || 0} mağazasız oyun bulundu ve kütüphaneye eklendi`);
+        load();
+      } else {
+        keyNote(r?.error || "Klasör taranamadı");
+      }
+    });
+
+    let BIG_PIC = false, gpFocusIdx = 0, lastGpStep = 0;
+    const bpStyle = document.createElement("style");
+    bpStyle.textContent = `
+      body.big-pic { padding: 28px 40px !important; font-size: 16px !important; }
+      body.big-pic .grid { grid-template-columns: repeat(auto-fill, minmax(225px, 1fr)) !important; gap: 20px !important; }
+      .gcard.gp-focus { border-color: #2EE6A6 !important; box-shadow: 0 0 0 3px #2EE6A6, 0 16px 38px rgba(46,230,166,.35) !important; transform: scale(1.04) !important; z-index: 6; }
+    `;
+    document.head.appendChild(bpStyle);
+    function highlightGpCard(idx) {
+      const cards = [...document.querySelectorAll("#grid .gcard")];
+      if (!cards.length) return;
+      gpFocusIdx = Math.max(0, Math.min(cards.length - 1, idx));
+      cards.forEach((c, i) => c.classList.toggle("gp-focus", i === gpFocusIdx));
+      cards[gpFocusIdx]?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }
+    const bigPicBtn = document.getElementById("bigPicBtn");
+    bigPicBtn?.addEventListener("click", () => {
+      BIG_PIC = !BIG_PIC;
+      document.body.classList.toggle("big-pic", BIG_PIC);
+      bigPicBtn.classList.toggle("on", BIG_PIC);
+      if (BIG_PIC) {
+        document.documentElement.requestFullscreen?.().catch?.(() => {});
+        highlightGpCard(0);
+      } else if (document.fullscreenElement) {
+        document.exitFullscreen?.().catch?.(() => {});
+      }
+    });
+    function pollGamepad() {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      const gp = pads && (pads[0] || pads[1] || pads[2] || pads[3]);
+      if (gp && Date.now() - lastGpStep > 190) {
+        const axX = gp.axes?.[0] || 0, axY = gp.axes?.[1] || 0;
+        const left = gp.buttons?.[14]?.pressed || axX < -0.55;
+        const right = gp.buttons?.[15]?.pressed || axX > 0.55;
+        const up = gp.buttons?.[12]?.pressed || axY < -0.55;
+        const down = gp.buttons?.[13]?.pressed || axY > 0.55;
+        const btnA = gp.buttons?.[0]?.pressed;
+        const btnB = gp.buttons?.[1]?.pressed;
+        const btnY = gp.buttons?.[3]?.pressed;
+        if (left || right || up || down || btnA || btnB || btnY) {
+          lastGpStep = Date.now();
+          const cols = Math.max(1, Math.round((document.getElementById("grid")?.clientWidth || 900) / (BIG_PIC ? 245 : 186)));
+          if (left) highlightGpCard(gpFocusIdx - 1);
+          else if (right) highlightGpCard(gpFocusIdx + 1);
+          else if (up) highlightGpCard(gpFocusIdx - cols);
+          else if (down) highlightGpCard(gpFocusIdx + cols);
+          else if (btnA) {
+            const card = document.querySelectorAll("#grid .gcard")[gpFocusIdx];
+            if (card) {
+              const g = GAMES.find((x) => x.key === card.dataset.key);
+              const st = pickStore(g);
+              if (st) api()?.games_launch?.(st.launch, g.key);
+            }
+          } else if (btnY) {
+            const card = document.querySelectorAll("#grid .gcard")[gpFocusIdx];
+            if (card) openDetail(GAMES.find((x) => x.key === card.dataset.key));
+          } else if (btnB) {
+            if (!detMdl.hidden) detMdl.hidden = true;
+            else if (BIG_PIC) bigPicBtn?.click();
+          }
+        }
+      }
+      requestAnimationFrame(pollGamepad);
+    }
+    requestAnimationFrame(pollGamepad);
   </script>
 </body>
 </html>

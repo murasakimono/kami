@@ -114,6 +114,7 @@ class Api(StudioMixin):
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "reader_series_add", "reader_series_check", "reader_epub_font", "lens_price", "lens_text", "lens_table", "lens_codes", "rss_add", "rss_check", "rss_preview", "subtitle_translate", "subtitle_sync", "player_open_url",
         "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "library_meta", "tmdb_set_key", "iptv_load", "iptv_epg", "cast_devices", "cast_play", "cast_control", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
+        "music_whisper_lrc", "music_lrc_polish_ollama", "cleaner_dust", "cleaner_janitor", "games_scan_folder", "scrobbler_recognize_now",
     }) | STUDIO_JOBS
 
     def job_start(self, name: str, args: list | None = None) -> dict[str, Any]:
@@ -486,6 +487,19 @@ class Api(StudioMixin):
             log.exception("Medya bilgisi alinamadi")
             return {"ok": False, "error": "media_unsupported", "detail": str(exc)}
         defaults = self._manager.default_media_options()
+        # Kami 2.0 C10: DeArrow (Clickbait Baslik & Kapak Duzeltici) aciksa YouTube basligini temizle
+        if self._manager.settings.get("media_dearrow", False):
+            try:
+                from app.core import mediatools as mt
+                vid = mt.youtube_id(url, {"purl": url})
+                if vid:
+                    da = mt.dearrow_info(vid, self._mt_cache())
+                    if da.get("ok") and da.get("title"):
+                        info["original_title"] = info.get("title", "")
+                        info["title"] = da["title"]
+                        info["dearrow"] = True
+            except Exception:
+                pass
         rule = None
         if self._manager.settings.get("rules_enabled") and info.get("kind") == "video":
             from app.core import rules
@@ -609,6 +623,49 @@ class Api(StudioMixin):
                     add("rss", f["title"], "RSS akışı", id=f["id"])
         except Exception:
             log.debug("ara: rss")
+        # Kami 2.0 D15 Omnisearch: Reader PDF Vurgulari & Notlari, Pano OCR/Metin Rafi ve Whisper/LRC Dosyalari
+        try:
+            from app import paths
+            from app.core import reader
+            if reader.ROOT.exists():
+                for rf in list(reader.ROOT.glob("*.json"))[:60]:
+                    try:
+                        rd = json.loads(rf.read_text(encoding="utf-8"))
+                        if not isinstance(rd, dict) or not rd.get("path"):
+                            continue
+                        btitle = rd.get("title") or os.path.basename(rd["path"])
+                        for hl in (rd.get("hl") or []):
+                            txt = str((hl or {}).get("text") or "") + " " + str((hl or {}).get("note") or "")
+                            if ql in txt.lower():
+                                pg = int((hl or {}).get("page") or 0)
+                                add("book", f"{btitle} (S.{pg + 1})", f"PDF Vurgu: {txt.strip()[:70]}", path=rd["path"], page=pg)
+                                break
+                    except Exception:
+                        pass
+            from app.core import pano_tools
+            for pit in (pano_tools.list_shelf() or [])[:50]:
+                ptxt = str(pit.get("text") or pit.get("ocr") or "")
+                if ql in ptxt.lower():
+                    add("file", ptxt.strip()[:60], "Kami Pano Rafı", path=pit.get("path") or "")
+            # Indirilenlerin yanindaki .srt ve .lrc dosyalari icinde ara
+            for d in self._manager.store.list()[:60]:
+                if not d.path or not os.path.isfile(d.path):
+                    continue
+                base = os.path.splitext(d.path)[0]
+                for side_ext, lbl in ((".lrc", "Şarkı Sözü (.lrc)"), (".srt", "Whisper Altyazı (.srt)"), (".tr.srt", "Whisper TR (.srt)")):
+                    sp = base + side_ext
+                    if os.path.isfile(sp):
+                        try:
+                            raw_side = open(sp, encoding="utf-8", errors="replace").read(32768)
+                            idx_hit = raw_side.lower().find(ql)
+                            if idx_hit >= 0:
+                                snippet = raw_side[max(0, idx_hit - 20):idx_hit + 55].replace("\n", " ").strip()
+                                add("file", d.filename or os.path.basename(d.path), f"{lbl}: {snippet}", path=d.path)
+                                break
+                        except OSError:
+                            pass
+        except Exception:
+            log.debug("ara: omnisearch")
         return out
 
     def global_open(self, item: dict) -> dict[str, Any]:
@@ -5255,3 +5312,180 @@ class Api(StudioMixin):
             subprocess.Popen(["explorer", str(p)], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             return True
         return False
+
+    # ---------- Kami 2.0 (v2.0.0): Kami Dust, Klasor Bekcisi, MP3 Whisper LRC + Editor, B8 Scrobbler, A2/A3/Fitts/Snapshot ----------
+    def cleaner_dust(self, min_idle_days: int = 21, min_size_kb: int = 128) -> dict[str, Any]:
+        from app.core import cleaner
+        return cleaner.scan_kami_dust(min_idle_days=int(min_idle_days or 21), min_size_kb=int(min_size_kb or 128))
+
+    def cleaner_janitor(self, dry_run: bool = True) -> dict[str, Any]:
+        from app.core import cleaner
+        return cleaner.run_folder_janitor(download_dir=self._manager.base_dir(), dry_run=bool(dry_run))
+
+    def games_scan_folder(self, folder: str) -> dict[str, Any]:
+        from app.core import games
+        return games.scan_folder_for_games(str(folder or ""), auto_add=True)
+
+    def games_hltb(self, title: str) -> dict[str, Any]:
+        from app.core import games
+        return games.estimate_hltb(str(title or ""))
+
+    def music_lrc_read(self, path: str) -> dict[str, Any]:
+        from app.core import lyrics
+        return lyrics.read_local_lrc(str(path or ""))
+
+    def music_lrc_save(self, path: str, lines_or_text: Any, artist: str = "", title: str = "") -> dict[str, Any]:
+        from app.core import lyrics
+        return lyrics.save_edited_lrc(str(path or ""), lines_or_text, artist=str(artist or ""), title=str(title or ""),
+                                      embed=bool(self._manager.settings.get("lyrics_embed", True)))
+
+    def music_whisper_lrc(self, path: str, lang: str = "tr", strong: bool = True) -> dict[str, Any]:
+        from app.core import aitools
+        return aitools.generate_mp3_lrc(
+            str(path or ""),
+            lang=str(lang or self._manager.settings.get("whisper_lang") or "tr"),
+            strong=bool(strong),
+            use_uvr=bool(strong),
+            model_name=str(self._manager.settings.get("whisper_model") or "large-v3-turbo"),
+            uvr_model=str(self._manager.settings.get("uvr_model") or ""),
+            embed=bool(self._manager.settings.get("lyrics_embed", True)),
+        )
+
+    def music_lrc_polish_ollama(self, raw_lrc: str, title: str = "", artist: str = "") -> dict[str, Any]:
+        from app.core import lyrics
+        return lyrics.polish_lyrics_with_ollama(str(raw_lrc or ""), title=str(title or ""), artist=str(artist or ""))
+
+    def _scrobble_file(self) -> Path:
+        from app import paths
+        return paths.DATA_DIR / "scrobble_history.json"
+
+    def scrobbler_history(self, limit: int = 100) -> list[dict[str, Any]]:
+        p = self._scrobble_file()
+        try:
+            if p.is_file():
+                items = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(items, list):
+                    return items[:int(limit or 100)]
+        except Exception:
+            pass
+        return []
+
+    def scrobbler_recognize_now(self) -> dict[str, Any]:
+        """B8 Sistem Sesi Arka Plan (Calan Sarki Gunlugu) — Ctrl+Shift+G kisayolu veya Kamify dugmesi ile tetiklenir."""
+        res = self.song_identify("")
+        if not res.get("ok") or not res.get("song"):
+            return res
+        s = res["song"]
+        entry = {
+            "title": str(s.get("title") or ""),
+            "artist": str(s.get("artist") or ""),
+            "ts": int(time.time()),
+        }
+        cur = self.scrobbler_history(200)
+        if not cur or (cur[0].get("title") != entry["title"] or cur[0].get("artist") != entry["artist"]):
+            cur.insert(0, entry)
+            p = self._scrobble_file()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(cur[:200], ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True, "song": entry, "history_count": len(cur)}
+
+    def active_jobs_hud(self) -> dict[str, Any]:
+        """A3 Birlesik Arka Plan Islem & Kuyruk HUD'u: Ortada aktif is yokken count=0 doner ve HUD tamamen gizlenir."""
+        jobs_out: list[dict[str, Any]] = []
+        # 1) Aktif indirmeler
+        for d in self._manager.snapshot():
+            if str(getattr(d, "status", "")) == "active" or getattr(getattr(d, "status", None), "value", "") == "active":
+                pct = int(round((d.downloaded / d.size) * 100)) if d.size else 0
+                jobs_out.append({"id": f"dl_{d.id}", "kind": "İndirme", "title": d.filename or d.url, "pct": pct})
+        # 2) AI isleri (Whisper / UVR / Lyrics)
+        for d in self._manager.snapshot():
+            ex = d.extra or {}
+            for ak, albl in (("whisper", "Whisper Altyazı"), ("uvr", "UVR5 Vokal"), ("lyrics", "Şarkı Sözü AI")):
+                if ex.get(f"ai_{ak}") in ("running", "queued"):
+                    pct = int(round(float(ex.get(f"ai_{ak}_p") or 0) * 100))
+                    jobs_out.append({"id": f"ai_{ak}_{d.id}", "kind": albl, "title": d.filename or "", "pct": pct})
+        # 3) Donusturucu isleri
+        with self._conv_lock:
+            for cj in self._conv_jobs:
+                if cj.get("state") in ("running", "queued"):
+                    jobs_out.append({"id": cj["id"], "kind": "Dönüştürücü", "title": cj.get("name", ""), "pct": int(round(float(cj.get("p") or 0) * 100))})
+        # 4) Genel arka plan job_start isleri
+        with self._inbox_lock:
+            for jid, jinfo in self._jobs.items():
+                if jinfo.get("state") == "running":
+                    jobs_out.append({"id": jid, "kind": "Arka Plan", "title": jinfo.get("name", ""), "pct": 50})
+        return {"ok": True, "count": len(jobs_out), "items": jobs_out}
+
+    def scratchpad_load(self) -> dict[str, Any]:
+        """A2 Zaman/Sayfa Damgali Yuzen Karalama Karti verisini yukler."""
+        from app import paths
+        p = paths.DATA_DIR / "scratchpad.json"
+        try:
+            if p.is_file():
+                return {"ok": True, "notes": json.loads(p.read_text(encoding="utf-8"))}
+        except Exception:
+            pass
+        return {"ok": True, "notes": []}
+
+    def scratchpad_add(self, text: str, context: str = "", target_path: str = "", stamp: str = "") -> dict[str, Any]:
+        from app import paths
+        t = str(text or "").strip()
+        if not t:
+            return {"ok": False, "error": "empty"}
+        cur = self.scratchpad_load().get("notes") or []
+        item = {
+            "id": int(time.time() * 1000),
+            "text": t,
+            "context": str(context or "Sunak"),
+            "path": str(target_path or ""),
+            "stamp": str(stamp or time.strftime("%H:%M:%S")),
+            "ts": int(time.time()),
+        }
+        cur.insert(0, item)
+        p = paths.DATA_DIR / "scratchpad.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(cur[:120], ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True, "item": item, "notes": cur[:120]}
+
+    def scratchpad_delete(self, note_id: int) -> dict[str, Any]:
+        from app import paths
+        cur = [n for n in (self.scratchpad_load().get("notes") or []) if int(n.get("id") or 0) != int(note_id or 0)]
+        p = paths.DATA_DIR / "scratchpad.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True, "notes": cur}
+
+    def session_snapshot_save(self, name: str = "Son Oturum") -> dict[str, Any]:
+        """#16 Oturum Snapshot: Acik Reader belgesi, Studio projesi ve aktif hiz profilini kaydeder."""
+        from app import paths
+        from app.core import reader
+        rec_books = reader.recent(3)
+        rec_studio = self.studio_recent()[:3] if hasattr(self, "studio_recent") else []
+        snap = {
+            "name": str(name or "Oturum"),
+            "ts": int(time.time()),
+            "speed_profile": str(self._manager.settings.get("speed_profile") or "full"),
+            "active_profile": str(self._manager.settings.get("active_profile") or "kisisel"),
+            "book": rec_books[0] if rec_books else None,
+            "studio": rec_studio[0] if rec_studio else None,
+        }
+        p = paths.DATA_DIR / "session_snapshot.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(snap, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True, "snapshot": snap}
+
+    def session_snapshot_restore(self) -> dict[str, Any]:
+        from app import paths
+        p = paths.DATA_DIR / "session_snapshot.json"
+        if not p.is_file():
+            return {"ok": False, "error": "no_snapshot"}
+        try:
+            snap = json.loads(p.read_text(encoding="utf-8"))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:100]}
+        if snap.get("speed_profile"):
+            self.speed_profile_set(snap["speed_profile"])
+        if snap.get("book") and snap["book"].get("path") and os.path.exists(snap["book"]["path"]):
+            self.reader_show(snap["book"]["path"])
+        return {"ok": True, "snapshot": snap}
+

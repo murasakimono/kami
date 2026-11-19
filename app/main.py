@@ -82,7 +82,7 @@ def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int] | None = N
         from app.core import icons
         icon_dir = paths.DATA_DIR / "icons"
         icon_dir.mkdir(parents=True, exist_ok=True)
-        ico = icon_dir / f"{key}_v9.ico"
+        ico = icon_dir / f"{key}_v20.ico"
         if not ico.is_file():
             icons.write_ico(key, ico)
         hwnd = ctypes.windll.user32.FindWindowW(None, title)
@@ -735,6 +735,8 @@ def main() -> int:
         w.events.closed += closed
 
         def loaded() -> None:
+            _set_hwnd_app_id("Kami Oda", "Murasakimono.Kami.Room")
+            _set_hwnd_icon("Kami Oda", "room", (168, 85, 247))
             room_front.request()
             try:   # mikrofon / ekran paylasimi izinleri: yalnizca kendi oda sayfamiza otomatik izin
                 def perm(sender, args):
@@ -891,7 +893,7 @@ def main() -> int:
 
     def bind_main(w) -> None:
         api._set_window(w)
-        w.events.loaded += lambda: (bind_drop(w), winwin.set_caption_color("Kami"))
+        w.events.loaded += lambda: (bind_drop(w), winwin.set_caption_color("Kami"), _set_hwnd_icon("Kami", "main", (157, 107, 255)))
         w.events.closing += on_closing
         w.events.closed += on_main_closed
 
@@ -970,6 +972,22 @@ def main() -> int:
     api.recorder.watch()
     if settings.get("song_hotkey_enabled"):
         song_hotkey.start(settings.get("song_hotkey"))
+
+    # Kami 2.0 B8: Sistem Sesi Arka Plan (Calan Sarki Gunlugu) ayri kisayolu (varsayilan Ctrl+Shift+G)
+    def on_scrobbler_hotkey() -> None:
+        def run_scrob() -> None:
+            res = api.scrobbler_recognize_now()
+            if res.get("ok") and res.get("song"):
+                s = res["song"]
+                if tray.running:
+                    tray.notify("Kami Dinleme Günlüğü", f"✓ Günlüğe eklendi: {s.get('artist', '')} — {s.get('title', '')}")
+        threading.Thread(target=run_scrob, name="kami-scrobbler", daemon=True).start()
+
+    scrobbler_hotkey = desktop.HotKey(on_scrobbler_hotkey)
+    try:
+        scrobbler_hotkey.start(settings.get("scrobbler_hotkey") or "ctrl+shift+g")
+    except Exception:
+        pass
 
     # ---- masaustu mini karti: Kami kucultulunce / tepsideyken indirme varsa kosede, hep ustte
     api._show_main = show_window

@@ -215,3 +215,39 @@ def remove_or_trash(path: str) -> None:
     """Silme: once Geri Donusum Kutusu, olmazsa kalici sil."""
     if not to_trash([path]):
         os.remove(path)
+
+
+# ---------- Kami 2.0 C10: DeArrow (Clickbait Baslik & Kapak Duzeltici) ----------
+def dearrow_info(vid: str, cache: _Cache | None = None) -> dict[str, Any]:
+    """C10 DeArrow API: YouTube video ID icin topluluk onayli clickbait olmayan gercek baslik ve kapak zaman damgasini doner."""
+    v = str(vid or "").strip()
+    if not v or len(v) != 11:
+        return {"ok": False, "title": "", "thumb_time": None}
+    key = "da:" + v
+    if cache is not None:
+        hit = cache.get(key)
+        if isinstance(hit, dict):
+            return {"ok": True, **hit}
+    title = ""
+    thumb_time = None
+    try:
+        r = requests.get("https://sponsor.ajay.app/api/branding", params={"videoID": v}, headers=UA, timeout=6)
+        if r.status_code in (200, 404):
+            js = r.json() if r.status_code == 200 else {}
+            titles = js.get("titles") or []
+            for t in titles:
+                if isinstance(t, dict) and (t.get("votes", 0) >= 0 or t.get("locked")) and t.get("title"):
+                    title = re.sub(r">(\S)", r"\1", str(t["title"])).strip()
+                    break
+            thumbs = js.get("thumbnails") or []
+            for th in thumbs:
+                if isinstance(th, dict) and th.get("timestamp") is not None:
+                    thumb_time = float(th["timestamp"])
+                    break
+    except (requests.RequestException, ValueError):
+        return {"ok": False, "title": "", "thumb_time": None}
+    res = {"title": title, "thumb_time": thumb_time}
+    if cache is not None:
+        cache.set(key, res)
+    return {"ok": True, **res}
+

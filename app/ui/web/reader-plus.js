@@ -192,4 +192,146 @@
   const _home = home;
   window.home = home = async function () { await _home(); panels(); };
   if (!$("#rdHome")?.hidden) setTimeout(panels, 600);
+
+  // ---- Kami 2.0 D13: LiquidText Alinti & Diyagram Panosu + Recall (Bulanik Hatirlama) Sinav Modu + Panel-to-Panel ----
+  const d13Style = document.createElement("style");
+  d13Style.textContent = `
+    body.rd-recall-on .rd-hl, body.rd-recall-on mark {
+      filter: blur(5.5px) !important;
+      transition: filter .18s ease !important;
+      cursor: help !important;
+    }
+    body.rd-recall-on .rd-hl:hover, body.rd-recall-on mark:hover, body.rd-recall-on .rd-hl.revealed {
+      filter: none !important;
+    }
+    #rdBoardModal { position:fixed; inset:0; z-index:88; background:rgba(6,4,12,.86); backdrop-filter:blur(8px); display:grid; place-items:center; padding:18px; }
+    #rdBoardModal[hidden] { display:none !important; }
+    .rdb-box { width:min(920px,95vw); height:min(640px,88vh); background:#110D1C; border:1px solid #FBBF24; border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#EDE9F6; }
+    .rdb-hd { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid rgba(255,255,255,.1); background:#161124; }
+    .rdb-canvas { flex:1; position:relative; overflow:auto; background:radial-gradient(rgba(157,107,255,.18) 1px, transparent 1px); background-size:20px 20px; padding:18px; }
+    .rdb-card { position:absolute; width:235px; background:#1B142C; border:1px solid #9D6BFF; border-radius:10px; padding:10px 12px; cursor:move; box-shadow:0 10px 26px rgba(0,0,0,.55); font-size:12px; line-height:1.45; }
+    .rdb-card small { color:#2EE6A6; display:block; margin-bottom:4px; font-weight:700; }
+    .rdb-card.blur-q p { filter:blur(5px); transition:filter .18s; }
+    .rdb-card.blur-q:hover p { filter:none; }
+  `;
+  document.head.appendChild(d13Style);
+
+  function mountReader20Buttons() {
+    const top = document.querySelector(".rd-top");
+    if (!top || document.getElementById("rdRecallBtn")) return;
+    const drawerBtn = top.querySelector('[data-a="drawer"]');
+    const btnRecall = document.createElement("button");
+    btnRecall.id = "rdRecallBtn";
+    btnRecall.title = "Recall (Bulanık Hatırlama Sınav Modu — Vurguları gizler, üstüne gelince açar)";
+    btnRecall.textContent = "🧠 Sınav";
+    const btnBoard = document.createElement("button");
+    btnBoard.id = "rdBoardBtn";
+    btnBoard.title = "LiquidText Alıntı & Diyagram Panosu";
+    btnBoard.textContent = "📌 Pano";
+    const btnPanel = document.createElement("button");
+    btnPanel.id = "rdPanelZoomBtn";
+    btnPanel.title = "Manga Kare-Kare (Guided Panel) Yakınlaştırma";
+    btnPanel.textContent = "▣ Kare";
+    top.insertBefore(btnPanel, drawerBtn || null);
+    top.insertBefore(btnBoard, drawerBtn || null);
+    top.insertBefore(btnRecall, drawerBtn || null);
+
+    let recallOn = false;
+    btnRecall.onclick = () => {
+      recallOn = !recallOn;
+      document.body.classList.toggle("rd-recall-on", recallOn);
+      btnRecall.classList.toggle("on", recallOn);
+      toast(recallOn ? "🧠 Sınav (Recall) Modu Açık: Vurgular bulanıklaştırıldı (üstüne gelince görünür)" : "Sınav Modu Kapatıldı");
+    };
+
+    let panelStep = 0;
+    const QUADS = [
+      "scale(1)",
+      "scale(1.65) translate(18%, 18%)",
+      "scale(1.65) translate(-18%, 18%)",
+      "scale(1.65) translate(18%, -18%)",
+      "scale(1.65) translate(-18%, -18%)",
+    ];
+    btnPanel.onclick = () => {
+      panelStep = (panelStep + 1) % QUADS.length;
+      const sp = document.getElementById("rdSpread");
+      if (sp) {
+        sp.style.transition = "transform .26s cubic-bezier(.22,1,.36,1)";
+        sp.style.transform = QUADS[panelStep];
+      }
+      btnPanel.classList.toggle("on", panelStep > 0);
+    };
+
+    btnBoard.onclick = () => openLiquidBoard();
+  }
+
+  function openLiquidBoard() {
+    let mdl = document.getElementById("rdBoardModal");
+    if (!mdl) {
+      mdl = document.createElement("div");
+      mdl.id = "rdBoardModal";
+      document.body.appendChild(mdl);
+    }
+    mdl.hidden = false;
+    const hls = (window.RD?.st?.hl || []).slice(0, 30);
+    mdl.innerHTML = `
+      <div class="rdb-box">
+        <div class="rdb-hd">
+          <b>📌 LiquidText / MarginNote Alıntı &amp; Diyagram Panosu (${hls.length} Kart)</b>
+          <div style="display:flex;gap:8px">
+            <button class="btn" id="rdbQuizToggle">🧠 Kartları Bulanıklaştır (Active Recall)</button>
+            <button class="btn" id="rdbAddNote">+ Serbest Not Kartı</button>
+            <button class="btn" id="rdbClose">Kapat (Esc)</button>
+          </div>
+        </div>
+        <div class="rdb-canvas" id="rdbCanvas"></div>
+      </div>
+    `;
+    const cvs = mdl.querySelector("#rdbCanvas");
+    const items = hls.length
+      ? hls.map((h, i) => ({ page: (h.page || 0) + 1, text: h.text || h.note || "Alıntı", x: 24 + (i % 3) * 265, y: 24 + Math.floor(i / 3) * 145 }))
+      : [{ page: (window.RD?.page || 0) + 1, text: "Belgedeki vurguların ve çalışma notların burada sürüklenebilir kartlar olarak toplanır.", x: 40, y: 40 }];
+
+    let blurCards = false;
+    function renderCards() {
+      cvs.innerHTML = items.map((it, idx) => `
+        <div class="rdb-card${blurCards ? " blur-q" : ""}" data-cidx="${idx}" style="left:${it.x}px;top:${it.y}px">
+          <small data-jump="${it.page - 1}" style="cursor:pointer">Sayfa ${it.page} ↗</small>
+          <p style="margin:0">${esc(it.text)}</p>
+        </div>
+      `).join("");
+      cvs.querySelectorAll("[data-jump]").forEach((el) => {
+        el.onclick = (e) => {
+          e.stopPropagation();
+          mdl.hidden = true;
+          if (typeof go === "function") go(+el.dataset.jump);
+        };
+      });
+      cvs.querySelectorAll(".rdb-card").forEach((card) => {
+        card.onpointerdown = (e) => {
+          if (e.target.dataset?.jump != null) return;
+          const idx = +card.dataset.cidx;
+          const sx = e.clientX - items[idx].x, sy = e.clientY - items[idx].y;
+          card.setPointerCapture?.(e.pointerId);
+          card.onpointermove = (ev) => {
+            items[idx].x = Math.max(8, ev.clientX - sx);
+            items[idx].y = Math.max(8, ev.clientY - sy);
+            card.style.left = items[idx].x + "px";
+            card.style.top = items[idx].y + "px";
+          };
+          card.onpointerup = () => { card.onpointermove = null; };
+        };
+      });
+    }
+    renderCards();
+    mdl.querySelector("#rdbQuizToggle").onclick = () => { blurCards = !blurCards; renderCards(); };
+    mdl.querySelector("#rdbAddNote").onclick = () => {
+      const t = prompt("Yeni kavram / vaka notu:");
+      if (t) { items.push({ page: (window.RD?.page || 0) + 1, text: t, x: 60 + items.length * 20, y: 60 + items.length * 15 }); renderCards(); }
+    };
+    mdl.querySelector("#rdbClose").onclick = () => { mdl.hidden = true; };
+  }
+
+  setTimeout(mountReader20Buttons, 350);
+  document.addEventListener("DOMContentLoaded", mountReader20Buttons);
 })();

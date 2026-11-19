@@ -31,3 +31,16 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(fireReady, 0));
   else setTimeout(fireReady, 0);
 })();
+
+// Kami 2.0 Global OS Layer (A2 Scratchpad, A3 Auto-Hide Job HUD, A4 F1/Alt+K Cheat-Sheet, #13 Fitts Radial Ring)
+(() => {
+  const load20 = () => {
+    if (document.getElementById("kami20Script") || location.pathname.endsWith("mini-island.html") || location.pathname.endsWith("pin.html")) return;
+    const s = document.createElement("script");
+    s.id = "kami20Script";
+    s.src = "kami-20.js";
+    document.body?.appendChild(s);
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", load20);
+  else load20();
+})();

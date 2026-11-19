@@ -113,7 +113,8 @@ class Watcher:
         eng = self.manager.engine
         try:
             if d.kind == "torrent":
-                eng.call("aria2.changeOption", d.gid, {"bt-prioritize-piece": "head=64M"})
+                # C11: Ilk %5 + Son %2 (MP4 moov atom) onceligi -> MP4 dosyalari %100'u beklemeden aninda acilir
+                eng.call("aria2.changeOption", d.gid, {"bt-prioritize-piece": "head=32M,tail=16M"})
             else:
                 eng.call("aria2.changeOption", d.gid, {"stream-piece-selector": "inorder"})
         except Exception as exc:

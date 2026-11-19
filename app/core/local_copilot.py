@@ -7,11 +7,23 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
-DEFAULT_MODEL = "qwen2.5:7b"
+DEFAULT_MODEL = "qwen2.5:3b"
 SYSTEM_PROMPT = (
     "Sen Kami Studio yerel Copilot asistanisin. Kullanicinin video/ses duzenleme "
     "isteklerini verilen Studio araclarini cagirarak yerine getir. Turkce ve kisa yanit ver."
 )
+
+
+def pick_best_model(preferred: str = DEFAULT_MODEL) -> str:
+    st = copilot_status(timeout=1.2)
+    models = [str(m) for m in (st.get("models") or []) if m]
+    if not models:
+        return preferred
+    for cand in (preferred, "qwen2.5:3b", "qwen2.5:7b"):
+        for m in models:
+            if cand.lower() in m.lower():
+                return m
+    return models[0]
 
 
 def _ollama_host() -> str:
@@ -73,6 +85,7 @@ def _default_ollama_chat(
         "messages": messages,
         "tools": tools,
         "stream": False,
+        "keep_alive": "2m",
     }).encode("utf-8")
     req = urllib.request.Request(
         url,

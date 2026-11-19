@@ -189,6 +189,7 @@
             <button class="eco-btn sec" id="ecoRecDisc">Discord'a Sığdır</button>
           </div>
           <label class="eco-hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ecoChRecStu" ${ch.chain_rec_studio ? "checked" : ""}> Zincir: Kayıt bitince otomatik Studio'da aç</label>
+          <label class="eco-hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ecoRecZoom" ${ch.rec_cursor_zoom !== false ? "checked" : ""}> Screen Studio Modu: Tıklama noktalarına otomatik yaylı imleç zoom'u uygula</label>
           <div class="eco-hint" id="ecoRecMsg"></div>
         </div>
         <div class="eco-card">
@@ -202,6 +203,7 @@
       bd.querySelector("#ecoRecMsg").textContent = recMsg;
       bd.querySelector("#ecoRecSec").onchange = (e) => api.chain_set?.("rec_replay_seconds", Math.max(15, Math.min(600, Number(e.target.value || 30))));
       bd.querySelector("#ecoChRecStu").onchange = (e) => api.chain_set?.("chain_rec_studio", e.target.checked);
+      bd.querySelector("#ecoRecZoom").onchange = (e) => api.set_setting?.("rec_cursor_zoom", e.target.checked);
       bd.querySelector("#ecoRecToggle").onclick = async () => {
         const r = await api.rec_toggle();
         recMsg = r.recording ? "Kayıt başlatıldı..." : (r.path ? `Kaydedildi: ${r.path}` : (r.error || "Tamamlandı"));

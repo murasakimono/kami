@@ -547,6 +547,71 @@
     if (CL.tab === "dups") return renderDuplicatesTab(stage);
     if (CL.tab === "sim") return renderSimilarTab(stage);
     if (CL.tab === "caches") return renderCachesTab(stage);
+    if (CL.tab === "dust") return renderDustTab(stage);
+    if (CL.tab === "janitor") return renderJanitorTab(stage);
+  }
+
+  async function renderDustTab(stage) {
+    CL.checked.clear();
+    stage.innerHTML = `<small style="color:#8A829E">Kami Dust: Kaldırılmış programların AppData altındaki yetim kalıntıları taranıyor…</small>`;
+    const r = await api()?.cleaner_dust?.(21, 128).catch(() => null);
+    if (!r?.ok) { stage.innerHTML = `<small>Kami Dust taraması yapılamadı.</small>`; return; }
+    stage.innerHTML = `
+      <div class="cl-toolbar">
+        <b>Kami Dust (Kaldırılan Program Artıkları) · ${r.count || 0} Yetim Klasör · <span style="color:#2EE6A6">${fmt(r.total_size)}</span></b>
+        <div style="display:flex;gap:6px">
+          <button class="btn" id="clDustAll">Tümünü Seç</button>
+          <button class="btn pri" id="clBulkTrash" disabled>Seçilenleri Çöpe Gönder (0)</button>
+        </div>
+      </div>
+      <div style="max-height:320px;overflow:auto">
+        ${(r.items || []).map((c) => `
+          <div class="cl-row" data-preview-path="${esc(c.path)}">
+            <input type="checkbox" data-chk="${esc(c.path)}">
+            <div style="min-width:0"><span class="name"><b>${esc(c.name)}</b> <small style="color:#8A829E">(${esc(c.scope)} · ${c.idle_days} gündür dokunulmadı)</small></span><span class="path">${esc(c.path)}</span></div>
+            <b style="color:#FB7185">${fmt(c.size)}</b>
+            <button class="btn" data-open-dir="${esc(c.path)}" title="Klasörü aç">↗</button>
+            <button class="btn" data-tr="${esc(c.path)}" title="Geri Dönüşüm Kutusu'na gönder">🗑</button>
+          </div>`).join("") || `<small style="color:#2EE6A6">Kaldırılmış programlardan kalan yetim klasör bulunamadı ✓</small>`}
+      </div>`;
+    stage.querySelector("#clDustAll").onclick = () => {
+      CL.checked.clear();
+      stage.querySelectorAll("[data-chk]").forEach((cb) => { cb.checked = true; CL.checked.add(cb.dataset.chk); });
+      updateBulkBtn(stage);
+    };
+    stage.querySelector("#clBulkTrash").onclick = () => bulkTrash(stage);
+    wireRowSelection(stage);
+  }
+
+  async function renderJanitorTab(stage) {
+    stage.innerHTML = `<small style="color:#8A829E">Klasör Bekçisi kuralları simüle ediliyor (aktif indirmelere dokunmaz)…</small>`;
+    const r = await api()?.cleaner_janitor?.(true).catch(() => null);
+    if (!r?.ok) { stage.innerHTML = `<small>Klasör Bekçisi okunamadı.</small>`; return; }
+    stage.innerHTML = `
+      <div class="cl-toolbar">
+        <b>Hazel 6 Tarzı Otomatik Klasör Bekçisi · ${r.count || 0} Yaşlanmış Dosya (${fmt(r.total_size)})</b>
+        <button class="btn pri" id="clJanRun" ${r.count ? "" : "disabled"}>Şimdi Düzenle & Taşı (${r.count || 0})</button>
+      </div>
+      <p style="margin:0 0 8px;font-size:11px;color:#A39BB5">Kurallar: Masaüstünde 48 saati geçen ekran görüntüleri → <code>Pictures\\Screenshots</code> · 14 günü geçen kurulum (.exe/.msi) → <code>Program\\Eski_Kurulumlar</code> · İndirilenler kökündeki 3+ günlük PDF/EPUB → <code>Belge</code> (Otomatik klasörlendirmeyle çakışmaz).</p>
+      <div style="max-height:290px;overflow:auto">
+        ${(r.actions || []).map((a) => `
+          <div class="cl-row">
+            <span>✓</span>
+            <div style="min-width:0"><span class="name"><b>${esc(a.name)}</b> · <small style="color:#C4B5FD">${esc(a.rule)}</small></span><span class="path">${esc(a.from)} → ${esc(a.to)}</span></div>
+            <b style="color:#2EE6A6">${fmt(a.size)}</b>
+            <span></span><span></span>
+          </div>`).join("") || `<small style="color:#2EE6A6">Masaüstü ve İndirilenler kök dizini tamamen düzenli ✓</small>`}
+      </div>`;
+    const runBtn = stage.querySelector("#clJanRun");
+    if (runBtn) {
+      runBtn.onclick = async () => {
+        runBtn.disabled = true;
+        runBtn.textContent = "Düzenleniyor…";
+        const res = await api()?.cleaner_janitor?.(false).catch(() => null);
+        await renderJanitorTab(stage);
+        if (res?.ok) alert(`✓ ${res.count || 0} dosya güvenle düzenlendi.`);
+      };
+    }
   }
 
   function mount() {
@@ -568,6 +633,8 @@
       ["dups", "Kopyalar (SHA-256)"],
       ["sim", "Benzer Görseller"],
       ["caches", "Güvenli Önbellek"],
+      ["dust", "Kami Dust (Yetim Artıklar)"],
+      ["janitor", "Klasör Bekçisi (Hazel)"],
     ].map(([id, label]) => `<button type="button" class="cl-tab${id === CL.tab ? " on" : ""}" data-cltab="${id}">${label}</button>`).join("");
 
     const stage = document.createElement("div");

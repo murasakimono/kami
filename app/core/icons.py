@@ -1,185 +1,255 @@
-"""Kami modul ve dosya turu ikonlari (tek kaynak: pencere ikonlari + kurulum <app>\\icons\\*.ico).
+"""Kami 2.0 modul ve dosya turu ikonlari (tek kaynak: pencere ikonlari + packaging/kami.ico + <app>\\icons\\*.ico).
 
-2x supersampling (512->256) ile cizilir ve 16/32/48/256 cok katmanli .ico olarak kaydedilir.
+Kullanici secimleri (Kami 2.0):
+- Kami Ana (main): M3 (kami.png uzerinden karakterin boynuzlari + mor alev kaslar + 3B zumrut goz makro kesiti).
+- Kami Studio (studio): S4 Mavi (tamamen mavi geometrik makas: halkalar #38BDF8, bicaklar #7DD3FC, yesil yok).
+- Kami Oda (room): O1 (kompakt canli sinyal (( * ))).
+- Diger 6 onayli ikon: Player, Picture, Reader, Games, Kamify (music), Cleaner.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-ICON_SIZES: list[tuple[int, int]] = [(16, 16), (32, 32), (48, 48), (256, 256)]
+ICON_SIZES: list[tuple[int, int]] = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
 
 MODULES: dict[str, tuple[str, tuple[int, int, int]]] = {
-    "main": ("Kami", (164, 118, 248)),           # Canli Kami moru
-    "player": ("Kami Player", (46, 230, 166)),     # Zumrut yesili
-    "studio": ("Kami Studio", (167, 139, 250)),    # Mor
-    "picture": ("Kami Picture", (56, 189, 248)),   # Gok mavisi
-    "reader": ("Kami Reader", (245, 158, 11)),     # Kehribar / Altin
-    "games": ("Kami Games", (126, 138, 244)),      # Indigo (games.png ile birebir uyumlu)
-    "music": ("Kamify", (232, 121, 249)),          # Orkide / Magenta
-    "cleaner": ("Kami Cleaner", (244, 114, 134)),  # Mercan pembe (cleaner.png ile birebir uyumlu)
+    "main": ("Kami", (157, 107, 255)),            # M3 Karakter Makro (Boynuz + 3B Zumrut Goz)
+    "player": ("Kami Player", (46, 230, 166)),    # Zumrut yesili
+    "studio": ("Kami Studio", (56, 189, 248)),    # S4 Tam Mavi Makas (#38BDF8)
+    "picture": ("Kami Picture", (244, 114, 182)), # Pembe (#F472B6)
+    "reader": ("Kami Reader", (251, 191, 36)),    # Kehribar / Altin (#FBBF24)
+    "games": ("Kami Games", (129, 140, 248)),     # Indigo (#818CF8)
+    "music": ("Kamify", (29, 185, 84)),           # Zumrut/Spotify Yesili (#1DB954)
+    "cleaner": ("Kami Cleaner", (251, 113, 133)), # Mercan Pembe (#FB7185)
+    "room": ("Kami Oda", (168, 85, 247)),         # O1 Mor/Zumrut Canli Sinyal (#A855F7)
 }
 
 
-def render_icon_image(key: str, size: int = 256):
-    """Belirtilen modul icin RGBA Pillow Image uretir (gomulu PNG varsa onu kullanir)."""
-    from PIL import Image, ImageDraw
-    from app import paths
+def _draw_horned_chassis(im, d, S: int, accent: tuple[int, int, int], glow: tuple[int, int, int]):
+    """512x512 (24x24 koordinat sisteminin 21.333x olcegi) uzerinde boynuzlu sekizgen rozet kasasi cizer."""
+    k = S / 24.0
+    r, g, b = accent
+    gr, gg, gb = glow
+    # Boynuzlar (sol ve sag kavisli poligon)
+    left_horn = [
+        (5.4 * k, 8.2 * k), (4.5 * k, 5.8 * k), (4.8 * k, 3.2 * k),
+        (6.2 * k, 1.7 * k), (8.0 * k, 1.3 * k), (7.2 * k, 3.6 * k),
+        (7.5 * k, 5.5 * k), (8.8 * k, 6.8 * k),
+    ]
+    right_horn = [(S - x, y) for (x, y) in left_horn]
+    d.polygon(left_horn, fill=(min(255, r + 55), min(255, g + 55), min(255, b + 55), 255))
+    d.polygon(right_horn, fill=(min(255, r + 55), min(255, g + 55), min(255, b + 55), 255))
 
-    embedded = paths.WEB_DIR / "icons" / f"{key}.png"
-    if embedded.is_file():
-        im = Image.open(embedded).convert("RGBA")
-        if im.size != (size, size):
-            im = im.resize((size, size), Image.Resampling.LANCZOS)
-        return im
+    # Sekizgen rozet govdesi
+    oct_pts = [
+        (5.2 * k, 5.4 * k), (18.8 * k, 5.4 * k), (21.2 * k, 7.8 * k),
+        (21.2 * k, 19.6 * k), (18.8 * k, 22.0 * k), (5.2 * k, 22.0 * k),
+        (2.8 * k, 19.6 * k), (2.8 * k, 7.8 * k),
+    ]
+    d.polygon(oct_pts, fill=(14, 10, 24, 255))
+    for i in range(len(oct_pts)):
+        p1 = oct_pts[i]
+        p2 = oct_pts[(i + 1) % len(oct_pts)]
+        d.line([p1, p2], fill=(r, g, b, 255), width=max(2, int(round(1.28 * k))))
 
-    S = 512  # 2x supersampling
-    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    _, (r, g, b) = MODULES.get(key, ("Kami", (157, 107, 255)))
-    acc = (r, g, b, 255)
-    soft = (r, g, b, 55)
-    bg = (12, 8, 22, 255)
-    bevel = (44, 30, 68, 255)
-
-    # Dis koyu Kami rozeti + neon kenarlik + ic krom cerceve
-    d.rounded_rectangle([24, 24, S - 24, S - 24], radius=116, fill=bg, outline=acc, width=22)
-    d.rounded_rectangle([54, 54, S - 54, S - 54], radius=92, outline=bevel, width=6)
-
-    if key == "player":
-        d.ellipse([112, 112, S - 112, S - 112], fill=soft, outline=acc, width=18)
-        d.polygon([(204, 156), (366, 256), (204, 356)], fill=acc)
-    elif key == "studio":
-        # Klaket govdesi + ust capraz seritler
-        d.rounded_rectangle([108, 168, 404, 384], radius=24, fill=soft, outline=acc, width=18)
-        d.rounded_rectangle([108, 124, 404, 186], radius=16, fill=bg, outline=acc, width=16)
-        for sx in (156, 232, 308):
-            d.polygon([(sx, 130), (sx + 34, 130), (sx + 10, 180), (sx - 24, 180)], fill=acc)
-        d.polygon([(224, 226), (318, 276), (224, 326)], fill=acc)
-    elif key == "picture":
-        d.rounded_rectangle([104, 124, 408, 388], radius=26, fill=soft, outline=acc, width=18)
-        d.ellipse([146, 162, 206, 222], fill=acc)
-        d.polygon([(122, 366), (236, 240), (314, 322), (352, 276), (390, 366)], fill=acc)
-    elif key == "reader":
-        # Acik iki sayfa kitap + ayraç seridi
-        d.rounded_rectangle([96, 132, 256, 376], radius=18, fill=soft, outline=acc, width=16)
-        d.rounded_rectangle([256, 132, 416, 376], radius=18, fill=soft, outline=acc, width=16)
-        d.line([(256, 136), (256, 372)], fill=acc, width=14)
-        for y in (192, 242, 292):
-            d.line([(132, y), (222, y)], fill=acc, width=12)
-            d.line([(290, y), (380, y)], fill=acc, width=12)
-        d.polygon([(332, 132), (368, 132), (368, 208), (350, 188), (332, 208)], fill=(251, 113, 133, 255))
-    elif key == "games":
-        d.rounded_rectangle([88, 168, 424, 344], radius=78, fill=soft, outline=acc, width=18)
-        # D-pad
-        d.line([(168, 212), (168, 300)], fill=acc, width=22)
-        d.line([(124, 256), (212, 256)], fill=acc, width=22)
-        # Aksiyon dugmeleri
-        d.ellipse([306, 214, 346, 254], fill=acc)
-        d.ellipse([348, 258, 388, 298], fill=acc)
-    elif key == "music":
-        # Ikili nota + ses dalgasi
-        d.ellipse([128, 304, 212, 378], fill=acc)
-        d.ellipse([284, 278, 368, 352], fill=acc)
-        d.line([(202, 336), (202, 164)], fill=acc, width=20)
-        d.line([(358, 310), (358, 138)], fill=acc, width=20)
-        d.polygon([(192, 150), (368, 122), (368, 166), (192, 194)], fill=acc)
-    elif key == "cleaner":
-        # Suzgec + yildiz pariltisi
-        d.polygon([(112, 136), (400, 136), (288, 266), (288, 380), (224, 352), (224, 266)],
-                  fill=soft, outline=acc, width=18)
-        d.polygon([(356, 246), (370, 286), (410, 300), (370, 314), (356, 354), (342, 314), (302, 300), (342, 286)],
-                  fill=acc)
-
-    if size != S:
-        im = im.resize((size, size), Image.Resampling.LANCZOS)
-    return im
+    # Ust neon isik cizgisi
+    d.line([(5.9 * k, 6.85 * k), (18.1 * k, 6.85 * k)], fill=(gr, gg, gb, 115), width=max(1, int(round(0.85 * k))))
 
 
-def render_compact_icon(key: str, size: int = 32):
-    """16 ve 32 px gibi kucuk katmanlar icin boynuzsuz, yuksek kontrastli sade modul simgesi uretir."""
-    from PIL import Image, ImageDraw
-
-    S = 128
-    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    _, (r, g, b) = MODULES.get(key, ("Kami", (164, 118, 248)))
-    acc = (r, g, b, 255)
-    bg = (14, 10, 26, 255)
-    d.rounded_rectangle([6, 6, S - 6, S - 6], radius=30, fill=bg, outline=acc, width=10)
-
-    if key == "main":
-        d.ellipse([24, 34, S - 24, S - 34], fill=(46, 230, 166, 255))
-        d.ellipse([54, 38, 74, 90], fill=(10, 7, 18, 255))
-    elif key == "player":
-        d.polygon([(44, 30), (96, 64), (44, 98)], fill=acc)
-    elif key == "studio":
-        d.rounded_rectangle([26, 34, 102, 94], radius=10, outline=acc, width=10)
-        d.line([(26, 52), (102, 52)], fill=acc, width=10)
-    elif key == "picture":
-        d.rounded_rectangle([26, 30, 102, 98], radius=10, outline=acc, width=10)
-        d.ellipse([38, 40, 56, 58], fill=acc)
-        d.polygon([(32, 90), (62, 58), (96, 90)], fill=acc)
-    elif key == "reader":
-        d.rounded_rectangle([26, 28, 64, 100], radius=6, fill=(r, g, b, 70), outline=acc, width=8)
-        d.rounded_rectangle([64, 28, 102, 100], radius=6, fill=(r, g, b, 70), outline=acc, width=8)
-    elif key == "games":
-        d.line([(44, 46), (44, 82)], fill=acc, width=12)
-        d.line([(26, 64), (62, 64)], fill=acc, width=12)
-        d.ellipse([74, 48, 92, 66], fill=acc)
-        d.ellipse([86, 68, 104, 86], fill=acc)
-    elif key == "music":
-        d.ellipse([28, 74, 54, 98], fill=acc)
-        d.ellipse([72, 66, 98, 90], fill=acc)
-        d.line([(48, 84), (48, 34), (92, 28), (92, 76)], fill=acc, width=12)
-    elif key == "cleaner":
-        d.polygon([(26, 32), (102, 32), (72, 68), (72, 98), (56, 90), (56, 68)], fill=acc)
-    return im.resize((size, size), Image.Resampling.LANCZOS)
-
-
-def render_small_icon(key: str, size: int = 32):
-    """16/24/32 px katmanlari: ayni maskotlu tasarim, ama dis cerceve bosluklari kirpilip parlaklik/kontrast
-    artirilir; kucuk boyutta maskot ve modul simgesi okunur kalir (yalin kucultmede ana ikon kara kutuya donuyordu)."""
+def _render_main_m3(size: int = 256):
+    """Kami Ana M3: kami.png uzerinden karakterin boynuzlari + mor alev kaslari + 3B zumrut goz makro kesiti."""
     from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
     from app import paths
 
-    src = paths.WEB_DIR / "icons" / f"{key}.png"
-    if not src.is_file():
-        return render_icon_image(key, size=size)
-    im = Image.open(src).convert("RGBA")
-    c = int(im.width * 0.13)
-    im = im.crop((c, c, im.width - c, im.height - c))
-    im = ImageEnhance.Brightness(im).enhance(1.35)
-    im = ImageEnhance.Contrast(im).enhance(1.25)
-    im = ImageEnhance.Color(im).enhance(1.25)
-    S = 128
-    im = im.resize((S, S), Image.Resampling.LANCZOS)
-    mask = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, S - 1, S - 1], radius=26, fill=255)
-    a = im.getchannel("A")
-    im.putalpha(Image.composite(a, Image.new("L", (S, S), 0), mask))
-    im = im.resize((size, size), Image.Resampling.LANCZOS)
-    return im.filter(ImageFilter.UnsharpMask(radius=0.6, percent=120, threshold=1))
+    src = paths.WEB_DIR / "kami.png"
+    S = 512
+    if src.is_file():
+        raw = Image.open(src).convert("RGBA")
+        w, h = raw.size
+        # M3 Makro Bakis kesiti: x %19..%81, y %11..%63
+        crop = raw.crop((int(w * 0.19), int(h * 0.11), int(w * 0.81), int(h * 0.63)))
+        r, g, b, a = crop.split()
+        rgb = Image.merge("RGB", (r, g, b))
+        rgb = ImageEnhance.Contrast(rgb).enhance(1.26)
+        rgb = ImageEnhance.Color(rgb).enhance(1.22)
+        rgb = ImageEnhance.Sharpness(rgb).enhance(1.48)
+        r2, g2, b2 = rgb.split()
+        crop = Image.merge("RGBA", (r2, g2, b2, a)).resize((S - 44, S - 44), Image.Resampling.LANCZOS)
+
+        canvas = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        d = ImageDraw.Draw(canvas)
+        d.rounded_rectangle([18, 18, S - 18, S - 18], radius=110, fill=(13, 9, 22, 255))
+
+        mask = Image.new("L", (S - 44, S - 44), 0)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, S - 45, S - 45], radius=98, fill=255)
+        canvas.paste(crop, (22, 22), mask)
+        d.rounded_rectangle([18, 18, S - 18, S - 18], radius=110, outline=(157, 107, 255, 255), width=22)
+        d.rounded_rectangle([36, 36, S - 36, S - 36], radius=96, outline=(46, 230, 166, 90), width=5)
+        out = canvas.resize((size, size), Image.Resampling.LANCZOS)
+        if size <= 48:
+            out = out.filter(ImageFilter.UnsharpMask(radius=0.65, percent=135, threshold=1))
+        return out
+
+    # Yedek (kami.png bulunamazsa)
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    _draw_horned_chassis(im, d, S, (157, 107, 255), (46, 230, 166))
+    k = S / 24.0
+    d.ellipse([7.7 * k, 9.5 * k, 16.3 * k, 18.1 * k], outline=(196, 181, 253, 255), width=int(1.7 * k))
+    d.rounded_rectangle([11.15 * k, 11.3 * k, 12.85 * k, 16.3 * k], radius=int(0.85 * k), fill=(46, 230, 166, 255))
+    return im.resize((size, size), Image.Resampling.LANCZOS)
+
+
+def render_icon_image(key: str, size: int = 256, use_cache: bool = False):
+    """Belirtilen modul icin RGBA Pillow Image uretir (512->size supersampling)."""
+    from PIL import Image, ImageDraw, ImageFilter
+
+    if key == "main":
+        return _render_main_m3(size=size)
+
+    S = 512
+    k = S / 24.0
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    _, accent = MODULES.get(key, ("Kami", (157, 107, 255)))
+    glow_map = {
+        "player": (46, 230, 166),
+        "studio": (56, 189, 248),
+        "picture": (244, 114, 182),
+        "reader": (251, 191, 36),
+        "games": (46, 230, 166),
+        "music": (46, 230, 166),
+        "cleaner": (251, 113, 133),
+        "room": (46, 230, 166),
+    }
+    _draw_horned_chassis(im, d, S, accent, glow_map.get(key, accent))
+
+    if key == "player":
+        d.polygon([(9.0 * k, 8.8 * k), (17.6 * k, 13.8 * k), (9.0 * k, 18.8 * k)], fill=(46, 230, 166, 255))
+        d.polygon([(11.0 * k, 11.8 * k), (14.5 * k, 13.8 * k), (11.0 * k, 15.8 * k)], fill=(10, 18, 20, 255))
+    elif key == "studio":
+        # S4 Mavi: Tamamen mavi geometrik makas (Halkalar #38BDF8, Bicaklar #7DD3FC, sifir yesil)
+        blue_ring = (56, 189, 248, 255)
+        blue_blade = (125, 211, 252, 255)
+        w_ring = int(round(1.65 * k))
+        w_blade = int(round(1.75 * k))
+        # Bicaklar
+        d.line([(10.4 * k, 15.3 * k), (15.2 * k, 9.8 * k)], fill=blue_blade, width=w_blade)
+        d.line([(13.6 * k, 15.3 * k), (8.8 * k, 9.8 * k)], fill=blue_blade, width=w_blade)
+        # Makas halkalari
+        for cx, cy in ((9.3 * k, 16.5 * k), (14.7 * k, 16.5 * k)):
+            r_px = 1.58 * k
+            d.ellipse([cx - r_px, cy - r_px, cx + r_px, cy + r_px], fill=(14, 10, 24, 255), outline=blue_ring, width=w_ring)
+    elif key == "picture":
+        pink = (244, 114, 182, 255)
+        w_ln = int(round(1.7 * k))
+        # 4 vizor kosesi
+        for pts in (
+            [(6.8 * k, 11.4 * k), (6.8 * k, 9.0 * k), (9.4 * k, 9.0 * k)],
+            [(14.6 * k, 9.0 * k), (17.2 * k, 9.0 * k), (17.2 * k, 11.4 * k)],
+            [(17.2 * k, 16.2 * k), (17.2 * k, 18.6 * k), (14.6 * k, 18.6 * k)],
+            [(9.4 * k, 18.6 * k), (6.8 * k, 18.6 * k), (6.8 * k, 16.2 * k)],
+        ):
+            d.line(pts[:2], fill=pink, width=w_ln)
+            d.line(pts[1:], fill=pink, width=w_ln)
+        d.polygon([(12.0 * k, 10.7 * k), (14.9 * k, 13.8 * k), (12.0 * k, 16.9 * k), (9.1 * k, 13.8 * k)],
+                  fill=(251, 207, 232, 255))
+    elif key == "reader":
+        amb = (251, 191, 36, 255)
+        pts = [(6.2 * k, 10.0 * k), (12.0 * k, 11.6 * k), (17.8 * k, 10.0 * k),
+               (17.8 * k, 17.8 * k), (12.0 * k, 19.3 * k), (6.2 * k, 17.8 * k)]
+        d.polygon(pts, fill=(42, 31, 10, 255))
+        for i in range(len(pts)):
+            d.line([pts[i], pts[(i + 1) % len(pts)]], fill=amb, width=int(round(1.6 * k)))
+        d.line([(12.0 * k, 11.6 * k), (12.0 * k, 19.2 * k)], fill=(253, 230, 138, 255), width=int(round(1.5 * k)))
+    elif key == "games":
+        w_ln = int(round(2.0 * k))
+        d.line([(9.0 * k, 10.5 * k), (9.0 * k, 17.1 * k)], fill=(199, 210, 254, 255), width=w_ln)
+        d.line([(5.7 * k, 13.8 * k), (12.3 * k, 13.8 * k)], fill=(199, 210, 254, 255), width=w_ln)
+        r1 = 1.38 * k
+        d.ellipse([15.8 * k - r1, 12.2 * k - r1, 15.8 * k + r1, 12.2 * k + r1], fill=(46, 230, 166, 255))
+        d.ellipse([17.8 * k - r1, 14.9 * k - r1, 17.8 * k + r1, 14.9 * k + r1], fill=(167, 139, 250, 255))
+    elif key == "music":
+        bars = [
+            (7.2, 13.0, 16.5, (46, 230, 166, 255)),
+            (10.4, 9.8, 18.2, (46, 230, 166, 255)),
+            (13.6, 11.3, 17.0, (167, 243, 208, 255)),
+            (16.8, 9.2, 18.4, (46, 230, 166, 255)),
+        ]
+        for bx, y1, y2, col in bars:
+            d.rounded_rectangle([(bx - 0.95) * k, y1 * k, (bx + 0.95) * k, y2 * k], radius=int(0.95 * k), fill=col)
+    elif key == "cleaner":
+        cx, cy, rad = 12.0 * k, 13.9 * k, 4.6 * k
+        rose = (251, 113, 133, 255)
+        d.pieslice([cx - rad, cy - rad, cx + rad, cy + rad], start=-90, end=8, fill=rose)
+        d.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], outline=rose, width=int(round(1.6 * k)))
+        ir = 1.45 * k
+        d.ellipse([cx - ir, cy - ir, cx + ir, cy + ir], fill=(13, 9, 22, 255))
+    elif key == "room":
+        # O1: Kompakt Canlı Sinyal (( * ))
+        cx, cy = 12.0 * k, 13.8 * k
+        cr = 1.52 * k
+        d.ellipse([cx - cr, cy - cr, cx + cr, cy + cr], fill=(46, 230, 166, 255))
+        ar = 3.35 * k
+        w_arc = int(round(1.7 * k))
+        lav = (196, 181, 253, 255)
+        d.arc([cx - ar, cy - ar, cx + ar, cy + ar], start=138, end=222, fill=lav, width=w_arc)
+        d.arc([cx - ar, cy - ar, cx + ar, cy + ar], start=-42, end=42, fill=lav, width=w_arc)
+
+    out = im.resize((size, size), Image.Resampling.LANCZOS)
+    if size <= 48:
+        out = out.filter(ImageFilter.UnsharpMask(radius=0.6, percent=125, threshold=1))
+    return out
+
+
+def render_compact_icon(key: str, size: int = 32):
+    return render_icon_image(key, size=size)
+
+
+def render_small_icon(key: str, size: int = 32):
+    return render_icon_image(key, size=size)
 
 
 def write_ico(key: str, out_path: Path) -> Path:
-    """128/256 px: tam tasarim; 16-64 px (masaustu dahil): dis cercevesi kirpilmis, netlestirilmis hali."""
+    """16/24/32/48/64/128/256 px cok katmanli .ico dosyasi uretir."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     im256 = render_icon_image(key, size=256)
-    layers = [render_icon_image(key, size=128), render_small_icon(key, 64), render_small_icon(key, 48),
-              render_small_icon(key, 32), render_small_icon(key, 24), render_small_icon(key, 16)]
-    im256.save(out_path, format="ICO", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
-               append_images=layers)
+    layers = [
+        render_icon_image(key, size=128),
+        render_icon_image(key, size=64),
+        render_icon_image(key, size=48),
+        render_icon_image(key, size=32),
+        render_icon_image(key, size=24),
+        render_icon_image(key, size=16),
+    ]
+    im256.save(
+        out_path,
+        format="ICO",
+        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+        append_images=layers,
+    )
     return out_path
 
 
+def sync_embedded_pngs() -> None:
+    """app/ui/web/icons/*.png ve packaging/kami.ico dosyalarini Kami 2.0 tasarimiyla gunceller."""
+    from app import paths
+    icons_dir = paths.WEB_DIR / "icons"
+    icons_dir.mkdir(parents=True, exist_ok=True)
+    for key in MODULES:
+        im = render_icon_image(key, size=256)
+        im.save(icons_dir / f"{key}.png", format="PNG")
+    pkg_ico = Path(__file__).resolve().parents[2] / "packaging" / "kami.ico"
+    if pkg_ico.parent.is_dir():
+        write_ico("main", pkg_ico)
+
+
 def icon_tag() -> str:
-    """Kurulumdaki .ico dosya adina eklenen surum etiketi. Windows ikon onbellegi dosya yoluna gore tuttugu icin
-    ad degismezse eski ikonu gostermeye devam ediyordu."""
     try:
         from app.core.extras import APP_VERSION
         return APP_VERSION.replace(".", "")
     except Exception:
-        return "0"
+        return "200"
 
 
 def export_all(icons_dir: Path) -> list[Path]:

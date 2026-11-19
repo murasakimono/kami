@@ -307,6 +307,12 @@ class PhoneServer:
                 if path == "/deck":
                     from app.core.deck_page import DECK_HTML
                     return self._html(DECK_HTML)
+                if path == "/portal":
+                    return self._html(outer.render_portal_html())
+                if path == "/portal/data":
+                    if not self._key_ok():
+                        return self._send(401, {"ok": False, "error": "key"})
+                    return self._send(200, outer.portal_data())
                 if path == "/status":
                     if not self._key_ok():
                         return self._send(401, {"ok": False, "error": "key", "message": "Anahtar yanlış ya da eksik."})
@@ -405,6 +411,42 @@ class PhoneServer:
             self._srv.server_close()
             self._srv = None
 
+    def portal_data(self) -> dict[str, Any]:
+        """Kami 2.0 D14: Jellyfin/Stremio tarzi 'Kaldigin Yerden Devam Et' (Continue Watching & Reading) verisi."""
+        books: list[dict[str, Any]] = []
+        videos: list[dict[str, Any]] = []
+        try:
+            from app.core import reader
+            for b in reader.recent(15):
+                cnt = max(1, int(b.get("count") or 1))
+                pg = int(b.get("page") or 0)
+                books.append({
+                    "title": b.get("title") or os.path.basename(b.get("path", "")),
+                    "path": b.get("path", ""),
+                    "page": pg + 1,
+                    "count": cnt,
+                    "pct": min(100, int(round(((pg + 1) / cnt) * 100))),
+                })
+        except Exception:
+            pass
+        try:
+            items = self.status() or []
+            for it in items[:20]:
+                nm = str(it.get("name") or "")
+                if nm.lower().endswith((".mp4", ".mkv", ".webm", ".mp3", ".flac", ".m4a")):
+                    videos.append({
+                        "id": it.get("id"),
+                        "name": nm,
+                        "pct": it.get("percent", 100),
+                        "label": it.get("label", ""),
+                    })
+        except Exception:
+            pass
+        return {"ok": True, "books": books, "media": videos}
+
+    def render_portal_html(self) -> str:
+        return _PORTAL_HTML
+
 
 _BRIDGE_HTML = """<!doctype html>
 <html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -434,7 +476,8 @@ button{background:#7c4dff;border-color:#9d6bff;cursor:pointer;font-weight:600}
 <button onclick="padAct('studio')">🎬 Studio</button>
 <button onclick="padAct('picture')">🖼 Picture</button>
 </div><div id="padSt" style="margin-top:6px;font-size:13px;color:#2ee6a6"></div>
-<a id="deckGo" href="deck" style="display:block;margin-top:10px;color:#C9B3FF">🎛 Kami Deck: özelleştirilebilir tuşlar + uzaktan indirme yönetimi →</a></div>
+<a id="deckGo" href="deck" style="display:block;margin-top:10px;color:#C9B3FF">🎛 Kami Deck: özelleştirilebilir tuşlar + uzaktan indirme yönetimi →</a>
+<a id="portalGo" href="portal" style="display:block;margin-top:8px;color:#2EE6A6">🍿 Kaldığın Yerden Devam Et (iPhone / iPad Medya &amp; Okuma Portalı) →</a></div>
 <script>
 const qp=new URLSearchParams(location.search).get('k');
 const kEl=document.getElementById('key');
@@ -473,4 +516,40 @@ async function padAct(a){
   const j=await res.json().catch(()=>({}));
   document.getElementById('padSt').textContent=j.ok?('Tetiklendi: '+a):('Hata: '+(j.error||res.status));
 }
+</script></body></html>"""
+
+_PORTAL_HTML = """<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kami Portal — Kaldığın Yerden Devam Et</title>
+<style>
+body{margin:0;background:#09070F;color:#EDE9F6;font:15px system-ui,-apple-system,sans-serif;padding:18px}
+h1{font-size:20px;color:#2EE6A6;margin:0 0 6px}
+h2{font-size:15px;color:#C4B5FD;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.05em}
+.card{background:#141022;border:1px solid #2D2246;border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.bar{height:5px;background:#251C3A;border-radius:99px;overflow:hidden;margin:7px 0}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,#9D6BFF,#2EE6A6)}
+input,button{font:inherit;border-radius:8px;border:1px solid #352754;background:#0D0A14;color:#fff;padding:9px 12px}
+button{background:#7C4DFF;border-color:#9D6BFF;font-weight:600;cursor:pointer}
+</style></head><body>
+<h1>🍿 Kami Portal — Kaldığın Yerden Devam Et</h1>
+<p style="color:#9A90AB;font-size:13px;margin:0 0 12px">PC'deki Kami Player ve Kami Reader oturumların yerel ağda iPhone / iPad ile senkron.</p>
+<div class="card"><input id="k" placeholder="X-Kami-Key (Kami > Ayarlar > Telefon)" style="width:100%;box-sizing:border-box"></div>
+<h2>📖 Okumaya Devam Et (Kami Reader)</h2>
+<div id="books"><small style="color:#9A90AB">Anahtar girildiğinde yüklenir…</small></div>
+<h2>🎬 İzlemeye / Dinlemeye Devam Et (Kami Player)</h2>
+<div id="media"><small style="color:#9A90AB">Anahtar girildiğinde yüklenir…</small></div>
+<script>
+const kEl=document.getElementById('k');
+const qp=new URLSearchParams(location.search).get('k');
+kEl.value=qp||localStorage.getItem('kamiKey')||'';
+const esc=(s)=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function load(){
+  if(!kEl.value.trim())return;
+  localStorage.setItem('kamiKey',kEl.value.trim());
+  const r=await fetch('/portal/data',{headers:{'X-Kami-Key':kEl.value.trim()}}).then(x=>x.json()).catch(()=>null);
+  if(!r||!r.ok)return;
+  document.getElementById('books').innerHTML=(r.books||[]).map(b=>`<div class="card"><b>${esc(b.title)}</b><div class="bar"><i style="width:${b.pct}%"></i></div><small style="color:#2EE6A6">Sayfa ${b.page} / ${b.count} (%${b.pct})</small></div>`).join('')||'<small style="color:#9A90AB">Henüz açık belge yok.</small>';
+  document.getElementById('media').innerHTML=(r.media||[]).map(m=>`<div class="card"><b>${esc(m.name)}</b><div class="bar"><i style="width:${m.pct}%"></i></div><small style="color:#C4B5FD">${esc(m.label||'Hazır')}</small></div>`).join('')||'<small style="color:#9A90AB">Henüz medya kaydı yok.</small>';
+}
+kEl.onchange=load;load();setInterval(load,5000);
 </script></body></html>"""

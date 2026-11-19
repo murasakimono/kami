@@ -233,6 +233,14 @@ def check_native_host() -> dict[str, Any]:
     return _r("host", "Tarayıcı eklentisi bağlantısı", "ok", ", ".join(found))
 
 
+def _find_ollama_exe() -> str:
+    exe = shutil.which("ollama")
+    if exe:
+        return exe
+    cand = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe"
+    return str(cand) if cand.is_file() else ""
+
+
 def check_ollama() -> dict[str, Any]:
     try:
         import urllib.request
@@ -240,7 +248,7 @@ def check_ollama() -> dict[str, Any]:
             models = [m.get("name", "") for m in json.loads(r.read()).get("models", [])]
         return _r("ollama", "Yerel yapay zeka (Ollama)", "ok", ", ".join(models[:6]) or "Çalışıyor, model yok")
     except Exception:
-        if shutil.which("ollama"):
+        if _find_ollama_exe():
             return _r("ollama", "Yerel yapay zeka (Ollama)", "warn", "Kurulu ama kapalı", "ollama_start")
         return _r("ollama", "Yerel yapay zeka (Ollama)", "info", "Kurulu değil (isteğe bağlı: yerel Copilot)")
 
@@ -440,12 +448,14 @@ def run_all(engine: Any = None, ui_errors: list[dict[str, Any]] | None = None, r
 
 
 def fix_ollama_start() -> dict[str, Any]:
-    exe = shutil.which("ollama")
+    exe = _find_ollama_exe()
     if not exe:
         return {"ok": False, "message": "Ollama bulunamadı"}
+    env = dict(os.environ)
+    env.setdefault("OLLAMA_KEEP_ALIVE", "2m")
     subprocess.Popen([exe, "serve"], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return {"ok": True, "message": "Ollama başlatıldı"}
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    return {"ok": True, "message": "Ollama başlatıldı (2 dk VRAM koruma modu)"}
 
 
 FIXES: dict[str, Callable[[], dict[str, Any]]] = {"copy_virtual_keys": fix_copy_virtual_keys, "ollama_start": fix_ollama_start}

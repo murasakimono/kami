@@ -731,14 +731,21 @@ class AiQueue:
             if not vocal:
                 raise _JobError("no_vocal")
             srt = os.path.join(tmp, "vocal.srt")
+            elrc = os.path.join(tmp, "vocal.elrc")
             lang = lang or self.settings.get("whisper_lang") or "auto"
+            strong_flag = "1" if self.settings.get("whisper_strong_song", True) else "0"
             res = _run_json(["app.tools.whisper_run", vocal, srt, lang,
-                             self.settings.get("whisper_model") or "large-v3-turbo", models_dir("whisper")],
+                             self.settings.get("whisper_model") or "large-v3-turbo", models_dir("whisper"),
+                             strong_flag, elrc],
                             lambda m: "p" in m and self.set_extra(did, ai_lyrics_p=0.5 + m["p"] / 2), ev, "whisper")
             if "error" in res:
                 raise _JobError(res["error"])
-            with open(srt, encoding="utf-8") as f:
-                lrc = lyrics.srt_to_lrc(f.read())
+            if os.path.isfile(elrc):
+                with open(elrc, encoding="utf-8") as ef:
+                    lrc = ef.read().strip()
+            else:
+                with open(srt, encoding="utf-8") as f:
+                    lrc = lyrics.srt_to_lrc(f.read())
             if not lrc:
                 raise _JobError("no_speech")
             g = media_meta.guess(path, "")
@@ -778,4 +785,78 @@ def remove_background(src: str, out: str) -> dict:
     if not _ensure_pkg("whisper", "rembg", "rembg[cpu]"):
         return {"error": "rembg_install_failed"}
     return _run_once(["app.tools.rembg_run", src, out, "isnet-general-use"], lambda m: None, threading.Event(), "whisper", {})
+
+
+def generate_mp3_lrc(
+    path: str,
+    *,
+    lang: str = "tr",
+    strong: bool = True,
+    use_uvr: bool = True,
+    model_name: str = "large-v3-turbo",
+    uvr_model: str = "",
+    embed: bool = True,
+    on_progress: Callable[[float, str], None] = lambda p, st: None,
+) -> dict[str, Any]:
+    """Kami 2.0: Herhangi bir yerel MP3/ses dosyasindan (indirme kuyrugunda olmasa bile) Whisper ile zaman damgali
+    .lrc (+ kelime zamanli ELRC) uretir. strong=True iken UVR5 ile vokali ayirir ve bar atlamayan Guclu Mod ile cozer."""
+    import tempfile
+    from app.core import lyrics, media_meta
+    p = os.path.abspath(str(path or ""))
+    if not p or not os.path.isfile(p):
+        return {"ok": False, "error": "no_file"}
+    if not installed("whisper"):
+        return {"ok": False, "error": "tool_missing", "tool": "whisper"}
+    ev = threading.Event()
+    tmp = tempfile.mkdtemp(prefix="kami_mp3_lrc_")
+    try:
+        audio_in = p
+        if strong and use_uvr and installed("uvr"):
+            on_progress(0.1, "uvr_vocal")
+            um = uvr_model or UVR_MODELS[0]
+            res_u = _run_json(["app.tools.uvr_run", p, tmp, um, models_dir("uvr"), "wav", "fast"],
+                              lambda m: on_progress(0.25, "uvr_separate"), ev, "uvr")
+            if "error" not in res_u:
+                vocal = next((f for f in (res_u.get("done") or []) if "(Vokal)" in os.path.basename(f)), "")
+                if vocal and os.path.isfile(vocal):
+                    audio_in = vocal
+        srt = os.path.join(tmp, "out.srt")
+        elrc = os.path.join(tmp, "out.elrc")
+        on_progress(0.4, "whisper")
+        res_w = _run_json(
+            ["app.tools.whisper_run", audio_in, srt, lang or "tr", model_name or "large-v3-turbo",
+             models_dir("whisper"), "1" if strong else "0", elrc],
+            lambda m: "p" in m and on_progress(0.4 + float(m["p"]) * 0.55, "whisper"),
+            ev,
+            "whisper",
+        )
+        if "error" in res_w:
+            return {"ok": False, "error": str(res_w["error"])[:200]}
+        if os.path.isfile(elrc):
+            with open(elrc, encoding="utf-8") as ef:
+                lrc_text = ef.read().strip()
+        elif os.path.isfile(srt):
+            with open(srt, encoding="utf-8") as sf:
+                lrc_text = lyrics.srt_to_lrc(sf.read())
+        else:
+            lrc_text = ""
+        if not lrc_text:
+            return {"ok": False, "error": "no_speech"}
+        g = media_meta.guess(p, "")
+        w_out = lyrics.write_lyrics(p, lrc_text, g.get("artist", ""), g.get("title", ""), embed=bool(embed), ai=True)
+        lines = lyrics.parse_elrc_words(lrc_text)
+        on_progress(1.0, "done")
+        return {
+            "ok": True,
+            "path": p,
+            "lrc_path": w_out.get("lrc", os.path.splitext(p)[0] + ".lrc"),
+            "lrc_text": lrc_text,
+            "lines": lines,
+            "lang": res_w.get("lang", lang),
+            "strong": bool(strong),
+            "uvr_used": audio_in != p,
+        }
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
 

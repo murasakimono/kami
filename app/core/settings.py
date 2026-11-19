@@ -153,6 +153,15 @@ DEFAULTS: dict[str, Any] = {
     # Faz 7: Profil izolasyonu ve Masaustu Mini-Ada
     "active_profile": "kisisel",     # kisisel | icerik | magaza | ozel profil id
     "mini_island": False,            # masaustu mini-ada seridi
+    # Kami 2.0 (v2.0.0) yeni ayarlar
+    "rec_cursor_zoom": True,         # B5: Ekran kaydedicide tiklama noktasina yayli imlec zoom'u (acilip kapanabilir)
+    "studio_safe_zone": False,       # B7: Kami Studio'da TikTok/Reels/Shorts guvenli alan maskesi (acilip kapanabilir)
+    "media_dearrow": False,          # C10: DeArrow clickbait baslik & kapak duzeltici (acilip kapanabilir)
+    "janitor_enabled": False,        # C9: Hazel 6 tarzi otomatik klasor bekcisi (aktif indirmelere dokunmaz)
+    "scrobbler_enabled": False,      # B8: Arka plan sistem sesi sarki gunlugu
+    "scrobbler_hotkey": "ctrl+shift+g",  # B8: 10 sn'lik Ctrl+Shift+S'ten farkli kisayol
+    "whisper_strong_song": True,     # MP3 Whisper Guclu Sarki Modu (UVR5 vokal + condition_on_previous_text=False + esnek VAD)
+    "cleaner_weekly_notify": True,   # Cleaner haftalik guvenli onbellek esik bildirimi
 }
 
 

@@ -644,3 +644,257 @@ def preview_file(path: str) -> dict[str, Any]:
         except OSError:
             pass
     return {"ok": True, "kind": "meta", "name": p.name, "ext": ext, "size": int(st.st_size), "mtime": int(st.st_mtime)}
+
+
+# ---------- Kami 2.0: C12 "Kami Dust" (Kaldirilan Programlarin Yetim Artik Avcisi) ----------
+_SAFE_KEEP_VENDORS = {
+    "microsoft", "windows", "google", "bravesoftware", "brave-browser", "mozilla", "kami", "murasakimono",
+    "nvidia", "nvidia corporation", "amd", "intel", "valve", "steam", "epicgameslauncher", "epic games",
+    "discord", "spotify", "python", "pip", "uv", "npm", "npm-cache", "nodejs", "git", "github",
+    "ollama", "adobe", "apple", "apple computer", "packages", "programs", "temp", "d3dscache", "crashdumps",
+    "connecteddevicesplatform", "comms", "publishers", " peerdistrepub", " diagnostics", "fontcache",
+    "squirreltemp", "cef", "webview2", "ebwebview", "realtek", "omen", "hp", "hewlett-packard", "atk",
+}
+
+
+def _installed_program_tokens() -> set[str]:
+    """Kurulu programlarin (Winreg Uninstall + Program Files + Calisan surecler) normalize edilmis ad anahtarlarini toplar."""
+    import re
+    tokens: set[str] = set(_SAFE_KEEP_VENDORS)
+
+    def add_tok(raw: str) -> None:
+        s = str(raw or "").strip().lower()
+        if not s:
+            return
+        tokens.add(s)
+        clean = re.sub(r"[^a-z0-9]+", "", s)
+        if len(clean) >= 3:
+            tokens.add(clean)
+        for part in re.split(r"[^a-z0-9]+", s):
+            if len(part) >= 3:
+                tokens.add(part)
+
+    for env in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"):
+        root = os.environ.get(env)
+        if root and os.path.isdir(root):
+            try:
+                for ent in os.scandir(root):
+                    if ent.is_dir(follow_symlinks=False):
+                        add_tok(ent.name)
+            except OSError:
+                pass
+    local_progs = Path(os.environ.get("LOCALAPPDATA", "") or (Path.home() / "AppData" / "Local")) / "Programs"
+    if local_progs.is_dir():
+        try:
+            for ent in os.scandir(local_progs):
+                if ent.is_dir(follow_symlinks=False):
+                    add_tok(ent.name)
+        except OSError:
+            pass
+    if os.name == "nt":
+        try:
+            import winreg
+            for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                for sub in (
+                    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                    r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+                ):
+                    try:
+                        with winreg.OpenKey(hive, sub) as k:
+                            for i in range(winreg.QueryInfoKey(k)[0]):
+                                try:
+                                    sk_name = winreg.EnumKey(k, i)
+                                    add_tok(sk_name)
+                                    with winreg.OpenKey(k, sk_name) as sk:
+                                        for val_name in ("DisplayName", "Publisher", "InstallLocation"):
+                                            try:
+                                                v = str(winreg.QueryValueEx(sk, val_name)[0] or "")
+                                                if val_name == "InstallLocation" and v:
+                                                    add_tok(Path(v).name)
+                                                else:
+                                                    add_tok(v)
+                                            except OSError:
+                                                pass
+                                except OSError:
+                                    pass
+                    except OSError:
+                        pass
+        except ImportError:
+            pass
+    return tokens
+
+
+def scan_kami_dust(min_idle_days: int = 21, min_size_kb: int = 128) -> dict[str, Any]:
+    """C12 Kami Dust: %APPDATA% ve %LOCALAPPDATA% altindaki kaldirilmis programlardan kalan yetim klasorleri bulur.
+    Yalnizca kurulu program listesinde eslesmeyen, icinde aktif .exe bulunmayan ve `min_idle_days` gundur dokunulmamis
+    klasorleri listeler. Silme islemi her zaman Geri Donusum Kutusu'na (`trash_path`) gider."""
+    import re
+    import time
+
+    tokens = _installed_program_tokens()
+    now = time.time()
+    cutoff = now - max(1, int(min_idle_days)) * 86400
+    min_bytes = max(1024, int(min_size_kb) * 1024)
+
+    roaming = Path(os.environ.get("APPDATA", "") or (Path.home() / "AppData" / "Roaming"))
+    local = Path(os.environ.get("LOCALAPPDATA", "") or (Path.home() / "AppData" / "Local"))
+
+    orphans: list[dict[str, Any]] = []
+    for scope_lbl, root in (("AppData\\Roaming", roaming), ("AppData\\Local", local)):
+        if not root.is_dir():
+            continue
+        try:
+            entries = list(os.scandir(root))
+        except OSError:
+            continue
+        for ent in entries:
+            try:
+                if not ent.is_dir(follow_symlinks=False) or ent.is_symlink():
+                    continue
+                nm = ent.name
+                low = nm.lower().strip()
+                if low.startswith((".", "$", "_")) or low in _SAFE_KEEP_VENDORS:
+                    continue
+                norm = re.sub(r"[^a-z0-9]+", "", low)
+                if not norm or norm in tokens or low in tokens:
+                    continue
+                parts = [p for p in re.split(r"[^a-z0-9]+", low) if len(p) >= 4]
+                if any(p in tokens for p in parts):
+                    continue
+                st = ent.stat(follow_symlinks=False)
+                if st.st_mtime > cutoff:
+                    continue
+                p_obj = Path(ent.path)
+                # Icinde dogrudan calistirilabilir .exe varsa yetim degil, portable uygulamadir -> koru
+                has_exe = False
+                try:
+                    for sub in os.scandir(p_obj):
+                        if sub.is_file(follow_symlinks=False) and sub.name.lower().endswith(".exe"):
+                            has_exe = True
+                            break
+                except OSError:
+                    pass
+                if has_exe:
+                    continue
+                sz, cnt = _dir_size(p_obj, budget_s=0.45)
+                if sz < min_bytes:
+                    continue
+                idle_days = int((now - st.st_mtime) // 86400)
+                orphans.append({
+                    "name": nm,
+                    "scope": scope_lbl,
+                    "path": ent.path,
+                    "size": sz,
+                    "count": cnt,
+                    "idle_days": idle_days,
+                    "mtime": int(st.st_mtime),
+                })
+            except OSError:
+                continue
+
+    orphans.sort(key=lambda x: x["size"], reverse=True)
+    return {
+        "ok": True,
+        "feature": "Kami Dust",
+        "items": orphans[:80],
+        "total_size": sum(x["size"] for x in orphans[:80]),
+        "count": len(orphans[:80]),
+    }
+
+
+def run_folder_janitor(download_dir: str = "", dry_run: bool = False) -> dict[str, Any]:
+    """C9 Hazel 6 Tarzi Otomatik Klasor Bekcisi:
+    Kami'nin otomatik indirme klasorlendirmesiyle (Video, Muzik, Arsiv, Program, Belge, Torrent) ASLA cakismaz;
+    aktif indirmelere (.aria2 / .part / .crdownload) dokunmaz.
+    Kurallar:
+    1) Masaustunde 48 saatten eski ekran goruntulerini (Screenshot / Ekran Goruntusu *.png/*.jpg) Pictures\\Screenshots altina tasir.
+    2) Downloads veya Downloads\\Program altinda 14 gunden eski kurulum dosyalarini (.exe/.msi) listeler / Arsiv_Kurulumlar altina tasir.
+    3) Masaustu veya Downloads kokundeki 3 gunden eski ders/makale PDF'lerini Downloads\\Belge altina duzenler (ve Reader'a indeksler)."""
+    import shutil
+    import time
+
+    now = time.time()
+    home = Path.home()
+    dl_base = Path(download_dir) if download_dir and Path(download_dir).is_dir() else (home / "Downloads")
+    desktop = home / "Desktop"
+    screenshots_dst = home / "Pictures" / "Screenshots"
+
+    actions: list[dict[str, Any]] = []
+
+    def is_busy_download(p: Path) -> bool:
+        if p.suffix.lower() in (".aria2", ".part", ".crdownload", ".tmp"):
+            return True
+        return p.with_suffix(p.suffix + ".aria2").exists() or p.with_suffix(".aria2").exists()
+
+    # Kural 1: Masaustu 48s+ ekran goruntuleri
+    if desktop.is_dir():
+        try:
+            for ent in os.scandir(desktop):
+                if not ent.is_file(follow_symlinks=False):
+                    continue
+                p = Path(ent.path)
+                nm = p.name.lower()
+                if p.suffix.lower() in (".png", ".jpg", ".jpeg") and any(
+                    k in nm for k in ("screenshot", "ekran görüntüsü", "ekran_goruntusu", "kamicapture", "snag")
+                ):
+                    st = ent.stat(follow_symlinks=False)
+                    if (now - st.st_mtime) >= 48 * 3600 and not is_busy_download(p):
+                        dst = screenshots_dst / p.name
+                        if not dry_run:
+                            screenshots_dst.mkdir(parents=True, exist_ok=True)
+                            if not dst.exists():
+                                shutil.move(str(p), str(dst))
+                        actions.append({"rule": "Masaüstü Ekran Görüntüsü (>48 sa)", "name": p.name, "from": str(p), "to": str(dst), "size": int(st.st_size)})
+        except OSError:
+            pass
+
+    # Kural 2: 14 gunden eski .exe/.msi kurulum dosyalari
+    old_inst_dir = dl_base / "Program" / "Eski_Kurulumlar"
+    for scan_dir in (dl_base, dl_base / "Program"):
+        if not scan_dir.is_dir():
+            continue
+        try:
+            for ent in os.scandir(scan_dir):
+                if not ent.is_file(follow_symlinks=False):
+                    continue
+                p = Path(ent.path)
+                if p.suffix.lower() in (".exe", ".msi") and not is_busy_download(p):
+                    st = ent.stat(follow_symlinks=False)
+                    if (now - st.st_mtime) >= 14 * 86400:
+                        dst = old_inst_dir / p.name
+                        if not dry_run:
+                            old_inst_dir.mkdir(parents=True, exist_ok=True)
+                            if not dst.exists():
+                                shutil.move(str(p), str(dst))
+                        actions.append({"rule": "Eski Kurulum Dosyası (>14 gün)", "name": p.name, "from": str(p), "to": str(dst), "size": int(st.st_size)})
+        except OSError:
+            pass
+
+    # Kural 3: Downloads kokunde kalmis 3 gunden eski PDF/EPUB dosyalari -> Downloads\Belge
+    belge_dir = dl_base / "Belge"
+    if dl_base.is_dir():
+        try:
+            for ent in os.scandir(dl_base):
+                if not ent.is_file(follow_symlinks=False):
+                    continue
+                p = Path(ent.path)
+                if p.suffix.lower() in (".pdf", ".epub") and not is_busy_download(p):
+                    st = ent.stat(follow_symlinks=False)
+                    if (now - st.st_mtime) >= 3 * 86400:
+                        dst = belge_dir / p.name
+                        if not dry_run:
+                            belge_dir.mkdir(parents=True, exist_ok=True)
+                            if not dst.exists():
+                                shutil.move(str(p), str(dst))
+                        actions.append({"rule": "Kök Dizin PDF/EPUB (>3 gün → Belge)", "name": p.name, "from": str(p), "to": str(dst), "size": int(st.st_size)})
+        except OSError:
+            pass
+
+    return {
+        "ok": True,
+        "dry_run": bool(dry_run),
+        "actions": actions[:60],
+        "count": len(actions),
+        "total_size": sum(x["size"] for x in actions),
+    }
+
