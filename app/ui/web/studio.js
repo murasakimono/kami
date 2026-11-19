@@ -660,28 +660,34 @@ function syncMedia(t, hard = false) {
     const vAct = t >= c.start && t < c.start + c.dur && !trackOf(c).hide;
     const aAct = Boolean(a.audio || a.kind === "audio") && t >= c.start - aLead && t < c.start + c.dur + aTail && !trackOf(c).mute;
     const act = vAct || aAct;
-    const soon = !act && c.start > t && c.start - t < 1.5;
+    const soon = !act && c.start > t && c.start - t < 2.5;
     if (!act && !soon && !(ST.rt[c.id] && Math.abs(c.start - t) < 10)) continue;
     keep.add(c.id);
     const r = mediaEl(c), el = r.el;
     if (act) {
       const want = Math.max(0, srcTime(c, t)), vol = clipVol(c, t);
+      const spd = clamp(curSpeed(c, t) || 1, .0625, 16);
       const audible = aAct && vol > 0 && !c.freeze && !c.reverse && (ST.playing || ST._scrubActive);
       el.muted = !audible;
       if (ST.playing || ST.ac) updateAudioNode(r, c, vol, audible);
       else el.volume = Math.min(1, vol);
-      el.playbackRate = clamp(curSpeed(c, t) || 1, .0625, 16);
+      if (Math.abs(el.playbackRate - spd) > 0.01) el.playbackRate = spd;
+      const driftTol = Math.max(0.35, 0.25 * Math.max(1, spd));
       if ((ST.playing || ST._scrubActive) && !c.freeze && !c.reverse) {
-        if (el.paused) { el.currentTime = want; el.play().catch(() => {}); }
-        else if (Math.abs(el.currentTime - want) > .25) el.currentTime = want;
+        if (el.paused) {
+          if (!el.seeking && Math.abs(el.currentTime - want) > 0.08) el.currentTime = want;
+          el.play().catch(() => {});
+        } else if (!el.seeking && Math.abs(el.currentTime - want) > driftTol) {
+          el.currentTime = want;
+        }
       } else {
         if (!el.paused) el.pause();
         const tol = c.reverse && ST.playing ? .035 : .5 / ST.p.fps;
-        if (hard || Math.abs(el.currentTime - want) > tol) el.currentTime = want;
+        if (!el.seeking && (hard || Math.abs(el.currentTime - want) > tol)) el.currentTime = want;
       }
     } else {
       if (!el.paused) el.pause();
-      if (soon && Math.abs(el.currentTime - (c.in || 0)) > .2) el.currentTime = c.in || 0;
+      if (soon && !el.seeking && Math.abs(el.currentTime - (c.in || 0)) > .2) el.currentTime = c.in || 0;
     }
   }
   for (const id of Object.keys(ST.rt)) if (!keep.has(id)) dropEl(id);
@@ -690,7 +696,18 @@ function sourceOf(c) {
   const a = assetOf(c); if (!a) return null;
   if (a.kind === "image" || a.gif) { const m = ST.media[a.path]; return m?.img?.complete && m.img.naturalWidth ? { src: m.img, w: m.img.naturalWidth, h: m.img.naturalHeight } : null; }
   const r = ST.rt[c.id] || mediaEl(c);
-  return r.el.readyState >= 2 && r.el.videoWidth ? { src: r.el, w: r.el.videoWidth, h: r.el.videoHeight } : null;
+  if (r.el.readyState >= 2 && r.el.videoWidth) {
+    if (!r.el.seeking) {
+      if (!r.lastCv) { r.lastCv = document.createElement("canvas"); r.lastCtx = r.lastCv.getContext("2d"); }
+      if (r.lastCv.width !== r.el.videoWidth || r.lastCv.height !== r.el.videoHeight) {
+        r.lastCv.width = r.el.videoWidth; r.lastCv.height = r.el.videoHeight;
+      }
+      try { r.lastCtx.drawImage(r.el, 0, 0); r.hasLast = true; } catch {}
+    }
+    return { src: r.el, w: r.el.videoWidth, h: r.el.videoHeight };
+  }
+  if (r.hasLast && r.lastCv) return { src: r.lastCv, w: r.lastCv.width, h: r.lastCv.height };
+  return null;
 }
 function fxCss(ids) { return (ids || []).map(id => ST.cat.fx[id]?.css).filter(Boolean).join(" "); }
 function adjCss(a) {
@@ -1123,6 +1140,7 @@ function laneFit() {
 }
 function renderTimeline() {
   if (!ST.p) return;
+  if (!ST.p.clips.length && window.renderEmptyRecent) window.renderEmptyRecent();
   laneFit();
   const end = Math.max(projEnd() + 30, scroller.clientWidth / ST.px + 5);
   const width = end * ST.px;
@@ -2202,7 +2220,7 @@ document.addEventListener("click", e => {
     safe: () => document.body.classList.toggle("safe"),
     full: () => { const w = $("#viewArea"); document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen(); },
     snapshotOld: () => { const a2 = document.createElement("a"); const cv = document.createElement("canvas"); cv.width = PW; cv.height = PH; const g = cv.getContext("2d"); g.drawImage(view, 0, 0); g.drawImage($("#assView"), 0, 0, PW, PH); a2.href = cv.toDataURL("image/png"); a2.download = `${ST.p.name}-${fmt(ST.t).replace(/[:.]/g, "-")}.png`; a2.click(); },
-    keys: () => modal(`<h3>Kısayollar</h3><div class="keys">${[["Boşluk", "Oynat / durdur"], ["S", "Oynatma kafasında böl"], ["Q / W", "Solu / sağı sil"], ["I / O / L", "Döngü girişi / çıkışı / aç-kapat"], ["Del", "Sil (Shift: boşluğu kapat)"], ["Ctrl+Z / Y", "Geri al / yinele"], ["Ctrl+C / V / D", "Kopyala / yapıştır / çoğalt"], ["← →", "1 kare (Shift: 1 sn)"], ["Home / End", "Başa / sona"], ["M", "İşaret koy"], ["+ / −", "Zaman ölçeği (Ctrl+tekerlek)"], ["1-9", "Hızlı ses/meme (Ses panelinde ★ ile ata)"], ["F", "Tam ekran önizleme"], ["Ctrl+S / E / O", "Kaydet / dışa aktar / aç"]].map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join("")}</div><div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`),
+    keys: () => modal(`<h3>Kısayollar</h3><div class="keys">${[["Boşluk", "Oynat / durdur"], ["S", "Oynatma kafasında böl"], ["Q / W", "Solu / sağı sil"], ["I / O / L", "Döngü girişi / çıkışı / aç-kapat"], ["Del / Backspace", "Sil (Shift: boşluğu kapat)"], ["Ctrl+Z / Ctrl+Shift+Z / Y", "Geri al / yinele"], ["Ctrl+A", "Tüm klipleri seç"], ["Ctrl+C / V / D", "Kopyala / yapıştır / çoğalt"], ["Ctrl+Shift+C", "Kareyi panoya kopyala (Copy Pasta)"], ["Shift+C / Shift+V", "Ease ve stil kopyala / yapıştır"], ["Ctrl+L", "Bağlı video/ses kliplerini bağla/ayır"], ["← →", "1 kare (Shift: 1 sn)"], ["Alt+← / →", "Seçili klibi 1 kare (Shift: 5 kare) kaydır"], ["Home / End", "Başa / sona"], ["M", "İşaret koy"], ["+ / −", "Zaman ölçeği (Ctrl+tekerlek)"], ["1-9", "Hızlı ses/meme (Ses panelinde ★ ile ata)"], ["F", "Tam ekran önizleme"], ["Esc", "Seçimi temizle / bileşik klipten çık"], ["Ctrl+S / Ctrl+Shift+S", "Kaydet / Farklı kaydet"], ["Ctrl+E / O", "Dışa aktar / proje aç"]].map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join("")}</div><div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`),
   })[a]?.();
 });
 document.addEventListener("keydown", e => {
@@ -2314,6 +2332,22 @@ async function boot() {
   });
   inbox();
 }
+let _ehRecentLoaded = false;
+async function renderEmptyRecent() {
+  const box = $("#ehRecent");
+  if (!box || !api?.studio_recent || _ehRecentLoaded) return;
+  _ehRecentLoaded = true;
+  try {
+    const rec = (await api.studio_recent()) || [];
+    if (!rec.length) return;
+    box.innerHTML = rec.slice(0, 4).map(r => `<button data-ehp="${esc(r.path)}" title="${esc(r.path)}">📁 ${esc(r.name || "Proje")}</button>`).join("");
+    box.onclick = (e) => {
+      const b = e.target.closest("[data-ehp]");
+      if (b) openProject(b.dataset.ehp);
+    };
+  } catch {}
+}
+window.renderEmptyRecent = renderEmptyRecent;
 window.addEventListener("pywebviewready", boot);
 window.addEventListener("beforeunload", () => { if (ST.dirty) save(); });
 Object.assign(window, { ST, toast, modal, ask, promptText, busy, job, waitStudioJob, snap, changed, importPaths, addClip, placeAt, addTrack, trackFor,

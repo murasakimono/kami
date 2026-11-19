@@ -21,6 +21,7 @@
     uniform float u_speed;
     uniform float u_pulse;
     uniform vec3 u_tint;
+    uniform float u_mode;
     float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
     float noise(vec2 p){
       vec2 i=floor(p), f=fract(p);
@@ -37,21 +38,45 @@
       float asp=u_res.x/max(1.0,u_res.y);
       vec2 p=(uv-0.5)*vec2(asp,1.0);
       vec2 ap=(u_altar-0.5)*vec2(asp,1.0);
-      float t=u_time*(0.12+u_speed*0.32);
-      vec2 q=vec2(fbm(p*2.1+vec2(t*0.42,-t*0.32)), fbm(p*2.1+vec2(-t*0.36,t*0.44)+5.2));
-      float n=fbm(p*2.4+q*1.6+t*0.16);
-      float vein=smoothstep(0.34,0.50,abs(n-0.50));
-      float glow=(1.0-vein)*(0.36+0.62*u_speed+0.48*u_pulse);
-      vec3 base=vec3(0.036,0.020,0.062);
-      vec3 vio=vec3(0.32,0.08,0.48)*n*0.82;   // gercek Kami moru (lacivert degil)
-      vec3 em=vec3(0.14,0.86,0.62)*glow*0.34;   // zumrut enerji damarlari
       float distA=length(p-ap);
-      float aura=exp(-distA*2.2)*(0.24+0.36*u_speed+0.38*u_pulse);
-      vec3 altarGlow=mix(vec3(0.36,0.12,0.58),u_tint,0.52)*aura;
-      float vig=smoothstep(1.35,0.12,distA);
+      float vig=smoothstep(1.45,0.18,distA);
+      if(u_mode > 0.5){
+        // Ruh Atesi: maskotun altindaki zumrut alevden yukselen keskin duman/ates telleri + kozler
+        vec2 fp=p-(ap+vec2(0.0,-0.20));
+        float rise=u_time*(0.55+u_speed*1.15);
+        float sway=sin(fp.y*7.0-rise*1.6)*0.045*(0.4+abs(fp.y)*2.5);
+        float w1=fbm(vec2((fp.x+sway)*7.5, fp.y*3.6-rise));
+        float w2=fbm(vec2((fp.x-sway*0.7)*13.0, fp.y*6.0-rise*1.45)+3.1);
+        float envX=exp(-abs(fp.x)*(4.8-1.6*u_speed));
+        float envY=smoothstep(-0.14,0.03,fp.y)*smoothstep(0.82+u_speed*0.42,-0.06,fp.y);
+        float tongue=smoothstep(0.36,0.74,w1*0.65+w2*0.35)*envX*envY;
+        float core=smoothstep(0.45,0.85,w2)*exp(-length(fp*vec2(3.6,2.4))*3.2)*smoothstep(-0.10,0.02,fp.y);
+        // kucuk yukselen koz noktaları
+        vec2 ep=vec2(fp.x*18.0, fp.y*10.0-rise*2.2);
+        vec2 eid=floor(ep);
+        vec2 ef=fract(ep)-0.5;
+        float er=hash(eid);
+        float ember=step(0.92,er)*smoothstep(0.24,0.02,length(ef-vec2(sin(er*20.0+u_time)*0.15,0.0)))*envX*envY;
+        vec3 base=vec3(0.024,0.015,0.042);
+        vec3 vioAura=vec3(0.26,0.07,0.44)*envX*envY*0.42;
+        vec3 fire=mix(vec3(0.06,0.62,0.46),vec3(0.32,0.98,0.74),clamp(core*1.4,0.0,1.0))*(tongue*0.72+core*0.85+ember*1.2)*(0.65+0.65*u_speed+0.7*u_pulse);
+        vec3 flare=mix(vec3(0.18,0.92,0.66),u_tint,0.4)*u_pulse*exp(-distA*3.0)*0.45;
+        vec3 col=(base+vioAura+fire+flare)*vig;
+        gl_FragColor=vec4(1.0-exp(-col*1.15),1.0);
+        return;
+      }
+      // Akan Obsidian: koyu cilali volkanik cam + cok ince zarif mor/zumrut kilcal damarlar
+      float t=u_time*(0.08+u_speed*0.22);
+      vec2 q=vec2(fbm(p*2.6+vec2(t*0.30,-t*0.22)), fbm(p*2.6+vec2(-t*0.24,t*0.31)+4.7));
+      float n=fbm(p*3.4+q*1.45+t*0.12);
+      float fil=pow(clamp(1.0-abs(n-0.50)*9.5,0.0,1.0),3.2);
+      vec3 base=vec3(0.028,0.016,0.048);
+      vec3 vio=vec3(0.20,0.06,0.34)*smoothstep(0.36,0.82,n)*0.45;
+      vec3 em=mix(vec3(0.45,0.22,0.85),vec3(0.14,0.86,0.62),smoothstep(0.15,0.85,u_speed+u_pulse))*fil*(0.28+0.55*u_speed+0.65*u_pulse);
+      float aura=exp(-distA*2.4)*(0.18+0.26*u_speed+0.32*u_pulse);
+      vec3 altarGlow=mix(vec3(0.28,0.10,0.48),u_tint,0.45)*aura;
       vec3 col=(base+vio+em+altarGlow)*vig;
-      col=1.0-exp(-col*1.15);
-      gl_FragColor=vec4(col, 1.0);
+      gl_FragColor=vec4(1.0-exp(-col*1.12),1.0);
     }`;
 
   function initWebGL(c) {
@@ -78,6 +103,7 @@
       uSpeed: gl.getUniformLocation(prog, "u_speed"),
       uPulse: gl.getUniformLocation(prog, "u_pulse"),
       uTint: gl.getUniformLocation(prog, "u_tint"),
+      uMode: gl.getUniformLocation(prog, "u_mode"),
     };
   }
 
@@ -115,9 +141,9 @@
     ST.gl = initWebGL(c);
     if (!ST.gl) return null;
     const resize = () => {
-      const dpr = Math.min(1.5, window.devicePixelRatio || 1);
-      c.width = Math.max(1, Math.floor(innerWidth * 0.5 * dpr));
-      c.height = Math.max(1, Math.floor(innerHeight * 0.5 * dpr));
+      const dpr = Math.min(1.25, window.devicePixelRatio || 1);
+      c.width = Math.max(1, Math.floor(innerWidth * dpr));
+      c.height = Math.max(1, Math.floor(innerHeight * dpr));
       ST.gl?.gl.viewport(0, 0, c.width, c.height);
       updateAltarCenter();
     };
@@ -126,18 +152,20 @@
     return c;
   }
 
+  const isGlMode = (m) => m === "obsidian" || m === "spirit_fire";
+
   function startLoop() {
-    if (!ST.raf && ST.mode === "obsidian" && ST.gl && !document.hidden && ST.focused && !REDUCED) {
+    if (!ST.raf && isGlMode(ST.mode) && ST.gl && !document.hidden && ST.focused && !REDUCED) {
       ST.raf = requestAnimationFrame(frame);
     }
   }
 
   function frame(now) {
     ST.raf = 0;
-    if (ST.mode !== "obsidian" || document.hidden || !ST.focused || !ST.gl) return;
+    if (!isGlMode(ST.mode) || document.hidden || !ST.focused || !ST.gl) return;
     if (now - ST.last < 33) { ST.raf = requestAnimationFrame(frame); return; } // 30 fps siniri
     ST.last = now;
-    const { gl, uRes, uAltar, uTime, uSpeed, uPulse, uTint } = ST.gl;
+    const { gl, uRes, uAltar, uTime, uSpeed, uPulse, uTint, uMode } = ST.gl;
     ST.pulse = Math.max(0, ST.pulse * 0.92);
     gl.uniform2f(uRes, ST.canvas.width, ST.canvas.height);
     gl.uniform2f(uAltar, ST.altarX, ST.altarY);
@@ -145,15 +173,16 @@
     gl.uniform1f(uSpeed, ST.speed);
     gl.uniform1f(uPulse, ST.pulse);
     gl.uniform3f(uTint, ST.tint[0], ST.tint[1], ST.tint[2]);
+    gl.uniform1f(uMode, ST.mode === "spirit_fire" ? 1.0 : 0.0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     if (!REDUCED) ST.raf = requestAnimationFrame(frame);
   }
 
   function setMode(mode) {
-    const m = (mode === "particles" || mode === "off") ? mode : "obsidian";
+    const m = (mode === "particles" || mode === "off" || mode === "spirit_fire") ? mode : "obsidian";
     ST.mode = m;
     document.body.dataset.bgMode = m;
-    if (m === "obsidian") {
+    if (isGlMode(m)) {
       const c = ensureCanvas();
       if (c && ST.gl) {
         c.style.opacity = "1";

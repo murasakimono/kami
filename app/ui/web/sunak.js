@@ -541,13 +541,13 @@ function skDock(k) {
   if (k === "pano") return;   // kami-pano.js kendi cekmecesini acar
   if (k === "library") { playerLibrary(); return; }
   if (k === "fx") {
-    const order = ["obsidian", "particles", "off"];
+    const order = ["obsidian", "spirit_fire", "particles", "off"];
     const cur = document.body.dataset.bgMode || "obsidian";
     const next = order[(order.indexOf(cur) + 1) % order.length];
     window.KamiFX?.setMode?.(next);
     window.fxApplyMode?.(next);
     api?.set_setting?.("sunak_bg_mode", next);
-    const names = { obsidian: skL("Arka plan: Akan Obsidian", "BG: Flowing Obsidian"), particles: skL("Arka plan: Klasik Parçacık", "BG: Classic Particles"), off: skL("Arka plan: Kapalı", "BG: Off") };
+    const names = { obsidian: skL("Arka plan: Akan Obsidian", "BG: Flowing Obsidian"), spirit_fire: skL("Arka plan: Ruh Ateşi", "BG: Spirit Fire"), particles: skL("Arka plan: Klasik Parçacık", "BG: Classic Particles"), off: skL("Arka plan: Kapalı", "BG: Off") };
     toast(names[next]);
     return;
   }

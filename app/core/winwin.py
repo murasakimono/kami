@@ -47,6 +47,24 @@ else:   # testler / diger sistemler
     user32 = kernel32 = gdi32 = dwmapi = None
 
 
+def set_caption_color(title: str = "", hwnd: int = 0, rgb: tuple[int, int, int] = (13, 10, 18)) -> bool:
+    """Windows 11 DWM baslik cubugu ve kenarlik rengini uygulama temasiyla eslestirir (#0D0A12)."""
+    if not (user32 and dwmapi):
+        return False
+    h = int(hwnd or find_window(title))
+    if not (h and user32.IsWindow(h)):
+        return False
+    r, g, b = rgb
+    colorref = ctypes.c_uint32((b << 16) | (g << 8) | r)
+    try:
+        dwmapi.DwmSetWindowAttribute(h, 35, ctypes.byref(colorref), ctypes.sizeof(colorref))  # DWMWA_CAPTION_COLOR
+        border = ctypes.c_uint32((0x36 << 16) | (0x22 << 8) | 0x2A)  # #2A2236
+        dwmapi.DwmSetWindowAttribute(h, 34, ctypes.byref(border), ctypes.sizeof(border))      # DWMWA_BORDER_COLOR
+        return True
+    except Exception:
+        return False
+
+
 def round_pill(title: str, hwnd: int = 0) -> bool:
     """Mini-Ada vb. cercevesiz pencereleri tam hap (kapsul) seklinde kirpar; dis kose dikdortgeni gorunmez."""
     if not (user32 and gdi32):

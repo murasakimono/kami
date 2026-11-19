@@ -383,3 +383,17 @@ body.sunak.fx-off canvas.sk-fx-gpu { display: none; }
 #sunak .sk-docdot { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 0; background: #FF6B81; box-shadow: 0 0 8px #FF6B81; cursor: pointer; flex: 0 0 auto; }
 #sunak .sk-docdot[hidden] { display: none; }
 @media (max-width: 1250px) { #sunak .sk-tab span { display: none; } #sunak .sk-tab { padding: 6px 9px; } }
+/* Linear/Raycast katman derinligi, yayli mikro-etkilesimler ve portal View Transitions */
+#sunak .sk-g, #sunak .sk-tabs, #sunak .sk-chip, #sunak .sk-room, .sk-tools {
+  border-color: rgba(255, 255, 255, .08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 8px 24px rgba(0, 0, 0, .32);
+}
+#sunak button, #sunak .sk-tab, .sk-tools-g button {
+  transition: transform .14s cubic-bezier(.22, 1.25, .36, 1), background .15s ease, border-color .15s ease, color .15s ease;
+}
+#sunak button:active, #sunak .sk-tab:active, .sk-tools-g button:active { transform: scale(.96); }
+.sk-tools { transition: opacity .18s ease, transform .22s cubic-bezier(.22, 1.25, .36, 1); }
+::view-transition-old(root) { animation: kami-portal-out .22s cubic-bezier(.4, 0, .2, 1) both; }
+::view-transition-new(root) { animation: kami-portal-in .26s cubic-bezier(.22, 1.15, .36, 1) both; }
+@keyframes kami-portal-out { to { opacity: 0; transform: scale(.985); filter: blur(3px); } }
+@keyframes kami-portal-in { from { opacity: 0; transform: scale(1.015); filter: blur(4px); } }

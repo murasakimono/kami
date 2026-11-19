@@ -233,6 +233,11 @@ class StudioMixin:
         want = str(pdir / f"{safe}{studio.PROJECT_EXT}")
         old = ""
         if not path:
+            if os.path.exists(want) and getattr(self, "_studio_cur", "") != want:
+                n = 2
+                while os.path.exists(str(pdir / f"{safe} ({n}){studio.PROJECT_EXT}")):
+                    n += 1
+                want = str(pdir / f"{safe} ({n}){studio.PROJECT_EXT}")
             path = want
         elif (os.path.normcase(os.path.dirname(os.path.abspath(path))) == os.path.normcase(str(pdir))
               and os.path.normcase(os.path.abspath(path)) != os.path.normcase(want)):

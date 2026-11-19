@@ -488,16 +488,6 @@
             sy = 1 - eyeInstance.squash * 0.03;
           }
           this.puppet.scale.set(sx, sy);
-
-          // Eklemli kurdele sallanimi
-          const windAmp = 0.06 + this.smoothSpeed * 0.18;
-          for (const r of this.ribbons) {
-            r.joint.rotation =
-              r.side * 0.08 +
-              Math.sin(elapsed * (2.6 + this.smoothSpeed * 4) + r.side) *
-                windAmp -
-              this.puppet.rotation * 1.4;
-          }
         });
 
         document.body.classList.add("sunak-gpu");

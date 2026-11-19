@@ -48,7 +48,18 @@
         <div id="guides"></div>
         <div id="handles"></div>
       </div>
-      <div id="emptyHint"><div><b>Videoları buraya bırak</b>ya da Medya sayfasından ekle</div></div>
+      <div id="emptyHint">
+        <div class="eh-hub">
+          <b>Videoları buraya bırak</b>
+          <span class="eh-sub">veya hızlıca başla / son projene dön</span>
+          <div class="eh-acts">
+            <button class="tb pri" data-a="import">+ Medya Ekle</button>
+            <button class="tb" data-a="new">Yeni Proje</button>
+            <button class="tb" data-a="open">Dosyadan Aç</button>
+          </div>
+          <div id="ehRecent" class="eh-rec"></div>
+        </div>
+      </div>
       <div id="transport">
         <button class="tp" data-a="home" title="Başa (Home)">⏮</button>
         <button class="tp" data-a="back" title="1 kare geri (←)">‹</button>

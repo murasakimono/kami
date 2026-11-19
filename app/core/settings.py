@@ -70,7 +70,7 @@ DEFAULTS: dict[str, Any] = {
     "auto_backup": True,           # haftada bir otomatik .kamibak yedegi (son 4'u tut)
     "auto_backup_last": 0,
     # Gorsel efektler & animasyonlar (hepsi ayarlardan acilip kapatilabilir)
-    "sunak_bg_mode": "obsidian",   # obsidian (GLSL) | particles (klasik parcacik) | off
+    "sunak_bg_mode": "obsidian",   # obsidian (GLSL) | spirit_fire (Ruh Atesi GLSL) | particles (klasik parcacik) | off
     "ui_transitions": True,        # View Transitions + komut satirindan halkaya enerji kivilcimi
     "kamify_ambiance": True,       # Kamify kapak rengine uyumlu dinamik arka plan ambiyansi
     "games_tilt": True,            # Kami Games kartlarinda fare takipli 3D egim + krom yansima

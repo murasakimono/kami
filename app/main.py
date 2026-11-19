@@ -49,6 +49,8 @@ def _set_hwnd_app_id(title: str, app_id: str) -> None:
         hwnd = ctypes.windll.user32.FindWindowW(None, title)
         if not hwnd:
             return
+        from app.core import winwin
+        winwin.set_caption_color(hwnd=hwnd)
         iid = (ctypes.c_byte * 16).from_buffer_copy(bytes.fromhex("886d8eeb8cf244468d02cdba1dbdcf99"))
         store = ctypes.c_void_p()
         if ctypes.windll.shell32.SHGetPropertyStoreForWindow(hwnd, ctypes.byref(iid), ctypes.byref(store)) != 0 or not store:
@@ -86,6 +88,8 @@ def _set_hwnd_icon(title: str, key: str, accent: tuple[int, int, int] | None = N
         hwnd = ctypes.windll.user32.FindWindowW(None, title)
         if not hwnd:
             return
+        from app.core import winwin
+        winwin.set_caption_color(hwnd=hwnd)
         for idx, sz in ((0, 16), (1, 32)):
             hi = ctypes.windll.user32.LoadImageW(0, str(ico), 1, sz, sz, 0x10)
             if hi:
@@ -832,7 +836,7 @@ def main() -> int:
 
     def bind_main(w) -> None:
         api._set_window(w)
-        w.events.loaded += lambda: bind_drop(w)
+        w.events.loaded += lambda: (bind_drop(w), winwin.set_caption_color("Kami"))
         w.events.closing += on_closing
         w.events.closed += on_main_closed
 
