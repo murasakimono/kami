@@ -706,17 +706,19 @@ body.kami-hidden .km-eq i {
 .km-ripple::after {
   content: "";
   position: absolute;
-  inset: -1px;
+  inset: -2px;
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
-  transform: scale(0.9);
-  background: radial-gradient(circle at center, rgba(46, 230, 166, 0.14), transparent 62%);
-  transition: opacity 240ms var(--km-ease-out), transform 240ms var(--km-ease-out);
+  transform: scale(0.92);
+  background: radial-gradient(circle at 50% 40%, rgba(46, 230, 166, 0.28), rgba(157, 107, 255, 0.12) 55%, transparent 75%);
+  box-shadow: 0 0 18px rgba(46, 230, 166, 0.20);
+  transition: opacity 260ms var(--km-ease-out), transform 260ms var(--km-ease-out), box-shadow 260ms var(--km-ease-out);
 }
 .km-ripple:hover::after {
   opacity: 1;
-  transform: scale(1.05);
+  transform: scale(1.06);
+  box-shadow: 0 0 26px rgba(46, 230, 166, 0.32);
 }
 
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */

@@ -24,7 +24,7 @@ AppPublisherURL=https://github.com/murasakimono/kami
 DefaultDirName={localappdata}\Programs\Kami
 DefaultGroupName=Kami
 DisableProgramGroupPage=yes
-DisableDirPage=auto
+DisableDirPage=no
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir={#OutDir}
@@ -106,8 +106,14 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  RC: Integer;
 begin
   QuitKami(ExpandConstant('{app}'));
+  { MCP (--studio-mcp) / WebView2 / uv gibi kilitli kalan surecleri zorla temizle (base_library.zip kilidi) }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Kami.exe /T', '', SW_HIDE, ewWaitUntilTerminated, RC);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM msedgewebview2.exe /T', '', SW_HIDE, ewWaitUntilTerminated, RC);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM uv.exe /T', '', SW_HIDE, ewWaitUntilTerminated, RC);
   Result := '';
 end;
 

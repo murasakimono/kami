@@ -46,12 +46,12 @@
         vec2 fq=vec2(fbm(p*2.3+vec2(ft*0.30,-ft*0.22)), fbm(p*2.3+vec2(-ft*0.24,ft*0.31)+5.1));
         float fn=fbm(p*3.0+fq*1.5+ft*0.14);
         float flow=sin(p.x*3.0+fn*4.2+ft*1.15)*sin(p.y*3.4-fn*3.8+ft*0.85);
-        float ribbon=smoothstep(0.52,0.98,abs(flow))*(0.45+0.55*sin(p.y*8.0+ft*2.1));
-        vec3 fbase=vec3(0.012,0.008,0.030);
-        vec3 fneon=mix(vec3(0.56,0.17,0.96),vec3(0.10,0.95,0.66),smoothstep(-0.35,0.60,flow));
-        float fglow=exp(-distA*2.2)*(0.30+0.40*u_speed+0.35*u_pulse);
-        vec3 fcol=fbase+fneon*ribbon*(0.42+0.55*u_speed+0.45*u_pulse)*vig+fneon*fglow;
-        gl_FragColor=vec4(1.0-exp(-fcol*1.18),1.0);
+        float ribbon=smoothstep(0.34,0.97,abs(flow))*(0.5+0.5*sin(p.y*8.0+ft*2.1));
+        vec3 fbase=vec3(0.010,0.006,0.028);
+        vec3 fneon=mix(vec3(0.62,0.18,1.0),vec3(0.08,1.0,0.66),smoothstep(-0.35,0.60,flow));
+        float fglow=exp(-distA*2.0)*(0.45+0.55*u_speed+0.50*u_pulse);
+        vec3 fcol=fbase+fneon*ribbon*(1.0+0.6*u_speed+0.5*u_pulse)*vig+fneon*fglow*1.4;
+        gl_FragColor=vec4(1.0-exp(-fcol*1.15),1.0);
         return;
       }
       if(u_mode > 0.5){
