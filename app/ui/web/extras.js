@@ -7,7 +7,8 @@ function syncToolbar() {
   const s = state.settings;
   const lim = Number(s.speed_limit_kib || 0);
   const btn = $("#speedToggle");
-  btn.textContent = lim ? T("speed_on", fmtBytes(lim * 1024) + "/s") : T("speed_off");
+  const lbl = lim === 512 ? "Hafif · " : (lim === 2048 ? "Orta · " : "");
+  btn.textContent = lim ? lbl + fmtBytes(lim * 1024) + "/s" : T("speed_off");
   btn.classList.toggle("on", !!lim);
   const sel = $("#concSel");
   const cur = Number(s.max_concurrent || 3);
@@ -27,7 +28,10 @@ async function setSetting(k, v) {
 function bindToolbarExtras() {
   $("#speedToggle").addEventListener("click", async () => {
     const lim = Number(state.settings.speed_limit_kib || 0);
-    await setSetting("speed_limit_kib", lim ? 0 : Number(state.settings.speed_limit_preset_kib || 2048));
+    const steps = [0, 512, 2048];   // Sınırsız -> Hafif -> Orta
+    const i = steps.indexOf(lim);
+    const next = steps[(i < 0 ? 1 : i + 1) % steps.length];
+    await setSetting("speed_limit_kib", next);
     syncToolbar();
   });
   $("#concSel").addEventListener("change", async (e) => { await setSetting("max_concurrent", Number(e.target.value)); syncToolbar(); });
