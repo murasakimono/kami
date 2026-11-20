@@ -766,6 +766,13 @@ body.km-grain::after {
 .km-skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.09), transparent); animation: km-shimmer 1.4s ease-in-out infinite; }
 @keyframes km-shimmer { 100% { transform: translateX(100%); } }
 
+/* Mesh gradyan ambiyansı (motion_mesh) */
+body.km-mesh::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: .06; mix-blend-mode: screen; background: radial-gradient(90% 90% at 15% 20%, rgba(157,107,255,.5), transparent 45%), radial-gradient(90% 90% at 85% 80%, rgba(46,230,166,.4), transparent 45%); animation: km-mesh-drift 18s ease-in-out infinite alternate; }
+@keyframes km-mesh-drift { 0% { transform: scale(1) translate(0, 0); } 50% { transform: scale(1.06) translate(-1%, 1%); } 100% { transform: scale(1.02) translate(1%, -1%); } }
+
+/* Sivi (gooey) filtre (motion_gooey) */
+.km-gooey { filter: url(#km-gooey-f); }
+
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
 @media (prefers-reduced-motion: reduce) {
   .km-pop-origin, .km-toast, .km-glider, .km-glow::after,

@@ -591,6 +591,15 @@ function scramble(el, text) {
     if (frame >= total) { clearInterval(el._scrT); el.textContent = text; }
   }, 28);
 }
+function initGooey() {
+  if (isReduced() || !cardFx.gooey) return;
+  if (document.getElementById("kmGooeyDefs")) return;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.id = "kmGooeyDefs"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.setAttribute("aria-hidden", "true");
+  svg.style.position = "absolute";
+  svg.innerHTML = '<defs><filter id="km-gooey-f"><feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="g"/><feComposite in="SourceGraphic" in2="g" operator="atop"/></filter></defs>';
+  document.body.appendChild(svg);
+}
 function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
@@ -598,6 +607,7 @@ function bootstrap() {
     initMicro();
     initAdvanced();
     initMagnet();
+    initGooey();
     const bindKnownGliders = () => {
       const cl = document.getElementById("clTabs");
       if (cl) bindGlider(cl, ".cl-tab", "on");
@@ -663,7 +673,10 @@ function bootstrap() {
       document.body.classList.toggle("km-skeleton-on", s.motion_skeleton === true);
       cardFx.magnet = s.motion_magnet === true;
       cardFx.scramble = s.motion_scramble === true;
+      document.body.classList.toggle("km-mesh", s.motion_mesh === true);
+      cardFx.gooey = s.motion_gooey === true;
       initMagnet();
+      initGooey();
       document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));
       initMicro();
       initAdvanced();
