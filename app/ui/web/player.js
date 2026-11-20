@@ -177,6 +177,7 @@ function plStart(r) {
   const el = $("#player"), v = $("#plVideo");
   window.plIdle?.(false);
   Object.assign(PL, { open: true, info: r, mode: r.mode, offset: 0, audio: 0, failed: 0, dur: r.duration || 0, cues: [], subIdx: -1, subShift: 0 });
+  PL.abA = null; PL.abB = null; plAbUi();
   el.hidden = false; el.classList.toggle("is-audio", r.kind === "audio");
   document.body.classList.add("pl-open");
   $("#plTitle").textContent = r.title;
