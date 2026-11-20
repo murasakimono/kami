@@ -1068,6 +1068,15 @@ class Api(StudioMixin):
         self._manager.store.update(d.id, extra=extra)
         return {"ok": True, "sha256": got, "expected": exp, "match": (got == exp) if exp else None}
 
+    def provenance_read(self, download_id: int) -> dict[str, Any]:
+        """Dosyanin kaynak kaydini (sidecar) okur; yoksa bos doner."""
+        from app.core import provenance
+        d = self._manager.store.get(int(download_id))
+        if not d or not d.path:
+            return {"ok": False, "error": "no_file"}
+        rec = provenance.read(d.path)
+        return {"ok": True, "provenance": rec} if rec else {"ok": False, "provenance": None}
+
     def set_favorite(self, download_id: int, on: bool = True) -> bool:
         d = self._manager.store.get(int(download_id))
         if not d:

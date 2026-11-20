@@ -872,6 +872,13 @@ class DownloadManager:
             except Exception:
                 log.debug("Motor kaldirma basarisiz (tamamlanma temizligi): %s", d.gid)
             changes["gid"] = ""
+        # Kami Provenance: dosyanin yanina kanitlanabilir kaynak kaydi (sidecar)
+        try:
+            from app.core import provenance
+            provenance.write(d.path, url=d.url, size=d.size, referer=d.referer,
+                             page_url=d.page_url, source=d.source, category=d.category, extra=d.extra)
+        except Exception:
+            log.debug("Provenance yazilamadi: %s", d.path)
         return changes
 
     @staticmethod
