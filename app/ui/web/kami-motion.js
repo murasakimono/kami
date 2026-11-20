@@ -577,6 +577,20 @@ function initMagnet() {
     el.addEventListener("pointerleave", () => { el.style.transform = ""; });
   });
 }
+function scramble(el, text) {
+  if (!el || isReduced() || !cardFx.scramble) { if (el) el.textContent = text; return; }
+  const chars = "!<>-_[]{}%=+*^?#";
+  let frame = 0; const total = 14;
+  clearInterval(el._scrT);
+  el._scrT = setInterval(() => {
+    frame++;
+    const done = Math.floor((frame / total) * (text || "").length);
+    let out = "";
+    for (let i = 0; i < (text || "").length; i++) out += i < done ? text[i] : chars[(Math.random() * chars.length) | 0];
+    el.textContent = out;
+    if (frame >= total) { clearInterval(el._scrT); el.textContent = text; }
+  }, 28);
+}
 function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
@@ -639,13 +653,16 @@ function bootstrap() {
     sparkBurst,
     wave,
     gather,
+    scramble,
     applySettings(s) {
       if (!s) return;
       cardFx.tilt = s.games_tilt !== false;
       cardFx.ripple = s.card_ripple === true;
       cardFx.advanced = s.advanced_micro_animations !== false;
       document.body.classList.toggle("km-grain", s.motion_grain === true);
+      document.body.classList.toggle("km-skeleton-on", s.motion_skeleton === true);
       cardFx.magnet = s.motion_magnet === true;
+      cardFx.scramble = s.motion_scramble === true;
       initMagnet();
       document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));
       initMicro();

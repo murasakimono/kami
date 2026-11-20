@@ -761,6 +761,11 @@ body.km-grain::after {
 /* Manyetik buton (motion_magnet) */
 .km-magnet { transition: transform 180ms var(--km-ease-out); will-change: transform; }
 
+/* Iskelet parilti (motion_skeleton) */
+.km-skeleton { position: relative; overflow: hidden; background: rgba(157,107,255,.10); border-radius: 6px; color: transparent !important; }
+.km-skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.09), transparent); animation: km-shimmer 1.4s ease-in-out infinite; }
+@keyframes km-shimmer { 100% { transform: translateX(100%); } }
+
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
 @media (prefers-reduced-motion: reduce) {
   .km-pop-origin, .km-toast, .km-glider, .km-glow::after,
