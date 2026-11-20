@@ -502,10 +502,27 @@
   }
 
   // 15. Bootstrap
-  function bootstrap() {
+    // M10: Bitiş halka nabzı (tamamlanan öğede tek seferlik genişleyen halka)
+  function pulseRing(el) {
+    if (!el || isReduced()) return;
+    el.classList.remove("km-pulse-ring");
+    void el.offsetWidth;
+    el.classList.add("km-pulse-ring");
+    clearTimeout(el._kmPulseT);
+    el._kmPulseT = setTimeout(() => el.classList.remove("km-pulse-ring"), 600);
+  }
+
+  // M9: Kart eğilmesi (tilt) — hover'da 3D derinlik
+  function initMicro() {
+    if (isReduced()) return;
+    document.querySelectorAll(".gcard, .qa-card, .acard").forEach((c) => c.classList.add("km-tilt"));
+  }
+
+function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
     initDragPortals();
+    initMicro();
     const bindKnownGliders = () => {
       const cl = document.getElementById("clTabs");
       if (cl) bindGlider(cl, ".cl-tab", "on");
@@ -557,5 +574,6 @@
     cascade,
     eqHtml,
     initDragPortals,
+    pulseRing,
   };
 })();

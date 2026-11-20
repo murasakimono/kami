@@ -605,11 +605,51 @@ body.kami-hidden .km-eq i {
   color: #fff;
 }
 
+/* ---- M7: Ruh nefesi (idle breathing) — maskot gözü/glow yavaşça nefes alır ---- */
+.km-breathe {
+  animation: km-breathe 4.2s ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes km-breathe {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.82; }
+}
+
+/* ---- M8: Kıvılcım parıltısı — Sunak arka plan parçacıkları hafifçe parıldar ---- */
+.km-twinkle {
+  animation: km-twinkle 2.8s ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes km-twinkle {
+  0%, 100% { transform: scale(0.4); opacity: 0.12; }
+  50% { transform: scale(1); opacity: 0.85; }
+}
+
+/* ---- M9: Kart eğilmesi (tilt) — hover'da 3D derinlik + zümrüt/mor gölge ---- */
+.km-tilt {
+  transition: transform 200ms var(--km-ease-out), box-shadow 200ms var(--km-ease-out);
+  transform: perspective(900px) rotateX(0) rotateY(0);
+}
+.km-tilt:hover {
+  transform: perspective(900px) rotateX(1.6deg) rotateY(-1.6deg) translateY(-2px);
+  box-shadow: 0 14px 34px -14px rgba(157, 107, 255, 0.55);
+}
+
+/* ---- M10: Bitiş halka nabzı — tamamlanan öğede tek seferlik genişleyen halka ---- */
+.km-pulse-ring {
+  animation: km-pulse-ring 560ms var(--km-ease-out) 1;
+}
+@keyframes km-pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(46, 230, 166, 0.55); }
+  100% { box-shadow: 0 0 0 12px rgba(46, 230, 166, 0); }
+}
+
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
 @media (prefers-reduced-motion: reduce) {
   .km-pop-origin, .km-toast, .km-glider, .km-glow::after,
   #kmTip, .km-odo-track, .km-hold-ring .km-hr-fg,
   .km-cascade-item, .km-eq i,
+  .km-breathe, .km-twinkle, .km-tilt, .km-pulse-ring,
   .rd-main::before, #settingsForm .dialog-head::after, .cl-scroll::before,
   #sunak .sk-strip.burst .sk-paper::after, .km-absorb,
   #k20AiDropZone.drag, .cv-drop.drag, .pc-stage.drag, #rdStage.drag, #chat.drop,
