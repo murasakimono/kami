@@ -1130,6 +1130,39 @@ class Api(StudioMixin):
         self._manager.events.emit("download.updated", download=nd)
         return {"ok": True, "path": new}
 
+    def batch_rename(self, pairs: list[dict]) -> dict[str, Any]:
+        """Toplu yeniden adlandirma: [{path, new_name}] — her biri geri alinabilir (oplog). Uzanti korunur."""
+        done = []
+        errors = []
+        oplog = getattr(self._manager, "oplog", None)
+        for it in pairs or []:
+            src = str((it or {}).get("path") or "").strip()
+            nn = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str((it or {}).get("new_name") or "")).strip().rstrip(". ")
+            if not src or not nn or not os.path.isfile(src):
+                errors.append({"path": src, "error": "invalid"})
+                continue
+            ext = os.path.splitext(src)[1]
+            if ext and not nn.lower().endswith(ext.lower()):
+                nn += ext
+            dst = os.path.join(os.path.dirname(src), nn)
+            if os.path.normcase(dst) == os.path.normcase(src):
+                continue
+            if os.path.exists(dst):
+                errors.append({"path": src, "error": "exists"});
+                continue
+            try:
+                os.rename(src, dst)
+            except OSError as exc:
+                errors.append({"path": src, "error": str(exc)[:120]});
+                continue
+            if oplog:
+                try:
+                    oplog.record("rename", src, dst)
+                except Exception:
+                    pass
+            done.append({"path": dst, "old": src})
+        return {"ok": True, "done": done, "errors": errors}
+
     # ---------- surukle-birak ----------
     def drop_torrent(self, b64: str) -> dict[str, Any]:
         import base64

@@ -78,6 +78,7 @@
           <button class="eco-tab" data-tab="bypass" data-grp="arac">Kami Bypass</button>
           <button class="eco-tab" data-tab="season" data-grp="arac">Sezon Kazıyıcı</button>
           <button class="eco-tab" data-tab="grab" data-grp="arac">Kami Grab-All</button>
+    <button class="eco-tab" data-tab="rename" data-grp="arac">Toplu Adlandır</button>
           <div class="eco-tgrp" data-grp="ses">Ses & Oyun</div>
           <button class="eco-tab" data-tab="beat" data-grp="ses">Kami Beat</button>
           <button class="eco-tab" data-tab="hunter" data-grp="ses">Kami Hunter</button>
@@ -122,6 +123,7 @@
       doctor: [I('<path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="9"/>'), "Sağlık kontrolleri ve tek tık onarım"],
       jobs: [I('<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>'), "Süren arka plan işleri"],
       echo: [I('<path d="M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0z"/><path d="M12 8v4l3 2"/>'), "Geri alınabilir taşıma / ad değiştirme işlemleri"],
+      rename: [I('<path d="M4 5h16M4 12h10M4 19h16"/><path d="M14 8l4 4-4 4"/>'), "Dosyaları önek + sayaç ile toplu yeniden adlandır (Echo ile geri alınır)"],
     };
     root.querySelectorAll(".eco-tab").forEach((b) => { const m = META[b.dataset.tab]; if (m) b.innerHTML = `${m[0]}<span><b>${b.textContent}</b><small>${m[1]}</small></span>`; });
     root.addEventListener("click", (e) => {
@@ -172,6 +174,16 @@
     if (activeTab === "doctor") {
       bd.innerHTML = `<div class="eco-card" id="ecoDocHost"><div class="eco-hint">Kontrol ediliyor…</div></div>`;
       window.KamiDoctor?.renderInto?.(bd.querySelector("#ecoDocHost"));
+      return;
+    }
+
+    if (activeTab === "rename") {
+      bd.innerHTML = `<div class="eco-card"><strong>Toplu Adlandır</strong><div class="eco-hint">Her satıra bir dosya yolu yapıştır (örn. C:/videolar/a.mp4); önek + sayaç ile yeniden adlandırılır. Echo ile geri alınabilir.</div><textarea id="renPaths" class="eco-in" rows="6" placeholder="C:/videolar/a.mp4" style="width:100%;min-height:90px"></textarea><div class="eco-row" style="margin-top:6px"><input class="eco-in" id="renPrefix" placeholder="Önek (örn. tatil_)" style="flex:1"><input class="eco-in" id="renStart" type="number" value="1" style="width:80px"></div><div class="eco-hint" id="renPrev" style="white-space:pre-wrap;min-height:20px"></div><div class="eco-row"><button class="eco-btn" id="renGo">Uygula</button><span class="eco-hint">Uzantı korunur; çakışan adlar atlanır.</span></div></div>`;
+      const paths = () => (($("#renPaths").value || "").split(String.fromCharCode(10)).map(s => s.trim()).filter(Boolean));
+      const refresh = () => { const p = ($("#renPrefix").value || "").trim(), s = +$("#renStart").value || 1; $("#renPrev").textContent = paths().map((f, i) => { const e = (f.split(".").pop() || "").toLowerCase(); return p + String(s + i).padStart(3, "0") + (e ? "." + e : ""); }).join(String.fromCharCode(10)); };
+      ["renPaths", "renPrefix", "renStart"].forEach(id => $("#" + id).addEventListener("input", refresh));
+      refresh();
+      $("#renGo").onclick = async () => { const p = ($("#renPrefix").value || "").trim(), s = +$("#renStart").value || 1; const pairs = paths().map((f, i) => { const e = (f.split(".").pop() || "").toLowerCase(); return { path: f, new_name: p + String(s + i).padStart(3, "0") + (e ? "." + e : "") }; }); if (!pairs.length) { alert("Önce dosya yolu yapıştır"); return; } const r = await ld(api.batch_rename?.(pairs), null); alert(r && r.ok ? (r.done.length + " dosya yeniden adlandırıldı" + (r.errors.length ? ", " + r.errors.length + " hata" : "")) : "Hata"); };
       return;
     }
 
