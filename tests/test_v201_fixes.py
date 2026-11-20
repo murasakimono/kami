@@ -13,7 +13,8 @@ WEB = ROOT / "app" / "ui" / "web"
 def test_version_201():
     from app.core import extras
 
-    assert extras.APP_VERSION == "2.0.2"
+    parts = extras.APP_VERSION.split(".")
+    assert len(parts) == 3 and all(p.isdigit() for p in parts), extras.APP_VERSION   # her surumde elle degismez
 
 
 def test_notification_center_list_limit():

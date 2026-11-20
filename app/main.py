@@ -1170,6 +1170,10 @@ def main() -> int:
     ai = aitools.AiQueue(settings, media_post.set_extra,
                          lambda did: (manager.store.get(did).path if manager.store.get(did) else ""),
                          notify=api._on_ai_event)
+    try:
+        aitools.reset_stale_ai(manager.store)
+    except Exception:
+        log.exception("Takili AI isleri temizlenemedi")
     media_post.ai = ai
     post.media = media_post
     api._media_post, api._ai, api._genius = media_post, ai, genius

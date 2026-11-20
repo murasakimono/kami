@@ -390,6 +390,71 @@ def _run_json(args: list[str], on_msg: Callable[[dict], None], cancel: threading
     return res
 
 
+def kill_tree(p: subprocess.Popen) -> None:
+    """Alt sureci ve tum torunlarini oldur (Windows: taskkill /T /F; yoksa p.kill)."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True, timeout=15,
+                           creationflags=NO_WINDOW)
+        if p.poll() is None:
+            p.kill()
+    except Exception:   # noqa: BLE001
+        try:
+            p.kill()
+        except Exception:   # noqa: BLE001
+            pass
+
+
+def cleanup_ai_partials(path: str, kind: str) -> None:
+    """Oldurulen AI isinden kalan yarim ciktilar (disk_state bunlari 'done' sanmasin).
+
+    - whisper: <stem>*.srt.part (atomik yazim oncesi kalan yedek)
+    - uvr:     Ayrilmis/<stem> (Vokal|Enstrumantal).* (audio-separator dogrudan yazar, yarim kalir)
+    """
+    if not path or kind not in ("whisper", "uvr"):
+        return
+    import glob
+    d, fn = os.path.split(path)
+    stem = os.path.splitext(fn)[0]
+    try:
+        if kind == "whisper":
+            for cand in glob.glob(os.path.join(d, stem + "*.srt.part")):
+                try:
+                    os.remove(cand)
+                except OSError:
+                    pass
+        else:
+            for base in (f"{stem} (Vokal)", f"{stem} (Enstrumantal)"):
+                for cand in glob.glob(os.path.join(d, "Ayrilmis", base + ".*")):
+                    try:
+                        os.remove(cand)
+                    except OSError:
+                        pass
+    except OSError:
+        pass
+
+
+def reset_stale_ai(store) -> int:
+    """Acilista: onceki kapanistan kalan queued/running ai_* bayraklarini temizle (is gercekte olu)."""
+    n = 0
+    for d in store.list():
+        x = dict(d.extra or {})
+        dirty = False
+        for kind in JOBS:
+            if x.get(f"ai_{kind}") in ("queued", "running"):
+                for k in list(x):
+                    if k == f"ai_{kind}" or (k.startswith(f"ai_{kind}_") and k.rsplit("_", 1)[-1] in ("p", "err")):
+                        x.pop(k, None)
+                cleanup_ai_partials(getattr(d, "path", ""), kind)
+                dirty = True
+        if dirty:
+            store.update(d.id, extra=x)
+            n += 1
+    if n:
+        log.info("Takili AI isi bayragi temizlendi: %s kayit", n)
+    return n
+
+
 def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading.Event, tool: str,
               extra_env: dict) -> dict:
     """Alt sureci calistir. Argumanlar komut satirinda DEGIL, UTF-8 JSON dosyasinda gider (dosya adinda &, Turkce harf vb.)."""
@@ -398,6 +463,7 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
     fd, argfile = tempfile.mkstemp(prefix="kami_args_", suffix=".json", dir=env.get("TEMP") or None)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(args[1:], f, ensure_ascii=False)
+    finished = threading.Event()
     try:
         _diag_popen(tool, env, argfile)
         p = subprocess.Popen([python_exe(tool), "-m", args[0], "@" + argfile], cwd=str(paths.TOOLSRC_DIR),
@@ -405,8 +471,13 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
                              encoding="utf-8", errors="replace", creationflags=NO_WINDOW, env=env)
         last: dict = {"error": "no_output"}
         noise: list[str] = []
-        watcher = threading.Thread(target=lambda: (cancel.wait(), p.poll() is None and p.kill()), daemon=True)
-        watcher.start()
+        def _watch() -> None:
+            while not finished.is_set():
+                if cancel.wait(0.5):
+                    if p.poll() is None:
+                        kill_tree(p)   # Iptal: alt surec + torunlari oldurulur, stdout kapanir
+                    return
+        threading.Thread(target=_watch, name="kami-ai-cancel", daemon=True).start()
         for line in p.stdout or []:
             try:
                 msg = json.loads(line)
@@ -421,6 +492,7 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
             on_msg(msg)
         rc = p.wait()
     finally:
+        finished.set()
         try:
             os.remove(argfile)
         except OSError:
@@ -639,7 +711,9 @@ class AiQueue:
     def cancel(self, kind: str, did: int) -> None:
         ev = self._cancel.get((kind, did))
         if ev:
-            ev.set()
+            ev.set()   # calisan alt sureci agaciyla oldurur (bkz. _run_once); kuyrukta bekleyen is atlanir
+            self.set_extra(did, **{f"ai_{kind}": "cancelled", f"ai_{kind}_p": 0})
+            cleanup_ai_partials(self.get_path(did) or "", kind)
 
     def _loop(self) -> None:
         while True:

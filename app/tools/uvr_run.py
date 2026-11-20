@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import sys
 import threading
@@ -56,7 +57,7 @@ def main(argv: list[str]) -> int:
 
         def tick() -> None:
             while not stop.wait(1.0):
-                emit(p=round(min(0.3 + 0.65 * (time.time() - t0) / est, 0.95), 3))
+                emit(p=round(0.3 + 0.67 * (1 - math.exp(-(time.time() - t0) / est)), 3))   # %95'te donmaz, asimptotik yaklasir
         threading.Thread(target=tick, daemon=True).start()
     base = os.path.splitext(os.path.basename(src))[0]
     try:
