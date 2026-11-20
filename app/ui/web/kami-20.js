@@ -155,8 +155,9 @@
     if (document.hidden) return;
     const r = await callApi()?.active_jobs_hud?.().catch(() => null);
     const cnt = Number(r?.count || 0);
-    if (!r?.ok || cnt <= 0) {
-      // KURAL: Ortada is yokken orada bulunmaya devam etmemeli!
+    if (true) {
+      // HUD ana arayüzde KALDIRILDI (kullanıcı: indirme kartı zaten ilerlemeyi gösteriyor).
+      // İş listesi Ekosistem > İşler'de; active_jobs_hud API'si AI LRC akışında (aşağıda) kullanılmaya devam eder.
       hud.hidden = true;
       pop.hidden = true;
       popOpen = false;
@@ -178,8 +179,7 @@
     }
   }
   if (!location.pathname.endsWith("mini-island.html") && !location.pathname.endsWith("pin.html")) {
-    window.addEventListener("focus", pollActiveJobs);
-    setInterval(() => { if (!document.hidden && document.hasFocus()) pollActiveJobs(); }, 3000);
+    // HUD kaldırıldığı için periyodik yoklama da kaldırıldı.
   }
 
   // ---- 2. A2: Zaman/Sayfa Damgali Yuzen Karalama Karti (Alt+N) ----
