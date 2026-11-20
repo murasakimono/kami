@@ -552,30 +552,14 @@
     el._kmGatherT = setTimeout(() => el.classList.remove("km-gather"), 560);
   }
 
-  // M15-M18: gelişmiş mikro-animasyonlar (elastic, 3D flip, glow trail)
-  let glowTrail = null;
+  // M15-M18: gelişmiş mikro-animasyonlar (elastic, lift, particle gather)
   function initAdvanced() {
     if (isReduced() || !cardFx.advanced) {
-      if (glowTrail) { glowTrail.remove(); glowTrail = null; }
-      document.querySelectorAll(".km-elastic, .km-flip3d").forEach((c) => c.classList.remove("km-elastic", "km-flip3d"));
+      document.querySelectorAll(".km-elastic, .km-lift").forEach((c) => c.classList.remove("km-elastic", "km-lift"));
       return;
     }
     document.querySelectorAll(".btn, .sk-tab, .cl-tab, .nav-b, .chip").forEach((c) => c.classList.add("km-elastic"));
-    document.querySelectorAll(".nav-b, .sk-tab").forEach((c) => c.classList.add("km-flip3d"));
-    if (!glowTrail) {
-      glowTrail = document.createElement("div");
-      glowTrail.id = "kmGlowTrail";
-      document.body.appendChild(glowTrail);
-      let tId = null;
-      document.addEventListener("mousemove", (e) => {
-        if (!glowTrail) return;
-        glowTrail.style.left = e.clientX + "px";
-        glowTrail.style.top = e.clientY + "px";
-        glowTrail.style.opacity = "1";
-        clearTimeout(tId);
-        tId = setTimeout(() => { if (glowTrail) glowTrail.style.opacity = "0"; }, 480);
-      }, { passive: true });
-    }
+    document.querySelectorAll(".nav-b, .sk-tab").forEach((c) => c.classList.add("km-lift"));
   }
 
 function bootstrap() {
