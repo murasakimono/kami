@@ -114,6 +114,7 @@ body.pl-open #sunak { visibility: hidden; }
 #player .pl-tip b { font-weight: 600; padding: 0 6px; }
 #player .pl-b:disabled { opacity: .35; cursor: default; }
 #player .pl-b.pri { background: #3B1580; color: #fff; }
+#player .pl-b.on { background: #3B1580; color: #fff; }
 
 /* siradaki bolum karti */
 #player .pl-next { position: absolute; right: 22px; bottom: 118px; width: 300px; padding: 14px 16px; background: rgba(16, 12, 24, .96); box-shadow: inset 3px 0 0 #2EE6A6; display: flex; flex-direction: column; gap: 6px;

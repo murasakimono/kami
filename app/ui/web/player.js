@@ -44,6 +44,7 @@ function plBuild() {
           <select class="pl-sel" id="plSub" title="${plL("Altyazı (C)", "Subtitles (C)")}"></select>
           <select class="pl-sel" id="plAud" title="${plL("Ses izi", "Audio track")}"></select>
           <select class="pl-sel" id="plRate" title="${plL("Hız", "Speed")}">${[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => `<option value="${r}" ${r === 1 ? "selected" : ""}>${r}×</option>`).join("")}</select>
+          <button class="pl-b" data-pl="abA" id="plAbA" title="A-B tekrar: A noktası">A</button><button class="pl-b" data-pl="abB" id="plAbB" title="A-B tekrar: B noktası">B</button>
           <label class="pl-vol" title="${plL("Ses (↑ ↓, M)", "Volume (↑ ↓, M)")}"><button class="pl-b" data-pl="mute" id="plMute">◢</button><input type="range" id="plVol" min="0" max="2" step="0.02" value="1"></label>
           <button class="pl-b" data-pl="mini" title="${plL("Mini oynatıcı (B)", "Mini player (B)")}">▭</button>
           <button class="pl-b" data-pl="ocr" title="${plL("Ekrandaki yazıyı oku (O)", "Read on-screen text (O)")}">⌗</button>
@@ -104,7 +105,7 @@ function plBuild() {
   el.addEventListener("click", (e) => {
     const b = e.target.closest("[data-pl]"); if (!b) return;
     ({ back: () => plSeek(plNow() - 10), fwd: () => plSeek(plNow() + 10), mute: () => { v.muted = !v.muted; plVolUi(); }, full: plFull,
-       prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), queue: () => window.plDrawer?.(), settings: () => window.plSettings?.(), ocr: () => plOcrStart(), mini: () => window.plMini?.() })[b.dataset.pl]?.();
+       prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), queue: () => window.plDrawer?.(), settings: () => window.plSettings?.(), ocr: () => plOcrStart(), mini: () => window.plMini?.(), abA: () => plAbMark("A"), abB: () => plAbMark("B") })[b.dataset.pl]?.();
   });
   $("#plVol").addEventListener("input", (e) => { v.muted = false; plSetVol(+e.target.value); });
   $("#plRate").addEventListener("change", (e) => { v.playbackRate = +e.target.value; });
@@ -323,6 +324,22 @@ function plTick() {
   const ring = $("#plRing"); if (ring) ring.style.strokeDashoffset = String(100 - (PL.dur ? Math.min(1, t / PL.dur) : 0) * 100);
   if (!PL.seeking) plDrawPos(t);
   plSubDraw(t);
+  if (PL.abA != null && PL.abB != null && PL.abB > PL.abA && t > PL.abB) plSeek(PL.abA);
+}
+function plAbMark(which) {
+  const now = plNow();
+  if (which === "A") {
+    if (PL.abA != null && PL.abB != null) { PL.abA = PL.abB = null; plAbUi(); toast(plL("A-B tekrar kapandı", "A-B repeat off")); return; }
+    PL.abA = now; plAbUi(); toast(plL("A işaretlendi: ", "A set: ") + fmtT(now));
+  } else {
+    if (PL.abA == null) { toast(plL("Önce A işaretle", "Set A first")); return; }
+    PL.abB = now; plAbUi(); toast(plL("B işaretlendi: ", "B set: ") + fmtT(now));
+  }
+}
+function plAbUi() {
+  const a = $("#plAbA"), b = $("#plAbB");
+  if (a) a.classList.toggle("on", PL.abA != null);
+  if (b) b.classList.toggle("on", PL.abB != null);
 }
 function plDrawPos(t) {
   const p = PL.dur ? Math.min(1, t / PL.dur) * 100 : 0;
