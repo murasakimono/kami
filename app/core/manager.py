@@ -703,9 +703,9 @@ class DownloadManager:
                 self._start_engine(self.store.update(d.id, gid="", status=Status.QUEUED))  # type: ignore[arg-type]
             return
         new_status = _ARIA2_TO_STATUS.get(s["status"], d.status)
-        if new_status == Status.ERROR and d.status != Status.ERROR and d.kind != "torrent" \
-                and (self._refresh_link(d, s) or self._auto_retry(d, s)):
-            return
+        if new_status == Status.ERROR and d.status != Status.ERROR and d.kind != "torrent":
+            if self._refresh_link(d, s) or self._auto_retry(d, s) or self._ghost_resume(d, s):
+                return
         if d.status == Status.PAUSED and new_status in (Status.ACTIVE, Status.WAITING):
             new_status = Status.PAUSED  # pause istegi motora henuz yansimadi
         fields: dict[str, Any] = {"status": new_status}
@@ -787,11 +787,43 @@ class DownloadManager:
         t.start()
         return True
 
+    def _ghost_resume(self, d: Download, s: dict[str, Any]) -> bool:
+        """Ölü linkte alternatif kaynaktan (hızlı ayna) kaldığı yerden devam."""
+        if not self.resume_router or d.kind != "file":
+            return False
+        code = str(s.get("error_code") or "")
+        msg = str(s.get("error") or "")
+        if code not in ("1", "3", "22", "24") and "404" not in msg:
+            return False
+        try:
+            alt = self.resume_router.find_alternates(d.url, filename=d.filename, size=d.size,
+                                                     headers=d.headers, use_hunter=False)
+        except Exception:
+            log.debug("Ghost-Resume arama hatasi: %s", d.url)
+            return False
+        cands = (alt or {}).get("alternates") or []
+        if not cands:
+            return False
+        nu = cands[0].get("url", "")
+        if not nu or nu == d.url:
+            return False
+        try:
+            self.engine.remove(d.gid)
+        except Exception:
+            log.debug("Motor kaldirma basarisiz (ghost-resume): %s", d.gid)
+        nd = self.store.update(d.id, gid="", status=Status.QUEUED, url=nu,
+                               downloaded=s.get("completed", d.downloaded))
+        self.events.emit("download.updated", download=nd)
+        log.info("Ghost-Resume: alternatif kaynaktan devam: %s", d.filename)
+        self._start_engine(nd)
+        return True
+
     # ---------- link yenileme (Asama 6c) ----------
     # Suresi dolan gecici link (RD / bulut paylasimi): kaynaktan yeni link alinip AYNI dosyaya devam edilir
     # (aria2 --continue + .aria2 kontrol dosyasi). 3 = 404, 22 = beklenmeyen HTTP (403/410), 24 = yetki.
     link_refresher: Any = None          # linkrefresh.LinkRefresher (main baglar)
     oplog: Any = None                   # oplog.OpLog (Echo geri al günlüğü; main baglar)
+    resume_router: Any = None            # resume_router (Ghost-Resume; main baglar)
     _REFRESH_CODES = {"3", "22", "24"}
     _MAX_REFRESH = 2
 

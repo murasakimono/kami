@@ -16,7 +16,7 @@ from app.core.manager import DownloadManager
 from app.core.plugin_loader import load_plugins
 from app.core.queue_store import DownloadStore
 from app.core.settings import Settings
-from app.core import oplog
+from app.core import oplog, resume_router
 from app.engines.aria2_engine import Aria2Engine
 from app.ui.api import Api
 
@@ -1222,6 +1222,7 @@ def main() -> int:
     manager.history = history
     manager.link_refresher = LinkRefresher(manager)
     manager.oplog = oplog.OpLog(str(paths.DATA_DIR / "oplog.jsonl"))   # Kami Echo: geri al günlüğü
+    manager.resume_router = resume_router                              # Kami Ghost-Resume: çapraz kaynak kurtarma
     ntfy_topic = TokenStore(paths.DATA_DIR / "ntfy_topic.bin")
     post.after.append(automate.AfterActions(manager, history, ntfy_topic.load, media_post.music_dir))
 
