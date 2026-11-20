@@ -3239,6 +3239,39 @@ class Api(StudioMixin):
                 errors.append({"path": p, "error": r.get("error", "fail")})
         return {"ok": True, "done": done, "errors": errors}
 
+    def tag_read(self, path: str) -> dict[str, Any]:
+        """Muzik dosyasinin etiketlerini okur (mutagen easy)."""
+        p = str(path or "").strip()
+        if not p or not os.path.isfile(p):
+            return {"ok": False, "error": "no_file"}
+        try:
+            import mutagen
+            f = mutagen.File(p, easy=True)
+            if f is None:
+                return {"ok": True, "tags": {}}
+            return {"ok": True, "tags": {str(k): (v[0] if isinstance(v, list) else str(v)) for k, v in (f.tags or {}).items()}}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    def tag_write(self, path: str, tags: dict) -> dict[str, Any]:
+        """Muzik dosyasina etiket yazar (mutagen easy; title/artist/album...)."""
+        p = str(path or "").strip()
+        if not p or not os.path.isfile(p):
+            return {"ok": False, "error": "no_file"}
+        try:
+            import mutagen
+            f = mutagen.File(p, easy=True)
+            if f is None:
+                return {"ok": False, "error": "unsupported"}
+            for k, v in (tags or {}).items():
+                if v in (None, ""):
+                    continue
+                f[str(k)] = str(v)
+            f.save()
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
     def library_organize(self, paths: list | None = None, apply: bool = False) -> dict[str, Any]:
         """Dizi bolumlerini 'Dizi / Sezon 01 / bolum' duzenine tasi (once onizleme, apply=True ile tasir; yan altyazilar da gider)."""
         import re as _re
