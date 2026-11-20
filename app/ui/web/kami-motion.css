@@ -699,13 +699,33 @@ body.kami-hidden .km-eq i {
   100% { background-position: -220% 0; }
 }
 
+/* ---- M14: Kart dalgalanması — hover'da hafif ışık dalgası (ripppl esinli) ---- */
+.km-ripple {
+  position: relative;
+}
+.km-ripple::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.9);
+  background: radial-gradient(circle at center, rgba(46, 230, 166, 0.14), transparent 62%);
+  transition: opacity 240ms var(--km-ease-out), transform 240ms var(--km-ease-out);
+}
+.km-ripple:hover::after {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
 @media (prefers-reduced-motion: reduce) {
   .km-pop-origin, .km-toast, .km-glider, .km-glow::after,
   #kmTip, .km-odo-track, .km-hold-ring .km-hr-fg,
   .km-cascade-item, .km-eq i,
   .km-breathe, .km-twinkle, .km-tilt, .km-pulse-ring,
-  .km-wave > *, .km-spark-burst::after, .km-liquid-fill::after,
+  .km-wave > *, .km-spark-burst::after, .km-liquid-fill::after, .km-ripple::after,
   .rd-main::before, #settingsForm .dialog-head::after, .cl-scroll::before,
   #sunak .sk-strip.burst .sk-paper::after, .km-absorb,
   #k20AiDropZone.drag, .cv-drop.drag, .pc-stage.drag, #rdStage.drag, #chat.drop,

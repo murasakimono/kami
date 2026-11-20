@@ -512,10 +512,14 @@
     el._kmPulseT = setTimeout(() => el.classList.remove("km-pulse-ring"), 600);
   }
 
-  // M9: Kart eğilmesi (tilt) — hover'da 3D derinlik
+  // M9: Kart eğilmesi (tilt) + M14: kart dalgalanması (ripple) — ayar duyarlı
+  const cardFx = { tilt: true, ripple: false };
   function initMicro() {
     if (isReduced()) return;
-    document.querySelectorAll(".gcard, .qa-card, .acard").forEach((c) => c.classList.add("km-tilt"));
+    document.querySelectorAll(".gcard, .qa-card, .acard").forEach((c) => {
+      if (cardFx.tilt) c.classList.add("km-tilt");
+      if (cardFx.ripple) c.classList.add("km-ripple");
+    });
   }
 
   // M12: Kıvılcım patlaması (bırakma/tamamlama anında)
@@ -597,5 +601,12 @@ function bootstrap() {
     pulseRing,
     sparkBurst,
     wave,
+    applySettings(s) {
+      if (!s) return;
+      cardFx.tilt = s.games_tilt !== false;
+      cardFx.ripple = s.card_ripple === true;
+      document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));
+      initMicro();
+    },
   };
 })();
