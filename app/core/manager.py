@@ -791,6 +791,7 @@ class DownloadManager:
     # Suresi dolan gecici link (RD / bulut paylasimi): kaynaktan yeni link alinip AYNI dosyaya devam edilir
     # (aria2 --continue + .aria2 kontrol dosyasi). 3 = 404, 22 = beklenmeyen HTTP (403/410), 24 = yetki.
     link_refresher: Any = None          # linkrefresh.LinkRefresher (main baglar)
+    oplog: Any = None                   # oplog.OpLog (Echo geri al günlüğü; main baglar)
     _REFRESH_CODES = {"3", "22", "24"}
     _MAX_REFRESH = 2
 
@@ -852,8 +853,14 @@ class DownloadManager:
                 if os.path.normcase(target_dir) != os.path.normcase(d.directory):
                     moved = self._move(d, target_dir)
                     if moved:
+                        old_path = d.path
                         changes.update(directory=target_dir, filename=moved, category=cat)
                         d = replace(d, **changes)
+                        if self.oplog:
+                            try:
+                                self.oplog.record("move", old_path, os.path.join(target_dir, moved))
+                            except Exception:
+                                pass
         if d.kind == "torrent" and d.path:   # secimli torrentte aria2 kontrol dosyasini birakiyor (04.11 olculdu)
             try:
                 if os.path.isfile(d.path + ".aria2"):

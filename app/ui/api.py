@@ -1109,6 +1109,11 @@ class Api(StudioMixin):
             os.rename(old, new)
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:120]}
+        if getattr(self._manager, "oplog", None):
+            try:
+                self._manager.oplog.record("rename", old, new)
+            except Exception:
+                pass
         nd = self._manager.store.update(d.id, filename=name)
         self._manager.events.emit("download.updated", download=nd)
         return {"ok": True, "path": new}
