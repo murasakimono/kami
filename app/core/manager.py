@@ -771,7 +771,7 @@ class DownloadManager:
         try:
             self.engine.remove(d.gid)
         except Exception:
-            pass
+            log.debug("Motor kaldirma basarisiz (yeniden ekleme): %s", d.gid)
         nd = self.store.update(d.id, gid="", status=Status.QUEUED, max_conn=next_conn,
                                downloaded=s.get("completed", d.downloaded), size=s.get("total") or d.size)
         self.events.emit("download.updated", download=nd)
@@ -807,7 +807,7 @@ class DownloadManager:
         try:
             self.engine.remove(d.gid)
         except Exception:
-            pass
+            log.debug("Motor kaldirma basarisiz (yeniden kuyruk): %s", d.gid)
         nd = self.store.update(d.id, gid="", status=Status.QUEUED, downloaded=s.get("completed", d.downloaded),
                                extra={**x, "refreshed": int(x.get("refreshed", 0)) + 1})
         self.events.emit("download.updated", download=nd)
@@ -870,7 +870,7 @@ class DownloadManager:
             try:
                 self.engine.remove(d.gid)  # motorun sonuc listesinden temizle
             except Exception:
-                pass
+                log.debug("Motor kaldirma basarisiz (tamamlanma temizligi): %s", d.gid)
             changes["gid"] = ""
         return changes
 

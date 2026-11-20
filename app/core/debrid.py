@@ -440,6 +440,7 @@ class DebridService:
                 self._step(tid)
             except DebridError as exc:
                 if exc.code in ("rd_bad_token", "rd_no_token", "rd_network"):
+                    log.debug("RD torrent adimi atlandi (%s): %s", exc.code, exc.detail or exc.code)
                     return    # sonra tekrar
                 log.warning("RD torrent %s: %s %s", tid, exc.code, exc.detail)
                 self._drop(tid)

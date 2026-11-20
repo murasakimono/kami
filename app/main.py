@@ -103,6 +103,7 @@ def _setup_logging() -> None:
     handler = logging.handlers.RotatingFileHandler(paths.LOG_PATH, maxBytes=2_000_000, backupCount=2,
                                                    encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    handler.setLevel(logging.DEBUG)   # dosyada debug ayrintisi da kalsin (sessiz yutmalar izlenebilir); konsol INFO kalir
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)

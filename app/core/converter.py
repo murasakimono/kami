@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -179,7 +180,7 @@ def _open_image(src: str, tools: dict):
     except Exception:   # HEIC vb.: ffmpeg ile PNG'ye cozulur
         tmp = out_path(src, "png", tag="kami-tmp")
         subprocess.run([tools["ffmpeg"], "-v", "error", "-y", "-i", src, "-frames:v", "1", str(tmp)],
-                       creationflags=NO_WINDOW, check=True)
+                       creationflags=NO_WINDOW, check=True, timeout=60)
         im = Image.open(tmp)
         im.load()
         tmp.unlink(missing_ok=True)
@@ -332,7 +333,7 @@ def _strip(src: str, opts: dict, tools: dict) -> Path:
         im.save(out, im.format or e.lstrip(".").upper(), **({"icc_profile": im.info["icc_profile"]} if im.info.get("icc_profile") else {}))
     elif k in ("audio", "video"):
         subprocess.run([tools["ffmpeg"], "-v", "error", "-y", "-i", src, "-map", "0", "-map_metadata", "-1",
-                        "-map_chapters", "-1", "-c", "copy", str(out)], creationflags=NO_WINDOW, check=True)
+                        "-map_chapters", "-1", "-c", "copy", str(out)], creationflags=NO_WINDOW, check=True, timeout=600)
     elif k == "pdf":
         from pypdf import PdfWriter
         w = PdfWriter(clone_from=src)
@@ -371,11 +372,16 @@ def _office(src: str, ext: str, opts: dict, cancel: threading.Event) -> Path:
     profile = Path(tempfile.gettempdir()) / "kami_lo_profile"   # kullanicinin acik LibreOffice'ini engellemesin
     args.insert(1, "-env:UserInstallation=" + profile.as_uri())
     p = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=NO_WINDOW)
+    deadline = time.time() + 300   # LibreOffice asilirsa sonsuza dek bekleme
     while p.poll() is None:
         if cancel.wait(0.3):
             p.kill()
             shutil.rmtree(tmp, ignore_errors=True)
             raise InterruptedError
+        if time.time() > deadline:
+            p.kill()
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise RuntimeError("libreoffice_zaman_asimi")
     made = next(iter(tmp.glob("*")), None)
     if not made:
         shutil.rmtree(tmp, ignore_errors=True)

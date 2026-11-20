@@ -276,7 +276,8 @@ def test_kami_20_icons_m3_s4_blue_o1_and_dust_janitor_lrc(tmp_path: Path, monkey
     from app import paths
     from app.core import cleaner, extras, games, icons, lyrics, settings
 
-    assert extras.APP_VERSION == "2.0.2"
+    parts = extras.APP_VERSION.split(".")
+    assert len(parts) == 3 and all(p.isdigit() for p in parts), extras.APP_VERSION   # her surumde elle degismez
 
     # 1) Kami 2.0 Settings defaults
     s = settings.Settings(tmp_path / "settings20.json")

@@ -725,6 +725,9 @@ class AiQueue:
                     continue
                 broken = [t for t in JOBS[kind] if needs_repair(t)]
                 for tool in broken:   # eski kurulum (ör. PyAV 19 / audioread eksik): sadece farki kurar
+                    if ev.is_set():   # iptal: uzun onarim kurulumu sirasinda da iptali say (kilit tutmasin)
+                        self.set_extra(did, **{f"ai_{kind}": "cancelled", f"ai_{kind}_p": 0})
+                        break
                     self.set_extra(did, **{f"ai_{kind}": "running", f"ai_{kind}_p": 0})
                     log.info("Arac onariliyor: %s", tool)
                     if not install(tool):
@@ -733,6 +736,9 @@ class AiQueue:
                 else:
                     broken = []
                 if broken:
+                    continue
+                if ev.is_set():   # onarim bitti ama is baslamadan iptal geldiyse yakala
+                    self.set_extra(did, **{f"ai_{kind}": "cancelled", f"ai_{kind}_p": 0})
                     continue
                 self.set_extra(did, **{f"ai_{kind}": "running"})
                 getattr(self, f"_do_{kind}")(did, ev, **opts)

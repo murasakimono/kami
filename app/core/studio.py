@@ -450,7 +450,7 @@ class Studio:
         """4K/agir video klibi icin hafif onizleme vekili (720p, hizli keyframe) uretir; export orijinali kullanir."""
         if not os.path.isfile(path):
             return {"ok": False, "error": "not_found"}
-        out_dir = home_dir() / "Proxy"
+        out_dir = CACHE / "proxy"   # onbellek: korumali Videos klasoru (CFA/OneDrive) yerine DATA_DIR altina
         out_dir.mkdir(parents=True, exist_ok=True)
         h = hashlib.sha1(f"{path}:{os.path.getmtime(path)}:{height}".encode()).hexdigest()[:12]
         dst = out_dir / f"{Path(path).stem[:32]}_{h}_{height}p.mp4"

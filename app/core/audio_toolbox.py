@@ -74,10 +74,13 @@ def apply_audio_fx(
         decay = round(min(0.6, 0.2 + reverb * 0.4), 2)
         filters.append(f"aecho=0.8:0.88:{delay_ms}:{decay}")
 
-    r = subprocess.run(
-        [ff, "-y", "-i", str(src_p), "-af", ",".join(filters), str(out_p)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, creationflags=NO_WINDOW,
-    )
+    try:
+        r = subprocess.run(
+            [ff, "-y", "-i", str(src_p), "-af", ",".join(filters), str(out_p)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, creationflags=NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {"ok": False, "error": "FX islemi basarisiz (ffmpeg)"}
     if r.returncode != 0 or not out_p.is_file():
         return {"ok": False, "error": (r.stderr or "").splitlines()[-1:] or "FX hatasi"}
     return {"ok": True, "path": str(out_p), "engine": "ffmpeg"}
@@ -113,10 +116,13 @@ def audio_to_notes(src: str | Path) -> dict[str, Any]:
         return {"ok": False, "error": "FFmpeg bulunamadi", "notes": []}
 
     sr = 8000
-    r = subprocess.run(
-        [ff, "-v", "error", "-t", "20", "-i", str(src_p), "-ac", "1", "-ar", str(sr), "-f", "s16le", "pipe:1"],
-        capture_output=True, timeout=30, creationflags=NO_WINDOW,
-    )
+    try:
+        r = subprocess.run(
+            [ff, "-v", "error", "-t", "20", "-i", str(src_p), "-ac", "1", "-ar", str(sr), "-f", "s16le", "pipe:1"],
+            capture_output=True, timeout=30, creationflags=NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {"ok": False, "error": "Nota analizi basarisiz (ffmpeg)", "notes": []}
     raw = r.stdout
     n = len(raw) // 2
     if n < sr // 2:
@@ -173,10 +179,13 @@ def synthesize_tts(text: str, out_wav: str | Path, *, lang: str = "tr") -> dict[
         "$s.Dispose();"
     )
     env = {**os.environ, "KAMI_TTS_OUT": str(dst), "KAMI_TTS_TEXT": clean}
-    r = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-        env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45, creationflags=NO_WINDOW,
-    )
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+            env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45, creationflags=NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {"ok": False, "error": "TTS basarisiz (SAPI)"}
     if r.returncode == 0 and dst.is_file():
         return {"ok": True, "path": str(dst), "engine": "windows_sapi"}
     return {"ok": False, "error": (r.stderr or "TTS basarisiz").strip()[:200]}
