@@ -12,6 +12,7 @@
     ["telefon", "Telefon ve bildirim", "Phone & notifications", ["s_phone", "s_ntfy"]],
     ["guvenlik", "Güvenlik", "Security", ["s_security"]],
     ["eklenti", "Eklentiler", "Plugins", ["s_plugins"]],
+    ["animasyon", "Animasyonlar", "Animations", ["s_animations"]],
   ];
   const tr = () => (typeof state === "undefined" || state.lang !== "en");
   let current = "genel";

@@ -628,6 +628,7 @@ function bootstrap() {
       cardFx.tilt = s.games_tilt !== false;
       cardFx.ripple = s.card_ripple === true;
       cardFx.advanced = s.advanced_micro_animations !== false;
+      document.body.classList.toggle("km-grain", s.motion_grain === true);
       document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));
       initMicro();
       initAdvanced();
