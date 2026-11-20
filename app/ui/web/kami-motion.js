@@ -518,6 +518,26 @@
     document.querySelectorAll(".gcard, .qa-card, .acard").forEach((c) => c.classList.add("km-tilt"));
   }
 
+  // M12: Kıvılcım patlaması (bırakma/tamamlama anında)
+  function sparkBurst(el) {
+    if (!el || isReduced()) return;
+    el.classList.remove("km-spark-burst");
+    void el.offsetWidth;
+    el.classList.add("km-spark-burst");
+    clearTimeout(el._kmSparkT);
+    el._kmSparkT = setTimeout(() => el.classList.remove("km-spark-burst"), 600);
+  }
+
+  // M11: Tılsım dalgası (liste yenilenince kademeli geçiş)
+  function wave(el) {
+    if (!el || isReduced()) return;
+    el.classList.remove("km-wave");
+    void el.offsetWidth;
+    el.classList.add("km-wave");
+    clearTimeout(el._kmWaveT);
+    el._kmWaveT = setTimeout(() => el.classList.remove("km-wave"), 900);
+  }
+
 function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
@@ -575,5 +595,7 @@ function bootstrap() {
     eqHtml,
     initDragPortals,
     pulseRing,
+    sparkBurst,
+    wave,
   };
 })();
