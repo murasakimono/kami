@@ -106,7 +106,7 @@ def detect_key(audio_path: str, ffmpeg: str = "") -> dict[str, str]:
                 s0, s1 = s1, s2
             total += max(0.0, s1 * s1 + s0 * s0 - cw * s1 * s0)
         chroma[pc] = math.sqrt(total)
-    best_name, best_cam, best_score = "", "", -1e9
+    best_name, best_cam, best_score, best_scale = "", "", -1e9, "major"
     for root in range(12):
         rot = [chroma[(root + i) % 12] for i in range(12)]
         maj_s = sum(rot[i] * _MAJ_PROF[i] for i in range(12))
@@ -114,12 +114,12 @@ def detect_key(audio_path: str, ffmpeg: str = "") -> dict[str, str]:
         if maj_s > best_score:
             best_score = maj_s
             note = _NOTES[root]
-            best_name, best_cam = note, _CAMELOT_MAJ[note]
+            best_name, best_cam, best_scale = note, _CAMELOT_MAJ[note], "major"
         if min_s > best_score:
             best_score = min_s
             note = _NOTES[root]
-            best_name, best_cam = f"{note}m", _CAMELOT_MIN[note]
-    return {"key": best_name, "camelot": best_cam}
+            best_name, best_cam, best_scale = f"{note}m", _CAMELOT_MIN[note], "minor"
+    return {"key": best_name, "camelot": best_cam, "scale": best_scale}
 
 
 def separate_stems(audio_path: str, out_dir: str = "", model: str = "htdemucs_ft.yaml") -> dict[str, Any]:
@@ -317,6 +317,8 @@ def build_beatgrid(audio_path: str, duration: float = 0.0, ffmpeg: str = "") -> 
 
     root = key_info.get("key") or "C"
     scale = key_info.get("scale") or "major"
+    if root.endswith("m"):  # "Cm" -> "C minor" (detect_key minoru 'm' ile kodlar)
+        root = root[:-1]
     chords = [
         {"bar": i + 1, "start": db, "chord": f"{root} {scale}".strip()}
         for i, db in enumerate(downbeats)

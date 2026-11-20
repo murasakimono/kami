@@ -235,6 +235,7 @@
           <button class="btn" id="detSnapBtn">+ Anlık Snapshot</button>
           <button class="btn" id="detCovBtn">🖼 Kapak Seç</button>
           <button class="btn" id="detHltb"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> HowLongToBeat</button>
+          <button class="btn" id="detFrag">🎬 Fragmovie</button>
         </div>
         <div id="detCovPick" hidden style="border-top:1px solid var(--line);padding-top:8px">
           <div style="display:flex;gap:6px;margin-bottom:6px"><input id="detCovQ" value="${esc(g.title)}" style="flex:1;background:#09070F;border:1px solid var(--line);border-radius:8px;color:#fff;padding:6px 10px"><button class="btn" id="detCovSearch">Ara</button></div>
@@ -248,6 +249,15 @@
       detX.onclick = () => { detMdl.hidden = true; };
       detSave.onclick = () => api()?.games_backup_save?.(g.title);
       detHltb.onclick = () => (api()?.open_web || api()?.open_external)?.(`https://howlongtobeat.com/?q=${encodeURIComponent(g.title)}`);
+      detFrag.onclick = async () => {
+        const st = await api()?.highlight_watcher_status?.().catch(() => null);
+        const clips = (st && Array.isArray(st.saved_clips)) ? st.saved_clips : [];
+        if (!clips.length) { keyNote("Önce vurgu klibi yakalanmalı: oyun açıkken auto-replay + highlight watcher çalışmalı."); return; }
+        keyNote("Fragmovie oluşturuluyor…");
+        const r = await api()?.highlight_build_fragmovie?.(clips, "", g.title).catch(e => ({ error: e?.message }));
+        if (r?.ok) { keyNote("🎬 Fragmovie hazır (" + r.clips_count + " klip), Studio penceresinde açılıyor…"); api()?.studio_open?.(r.path); }
+        else keyNote("Fragmovie oluşturulamadı: " + (r?.error || "bilinmeyen hata"));
+      };
       detBody.querySelectorAll("[data-mplay]").forEach((b) => { b.onclick = () => api()?.games_launch?.(b.dataset.mplay, g.key); });
 
       const loadSnaps = async () => {

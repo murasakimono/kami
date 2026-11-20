@@ -1052,19 +1052,15 @@ def scan_folder_for_games(folder: str, auto_add: bool = True) -> dict[str, Any]:
 
 
 def estimate_hltb(title: str) -> dict[str, Any]:
-    """Oyun basligina gore HLTB (Ana Hikaye / Tamamlama) sure tahmini veya onbellek sorgusu doner."""
+    """HLTB sure tahmini — gercek HLTB API'si yok; uydurma sure URETMEZ, yalnizca arama baglantisi doner."""
     t = str(title or "").strip()
     if not t:
         return {"ok": False}
-    # Hizli yerel heuristik + HLTB arama baglantisi (ag gecikmesi olmadan aninda kartta gosterilir)
-    h = sum(ord(c) for c in t.lower())
-    main_h = 8 + (h % 28)
-    comp_h = main_h + 12 + (h % 35)
     return {
         "ok": True,
         "title": t,
-        "main_hours": main_h,
-        "completionist_hours": comp_h,
+        "main_hours": None,
+        "completionist_hours": None,
         "url": f"https://howlongtobeat.com/?q={urllib.parse.quote(t)}",
     }
 

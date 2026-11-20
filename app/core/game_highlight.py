@@ -175,6 +175,7 @@ class HighlightWatcher:
             "running": self.running,
             "games": self.games,
             "keywords": self.keywords,
+            "saved_clips": list(self.saved_clips),
             "saved_count": len(self.saved_clips),
             "last_clip": self.saved_clips[-1] if self.saved_clips else "",
         }

@@ -721,7 +721,7 @@ body.kami-hidden .km-eq i {
   box-shadow: 0 0 26px rgba(46, 230, 166, 0.32);
 }
 
-/* ---- M15-M18: Gelişmiş mikro-animasyonlar (3D flip / glow trail / particle gather / elastic) ---- */
+/* ---- M15-M18: Gelişmiş mikro-animasyonlar (elastic / lift / particle gather) ---- */
 .km-elastic:active { animation: km-elastic 360ms var(--km-spring-snappy); }
 @keyframes km-elastic {
   0% { transform: scale(1); }
