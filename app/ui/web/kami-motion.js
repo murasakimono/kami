@@ -562,12 +562,28 @@
     document.querySelectorAll(".nav-b, .sk-tab").forEach((c) => c.classList.add("km-lift"));
   }
 
+function initMagnet() {
+  const on = cardFx.magnet && !isReduced();
+  document.querySelectorAll(".sk-tab, .nav-b").forEach((c) => c.classList.toggle("km-magnet", on));
+  document.querySelectorAll(".km-magnet").forEach((el) => {
+    if (el._magBound) return;
+    el._magBound = true;
+    el.addEventListener("pointermove", (e) => {
+      const r = el.getBoundingClientRect();
+      const dx = (e.clientX - (r.left + r.width / 2)) / (r.width || 1);
+      const dy = (e.clientY - (r.top + r.height / 2)) / (r.height || 1);
+      el.style.transform = "translate(" + (dx * 5).toFixed(1) + "px," + (dy * 5).toFixed(1) + "px)";
+    });
+    el.addEventListener("pointerleave", () => { el.style.transform = ""; });
+  });
+}
 function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
     initDragPortals();
     initMicro();
     initAdvanced();
+    initMagnet();
     const bindKnownGliders = () => {
       const cl = document.getElementById("clTabs");
       if (cl) bindGlider(cl, ".cl-tab", "on");
@@ -629,6 +645,8 @@ function bootstrap() {
       cardFx.ripple = s.card_ripple === true;
       cardFx.advanced = s.advanced_micro_animations !== false;
       document.body.classList.toggle("km-grain", s.motion_grain === true);
+      cardFx.magnet = s.motion_magnet === true;
+      initMagnet();
       document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));
       initMicro();
       initAdvanced();
