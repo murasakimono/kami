@@ -86,6 +86,7 @@
           <button class="eco-tab" data-tab="bridge" data-grp="sistem">Köprü & Sunak</button>
           <button class="eco-tab" data-tab="doctor" data-grp="sistem">Kami Doktor</button>
           <button class="eco-tab" data-tab="jobs" data-grp="sistem">İşler</button>
+  <button class="eco-tab" data-tab="echo" data-grp="sistem">Kami Echo</button>
         </div>
         <div class="eco-bd"></div>
       </div>`;
@@ -120,6 +121,7 @@
       bridge: [I('<path d="M4 15c4-6 12-6 16 0M4 15v4m16-4v4M12 11v8"/>'), "iPhone/iPad köprüsü, kostüm, sesler"],
       doctor: [I('<path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="9"/>'), "Sağlık kontrolleri ve tek tık onarım"],
       jobs: [I('<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>'), "Süren arka plan işleri"],
+      echo: [I('<path d="M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0z"/><path d="M12 8v4l3 2"/>'), "Geri alınabilir taşıma / ad değiştirme işlemleri"],
     };
     root.querySelectorAll(".eco-tab").forEach((b) => { const m = META[b.dataset.tab]; if (m) b.innerHTML = `${m[0]}<span><b>${b.textContent}</b><small>${m[1]}</small></span>`; });
     root.addEventListener("click", (e) => {
@@ -155,6 +157,17 @@
     const bd = root.querySelector(".eco-bd");
     root.querySelectorAll(".eco-tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === activeTab));
     bd.innerHTML = `<div class="eco-card"><div class="eco-hint">Yükleniyor…</div></div>`;   // v1.35.4: eski sekme takili kalmasin
+
+    if (activeTab === "echo") {
+      const res = await ld(api.oplog_list?.(20), { ok: true, items: [] });
+      if (seq !== renderSeq) return;
+      const items = res.items || [];
+      const escE = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const rows = items.map((e) => '<div class="eco-row" style="justify-content:space-between"><span>' + escE(e.op === "move" ? "Taşıma" : e.op === "rename" ? "Yeniden adlandırma" : e.op) + ' · <small>' + escE(e.src) + ' → ' + escE(e.dst) + '</small></span><button class="eco-btn sec" data-undo="' + escE(e.id) + '">Geri Al</button></div>').join("");
+      bd.innerHTML = '<div class="eco-card"><strong>Kami Echo — Geri Alınabilir İşlemler</strong><div class="eco-hint">Son taşıma / yeniden adlandırma işlemleri. "Geri Al" dosyayı önceki yerine taşır.</div>' + (rows || '<div class="eco-hint">Henüz işlem yok.</div>') + '</div>';
+      bd.querySelectorAll("[data-undo]").forEach((b) => b.onclick = async () => { const r = await api.oplog_undo?.(b.dataset.undo).catch(() => null); if (r?.ok) renderTab(); else alert("Geri alınamadı: " + (r?.error || "hata")); });
+      return;
+    }
 
     if (activeTab === "doctor") {
       bd.innerHTML = `<div class="eco-card" id="ecoDocHost"><div class="eco-hint">Kontrol ediliyor…</div></div>`;
