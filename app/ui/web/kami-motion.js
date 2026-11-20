@@ -600,6 +600,16 @@ function initGooey() {
   svg.innerHTML = '<defs><filter id="km-gooey-f"><feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="g"/><feComposite in="SourceGraphic" in2="g" operator="atop"/></filter></defs>';
   document.body.appendChild(svg);
 }
+function sharedElement(fromSel, toSel) {
+  if (isReduced() || !cardFx.shared || !document.startViewTransition) return;
+  const from = typeof fromSel === "string" ? document.querySelector(fromSel) : fromSel;
+  const to = typeof toSel === "string" ? document.querySelector(toSel) : toSel;
+  if (!from || !to) return;
+  const name = "km-se";
+  from.style.viewTransitionName = name;
+  document.startViewTransition(() => { to.style.viewTransitionName = name; });
+  setTimeout(() => { from.style.viewTransitionName = ""; to.style.viewTransitionName = ""; }, 620);
+}
 function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
@@ -664,6 +674,7 @@ function bootstrap() {
     wave,
     gather,
     scramble,
+    sharedElement,
     applySettings(s) {
       if (!s) return;
       cardFx.tilt = s.games_tilt !== false;
@@ -675,6 +686,8 @@ function bootstrap() {
       cardFx.scramble = s.motion_scramble === true;
       document.body.classList.toggle("km-mesh", s.motion_mesh === true);
       cardFx.gooey = s.motion_gooey === true;
+      cardFx.shared = s.motion_shared === true;
+      document.body.classList.toggle("km-dir-on", s.motion_dirpanel === true);
       initMagnet();
       initGooey();
       document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));

@@ -773,6 +773,10 @@ body.km-mesh::before { content: ""; position: fixed; inset: 0; pointer-events: n
 /* Sivi (gooey) filtre (motion_gooey) */
 .km-gooey { filter: url(#km-gooey-f); }
 
+/* Yonlu panel itme (motion_dirpanel) */
+.km-dir-panel { animation: km-dir-in 260ms var(--km-ease-out); }
+@keyframes km-dir-in { from { transform: translateX(22px); opacity: 0; } to { transform: none; opacity: 1; } }
+
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
 @media (prefers-reduced-motion: reduce) {
   .km-pop-origin, .km-toast, .km-glider, .km-glow::after,
