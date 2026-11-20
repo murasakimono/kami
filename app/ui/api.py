@@ -1077,6 +1077,18 @@ class Api(StudioMixin):
         rec = provenance.read(d.path)
         return {"ok": True, "provenance": rec} if rec else {"ok": False, "provenance": None}
 
+    def oplog_list(self, n: int = 20) -> dict[str, Any]:
+        """Kami Echo: son geri alınabilir işlemler."""
+        oplog = getattr(self._manager, "oplog", None)
+        return {"ok": True, "items": oplog.list(int(n or 20)) if oplog else []}
+
+    def oplog_undo(self, eid: str) -> dict[str, Any]:
+        """Kami Echo: kayıtlı bir işlemi geri al."""
+        oplog = getattr(self._manager, "oplog", None)
+        if not oplog:
+            return {"ok": False, "error": "no_oplog"}
+        return oplog.undo(str(eid))
+
     def set_favorite(self, download_id: int, on: bool = True) -> bool:
         d = self._manager.store.get(int(download_id))
         if not d:

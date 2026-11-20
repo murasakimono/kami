@@ -136,6 +136,7 @@
     <button class="nav-b" data-nav="playlists"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h12M3 12h12M3 18h8M17 18V8l4-1"/><circle cx="15" cy="18" r="2"/></svg>Çalma Listelerim</button>
     <button class="nav-b" data-nav="saved"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>Beğenilenler</button>
     <button class="nav-b" data-nav="recent"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Son Çalınanlar</button>
+    <button class="nav-b" data-nav="foryou"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>For You</button>
     <button class="nav-b" data-nav="sp_queue"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h7M17 14l4 3-4 3z"/></svg>Çalma Sırası</button>
     <button class="nav-b" data-nav="local"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Yerel Klasörler</button>
     <button class="nav-b" data-nav="scrobble"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M8 7v10M4 11v2M16 7v10M20 11v2"/></svg>Dinleme Günlüğü</button>
@@ -234,7 +235,7 @@
   let NAV = "sp_search", CUR_PL = null, ITEMS = [], PLAYLISTS = [];
   let SP_PLAYING = false, SP_SHUF = false, SP_REP = "off", SP_LIKED = false, CUR_TRACK = null, LAST_TRACK = "", LYRICS = [], SEEK_LOCK = false;
 
-  const TITLES = { sp_search: "Spotify Ara", playlists: "Çalma Listelerim", saved: "Beğenilen Şarkılar", recent: "Son Çalınanlar", sp_queue: "Çalma Sırası", local: "Yerel Müzik Klasörleri", ytm: "YouTube Music" };
+  const TITLES = { sp_search: "Spotify Ara", playlists: "Çalma Listelerim", saved: "Beğenilen Şarkılar", recent: "Son Çalınanlar", foryou: "For You Radyo", sp_queue: "Çalma Sırası", local: "Yerel Müzik Klasörleri", ytm: "YouTube Music" };
 
   function setNav(n) {
     NAV = n;
@@ -244,6 +245,7 @@
     if (n === "playlists" || n === "saved" || n === "recent") loadLib(n);
     else if (n === "sp_queue") loadQueue();
     else if (n === "local") loadLocal();
+    else if (n === "foryou") loadMix();
     else if (n === "ytm") loadYtmBar();
     else if (q.value.trim()) search();
     else renderHome();
@@ -519,6 +521,18 @@
     refreshListMotion();
   }
 
+  async function loadMix() {
+    subBar.hidden = false; folderChips.hidden = true;
+    subBar.innerHTML = '<button class="btn pri" id="mixRefresh">↻ Yenile</button><small style="color:var(--mut)">Dinleme geçmişine göre kişisel, tekrar etmeyen karışım</small>';
+    list.innerHTML = '<div style="color:var(--mut);padding:12px">For You karışımı hazırlanıyor…</div>';
+    const r = await api()?.mix_build?.(20).catch(() => null);
+    const tracks = r?.ok ? (r.tracks || []) : [];
+    if (!tracks.length) { list.innerHTML = '<div style="color:var(--mut);padding:12px">Kütüphane boş ya da yeterli parça yok. Yerel klasör ekleyip dinledikçe karışım zenginleşir.</div>'; return; }
+    list.innerHTML = tracks.map((t) => '<div class="row" data-title="' + esc(t.name || "") + '"><div class="meta"><b>' + esc(t.name || "") + '</b><small>' + esc(t.kind || "audio") + '</small></div><button class="btn pri" data-mixplay="' + esc(t.path) + '" title="Kami Player\'da çal">▶</button></div>').join("");
+    refreshListMotion();
+    document.getElementById("mixRefresh").onclick = loadMix;
+  }
+
   async function loadLocal() {
     subBar.hidden = false; folderChips.hidden = false;
     subBar.innerHTML = `<label class="field"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><input id="locPath" placeholder="Müzik klasörünün yolunu yapıştır — örn. C:\\Users\\...\\Downloads\\Contra"><button class="btn" id="locPick">Gözat…</button><button class="btn pri" id="locAddPath">Ekle</button></label>`;
@@ -771,6 +785,8 @@
     }
     const lp = e.target.closest("[data-locplay]");
     if (lp) api()?.music_local_play?.(lp.dataset.locplay, lp.dataset.locroot);
+    const mp = e.target.closest("[data-mixplay]");
+    if (mp) api()?.music_local_play?.(mp.dataset.mixplay, "");
   };
   let AMB_ON = true;
   let LAST_AMB_URL = "";
