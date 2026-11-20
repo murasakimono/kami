@@ -577,39 +577,6 @@ function initMagnet() {
     el.addEventListener("pointerleave", () => { el.style.transform = ""; });
   });
 }
-function scramble(el, text) {
-  if (!el || isReduced() || !cardFx.scramble) { if (el) el.textContent = text; return; }
-  const chars = "!<>-_[]{}%=+*^?#";
-  let frame = 0; const total = 14;
-  clearInterval(el._scrT);
-  el._scrT = setInterval(() => {
-    frame++;
-    const done = Math.floor((frame / total) * (text || "").length);
-    let out = "";
-    for (let i = 0; i < (text || "").length; i++) out += i < done ? text[i] : chars[(Math.random() * chars.length) | 0];
-    el.textContent = out;
-    if (frame >= total) { clearInterval(el._scrT); el.textContent = text; }
-  }, 28);
-}
-function initGooey() {
-  if (isReduced() || !cardFx.gooey) return;
-  if (document.getElementById("kmGooeyDefs")) return;
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.id = "kmGooeyDefs"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.setAttribute("aria-hidden", "true");
-  svg.style.position = "absolute";
-  svg.innerHTML = '<defs><filter id="km-gooey-f"><feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="g"/><feComposite in="SourceGraphic" in2="g" operator="atop"/></filter></defs>';
-  document.body.appendChild(svg);
-}
-function sharedElement(fromSel, toSel) {
-  if (isReduced() || !cardFx.shared || !document.startViewTransition) return;
-  const from = typeof fromSel === "string" ? document.querySelector(fromSel) : fromSel;
-  const to = typeof toSel === "string" ? document.querySelector(toSel) : toSel;
-  if (!from || !to) return;
-  const name = "km-se";
-  from.style.viewTransitionName = name;
-  document.startViewTransition(() => { to.style.viewTransitionName = name; });
-  setTimeout(() => { from.style.viewTransitionName = ""; to.style.viewTransitionName = ""; }, 620);
-}
 function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
@@ -617,7 +584,6 @@ function bootstrap() {
     initMicro();
     initAdvanced();
     initMagnet();
-    initGooey();
     const bindKnownGliders = () => {
       const cl = document.getElementById("clTabs");
       if (cl) bindGlider(cl, ".cl-tab", "on");
@@ -673,24 +639,15 @@ function bootstrap() {
     sparkBurst,
     wave,
     gather,
-    scramble,
-    sharedElement,
     applySettings(s) {
       if (!s) return;
       cardFx.tilt = s.games_tilt !== false;
       cardFx.ripple = s.card_ripple === true;
       cardFx.advanced = s.advanced_micro_animations !== false;
       document.body.classList.toggle("km-grain", s.motion_grain === true);
-      document.body.classList.toggle("km-skeleton-on", s.motion_skeleton === true);
       cardFx.magnet = s.motion_magnet === true;
-      cardFx.scramble = s.motion_scramble === true;
       document.body.classList.toggle("km-mesh", s.motion_mesh === true);
-      cardFx.gooey = s.motion_gooey === true;
-      cardFx.shared = s.motion_shared === true;
-      document.body.classList.toggle("km-dir-on", s.motion_dirpanel === true);
-      document.querySelectorAll(".gcard").forEach(c => c.classList.toggle("km-refract", s.motion_refract === true));
       initMagnet();
-      initGooey();
       document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));
       initMicro();
       initAdvanced();

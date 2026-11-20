@@ -753,7 +753,7 @@ window.KPAL.push(() => {
 // ---------- Lyric video (HyperFrames): Araclar sekmesi ----------
 const LV = { timer: null };
 const _peTools4 = window.pxExtraToolsHtml;
-window.pxExtraToolsHtml = () => _peTools4() + `<div class="px-shift"><span>${plL("Lyric video (senkron sözlerden)", "Lyric video (from synced lyrics)")}</span><button class="pl-b" data-xa="lv">🎬 ${plL("Yap", "Make")}</button></div>
+window.pxExtraToolsHtml = () => (_peTools4 ? _peTools4() : "") + `<div class="px-shift"><span>${plL("A-B tekrar", "A-B repeat")}</span><button class="pl-b" data-pl="abA" id="plAbA" title="A noktası">A</button><button class="pl-b" data-pl="abB" id="plAbB" title="B noktası">B</button><button class="pl-b" data-pl="shot" id="plShot" title="${plL("Kareyi PNG kaydet", "Save frame as PNG")}">📷</button></div>` + `<div class="px-shift"><span>${plL("Lyric video (senkron sözlerden)", "Lyric video (from synced lyrics)")}</span><button class="pl-b" data-xa="lv">🎬 ${plL("Yap", "Make")}</button></div>
   ${peSeg("lvStyle", [["kinetic", plL("Kinetik", "Kinetic")], ["simple", plL("Sade", "Simple")], ["karaoke", "Karaoke"]], peCfg().lvStyle || "kinetic")}
   ${peSeg("lvAspect", [["h", "16:9 YouTube"], ["v", "9:16 Reels / TikTok"]], peCfg().lvAspect || "h")}
   ${(peCfg().lvAspect || "h") === "v" ? peSeg("lvLen", [[15, "15 sn"], [30, "30 sn"], [60, "60 sn"]], peCfg().lvLen || 30) + `<p class="px-hint">${plL("Reels şu anki saniyeden başlar.", "The clip starts at the current position.")}</p>` : ""}

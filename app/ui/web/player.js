@@ -44,7 +44,6 @@ function plBuild() {
           <select class="pl-sel" id="plSub" title="${plL("Altyazı (C)", "Subtitles (C)")}"></select>
           <select class="pl-sel" id="plAud" title="${plL("Ses izi", "Audio track")}"></select>
           <select class="pl-sel" id="plRate" title="${plL("Hız", "Speed")}">${[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => `<option value="${r}" ${r === 1 ? "selected" : ""}>${r}×</option>`).join("")}</select>
-          <button class="pl-b" data-pl="abA" id="plAbA" title="A-B tekrar: A noktası">A</button><button class="pl-b" data-pl="abB" id="plAbB" title="A-B tekrar: B noktası">B</button><button class="pl-b" data-pl="shot" id="plShot" title="Kareyi PNG kaydet">📷</button>
           <label class="pl-vol" title="${plL("Ses (↑ ↓, M)", "Volume (↑ ↓, M)")}"><button class="pl-b" data-pl="mute" id="plMute">◢</button><input type="range" id="plVol" min="0" max="2" step="0.02" value="1"></label>
           <button class="pl-b" data-pl="mini" title="${plL("Mini oynatıcı (B)", "Mini player (B)")}">▭</button>
           <button class="pl-b" data-pl="ocr" title="${plL("Ekrandaki yazıyı oku (O)", "Read on-screen text (O)")}">⌗</button>
