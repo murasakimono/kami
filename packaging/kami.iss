@@ -52,7 +52,7 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs uninsrestartdelete
+Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs uninsrestartdelete restartreplace
 
 [InstallDelete]
 ; eski surumden kalan derlenmis Python onbellegi / kaldirilmis eklentiler
@@ -112,10 +112,6 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   QuitKami(ExpandConstant('{app}'));
-  { Kilitli kalan dosyalari _eski olarak yeniden adlandir (MCP --studio-mcp kilitlese bile).
-    GENEL taskkill KULLANILMAZ (oturumdaki diger uv.exe/py sureclerini oldurur). }
-  RenameFile(ExpandConstant('{app}\_internal\base_library.zip'), ExpandConstant('{app}\_internal\base_library.zip_eski'));
-  RenameFile(ExpandConstant('{app}\bin\uv.exe'), ExpandConstant('{app}\bin\uv.exe_eski'));
   Result := '';
 end;
 
