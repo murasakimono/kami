@@ -79,6 +79,7 @@
           <button class="eco-tab" data-tab="season" data-grp="arac">Sezon Kazıyıcı</button>
           <button class="eco-tab" data-tab="grab" data-grp="arac">Kami Grab-All</button>
     <button class="eco-tab" data-tab="rename" data-grp="arac">Toplu Adlandır</button>
+    <button class="eco-tab" data-tab="subs" data-grp="arac">Altyazı Yöneticisi</button>
           <div class="eco-tgrp" data-grp="ses">Ses & Oyun</div>
           <button class="eco-tab" data-tab="beat" data-grp="ses">Kami Beat</button>
           <button class="eco-tab" data-tab="hunter" data-grp="ses">Kami Hunter</button>
@@ -124,6 +125,7 @@
       jobs: [I('<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>'), "Süren arka plan işleri"],
       echo: [I('<path d="M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0z"/><path d="M12 8v4l3 2"/>'), "Geri alınabilir taşıma / ad değiştirme işlemleri"],
       rename: [I('<path d="M4 5h16M4 12h10M4 19h16"/><path d="M14 8l4 4-4 4"/>'), "Dosyaları önek + sayaç ile toplu yeniden adlandır (Echo ile geri alınır)"],
+      subs: [I('<path d="M4 6h16v12H4zM7 10h10M7 14h6"/>'), "Klasördeki videolara toplu altyazı indir (OpenSubtitles)"],
     };
     root.querySelectorAll(".eco-tab").forEach((b) => { const m = META[b.dataset.tab]; if (m) b.innerHTML = `${m[0]}<span><b>${b.textContent}</b><small>${m[1]}</small></span>`; });
     root.addEventListener("click", (e) => {
@@ -174,6 +176,15 @@
     if (activeTab === "doctor") {
       bd.innerHTML = `<div class="eco-card" id="ecoDocHost"><div class="eco-hint">Kontrol ediliyor…</div></div>`;
       window.KamiDoctor?.renderInto?.(bd.querySelector("#ecoDocHost"));
+      return;
+    }
+
+    if (activeTab === "subs") {
+      bd.innerHTML = `<div class="eco-card"><strong>Altyazı Yöneticisi</strong><div class="eco-hint">Klasör seç, eksik altyazılı videoları tara, toplu indir (OpenSubtitles anahtarı gerekli).</div><div class="eco-row"><input class="eco-in" id="subFolder" placeholder="Klasör yolu (örn. C:/Videolar)" style="flex:1"><button class="eco-btn" id="subScan">Tara</button></div><div class="eco-hint" id="subStat"></div><div id="subList" style="max-height:260px;overflow:auto"></div><div class="eco-row"><button class="eco-btn" id="subAll">Eksiklerin hepsine altyazı indir</button></div></div>`;
+      const escS = s => String(s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
+      let missing = [];
+      $("#subScan").onclick = async () => { const f = ($("#subFolder").value || "").trim(); if (!f) { alert("Klasör yolu gir"); return; } const r = await ld(api.subtitle_scan?.(f), null); if (!r || !r.ok) { alert("Tarama başarısız: " + ((r && r.error) || "hata")); return; } missing = (r.videos || []).filter(v => !v.has_sub); $("#subStat").textContent = r.total + " video, " + missing.length + " altyazısız"; $("#subList").innerHTML = missing.map(v => '<div class="eco-row"><small>' + escS(v.name) + '</small></div>').join("") || '<div class="eco-hint">Altyazısız video yok.</div>'; };
+      $("#subAll").onclick = async () => { if (!missing.length) { alert("Önce tara"); return; } $("#subAll").disabled = true; const r = await ld(api.subtitle_batch?.(missing.map(v => v.path)), null); $("#subAll").disabled = false; alert(r ? (r.done.length + " altyazı indi, " + r.errors.length + " hata") : "Hata"); };
       return;
     }
 

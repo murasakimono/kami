@@ -3207,6 +3207,38 @@ class Api(StudioMixin):
         hint = str(title or "") or self._page_title_for(str(path))
         return opensubs.search(str(path), key, str(lang or "tr")[:5], hint)
 
+    def subtitle_scan(self, folder: str) -> dict[str, Any]:
+        """Klasördeki videoları tarar; .srt/.vtt/.ass'si eksik olanları döner (altyazı yöneticisi)."""
+        root = str(folder or "").strip()
+        if not root or not os.path.isdir(root):
+            return {"ok": False, "error": "no_folder"}
+        vids = []
+        for dp, _dn, fn in os.walk(root):
+            for f in fn:
+                ext = os.path.splitext(f)[1].lower()
+                if ext not in (".mp4", ".mkv", ".avi", ".mov", ".webm", ".ts", ".m2ts"):
+                    continue
+                p = os.path.join(dp, f)
+                base = os.path.splitext(p)[0]
+                has_sub = any(os.path.exists(base + s) for s in (".srt", ".vtt", ".ass", ".ssa"))
+                vids.append({"path": p, "name": f, "has_sub": has_sub})
+        missing = [v for v in vids if not v["has_sub"]]
+        return {"ok": True, "total": len(vids), "missing": len(missing), "videos": vids}
+
+    def subtitle_batch(self, paths: list[str], lang: str = "tr") -> dict[str, Any]:
+        """Toplu altyazı indirme (eksik olanlar için; OpenSubtitles anahtarı gerekli)."""
+        done, errors = [], []
+        for p in (paths or []):
+            try:
+                r = self.subtitle_fetch(str(p), str(lang or "tr")[:5])
+            except Exception as exc:
+                errors.append({"path": p, "error": str(exc)[:100]}); continue
+            if r.get("ok"):
+                done.append(p)
+            else:
+                errors.append({"path": p, "error": r.get("error", "fail")})
+        return {"ok": True, "done": done, "errors": errors}
+
     def library_organize(self, paths: list | None = None, apply: bool = False) -> dict[str, Any]:
         """Dizi bolumlerini 'Dizi / Sezon 01 / bolum' duzenine tasi (once onizleme, apply=True ile tasir; yan altyazilar da gider)."""
         import re as _re
