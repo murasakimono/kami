@@ -78,6 +78,7 @@ DEFAULTS: dict[str, Any] = {
     "kamify_ambiance": True,       # Kamify kapak rengine uyumlu dinamik arka plan ambiyansi
     "games_tilt": True,            # Kami Games kartlarinda fare takipli 3D egim + krom yansima
     "card_ripple": False,          # Kartlarda hover'da hafif isik dalgasi (ripppl esinli; acilip kapanabilir)
+    "advanced_micro_animations": True,  # Gelişmiş mikro-animasyonlar (elastic/3D flip/glow trail/particle gather)
     "reader_page_anim": "curl3d",  # Kami Reader sayfa cevirme: curl3d | slide | off
     "sunak_kamify_sync": False,    # Kamify calarken kapak rengini Sunak arka planina hafifce yansit
     "island_music_expand": True,   # Kamify Mini-Ada: ustune gelince kapak rengiyle genisleyen Dinamik Ada (secilebilir)

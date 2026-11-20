@@ -52,7 +52,7 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs uninsrestartdelete
 
 [InstallDelete]
 ; eski surumden kalan derlenmis Python onbellegi / kaldirilmis eklentiler
@@ -60,6 +60,10 @@ Type: filesandordirs; Name: "{app}\_internal"
 Type: filesandordirs; Name: "{app}\plugins\*\__pycache__"
 ; eski surum etiketli dosya turu ikonlari (yenisi farkli adla gelir; Windows onbellegi yola gore tutar)
 Type: files; Name: "{app}\icons\*.ico"
+; kilitli dosyalarin _eski yedekleri (PrepareToInstall rename etmis olabilir)
+Type: files; Name: "{app}\_internal\*_eski"
+Type: files; Name: "{app}\bin\*_eski"
+Type: files; Name: "{app}\*_eski.exe"
 
 [Icons]
 Name: "{group}\Kami"; Filename: "{app}\Kami.exe"; Comment: "Kami Download Manager"
@@ -106,14 +110,12 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  RC: Integer;
 begin
   QuitKami(ExpandConstant('{app}'));
-  { MCP (--studio-mcp) / WebView2 / uv gibi kilitli kalan surecleri zorla temizle (base_library.zip kilidi) }
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Kami.exe /T', '', SW_HIDE, ewWaitUntilTerminated, RC);
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM msedgewebview2.exe /T', '', SW_HIDE, ewWaitUntilTerminated, RC);
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM uv.exe /T', '', SW_HIDE, ewWaitUntilTerminated, RC);
+  { Kilitli kalan dosyalari _eski olarak yeniden adlandir (MCP --studio-mcp kilitlese bile).
+    GENEL taskkill KULLANILMAZ (oturumdaki diger uv.exe/py sureclerini oldurur). }
+  RenameFile(ExpandConstant('{app}\_internal\base_library.zip'), ExpandConstant('{app}\_internal\base_library.zip_eski'));
+  RenameFile(ExpandConstant('{app}\bin\uv.exe'), ExpandConstant('{app}\bin\uv.exe_eski'));
   Result := '';
 end;
 

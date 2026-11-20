@@ -721,6 +721,39 @@ body.kami-hidden .km-eq i {
   box-shadow: 0 0 26px rgba(46, 230, 166, 0.32);
 }
 
+/* ---- M15-M18: Gelişmiş mikro-animasyonlar (3D flip / glow trail / particle gather / elastic) ---- */
+.km-elastic:active { animation: km-elastic 360ms var(--km-spring-snappy); }
+@keyframes km-elastic {
+  0% { transform: scale(1); }
+  38% { transform: scale(1.14, 0.86); }
+  68% { transform: scale(0.94, 1.05); }
+  100% { transform: scale(1); }
+}
+
+.km-flip3d { perspective: 700px; }
+.km-flip3d > * { transition: transform 380ms var(--km-spring); transform-style: preserve-3d; }
+.km-flip3d:hover > * { transform: rotateY(180deg); }
+
+.km-gather { position: relative; }
+.km-gather::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: 6px; height: 6px; margin: -3px; border-radius: 50%;
+  background: rgba(157, 107, 255, 0.9);
+  animation: km-gather 520ms var(--km-ease-out) 1;
+  pointer-events: none;
+}
+@keyframes km-gather {
+  0% { box-shadow: 18px -12px 0 0 rgba(46,230,166,0.9), -16px -10px 0 0 rgba(157,107,255,0.9), 12px 16px 0 0 rgba(46,230,166,0.9), -14px 14px 0 0 rgba(157,107,255,0.9); opacity: 1; }
+  100% { box-shadow: 0 0 0 0 rgba(46,230,166,0), 0 0 0 0 rgba(157,107,255,0), 0 0 0 0 rgba(46,230,166,0), 0 0 0 0 rgba(157,107,255,0); opacity: 0; }
+}
+
+#kmGlowTrail {
+  position: fixed; width: 260px; height: 260px; border-radius: 50%;
+  pointer-events: none; z-index: 9998;
+  background: radial-gradient(circle, rgba(157,107,255,0.12), transparent 62%);
+  transform: translate(-50%, -50%); opacity: 0; transition: opacity 400ms;
+}
+
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
 @media (prefers-reduced-motion: reduce) {
   .km-pop-origin, .km-toast, .km-glider, .km-glow::after,
@@ -728,6 +761,7 @@ body.kami-hidden .km-eq i {
   .km-cascade-item, .km-eq i,
   .km-breathe, .km-twinkle, .km-tilt, .km-pulse-ring,
   .km-wave > *, .km-spark-burst::after, .km-liquid-fill::after, .km-ripple::after,
+  .km-elastic, .km-flip3d > *, .km-gather::after, #kmGlowTrail,
   .rd-main::before, #settingsForm .dialog-head::after, .cl-scroll::before,
   #sunak .sk-strip.burst .sk-paper::after, .km-absorb,
   #k20AiDropZone.drag, .cv-drop.drag, .pc-stage.drag, #rdStage.drag, #chat.drop,

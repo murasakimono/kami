@@ -670,7 +670,7 @@ function bindSettings() {
     if (["hotkey", "hotkey_enabled", "autostart"].includes(el.name)) setTimeout(refreshDesktop, 300);
     if (el.name === "language") { state.lang = r.value; applyI18n(); }
     if (el.name === "theme") applyTheme(r.value);
-    if (el.name in { sunak_bg_mode: 1, ui_transitions: 1, kamify_ambiance: 1, games_tilt: 1, card_ripple: 1, reader_page_anim: 1, sunak_kamify_sync: 1 }) {
+    if (el.name in { sunak_bg_mode: 1, ui_transitions: 1, kamify_ambiance: 1, games_tilt: 1, card_ripple: 1, advanced_micro_animations: 1, reader_page_anim: 1, sunak_kamify_sync: 1 }) {
       window.KamiFX?.applySettings?.(state.settings);
       window.KamiMotion?.applySettings?.(state.settings);
       if (!state.settings.sunak_kamify_sync) window.KamiFX?.setTint?.(0, 0, 0);

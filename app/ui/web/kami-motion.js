@@ -513,7 +513,7 @@
   }
 
   // M9: Kart eğilmesi (tilt) + M14: kart dalgalanması (ripple) — ayar duyarlı
-  const cardFx = { tilt: true, ripple: false };
+  const cardFx = { tilt: true, ripple: false, advanced: true };
   function initMicro() {
     if (isReduced()) return;
     document.querySelectorAll(".gcard, .qa-card, .acard").forEach((c) => {
@@ -542,11 +542,48 @@
     el._kmWaveT = setTimeout(() => el.classList.remove("km-wave"), 900);
   }
 
+  // M17: Particle gather (parçacıkların içe toplanması)
+  function gather(el) {
+    if (!el || isReduced()) return;
+    el.classList.remove("km-gather");
+    void el.offsetWidth;
+    el.classList.add("km-gather");
+    clearTimeout(el._kmGatherT);
+    el._kmGatherT = setTimeout(() => el.classList.remove("km-gather"), 560);
+  }
+
+  // M15-M18: gelişmiş mikro-animasyonlar (elastic, 3D flip, glow trail)
+  let glowTrail = null;
+  function initAdvanced() {
+    if (isReduced() || !cardFx.advanced) {
+      if (glowTrail) { glowTrail.remove(); glowTrail = null; }
+      document.querySelectorAll(".km-elastic, .km-flip3d").forEach((c) => c.classList.remove("km-elastic", "km-flip3d"));
+      return;
+    }
+    document.querySelectorAll(".btn, .sk-tab, .cl-tab, .nav-b, .chip").forEach((c) => c.classList.add("km-elastic"));
+    document.querySelectorAll(".nav-b, .sk-tab").forEach((c) => c.classList.add("km-flip3d"));
+    if (!glowTrail) {
+      glowTrail = document.createElement("div");
+      glowTrail.id = "kmGlowTrail";
+      document.body.appendChild(glowTrail);
+      let tId = null;
+      document.addEventListener("mousemove", (e) => {
+        if (!glowTrail) return;
+        glowTrail.style.left = e.clientX + "px";
+        glowTrail.style.top = e.clientY + "px";
+        glowTrail.style.opacity = "1";
+        clearTimeout(tId);
+        tId = setTimeout(() => { if (glowTrail) glowTrail.style.opacity = "0"; }, 480);
+      }, { passive: true });
+    }
+  }
+
 function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
     initDragPortals();
     initMicro();
+    initAdvanced();
     const bindKnownGliders = () => {
       const cl = document.getElementById("clTabs");
       if (cl) bindGlider(cl, ".cl-tab", "on");
@@ -601,12 +638,15 @@ function bootstrap() {
     pulseRing,
     sparkBurst,
     wave,
+    gather,
     applySettings(s) {
       if (!s) return;
       cardFx.tilt = s.games_tilt !== false;
       cardFx.ripple = s.card_ripple === true;
+      cardFx.advanced = s.advanced_micro_animations !== false;
       document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));
       initMicro();
+      initAdvanced();
     },
   };
 })();
