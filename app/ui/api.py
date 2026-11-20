@@ -1629,6 +1629,16 @@ class Api(StudioMixin):
         res["base"] = str(self._manager.base_dir())
         return res
 
+    def mix_build(self, n: int = 20) -> dict[str, Any]:
+        """Kami 'For You' Radyo: scrobble geçmişinden kişisel, tekrar etmeyen kuyruk."""
+        from app.core import library, mix
+        dirs = self._library_dirs()
+        if not dirs:
+            return {"ok": False, "error": "no_library"}
+        items = library.scan(dirs)["items"]
+        tracks = mix.build_mix(items, history=self.scrobbler_history(200), n=int(n or 20))
+        return {"ok": True, "tracks": [{"path": t["path"], "name": t["name"], "kind": t.get("kind", "")} for t in tracks]}
+
     def library_albums(self) -> dict[str, Any]:
         """Kutuphanedeki muzik: album kartlari (kapak, sanatci, parcalar)."""
         from app import paths
