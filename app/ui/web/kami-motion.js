@@ -688,6 +688,8 @@ function bootstrap() {
       cardFx.gooey = s.motion_gooey === true;
       cardFx.shared = s.motion_shared === true;
       document.body.classList.toggle("km-dir-on", s.motion_dirpanel === true);
+      document.querySelectorAll(".gcard").forEach(c => c.classList.toggle("km-refract", s.motion_refract === true));
+      cardFx.nixie = s.motion_nixie === true;
       initMagnet();
       initGooey();
       document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));

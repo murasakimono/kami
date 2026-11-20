@@ -777,6 +777,13 @@ body.km-mesh::before { content: ""; position: fixed; inset: 0; pointer-events: n
 .km-dir-panel { animation: km-dir-in 260ms var(--km-ease-out); }
 @keyframes km-dir-in { from { transform: translateX(22px); opacity: 0; } to { transform: none; opacity: 1; } }
 
+/* Cam kırılması hover (motion_refract) */
+.km-refract { position: relative; overflow: hidden; }
+.km-refract img, .km-refract .cov { transition: transform .3s var(--km-ease-out), filter .3s; }
+.km-refract:hover img, .km-refract:hover .cov { transform: scale(1.06); filter: blur(0.5px) brightness(1.08); }
+.km-refract::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.16), transparent 55%); }
+.km-refract:hover::after { opacity: 1; }
+
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
 @media (prefers-reduced-motion: reduce) {
   .km-pop-origin, .km-toast, .km-glider, .km-glow::after,
