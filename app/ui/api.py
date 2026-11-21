@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from app import paths
 from app.core.manager import CaptureRejected, PageLinkRejected
 from app.core.watchdog import log_slow_calls
 from app.core.models import DownloadRequest, Status

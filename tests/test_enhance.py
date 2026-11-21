@@ -284,6 +284,33 @@ def test_temizle_uctan_uca(workdir):
 
 
 @pytest.mark.skipif(not _ffmpeg(), reason="ffmpeg yok")
+def test_iptal_yarim_cikti_birakmaz(workdir, monkeypatch):
+    """Temizle/Hizli buyut ciktiyi dogrudan hedefe yazar; iptal edilince yarim mp4 KALMAMALI."""
+    ff = _ffmpeg()
+    monkeypatch.setenv(ve.WORK_ENV, str(workdir / "work"))
+    src = workdir / "uzun2.mp4"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y",
+                    "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=30:duration=20",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(src)], check=True)
+    out = workdir / "out"
+    res = ve.start("temizle", str(src), ff, {"denoise": 3}, out)
+    assert res["ok"], res
+    jid = res["job"]
+    time.sleep(0.6)                     # kodlama baslamis ama bitmemis olsun (20 sn 720p)
+    ve.cancel(jid)
+    st: dict = {}
+    t0 = time.time()
+    while time.time() - t0 < 90:
+        st = ve.job(jid)
+        if st["state"] != "running":
+            break
+        time.sleep(0.1)
+    assert st.get("state") == "cancelled", st
+    kalan = list(out.glob("*.mp4")) if out.exists() else []
+    assert not kalan, f"iptalden sonra yarim cikti kaldi: {kalan}"
+
+
+@pytest.mark.skipif(not _ffmpeg(), reason="ffmpeg yok")
 def test_parcali_iste_her_parca_temizlenir(workdir, monkeypatch):
     """Uzun video parcalanir; HER parca bitince o parcanin PNG'leri silinmeli.
 

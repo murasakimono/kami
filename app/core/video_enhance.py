@@ -243,6 +243,24 @@ def _count(d: Path) -> int:
         return 0
 
 
+def _drop_partial(job: dict) -> None:
+    """Iptal/hata sonrasi YARIM cikti dosyasini siler.
+
+    Temizle/Hizli buyut yollari ciktiyi dogrudan hedefe yazar; iptal edilince
+    yarim (oynatilamayan) bir mp4 kaliyordu. Kullanici artik bozuk dosya gormez.
+    """
+    p = job.get("_out")
+    if not p:
+        return
+    try:
+        f = Path(str(p))
+        if f.is_file():
+            f.unlink()
+            log.info("yarim cikti silindi: %s", f)
+    except OSError as exc:
+        log.warning("yarim cikti silinemedi: %s (%s)", p, exc)
+
+
 def _rm_dir(path: Path, job: dict | None = None, attempts: int = 3) -> bool:
     """Gecici klasoru siler; BASARISIZ olursa sessizce yutMAZ (log + job['leftover']).
 
@@ -358,6 +376,7 @@ def _run_filter_only(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[
     dur = float(opts.get("duration") or 0) or max(0.001, float(info.get("duration") or 0))
     tag = re.sub(r"[^\w]+", "", str(PRESETS[preset]["ad"]).split()[0]).lower() or "temiz"
     dst = _out_path(out_dir, path, tag)
+    job["_out"] = str(dst)
     job["line"] = "İşleniyor (tek geçiş, geçici dosya yok)"
     acodec = "copy" if (info.get("audio") and _audio_copy_ok(info.get("acodec", ""))) else "aac"
     cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y"]
@@ -505,6 +524,7 @@ def _run_trt(job: dict, ffmpeg: str, path: str, opts: dict[str, Any],
             raise RuntimeError("girdi hazirlanamadi: " + r.stderr.decode("utf-8", "replace")[-160:])
         src = str(tmp)
     dst = _out_path(out_dir, path, "trt")
+    job["_out"] = str(dst)
     o = dict(opts)
     o["frames"] = int(info.get("frames") or 0)
     try:
@@ -542,6 +562,7 @@ def _run_flashvsr(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str
             raise RuntimeError("girdi hazirlanamadi: " + r.stderr.decode("utf-8", "replace")[-160:])
         src = str(tmp)
     dst = _out_path(out_dir, path, "yeniden")
+    job["_out"] = str(dst)
     try:
         out = fv.run_video(job, ffmpeg, src, opts, work, dst)
     except fv._Cancelled:
@@ -567,6 +588,7 @@ def _run_model(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, A
         return _run_chunked(job, ffmpeg, preset, path, opts, info, base_dir, work, start, dur,
                             forced or CHUNK_FRAMES, tag)
     dst = _out_path(base_dir, path, tag)
+    job["_out"] = str(dst)
     seg = _segment(job, ffmpeg, preset, path, opts, info, work, start, dur, "full", True, 0.0, 1.0)
     shutil.move(str(seg), str(dst))
     return dst
@@ -606,6 +628,7 @@ def _run_chunked(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str,
         raise RuntimeError("parca birlestirme hatasi: " + r.stderr.decode("utf-8", "replace")[-200:])
 
     dst = _out_path(out_dir, path, tag)
+    job["_out"] = str(dst)
     acodec = "copy" if (info.get("audio") and _audio_copy_ok(info.get("acodec", ""))) else "aac"
     cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-i", str(joined)]
     if info.get("audio"):
@@ -680,8 +703,10 @@ def _worker(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, Any]
         job.update(state="done", p=1.0, line="Bitti",
                    result={"path": str(dst), "info": probe(ffmpeg, str(dst))})
     except _Cancelled:
+        _drop_partial(job)
         job.update(state="cancelled", line="İptal edildi")
     except Exception as exc:
+        _drop_partial(job)
         log.exception("video iyilestirme hatasi (preset=%s)", preset)
         job.update(state="error", error=str(exc)[:300], line="Hata")
     finally:
