@@ -204,11 +204,23 @@ def probe(ffmpeg: str, path: str) -> dict[str, Any]:
 
 # ------------------------------------------------------------------ filtre zinciri
 
+def target_fps(info: dict[str, Any], opts: dict[str, Any] | None = None) -> float:
+    """Cikti fps'i: opts['fps'] verildiyse o, yoksa kaynagin fps'i."""
+    tf = int((opts or {}).get("fps") or 0)
+    return float(tf) if tf >= 10 else float(info.get("fps") or 30.0)
+
+
 def filters(preset: str, info: dict[str, Any], opts: dict[str, Any] | None = None) -> list[str]:
     """ffmpeg video filtresi listesi. Saf fonksiyon: test edilebilir."""
     p = PRESETS.get(str(preset)) or {}
     o = dict(opts or {})
     vf: list[str] = []
+
+    # 0) Kare hizi dusurme: 60 fps kaynagi 30'a indirmek kare sayisini (ve isi) YARIYA indirir.
+    #    En basa konur ki sonraki tum adimlar daha az kareyle calissin.
+    tf = int(o.get("fps") or 0)
+    if tf >= 10:
+        vf.append(f"fps={tf}")
 
     # 1) Interlace: auto -> kaynak interlaced ise, on -> her zaman, off -> hic
     mode = str(o.get("deinterlace") or "auto").lower()
@@ -457,9 +469,9 @@ def _segment(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, Any
         _run_tool(job, se.rife_args(str(ex), cur, out, expect), ex, out, expect,
                   p0 + span * (0.72 if p.get("upscale") else 0.30), p0 + span * 0.95)
         cur, n_cur = out, expect
-        out_fps = float(info["fps"]) * factor
+        out_fps = target_fps(info, opts) * factor
     else:
-        out_fps = float(info["fps"])
+        out_fps = target_fps(info, opts)
 
     job["line"] = pre + "video birleştiriliyor"
     dst = work / f"{base}.mp4"

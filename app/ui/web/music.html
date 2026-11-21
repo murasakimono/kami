@@ -600,7 +600,13 @@
     subBar.innerHTML = `<label class="field"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><input id="locPath" placeholder="Müzik klasörünün yolunu yapıştır — örn. C:\\Users\\...\\Downloads\\Contra"><button class="btn" id="locPick">Gözat…</button><button class="btn pri" id="locAddPath">Ekle</button></label>`;
     const r = await api()?.music_local_scan?.("", q.value.trim()).catch(() => null);
     const folders = r?.folders || [], items = r?.items || [];
-    folderChips.innerHTML = folders.map((f) => `<span class="chip" title="${esc(f)}">${esc(f.split(/[\\/]/).pop() || f)}<button data-locplaydir="${esc(f)}" title="Tümünü çal">▶</button><button data-locedit="${esc(f)}" title="Düzenle (ad/kapak)">✎</button><button data-locdel="${esc(f)}" title="Listeden kaldır (dosyalara dokunmaz)">✕</button></span>`).join("");
+    const covers = r?.covers || {};
+    folderChips.innerHTML = folders.map((f) => `<span class="chip" title="${esc(f)}">${covers[f] ? `<img class="cov-sm" data-cover="${esc(covers[f])}" alt="" style="width:20px;height:20px;border-radius:4px;object-fit:cover;margin-right:6px;vertical-align:middle">` : ""}${esc(f.split(/[\\/]/).pop() || f)}<button data-locplaydir="${esc(f)}" title="Tümünü çal">▶</button><button data-locedit="${esc(f)}" title="Düzenle (ad/kapak)">✎</button><button data-locdel="${esc(f)}" title="Listeden kaldır (dosyalara dokunmaz)">✕</button></span>`).join("");
+    // folder.jpg kapaklarini data URL'e cevirip yerlestir (yerel dosya yolu <img src> ile guvenilir degil)
+    folderChips.querySelectorAll("img[data-cover]").forEach(async (im) => {
+      const d = await api()?.image_data?.(im.dataset.cover, 64).catch(() => null);
+      if (d?.url) im.src = d.url;
+    });
     list.innerHTML = items.length ? items.map((it) => `<div class="row" data-title="${esc(it.title || "")}"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.folder)} · ${esc(it.ext.toUpperCase())}</small></div><button class="btn" data-locwhisper="${esc(it.path)}" title="Whisper Güçlü Mod ile zaman damgalı .lrc çıkar">🎙 Whisper Söz (.lrc)</button><button class="btn" data-loclrcedit="${esc(it.path)}" data-loctitle="${esc(it.title)}" title="Canlı LRC & Zamanlama Düzenleyici">✎ Söz Düzenle</button><button class="btn pri" data-locplay="${esc(it.path)}" data-locroot="${esc(it.root)}">▶ Kami Player</button></div>`).join("") : `<div style="color:var(--mut);padding:14px">Henüz yerel klasör eklenmedi.</div>`;
     refreshListMotion();
   }

@@ -924,12 +924,18 @@ def generate_mp3_lrc(
             return {"ok": False, "error": "no_speech"}
         g = media_meta.guess(p, "")
         w_out = lyrics.write_lyrics(p, lrc_text, g.get("artist", ""), g.get("title", ""), embed=bool(embed), ai=True)
+        # write_lyrics senkron degilse .txt yazar; her durumda GERCEK dosyayi dogrula.
+        # Eskiden dosya yazilmasa bile ok:True + hayali .lrc yolu donuyordu ("bitti dedi ama .lrc yok").
+        side = w_out.get("lrc") or w_out.get("txt") or ""
+        if not side or not os.path.isfile(side):
+            return {"ok": False, "error": "lrc_yazilamadi", "detail": str(w_out)[:160]}
         lines = lyrics.parse_elrc_words(lrc_text)
         on_progress(1.0, "done")
         return {
             "ok": True,
             "path": p,
-            "lrc_path": w_out.get("lrc", os.path.splitext(p)[0] + ".lrc"),
+            "lrc_path": side,
+            "kayit": "lrc" if w_out.get("lrc") else "txt",   # arayuz ikisini ayirt edebilsin
             "lrc_text": lrc_text,
             "lines": lines,
             "lang": res_w.get("lang", lang),

@@ -190,6 +190,17 @@ def test_akici_boyut_degistirmez():
     assert not any("scale=" in f for f in ve.filters("akici", INFO_DUZ, {"denoise": 0}))
 
 
+def test_fps_dusurme_isi_yarilar():
+    """60 fps kaynagi 30'a indirmek kare sayisini yariya indirir (en buyuk hiz kazanci)."""
+    info = {"interlaced": False, "width": 1280, "height": 720, "fps": 60.0}
+    assert "fps=30" in ve.filters("netlestir", info, {"fps": 30, "denoise": 0})
+    assert not any("fps=" in f for f in ve.filters("netlestir", info, {"denoise": 0}))
+    assert ve.target_fps(info, {"fps": 30}) == 30.0
+    assert ve.target_fps(info, {}) == 60.0
+    assert ve.target_fps(info, {"fps": 0}) == 60.0          # 0 = kaynagi koru
+    assert ve.target_fps(info, {"fps": 5}) == 60.0          # sacma deger yok sayilir
+
+
 # ---------------------------------------------------------------- yardimcilar
 
 def test_ses_kopyalama_karari():

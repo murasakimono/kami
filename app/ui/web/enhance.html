@@ -79,6 +79,16 @@
         <div class="pre" id="pre"></div>
         <details>
           <summary>İnce ayar</summary>
+          <label class="row">Başlangıç (sn)
+            <input id="oStart" type="number" min="0" step="1" value="0" style="width:92px;background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:5px 8px;font:inherit">
+          </label>
+          <label class="row">Süre (sn) · 0 = sonuna kadar
+            <input id="oDur" type="number" min="0" step="1" value="0" style="width:92px;background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:5px 8px;font:inherit">
+          </label>
+          <label class="row">Çıktı fps
+            <select id="oFps"><option value="0">Kaynak</option><option value="30">30</option><option value="24">24</option></select>
+          </label>
+          <div class="hint" style="padding:2px 0 6px">Kare sayısı süreyi belirler: <b>60 fps kaynağı 30 yaparsan süre yarıya iner</b>. Aralık verirsen yalnız o kesit işlenir.</div>
           <label class="row">Büyütme oranı
             <select id="oScale"><option value="2">2×</option><option value="4">4×</option></select>
           </label>
@@ -210,6 +220,9 @@
       denoise: +$("#oDn").value,
       deinterlace: $("#oDeint").value,
       factor: +$("#oFactor").value,
+      start: +($("#oStart")?.value || 0),
+      duration: +($("#oDur")?.value || 0),
+      fps: +($("#oFps")?.value || 0),
     };
   }
 

@@ -850,10 +850,16 @@ def local_scan_folder(folder: str = "", query: str = "", limit: int = 500) -> di
                 "folder": f.parent.name,
                 "root": str(root),
                 "ext": f.suffix.lower().lstrip("."),
+                "cover": str(f.parent / "folder.jpg") if (f.parent / "folder.jpg").is_file() else "",
             })
             if len(items) >= limit:
                 break
-    return {"ok": True, "folders": local_folders_list(), "items": items}
+    # Klasor kapaklari: "Klasoru Duzenle > Kapak Degistir" folder.jpg yazar; arayuz buradan okur.
+    covers: dict[str, str] = {}
+    for root in roots:
+        if root.is_dir() and (root / "folder.jpg").is_file():
+            covers[str(root)] = str(root / "folder.jpg")
+    return {"ok": True, "folders": local_folders_list(), "covers": covers, "items": items}
 
 
 # ---------- YouTube Music Playlist & Spotify <-> YTM Gecis ----------
