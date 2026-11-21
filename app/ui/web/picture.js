@@ -39,6 +39,63 @@ async function load() {
 function apply() { $("#pcImg").style.transform = `translate(${PC.x}px, ${PC.y}px) scale(${PC.z}) rotate(${PC.rot}deg)`; }
 function step(d) { if (PC.list.length < 2) return; PC.i = (PC.i + d + PC.list.length) % PC.list.length; load().then(() => { if (!$("#pcLens").hidden) runLens(); }); }
 
+// ---------- Perspektif Mockup & AI Kopru Durumu ----------
+const MOCK = { on: false, base: "", design: "", s0: null, s1: null, el: null };
+function mockStage() { return $("#pcStage"); }
+function mockPos(e) { const r = mockStage().getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+function mockImgXY(cx, cy) {   // sahne -> goruntu piksel (zoom/pan etkisini rect uzerinden hesaba katar)
+  const img = $("#pcImg");
+  const r = img.getBoundingClientRect();
+  const W = img.naturalWidth || 1, H = img.naturalHeight || 1;
+  return [Math.max(0, Math.min(W, ((cx - r.left) / r.width) * W)), Math.max(0, Math.min(H, ((cy - r.top) / r.height) * H))];
+}
+function mockDraw(s0, s1) {
+  if (!MOCK.el) return;
+  const x = Math.min(s0[0], s1[0]), y = Math.min(s0[1], s1[1]);
+  MOCK.el.style.left = x + "px"; MOCK.el.style.top = y + "px";
+  MOCK.el.style.width = Math.abs(s1[0] - s0[0]) + "px"; MOCK.el.style.height = Math.abs(s1[1] - s0[1]) + "px";
+}
+function mockCancel() {
+  MOCK.on = false; MOCK.s0 = MOCK.s1 = null;
+  if (MOCK.el) { MOCK.el.remove(); MOCK.el = null; }
+  mockStage().style.cursor = "";
+}
+async function mockRun() {
+  const p = PC.list[PC.i]; if (!p) return;
+  const files = (await api.pic_batch_pick()) || [];
+  if (!files[0]) return toast(L("Tasarım görseli seçilmedi", "No design image picked"));
+  mockCancel();
+  MOCK.on = true; MOCK.base = p; MOCK.design = files[0];
+  PC.rot = 0; apply();
+  MOCK.el = document.createElement("div");
+  MOCK.el.style.cssText = "position:absolute;display:none;border:2px solid #2EE6A6;background:rgba(46,230,166,.14);pointer-events:none;z-index:6";
+  mockStage().appendChild(MOCK.el);
+  mockStage().style.cursor = "crosshair";
+  toast(L("Tasarımın yerleşeceği alanı sürükleyerek seç (Esc iptal)", "Drag to select where the design goes (Esc cancels)"));
+}
+async function mockFinish(s1) {
+  const s0 = MOCK.s0; mockCancel();
+  if (!s0 || !s1) return;
+  const [x1, y1] = mockImgXY(s0[0], s0[1]);
+  const [x2, y2] = mockImgXY(s1[0], s1[1]);
+  if (Math.abs(x2 - x1) < 4 || Math.abs(y2 - y1) < 4) return toast(L("Alan çok küçük", "Area too small"));
+  toast(L("Mockup oluşturuluyor…", "Building mockup…"));
+  const r = await api.pic_mockup(MOCK.design, MOCK.base, [[x1, y1], [x2, y1], [x2, y2], [x1, y2]], "");
+  if (r?.ok) { toast(L("Mockup hazır: ", "Mockup ready: ") + r.path.split(/[\\/]/).pop()); open(r.path); }
+  else toast(L("Mockup olmadı: ", "Mockup failed: ") + (r?.error || ""));
+}
+async function bridgeStatus() {
+  try {
+    const r = await api.pic_ai_bridge_status();
+    const pre = r?.vram_6gb_preflight || {};
+    const snap = pre.snapshot || {};
+    const vram = pre.fallback === "cpu"
+      ? L("VRAM yetersiz (CPU öneriliyor)", "VRAM low (CPU suggested)")
+      : L("VRAM yeterli", "VRAM OK") + (snap.vram_free_mb ? ` · ${snap.vram_free_mb} MB boş` : "");
+    toast(`${L("ComfyUI", "ComfyUI")}: ${r?.comfyui_running ? "✓" : "✗"} · ${L("IOPaint", "IOPaint")}: ${r?.iopaint_running ? "✓" : "✗"} · ${vram}`);
+  } catch { toast(L("AI köprü durumu alınamadı", "Could not read AI bridge status")); }
+}
+
 // ---------- Kami Lens ----------
 async function runLens() {
   const p = PC.list[PC.i]; if (!p) return;
@@ -83,17 +140,30 @@ document.addEventListener("click", async (e) => {
   else if ((a === "conv" || a === "nobg") && p) api.picture_send(p, a === "nobg" ? "img:nobg" : "");
   else if ((a === "beautify" || a === "pin") && p) window.kamiPicV138?.action?.(a, p);
   else if (a === "lens") { if (!$("#pcLens").hidden) { $("#pcLens").hidden = true; b.classList.remove("on"); } else runLens(); }
+  else if (a === "mockup") mockRun();
+  else if (a === "bridge") bridgeStatus();
 });
 const stage = $("#pcStage");
 stage.addEventListener("wheel", (e) => { e.preventDefault(); PC.z = Math.min(12, Math.max(0.1, PC.z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); apply(); }, { passive: false });
 let drag = null;
-stage.addEventListener("mousedown", (e) => { if (e.target.closest("button")) return; drag = { sx: e.clientX - PC.x, sy: e.clientY - PC.y }; stage.classList.add("drag"); });
-addEventListener("mousemove", (e) => { if (drag) { PC.x = e.clientX - drag.sx; PC.y = e.clientY - drag.sy; apply(); } });
-addEventListener("mouseup", () => { drag = null; stage.classList.remove("drag"); });
+stage.addEventListener("mousedown", (e) => {
+  if (e.target.closest("button")) return;
+  if (MOCK.on) { MOCK.s0 = mockPos(e); MOCK.s1 = MOCK.s0; MOCK.el.style.display = "block"; mockDraw(MOCK.s0, MOCK.s1); return; }
+  drag = { sx: e.clientX - PC.x, sy: e.clientY - PC.y }; stage.classList.add("drag");
+});
+addEventListener("mousemove", (e) => {
+  if (MOCK.on && MOCK.s0) { MOCK.s1 = mockPos(e); mockDraw(MOCK.s0, MOCK.s1); return; }
+  if (drag) { PC.x = e.clientX - drag.sx; PC.y = e.clientY - drag.sy; apply(); }
+});
+addEventListener("mouseup", (e) => {
+  if (MOCK.on && MOCK.s0) { mockFinish(e ? mockPos(e) : MOCK.s1); }
+  drag = null; stage.classList.remove("drag");
+});
 stage.addEventListener("dblclick", () => { PC.z = PC.z > 1.01 ? 1 : 2.5; PC.x = PC.y = 0; apply(); });
 document.addEventListener("keydown", (e) => {
   if (e.target.matches?.("input, textarea") || window.ED?.on || (typeof ED !== "undefined" && ED.on)) return;
   const k = e.key;
+  if (k === "Escape" && MOCK.on) { mockCancel(); e.preventDefault(); return; }
   if (k.toLowerCase() === "e" && PC.list[PC.i]) { window.kamiEditor.open(PC.list[PC.i]); e.preventDefault(); return; }
   if (k === "ArrowRight") step(1); else if (k === "ArrowLeft") step(-1);
   else if (k.toLowerCase() === "r") { PC.rot = (PC.rot + 90) % 360; apply(); } else if (k === "0") { PC.z = 1; PC.x = PC.y = 0; apply(); }

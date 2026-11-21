@@ -61,6 +61,7 @@
     <span class="hint">Eski / bozuk videoyu temizler, büyütür, akıcılaştırır · yerel, ücretsiz, GPU</span>
     <span class="spacer"></span>
     <button class="btn" id="pick">Dosya seç</button>
+    <button class="btn" id="history">Geçmiş</button>
   </div>
 
   <div class="grid">
@@ -356,6 +357,12 @@
   };
   $("#go").onclick = go;
   $("#cancel").onclick = async () => { if (S.job) await api()?.enhance_cancel?.(S.job); };
+$("#history").onclick = async () => {
+  const jobs = await api()?.enhance_jobs?.().catch(() => null);
+  if (!jobs?.length) { warn("Geçmiş iş yok"); return; }
+  const rows = jobs.slice(0, 12).map((j) => esc(typeof j === "string" ? j : (j.name || j.preset || j.id || "iş") + (j.state ? " — " + j.state : ""))).join("<br>");
+  warn(`<b>Son ${Math.min(jobs.length, 12)} iş:</b><br>${rows}`);
+};
 
   const dz = $("#drop");
   dz.addEventListener("click", () => $("#pick").click());

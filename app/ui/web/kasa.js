@@ -6,6 +6,16 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmt = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); };
   const A = () => window.pywebview?.api;
+const job = async (fn, ...args) => {
+  const j = await A().job_start(fn, args);
+  if (!j?.ok) return { ok: false, error: j?.error || "job_failed" };
+  for (let w = 60; ; w = Math.min(w * 1.5, 400)) {
+    await new Promise((r) => setTimeout(r, w));
+    const r = await A().job_result(j.job);
+    if (r.state === "done") return r.result;
+    if (r.state === "lost") return { ok: false, error: "job_lost" };
+  }
+};
   let timer = 0, pollT = 0;
   function css() {
     if (document.getElementById("kasaCss")) return;
@@ -40,7 +50,9 @@
       ${ix.running ? `<span>İndeksleniyor ${ix.done}/${ix.total}: ${esc(ix.current)}</span>` : ""}
       <span style="flex:1"></span>
       ${!st.installed && !st.installing ? `<button class="inst">Anlamsal aramayı kur (~${st.size_gb} GB)</button>` : ""}
-      <button class="idx" ${ix.running ? "disabled" : ""}>Klasör ekle</button>`;
+      <button class="idx" ${ix.running ? "disabled" : ""}>Klasör ekle</button>
+      <button class="idx1" ${ix.running ? "disabled" : ""}>Dosya indeksle</button>
+      <button class="ch">Otomatik bölüm</button>`;
     clearTimeout(pollT);
     if (ix.running || st.installing) pollT = setTimeout(() => document.getElementById("kasa") && refresh(box), 2000);
     return st;
@@ -58,6 +70,29 @@
       <div class="meta"><b title="${esc(x.path)}">${esc(x.title)}</b><span>${esc(x.snippet || "")}</span></div></div>`).join("");
     grid.onclick = (e) => { const c = e.target.closest(".card"); if (!c) return; const x = res[+c.dataset.i]; A().kasa_open(x.path, x.start_sec || 0); };
   }
+  function chaptersPanel(box) {
+    const grid = box.querySelector(".grid");
+    grid.innerHTML = `<div class="empty" style="text-align:left;line-height:1.6">
+      <b>Otomatik bölüm</b><br>Transkript segmentlerini JSON olarak yapıştır:
+      <textarea id="chIn" rows="5" style="width:100%;box-sizing:border-box;background:var(--bg,#0D0A12);color:inherit;border:1px solid var(--line,#2A2236);padding:8px;font:inherit;resize:vertical;margin:6px 0"></textarea>
+      <div style="color:var(--muted,#9A91AB);font-size:12px">Biçim: <code>[{"start":0,"end":12,"text":"..."}, ...]</code></div>
+      <button class="pri chRun" style="margin-top:8px">Bölümleri üret</button>
+      <div id="chOut" style="margin-top:10px"></div>
+    </div>`;
+    grid.querySelector(".chRun").onclick = async () => {
+      const raw = grid.querySelector("#chIn").value.trim();
+      let segs; try { segs = JSON.parse(raw || "[]"); } catch { toast("JSON çözümlenemedi", true); return; }
+      if (!Array.isArray(segs) || !segs.length) { toast("Segment bulunamadı", true); return; }
+      toast("Bölümler üretiliyor…");
+      const r = await A().kasa_auto_chapters(segs, 180);
+      const chs = r?.chapters || [];
+      const out = grid.querySelector("#chOut");
+      if (!chs.length) { if (out) out.textContent = "Bölüm üretilemedi"; toast("Bölüm üretilemedi", true); return; }
+      out.innerHTML = chs.map((c) => `<div style="border-left:2px solid var(--accent,#9D6BFF);padding:6px 10px;margin:6px 0;background:var(--raised,#1D1727)"><b>${esc(c.title || "")}</b><br><span style="color:var(--muted,#9A91AB);font-size:12px">${fmt(c.start)} → ${fmt(c.end)}${c.summary ? " · " + esc(c.summary) : ""}</span></div>`).join("")
+        + (r?.engine ? `<div style="color:var(--muted,#9A91AB);font-size:11px">Motor: ${esc(r.engine)}</div>` : "");
+      toast(`Bölümler üretildi (${chs.length})`);
+    };
+  }
   async function open() {
     if (!A()?.kasa_search) return;
     css();
@@ -73,6 +108,16 @@
       if (e.target === wrap || e.target.closest(".close")) { wrap.remove(); return; }
       if (e.target.closest(".go")) { search(box); return; }
       if (e.target.closest(".idx")) { const r = await A().kasa_index_folder(""); if (r?.ok) refresh(box); return; }
+      if (e.target.closest(".idx1")) {
+        const p = await A().player_pick_file();
+        if (!p) return;
+        toast("İndeksleniyor: " + p.split(/[\\/]/).pop());
+        const r = await job("kasa_index_media", p, "", null);
+        if (r?.ok) { toast("İndekslendi: " + p.split(/[\\/]/).pop() + (r.indexed != null ? ` (${r.indexed} sahne)` : "")); refresh(box); }
+        else toast("İndekslenemedi: " + (r?.error || ""), true);
+        return;
+      }
+      if (e.target.closest(".ch")) { chaptersPanel(box); return; }
       if (e.target.closest(".inst")) {
         const st = await A().kasa_setup();
         const ok = typeof kAsk === "function" ? await kAsk(`Anlamsal arama bir kez kurulacak (~${st.size_gb} GB, işlemcide çalışır). Kurulsun mu?`) : confirm(`Anlamsal arama kurulsun mu? (~${st.size_gb} GB)`);

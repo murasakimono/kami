@@ -75,6 +75,7 @@
           <button class="eco-tab" data-tab="enhance" data-grp="medya">Video İyileştirici</button>
           <button class="eco-tab" data-tab="hardsub" data-grp="medya">Kami Hardsub</button>
           <button class="eco-tab" data-tab="ghost" data-grp="medya">Kami Ghost</button>
+          <button class="eco-tab" data-tab="clipfactory" data-grp="medya">Klip Fabrikası</button>
           <div class="eco-tgrp" data-grp="arac">Araç & İndirme</div>
           <button class="eco-tab" data-tab="bypass" data-grp="arac">Kami Bypass</button>
           <button class="eco-tab" data-tab="season" data-grp="arac">Sezon Kazıyıcı</button>
@@ -83,6 +84,10 @@
     <button class="eco-tab" data-tab="subs" data-grp="arac">Altyazı Yöneticisi</button>
     <button class="eco-tab" data-tab="tag" data-grp="arac">Etiket Editörü</button>
     <button class="eco-tab" data-tab="scene" data-grp="arac">Sahne Arama</button>
+    <button class="eco-tab" data-tab="crawler" data-grp="arac">Site Tarayıcı & Kurallar</button>
+    <button class="eco-tab" data-tab="dvr" data-grp="arac">Canlı Yayın Kaydı</button>
+    <button class="eco-tab" data-tab="library" data-grp="arac">Kütüphane Sağlığı</button>
+    <button class="eco-tab" data-tab="kamipack" data-grp="arac">Kamipack</button>
           <div class="eco-tgrp" data-grp="ses">Ses & Oyun</div>
           <button class="eco-tab" data-tab="beat" data-grp="ses">Kami Beat</button>
           <button class="eco-tab" data-tab="hunter" data-grp="ses">Kami Hunter</button>
@@ -132,6 +137,11 @@
       subs: [I('<path d="M4 6h16v12H4zM7 10h10M7 14h6"/>'), "Klasördeki videolara toplu altyazı indir (OpenSubtitles)"],
       tag: [I('<path d="M4 4l7 16h2l7-16h-3l-5 12L7 4z"/>'), "Müzik etiketlerini düzenle (title/artist/album)"],
       scene: [I('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="11" cy="11" r="4"/><path d="m20 20-4-4"/>'), "Bir kareden hangi video + dakika olduğunu bul (algısal hash)"],
+      crawler: [I('<path d="M4 6h16M4 12h16M4 18h10"/>'), "JSON kurallarıyla site linki / ayna çıkar"],
+      dvr: [I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'), "Canlı yayını baştan kaydet + sayfa arşivle"],
+      library: [I('<path d="M3 6h18M3 12h18M3 18h18"/>'), "Kopya bul, bit-rot taraması, akıllı sıkıştırma"],
+      kamipack: [I('<path d="M12 3v18M3 12h18"/>'), "İmzalı .kamipack oluştur, incele, içe aktar"],
+      clipfactory: [I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v14M16 5v14"/>'), "Uzun videodan dikey viral klip üret"],
     };
     root.querySelectorAll(".eco-tab").forEach((b) => { const m = META[b.dataset.tab]; if (m) b.innerHTML = `${m[0]}<span><b>${b.textContent}</b><small>${m[1]}</small></span>`; });
     root.addEventListener("click", (e) => {
@@ -199,7 +209,7 @@
     }
 
     if (activeTab === "subs") {
-      bd.innerHTML = `<div class="eco-card"><strong>Altyazı Yöneticisi</strong><div class="eco-hint">Klasör seç, eksik altyazılı videoları tara, toplu indir (OpenSubtitles anahtarı gerekli).</div><div class="eco-row"><input class="eco-in" id="subFolder" placeholder="Klasör yolu (örn. C:/Videolar)" style="flex:1"><button class="eco-btn sec" id="subBrowse">Gözat</button><button class="eco-btn" id="subScan">Tara</button></div><div class="eco-hint" id="subStat"></div><div id="subList" style="max-height:260px;overflow:auto"></div><div class="eco-row"><button class="eco-btn" id="subAll">Eksiklerin hepsine altyazı indir</button><span class="eco-hint" id="subProg"></span></div></div>`;
+      bd.innerHTML = `<div class="eco-card"><strong>Altyazı Yöneticisi</strong><div class="eco-hint">Klasör seç, eksik altyazılı videoları tara, toplu indir (OpenSubtitles anahtarı gerekli).</div><div class="eco-row"><input class="eco-in" id="subFolder" placeholder="Klasör yolu (örn. C:/Videolar)" style="flex:1"><button class="eco-btn sec" id="subBrowse">Gözat</button><button class="eco-btn" id="subScan">Tara</button></div><div class="eco-hint" id="subStat"></div><div id="subList" style="max-height:260px;overflow:auto"></div><div class="eco-row"><button class="eco-btn" id="subAll">Eksiklerin hepsine altyazı indir</button><span class="eco-hint" id="subProg"></span></div></div><div class="eco-card"><strong>Toplu Altyazı (Yol Listesi)</strong><div class="eco-hint">Her satıra bir video yolu yapıştır; hepsine toplu altyazı indir (OpenSubtitles anahtarı gerekli).</div><textarea class="eco-in" id="subBatchPaths" rows="3" placeholder="C:/videolar/a.mp4" style="width:100%;box-sizing:border-box;min-height:54px"></textarea><div class="eco-row"><input class="eco-in" id="subBatchLang" placeholder="Dil (tr, en)" style="width:90px"><button class="eco-btn" id="subBatchGo">Toplu İndir</button><span class="eco-hint" id="subBatchMsg"></span></div></div>`;
       const escS = s => String(s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
       let missing = [];
       $("#subBrowse").onclick = async () => { const f = await api.choose_folder?.(); if (f) { $("#subFolder").value = f; $("#subScan").click(); } };
@@ -214,6 +224,15 @@
         }
         $("#subAll").disabled = false;
         $("#subProg").textContent = done + " indi, " + err + " hata";
+      };
+      $("#subBatchGo").onclick = async () => {
+        const paths = ($("#subBatchPaths").value || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+        const lang = ($("#subBatchLang").value || "tr").trim();
+        const msg = $("#subBatchMsg");
+        if (!paths.length) { msg.textContent = "Önce video yolu yapıştır"; return; }
+        msg.textContent = "İndiriliyor...";
+        const r = await slow("subtitle_batch", paths, lang);
+        msg.textContent = r?.ok ? (r.done.length + " indi, " + r.errors.length + " hata") : ("Hata: " + (r?.error || "?"));
       };
       return;
     }
@@ -263,6 +282,369 @@
       ta.addEventListener("drop", (e) => { e.preventDefault(); const fs = [...(e.dataTransfer?.files || [])].map(f => f.path || f.name).filter(Boolean); if (fs.length) { $("#renPaths").value = (paths().concat(fs)).join(String.fromCharCode(10)); refresh(); } });
       refresh();
       $("#renGo").onclick = async () => { const p = ($("#renPrefix").value || "").trim(), s = +$("#renStart").value || 1; const pairs = paths().map((f, i) => ({ path: f, new_name: newName(f, i, s, p) })); if (!pairs.length) { alert("Önce dosya yolu yapıştır ya da seç"); return; } const r = await ld(api.batch_rename?.(pairs), null); alert(r && r.ok ? (r.done.length + " dosya yeniden adlandırıldı" + (r.errors.length ? ", " + r.errors.length + " atlandı" : "")) : "Hata"); };
+      return;
+    }
+
+    if (activeTab === "crawler") {
+      const res = await ld(api.crawler_rules_list?.(), { ok: true, rules: [] });
+      if (seq !== renderSeq) return;
+      const rules = res.rules || [];
+      bd.innerHTML = `
+        <div class="eco-card">
+          <strong>Site Tarayıcı & Kurallar (LinkCrawler)</strong>
+          <div class="eco-hint">JSON kurallarıyla sitelerden doğrudan akış / indirme linki ve aynalarını çıkarır.</div>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoCwUrl" placeholder="https://... site sayfası">
+            <button class="eco-btn" id="ecoCwGo">Siteyi Tara</button>
+          </div>
+          <div class="eco-hint" id="ecoCwMsg"></div>
+          <div class="eco-list" id="ecoCwList"></div>
+        </div>
+        <div class="eco-card">
+          <strong>Kural Kaydet</strong>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoCwName" placeholder="Kural adı (örn. my-host)">
+            <input class="eco-in" id="ecoCwPat" placeholder="URL regex (^https://...)" style="flex:1">
+          </div>
+          <textarea class="eco-in" id="ecoCwExt" rows="2" placeholder="extract_regex (her satıra bir regex; 1. grup = link)" style="width:100%;box-sizing:border-box;min-height:44px"></textarea>
+          <div class="eco-row">
+            <button class="eco-btn" id="ecoCwSave">Kural Kaydet</button>
+          </div>
+          <div class="eco-hint" id="ecoCwSaveMsg"></div>
+        </div>
+        <div class="eco-card">
+          <strong>Kayıtlı Kurallar (${rules.length})</strong>
+          <div class="eco-list">${rules.map((r) => `
+            <div class="eco-item">
+              <span class="eco-tag">${esc(r.name)}</span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.pattern)}">${esc(r.pattern)}</span>
+              <button class="eco-btn sec" data-cwdel="${esc(r.name)}" style="padding:3px 8px">Sil</button>
+            </div>`).join("") || '<div class="eco-item eco-hint">Kayıtlı kural yok.</div>'}</div>
+        </div>`;
+      bd.querySelector("#ecoCwGo").onclick = async () => {
+        const u = bd.querySelector("#ecoCwUrl").value.trim();
+        const msg = bd.querySelector("#ecoCwMsg");
+        const list = bd.querySelector("#ecoCwList");
+        if (!u) return;
+        msg.textContent = "Taranıyor...";
+        const r = await slow("crawler_crawl", u);
+        if (seq !== renderSeq) return;
+        if (!r?.ok) { msg.innerHTML = `<span class="eco-err">Hata:</span> ${esc(r?.error || "bilinmiyor")}`; list.innerHTML = ""; return; }
+        const urls = r.urls || [];
+        msg.innerHTML = `<span class="eco-ok">Eşleşen kural: ${esc(r.rule || "")} · ${urls.length} link</span>`;
+        list.innerHTML = urls.map((x, i) => `
+          <div class="eco-item">
+            <span class="eco-tag">${i === 0 ? "Birincil" : "Ayna"}</span>
+            <code style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x)}</code>
+            <button class="eco-btn sec" data-cwadd="${i}" style="padding:3px 8px">Kami'ye Ekle</button>
+          </div>`).join("");
+        list.querySelectorAll("[data-cwadd]").forEach((b) => {
+          b.onclick = async () => {
+            const r2 = await api.add_url?.(urls[Number(b.dataset.cwadd)]);
+            b.textContent = r2?.ok ? "✓" : "Hata";
+          };
+        });
+      };
+      bd.querySelector("#ecoCwSave").onclick = async () => {
+        const name = bd.querySelector("#ecoCwName").value.trim();
+        const pattern = bd.querySelector("#ecoCwPat").value.trim();
+        const extract_regex = (bd.querySelector("#ecoCwExt").value || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+        const msg = bd.querySelector("#ecoCwSaveMsg");
+        if (!name || !pattern || !extract_regex.length) { msg.innerHTML = `<span class="eco-err">name, pattern ve extract_regex zorunludur</span>`; return; }
+        const r = await api.crawler_rule_save?.({ name, pattern, extract_regex });
+        msg.innerHTML = r?.ok ? `<span class="eco-ok">Kaydedildi (${r.count} kural)</span>` : `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`;
+        if (r?.ok) renderTab();
+      };
+      bd.querySelectorAll("[data-cwdel]").forEach((b) => {
+        b.onclick = async () => {
+          const r = await api.crawler_rule_delete?.(b.dataset.cwdel);
+          if (r?.ok) renderTab(); else b.textContent = "Hata";
+        };
+      });
+      return;
+    }
+
+    if (activeTab === "dvr") {
+      const res = await ld(api.dvr_list?.(), { ok: true, jobs: [] });
+      if (seq !== renderSeq) return;
+      const jobs = res.jobs || [];
+      const drawJobs = () => {
+        bd.querySelector("#ecoDvrList").innerHTML = jobs.map((j) => `
+          <div class="eco-item">
+            <span class="eco-tag">${esc(j.status)}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(j.url)}">${esc(j.title || j.url)}</span>
+            ${j.status === "running" ? `<button class="eco-btn sec" data-dvrcan="${esc(j.job_id)}" style="padding:3px 8px">İptal</button>` : ""}
+          </div>`).join("") || '<div class="eco-item eco-hint">Aktif kayıt yok.</div>';
+      };
+      bd.innerHTML = `
+        <div class="eco-card">
+          <strong>Canlı Yayın Kaydı (DVR)</strong>
+          <div class="eco-hint">Canlı yayını başlangıçtan itibaren indirir (yt-dlp --live-from-start). Arka planda çalışır.</div>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoDvrUrl" placeholder="https://... canlı yayın URL">
+            <button class="eco-btn" id="ecoDvrGo">Kaydı Başlat</button>
+          </div>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoDvrDir" placeholder="Klasör (boş = indirilenler)" style="flex:1">
+            <button class="eco-btn sec" id="ecoDvrBrowse">Gözat</button>
+            <label class="eco-hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ecoDvrFromStart" checked> Baştan (from_start)</label>
+          </div>
+          <div class="eco-hint" id="ecoDvrMsg"></div>
+          <div class="eco-list" id="ecoDvrList"></div>
+        </div>
+        <div class="eco-card">
+          <strong>Web Sayfası Arşivle</strong>
+          <div class="eco-hint">Sayfayı tek HTML dosyasına arşivler (SingleFile CLI veya yerleşik paketleyici).</div>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoArUrl" placeholder="https://... sayfa URL">
+            <button class="eco-btn" id="ecoArGo">Arşivle</button>
+          </div>
+          <div class="eco-hint" id="ecoArMsg"></div>
+        </div>`;
+      drawJobs();
+      bd.querySelector("#ecoDvrBrowse").onclick = async () => { const f = await api.choose_folder?.(); if (f) bd.querySelector("#ecoDvrDir").value = f; };
+      bd.querySelector("#ecoDvrGo").onclick = async () => {
+        const u = bd.querySelector("#ecoDvrUrl").value.trim();
+        const d = bd.querySelector("#ecoDvrDir").value.trim();
+        const fs = bd.querySelector("#ecoDvrFromStart").checked;
+        const msg = bd.querySelector("#ecoDvrMsg");
+        if (!u) return;
+        msg.textContent = "Başlatılıyor...";
+        const r = await api.dvr_start?.(u, d, fs);
+        if (seq !== renderSeq) return;
+        if (r?.ok) { msg.innerHTML = `<span class="eco-ok">Kayıt başladı (${esc(r.job_id)}) ✓</span>`; renderTab(); }
+        else msg.innerHTML = `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`;
+      };
+      bd.querySelectorAll("[data-dvrcan]").forEach((b) => {
+        b.onclick = async () => { const r = await api.dvr_cancel?.(b.dataset.dvrcan); if (r?.ok) renderTab(); else b.textContent = "Hata"; };
+      });
+      bd.querySelector("#ecoArGo").onclick = async () => {
+        const u = bd.querySelector("#ecoArUrl").value.trim();
+        const msg = bd.querySelector("#ecoArMsg");
+        if (!u) return;
+        msg.textContent = "Arşivleniyor...";
+        const r = await api.web_archive_save?.(u, "");
+        if (seq !== renderSeq) return;
+        msg.innerHTML = r?.ok ? `<span class="eco-ok">Arşivlendi:</span> <code>${esc(r.path)}</code> (${esc(r.method || "")} · ${r.bytes > 1048576 ? (r.bytes / 1048576).toFixed(1) + " MB" : (r.bytes || 0) + " B"})` : `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`;
+      };
+      return;
+    }
+
+    if (activeTab === "library") {
+      bd.innerHTML = `
+        <div class="eco-card">
+          <strong>Kütüphane Sağlığı & Kopya Temizliği</strong>
+          <div class="eco-hint">Kopya bul (SHA-256 + algısal dHash), bit-rot sağlık taraması ve akıllı sıkıştırma (AV1/HEVC + VMAF).</div>
+        </div>
+        <div class="eco-card">
+          <strong>Kopya Bul</strong>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoLbDupFolder" placeholder="Klasör yolu" style="flex:1">
+            <button class="eco-btn sec" id="ecoLbDupBrowse">Gözat</button>
+            <input class="eco-in" id="ecoLbDupHam" type="number" min="0" max="64" value="6" style="width:90px" title="max_hamming">
+            <button class="eco-btn" id="ecoLbDupGo">Kopya Bul</button>
+          </div>
+          <div class="eco-hint" id="ecoLbDupMsg"></div>
+          <div class="eco-list" id="ecoLbDupList"></div>
+        </div>
+        <div class="eco-card">
+          <strong>Sağlık Taraması (Bit-Rot)</strong>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoLbHFolder" placeholder="Klasör yolu" style="flex:1">
+            <button class="eco-btn sec" id="ecoLbHBrowse">Gözat</button>
+            <label class="eco-hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ecoLbHDeep"> Derin (ffmpeg decode)</label>
+            <button class="eco-btn" id="ecoLbHGo">Tara</button>
+          </div>
+          <div class="eco-hint" id="ecoLbHMsg"></div>
+        </div>
+        <div class="eco-card">
+          <strong>Akıllı Sıkıştırma</strong>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoLbCSrc" placeholder="Kaynak video (C:\\...\\a.mp4)" style="flex:1">
+            <button class="eco-btn sec" id="ecoLbCBrowse">Gözat</button>
+          </div>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoLbCCodec" placeholder="Codec (boş=oto)" style="flex:1">
+            <input class="eco-in" id="ecoLbCVmaf" type="number" step="0.1" min="0" max="100" value="95" style="width:90px" title="min_vmaf">
+            <button class="eco-btn" id="ecoLbCGo">Sıkıştır</button>
+          </div>
+          <div class="eco-hint" id="ecoLbCMsg"></div>
+        </div>`;
+      bd.querySelector("#ecoLbDupBrowse").onclick = async () => { const f = await api.choose_folder?.(); if (f) bd.querySelector("#ecoLbDupFolder").value = f; };
+      bd.querySelector("#ecoLbHBrowse").onclick = async () => { const f = await api.choose_folder?.(); if (f) bd.querySelector("#ecoLbHFolder").value = f; };
+      bd.querySelector("#ecoLbCBrowse").onclick = async () => { const fs = await api.choose_files?.([".mp4", ".mkv", ".webm", ".mov", ".avi"]); if (fs?.length) bd.querySelector("#ecoLbCSrc").value = fs[0]; };
+      bd.querySelector("#ecoLbDupGo").onclick = async () => {
+        const f = bd.querySelector("#ecoLbDupFolder").value.trim();
+        const h = Number(bd.querySelector("#ecoLbDupHam").value || 6);
+        const msg = bd.querySelector("#ecoLbDupMsg");
+        const list = bd.querySelector("#ecoLbDupList");
+        if (!f) return;
+        msg.textContent = "Taranıyor...";
+        const r = await slow("library_find_duplicates", f, h);
+        if (seq !== renderSeq) return;
+        if (!r?.ok) { msg.innerHTML = `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`; list.innerHTML = ""; return; }
+        const groups = r.groups || [];
+        msg.textContent = r.scanned + " dosya tarandı, " + groups.length + " kopya grubu bulundu.";
+        list.innerHTML = groups.map((g) => `
+          <div class="eco-item" style="align-items:flex-start">
+            <span class="eco-tag">${esc(g.kind === "exact_sha256" ? "Birebir" : "Algısal")}</span>
+            <span style="flex:1;word-break:break-all"><small>Korunacak:</small> <code>${esc(g.keep)}</code><br><small>Kopyalar (${(g.duplicates || []).length}):</small> ${(g.duplicates || []).map((d) => `<code>${esc(d)}</code>`).join("<br>")}</span>
+          </div>`).join("") || '<div class="eco-item eco-hint">Kopya bulunamadı.</div>';
+      };
+      bd.querySelector("#ecoLbHGo").onclick = async () => {
+        const f = bd.querySelector("#ecoLbHFolder").value.trim();
+        const deep = bd.querySelector("#ecoLbHDeep").checked;
+        const msg = bd.querySelector("#ecoLbHMsg");
+        if (!f) return;
+        msg.textContent = "Taranıyor...";
+        const r = await slow("library_scan_health", f, "", deep);
+        if (seq !== renderSeq) return;
+        if (!r || r.error) { msg.innerHTML = `<span class="eco-err">Hata:</span> ${esc((r && r.error) || "?")}`; return; }
+        const bozuk = (r.corrupted_bitrot || []).length;
+        const decode = (r.decode_errors || []).length;
+        msg.innerHTML = `<span class="${bozuk || decode ? "eco-err" : "eco-ok"}">${r.ok ? "Sağlıklı" : "Sorun bulundu"}</span> · ${r.total} dosya · ${r.ok_count} doğrulandı · ${(r.new_files || []).length} yeni · ${bozuk} bit-rot · ${decode} decode hatası`;
+      };
+      bd.querySelector("#ecoLbCGo").onclick = async () => {
+        const src = bd.querySelector("#ecoLbCSrc").value.trim();
+        const codec = bd.querySelector("#ecoLbCCodec").value.trim();
+        const vmaf = Number(bd.querySelector("#ecoLbCVmaf").value || 95);
+        const msg = bd.querySelector("#ecoLbCMsg");
+        if (!src) return;
+        msg.textContent = "Sıkıştırılıyor... (uzun sürebilir)";
+        const r = await slow("library_smart_compress", src, "", codec, vmaf);
+        if (seq !== renderSeq) return;
+        msg.innerHTML = r?.ok
+          ? `<span class="eco-ok">Hazır:</span> <code>${esc(r.path)}</code> · codec: ${esc(r.codec)} · VMAF: ${r.vmaf == null ? "yok" : r.vmaf} (${r.vmaf_passed ? "geçti" : "altında"}) · %${r.saved_pct} küçüldü`
+          : `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`;
+      };
+      return;
+    }
+
+    if (activeTab === "kamipack") {
+      bd.innerHTML = `
+        <div class="eco-card">
+          <strong>Kamipack (İmzalı Reçete & Akış Paketi)</strong>
+          <div class="eco-hint">SHA-256 doğrulamalı .kamipack arşivi oluştur, incele ve içe aktar.</div>
+        </div>
+        <div class="eco-card">
+          <strong>İncele</strong>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoKpInspPath" placeholder="Paket yolu (C:\\...\\a.kamipack)" style="flex:1">
+            <button class="eco-btn sec" id="ecoKpInspBrowse">Gözat</button>
+            <button class="eco-btn" id="ecoKpInspGo">İncele</button>
+          </div>
+          <div class="eco-hint" id="ecoKpInspMsg"></div>
+        </div>
+        <div class="eco-card">
+          <strong>İçe Aktar</strong>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoKpImpPath" placeholder="Paket yolu" style="flex:1">
+            <button class="eco-btn sec" id="ecoKpImpBrowse">Gözat</button>
+          </div>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoKpImpDest" placeholder="Hedef klasör (boş = sadece doğrula)" style="flex:1">
+            <button class="eco-btn sec" id="ecoKpImpDestBrowse">Gözat</button>
+            <button class="eco-btn" id="ecoKpImpGo">İçe Aktar</button>
+          </div>
+          <div class="eco-hint" id="ecoKpImpMsg"></div>
+        </div>
+        <div class="eco-card">
+          <strong>Dışa Aktar</strong>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoKpExpName" placeholder="Paket adı" style="flex:1">
+            <select class="eco-in" id="ecoKpExpKind" style="max-width:140px"><option value="workflow">workflow</option><option value="recipe">recipe</option></select>
+          </div>
+          <textarea class="eco-in" id="ecoKpExpPayload" rows="5" placeholder='Payload JSON (örn. {"nodes":[],"edges":[]})' style="width:100%;box-sizing:border-box;min-height:70px"></textarea>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoKpExpOut" placeholder="Çıktı yolu (C:\\...\\pack.kamipack)" style="flex:1">
+            <button class="eco-btn sec" id="ecoKpExpOutBrowse">Gözat</button>
+            <button class="eco-btn" id="ecoKpExpGo">Dışa Aktar</button>
+          </div>
+          <div class="eco-hint" id="ecoKpExpMsg"></div>
+        </div>`;
+      bd.querySelector("#ecoKpInspBrowse").onclick = async () => { const fs = await api.choose_files?.([".kamipack"]); if (fs?.length) bd.querySelector("#ecoKpInspPath").value = fs[0]; };
+      bd.querySelector("#ecoKpImpBrowse").onclick = async () => { const fs = await api.choose_files?.([".kamipack"]); if (fs?.length) bd.querySelector("#ecoKpImpPath").value = fs[0]; };
+      bd.querySelector("#ecoKpImpDestBrowse").onclick = async () => { const f = await api.choose_folder?.(); if (f) bd.querySelector("#ecoKpImpDest").value = f; };
+      bd.querySelector("#ecoKpExpOutBrowse").onclick = async () => { const fs = await api.choose_files?.([".kamipack"]); if (fs?.length) bd.querySelector("#ecoKpExpOut").value = fs[0]; };
+      bd.querySelector("#ecoKpInspGo").onclick = async () => {
+        const p = bd.querySelector("#ecoKpInspPath").value.trim();
+        const msg = bd.querySelector("#ecoKpInspMsg");
+        if (!p) return;
+        const r = await api.kamipack_inspect?.(p);
+        if (seq !== renderSeq) return;
+        if (!r?.ok) { msg.innerHTML = `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`; return; }
+        const m = r.manifest || {};
+        msg.innerHTML = `<span class="eco-ok">Geçerli paket</span> · ${esc(m.name || "")} · ${esc(m.kind || "")} · ${(r.payload ? Object.keys(r.payload).length : 0)} payload anahtarı`;
+      };
+      bd.querySelector("#ecoKpImpGo").onclick = async () => {
+        const p = bd.querySelector("#ecoKpImpPath").value.trim();
+        const d = bd.querySelector("#ecoKpImpDest").value.trim();
+        const msg = bd.querySelector("#ecoKpImpMsg");
+        if (!p) return;
+        msg.textContent = "İçe aktarılıyor...";
+        const r = await api.kamipack_import?.(p, d);
+        if (seq !== renderSeq) return;
+        msg.innerHTML = r?.ok
+          ? `<span class="eco-ok">İçe aktarıldı</span> · ${esc(r.manifest?.name || "")} · ${(r.extracted_assets || []).length} asset çıkarıldı`
+          : `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`;
+      };
+      bd.querySelector("#ecoKpExpGo").onclick = async () => {
+        const name = bd.querySelector("#ecoKpExpName").value.trim();
+        const kind = bd.querySelector("#ecoKpExpKind").value;
+        const out = bd.querySelector("#ecoKpExpOut").value.trim();
+        const raw = bd.querySelector("#ecoKpExpPayload").value.trim();
+        const msg = bd.querySelector("#ecoKpExpMsg");
+        if (!name || !out) return;
+        let payload = {};
+        try { payload = raw ? JSON.parse(raw) : {}; } catch (e) { msg.innerHTML = `<span class="eco-err">Payload geçersiz JSON</span>`; return; }
+        msg.textContent = "Dışa aktarılıyor...";
+        const r = await api.kamipack_export?.(name, payload, out, kind);
+        if (seq !== renderSeq) return;
+        msg.innerHTML = r?.ok ? `<span class="eco-ok">Kaydedildi:</span> <code>${esc(r.path)}</code>` : `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`;
+      };
+      return;
+    }
+
+    if (activeTab === "clipfactory") {
+      bd.innerHTML = `
+        <div class="eco-card">
+          <strong>Klip Fabrikası (Viral Klip)</strong>
+          <div class="eco-hint">Uzun videodan en vurucu anları kesip 9:16 dikey viral kliplere çevirir.</div>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoClPath" placeholder="Video yolu (C:\\...\\a.mp4)" style="flex:1">
+            <button class="eco-btn sec" id="ecoClBrowse">Gözat</button>
+          </div>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoClDir" placeholder="Çıktı klasörü (boş = Klipler)" style="flex:1">
+            <button class="eco-btn sec" id="ecoClDirBrowse">Gözat</button>
+            <input class="eco-in" id="ecoClMax" type="number" min="1" max="20" value="3" style="width:90px" title="max_clips">
+            <button class="eco-btn" id="ecoClGo">Klip Üret</button>
+          </div>
+          <div class="eco-hint" id="ecoClMsg"></div>
+          <div class="eco-list" id="ecoClList"></div>
+        </div>`;
+      bd.querySelector("#ecoClBrowse").onclick = async () => { const fs = await api.choose_files?.([".mp4", ".mkv", ".webm", ".mov", ".avi"]); if (fs?.length) bd.querySelector("#ecoClPath").value = fs[0]; };
+      bd.querySelector("#ecoClDirBrowse").onclick = async () => { const f = await api.choose_folder?.(); if (f) bd.querySelector("#ecoClDir").value = f; };
+      bd.querySelector("#ecoClGo").onclick = async () => {
+        const p = bd.querySelector("#ecoClPath").value.trim();
+        const d = bd.querySelector("#ecoClDir").value.trim();
+        const n = Number(bd.querySelector("#ecoClMax").value || 3);
+        const msg = bd.querySelector("#ecoClMsg");
+        const list = bd.querySelector("#ecoClList");
+        if (!p) return;
+        msg.textContent = "Klipler üretiliyor... (ffmpeg, uzun sürebilir)";
+        const r = await slow("clip_factory_highlights", p, d, n);
+        if (seq !== renderSeq) return;
+        const clips = r?.clips || [];
+        if (!r?.ok) { msg.innerHTML = `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`; list.innerHTML = ""; return; }
+        msg.textContent = clips.length + " klip üretildi.";
+        list.innerHTML = clips.map((c) => `
+          <div class="eco-item">
+            <span class="eco-tag">${esc(c.hook || "")}</span>
+            <code style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.path)}</code>
+            <span class="eco-hint">${esc(String(c.start))}-${esc(String(c.end))}sn</span>
+          </div>`).join("");
+      };
       return;
     }
 
@@ -576,6 +958,18 @@
             <button class="eco-btn" id="ecoHsGo" style="margin-left:auto">İş Başlat</button>
           </div>
           <div id="ecoHsMsg" class="eco-hint"></div>
+        </div>
+        <div class="eco-card">
+          <strong>Gömülü Altyazı Çıkar (Doğrudan)</strong>
+          <div class="eco-hint">Senkron çalışır: videodan gömülü altyazıyı OCR ile okur, Türkçeye çevirir; isteğe bağlı videoya gömer. Sonuç .srt olarak kaydedilir.</div>
+          <div class="eco-row">
+            <input class="eco-in" id="ecoHxPath" placeholder="Video yolu (C:\\...\\a.mp4)" style="flex:1">
+            <button class="eco-btn sec" id="ecoHxBrowse">Gözat</button>
+            <input class="eco-in" id="ecoHxLang" placeholder="Dil (boş=oto)" style="width:110px">
+            <label class="eco-hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ecoHxBurn"> Videoya göm</label>
+            <button class="eco-btn" id="ecoHxGo">Çıkar</button>
+          </div>
+          <div class="eco-hint" id="ecoHxMsg"></div>
         </div>`;
       bd.querySelector("#ecoHsGo").onclick = async () => {
         const p = bd.querySelector("#ecoHsPath").value.trim();
@@ -590,6 +984,20 @@
         bd.querySelector("#ecoHsMsg").innerHTML = r?.ok
           ? `<span class="eco-ok">İş başlatıldı (${esc(r.job_id)}) ✓</span> İlerlemeyi <strong>İşler</strong> sekmesinden izleyebilirsin.`
           : `<span class="eco-err">Hata:</span> ${esc(r?.error || "bilinmiyor")}`;
+      };
+      bd.querySelector("#ecoHxBrowse").onclick = async () => { const fs = await api.choose_files?.([".mp4", ".mkv", ".webm", ".mov", ".avi"]); if (fs?.length) bd.querySelector("#ecoHxPath").value = fs[0]; };
+      bd.querySelector("#ecoHxGo").onclick = async () => {
+        const p = bd.querySelector("#ecoHxPath").value.trim();
+        const lang = bd.querySelector("#ecoHxLang").value.trim();
+        const burn = bd.querySelector("#ecoHxBurn").checked;
+        const msg = bd.querySelector("#ecoHxMsg");
+        if (!p) return;
+        msg.textContent = "OCR + çeviri çalışıyor... (uzun sürebilir)";
+        const r = await slow("hardsub_extract", p, lang, burn);
+        if (seq !== renderSeq) return;
+        msg.innerHTML = r?.ok
+          ? `<span class="eco-ok">Hazır:</span> <code>${esc(r.srt)}</code> · ${r.cues} satır${r.video ? ` · video: <code>${esc(r.video)}</code>` : ""}`
+          : `<span class="eco-err">Hata:</span> ${esc(r?.error || "?")}`;
       };
     } else if (activeTab === "ghost") {
       bd.innerHTML = `

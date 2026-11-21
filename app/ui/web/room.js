@@ -158,6 +158,7 @@ $("bDeaf").onclick = () => setDeaf(!S.deaf);
 window.__kamiRoomLeave = async () => {
   try { await S.core?.leave(); } catch { }
   try { stopShare(); stopCam(); S.micRaw?.getTracks().forEach((t) => t.stop()); S.mic?.stop?.(); } catch { }
+  try { if (S.isHost) await window.pywebview?.api?.room_stop?.(); } catch { }   // ev sahibi ayrılınca oda sunucusu da kapansın
   try { await window.pywebview?.api?.room_island_push?.({ people: [], left: true }); } catch { }
 };
 $("bLeave").onclick = async () => {

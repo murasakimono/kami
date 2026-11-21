@@ -277,7 +277,10 @@
               <button id="ktBridgeSt" class="btn">Köprü Durumu</button>
               <button id="ktScrcpy" class="btn">Android</button>
               <button id="ktUxplay" class="btn">AirPlay</button>
+              <button id="ktBridgeStop" class="btn">Ayna Durdur</button>
               <button id="ktLanShare" class="btn">LAN Paylaş</button>
+              <button id="ktLanStop" class="btn">Paylaşım Durdur</button>
+              <button id="ktFlowCatalog" class="btn">Akış Kataloğu</button>
               <button id="ktVoiceSt" class="btn">Ses Durum</button>
               <button id="ktVoiceCmd" class="btn">Komut Test</button>
             </div>
@@ -340,6 +343,9 @@
       ov.querySelector("#ktScrcpy").onclick = () => callApi("bridge_mirror_start", "scrcpy");
       ov.querySelector("#ktUxplay").onclick = () => callApi("bridge_mirror_start", "uxplay");
       ov.querySelector("#ktLanShare").onclick = () => { const p = ov.querySelector("#ktSharePath").value.trim(); if (p) callApi("lan_share_file", p); };
+      ov.querySelector("#ktLanStop").onclick = () => callApi("lan_share_stop");
+      ov.querySelector("#ktBridgeStop").onclick = () => callApi("bridge_mirror_stop");
+      ov.querySelector("#ktFlowCatalog").onclick = () => callApi("flow_catalog");
       ov.querySelector("#ktVoiceSt").onclick = () => callApi("voice_status");
       ov.querySelector("#ktVoiceCmd").onclick = () => callApi("voice_parse_command", ov.querySelector("#ktSharePath").value.trim() || "Hey Kami klip al");
       this.refreshStatus();

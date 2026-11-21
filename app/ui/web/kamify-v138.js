@@ -105,6 +105,7 @@
           <label style="font-size:11.5px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="kfStrongChk" checked> <b>Güçlü Mod</b> (UVR5 Vokal Ayır + Tam Rap Algılama)</label>
           <button class="btn pri" id="kfRunWhisper">🎙 Whisper ile Söz Çıkar</button>
           <button class="btn" id="kfAlignReal" title="Whisper zaman damgalarını gerçek şarkı sözleriyle hizala">🎯 Söz Eşleştir</button>
+          <button class="btn" id="kfWordSync" title="Satırları kelimelere bölerek zamanları otomatik hizala">🔤 Kelime Senkronu</button>
           <button class="btn" id="kfRunOllama" title="Yerel Ollama (qwen2.5:3b) ile yazım hatalarını düzelt">✨ Ollama ile Düzelt</button>
         </div>
         <div id="kfAlignBox" hidden style="display:flex;flex-direction:column;gap:6px;background:#0D0A16;padding:8px 10px;border-radius:10px;border:1px solid rgba(46,230,166,.38)">
@@ -292,6 +293,22 @@
         stEl.textContent = `✓ Ollama (${res.model}) ile düzeltildi`;
       } else {
         stEl.textContent = "✕ Ollama yanıt vermedi (" + (res?.error || "kapalı") + ")";
+      }
+    };
+
+    ov.querySelector("#kfWordSync").onclick = async () => {
+      const curRaw = (!rawBox.hidden && rawBox.value.trim()) ? rawBox.value : rowsToRaw();
+      if (!curRaw.trim()) { stEl.textContent = "Önce söz çıkar veya LRC yapıştır."; return; }
+      stEl.textContent = "🔤 Kelime zamanları hesaplanıyor…";
+      const dur = Number(aud.duration || 0);
+      const res = await callApi()?.lyrics_word_sync?.(curRaw, dur).catch(() => null);
+      if (res?.ok && Array.isArray(res.lines) && res.lines.length) {
+        rows = res.lines.map((x) => ({ t: Number(x.start ?? 0), text: String(x.text || "") }));
+        rawBox.value = rowsToRaw();
+        drawRows();
+        stEl.textContent = `✓ ${res.lines.length} satır kelime zamanlarıyla senkronlandı — Kaydet'e bas!`;
+      } else {
+        stEl.textContent = "✕ Kelime senkronu başarısız (" + (res?.error || "boş") + ")";
       }
     };
 

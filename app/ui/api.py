@@ -118,6 +118,11 @@ class Api(StudioMixin, EnhanceMixin):
         "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "library_meta", "tmdb_set_key", "iptv_load", "iptv_epg", "cast_devices", "cast_play", "cast_control", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
         "music_whisper_lrc", "music_lrc_polish_ollama", "cleaner_dust", "cleaner_janitor", "games_scan_folder", "scrobbler_recognize_now",
+        # Denetim 2.3.5: arayüze bağlanan yavaş araçlar (ffmpeg/ağ) — job_start ile arka planda çalışmalı
+        "audio_fx_apply", "audio_to_midi", "tts_speak", "beat_analyze", "beat_grid", "player_detect_scenes",
+        "crawler_crawl", "web_archive_save", "library_find_duplicates", "library_scan_health", "library_smart_compress",
+        "subtitle_batch", "clip_factory_highlights", "hardsub_extract", "kamipack_export", "kamipack_import",
+        "kasa_index_media", "lyrics_word_sync",
     }) | STUDIO_JOBS
 
     def job_start(self, name: str, args: list | None = None) -> dict[str, Any]:

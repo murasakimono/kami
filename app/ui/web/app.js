@@ -756,26 +756,53 @@ async function refreshVramHud() {
 async function initFaz7() {
   const sel = $("#profileSelect");
   if (sel && api?.profiles_list) {
-    try {
-      const res = await api.profiles_list();
-      sel.innerHTML = "";
-      for (const p of (res.profiles || [])) {
-        const opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.name;
-        if (p.id === res.active) opt.selected = true;
-        sel.appendChild(opt);
-      }
-      sel.addEventListener("change", async () => {
-        const r = await api.profile_switch(sel.value);
-        if (r?.ok) {
-          if (typeof applyAccent === "function" && r.profile?.accent_theme) {
-            applyAccent(r.profile.accent_theme);
-          }
-          toast(`Profil: ${r.profile?.name || sel.value}`);
+    const refreshProfiles = async () => {
+      try {
+        const res = await api.profiles_list();
+        sel.innerHTML = "";
+        for (const p of (res.profiles || [])) {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name;
+          if (p.id === res.active) opt.selected = true;
+          sel.appendChild(opt);
         }
+      } catch (_) {}
+    };
+    sel.addEventListener("change", async () => {
+      const r = await api.profile_switch(sel.value);
+      if (r?.ok) {
+        if (typeof applyAccent === "function" && r.profile?.accent_theme) {
+          applyAccent(r.profile.accent_theme);
+        }
+        toast(`Profil: ${r.profile?.name || sel.value}`);
+      }
+    });
+    const addBtn = $("#profileAdd");
+    const newInp = $("#profileNew");
+    if (addBtn && newInp) {
+      addBtn.addEventListener("click", () => {
+        if (newInp.style.display === "none") { newInp.style.display = ""; newInp.focus(); return; }
+        const name = newInp.value.trim();
+        if (!name) { newInp.focus(); return; }
+        api.profile_create(name).then((r) => {
+          newInp.value = ""; newInp.style.display = "none";
+          if (r?.ok) { toast(`Profil oluşturuldu: ${name}`); refreshProfiles(); }
+          else toast(r?.error || "Oluşturulamadı", true);
+        });
       });
-    } catch (_) {}
+      newInp.addEventListener("keydown", (e) => { if (e.key === "Enter") addBtn.click(); });
+    }
+    const delBtn = $("#profileDel");
+    if (delBtn && window.KamiMotion?.attachHold) {
+      KamiMotion.attachHold(delBtn, async () => {
+        const cur = sel.value;
+        if (cur === "kisisel") { toast("Varsayılan profil silinemez", true); return; }
+        const r = await api.profile_delete(cur);
+        if (r?.ok) { toast("Profil silindi"); refreshProfiles(); } else toast(r?.error || "Silinemedi", true);
+      }, { ms: 600 });
+    }
+    refreshProfiles();
   }
   const ib = $("#islandBtn");
   if (ib && api?.mini_island_toggle) {

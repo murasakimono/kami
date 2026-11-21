@@ -244,7 +244,8 @@ window.pxExtraToolsHtml = () => `<h4>${plL("Araçlar", "Tools")}</h4>
     <div class="px-shift"><button class="pl-b" data-xa="copy">${plL("Kayıpsız kaydet", "Save lossless")}</button><button class="pl-b" data-xa="gif">GIF</button><button class="pl-b" data-xa="discord">${plL("Discord'a sığdır", "Fit for Discord")}</button></div>
     <p class="px-hint">${plL("Kayıpsız: anahtar kareden keser, kaliteyi bozmaz. Discord: 10 MB altına sıkıştırır. Dosyalar videonun yanına kaydedilir.", "Lossless cuts at keyframes. Discord compresses under 10 MB. Saved next to the video.")}</p>
     <div class="px-shift"><input class="px-in" id="peLyrQ" placeholder="${plL("Sözden şarkı bul: aklındaki satırı yaz", "Find a song from a lyric line")}" style="flex:1"><button class="pl-b" data-xa="lyrq">${plL("Ara", "Search")}</button></div><div id="peLyrRes"></div>
-    <div class="px-shift"><button class="pl-b" data-xa="audio">${plL("Sesi çıkar", "Extract audio")}</button><button class="pl-b" data-xa="repair">${plL("Bozuk dosyayı onar", "Repair file")}</button></div>`;
+    <div class="px-shift"><button class="pl-b" data-xa="audio">${plL("Sesi çıkar", "Extract audio")}</button><button class="pl-b" data-xa="repair">${plL("Bozuk dosyayı onar", "Repair file")}</button></div>
+    <div class="px-shift"><button class="pl-b" data-xa="scenes">🎬 ${plL("Sahne Tespiti", "Detect scenes")}</button></div><div id="peSceneRes"></div>`;
 function peClipLbl() { return PE.clipA == null && PE.clipB == null ? "" : `${PE.clipA != null ? fmtT(PE.clipA) : "…"} → ${PE.clipB != null ? fmtT(PE.clipB) : "…"}`; }
 
 document.addEventListener("click", async (e) => {
@@ -271,6 +272,23 @@ document.addEventListener("click", async (e) => {
     const hits = r?.hits || [];
     box.innerHTML = hits.length ? hits.map((h, i) => `<button class="px-row" data-lh="${i}"><span>${escapeHtml(h.artist)} — ${escapeHtml(h.title)}<small> ${h.local ? "· " + plL("kütüphanende", "in library") : "· YouTube"}</small></span></button>`).join("") : `<p class="px-hint">${plL("Bulunamadı.", "Not found.")}</p>`;
     box.querySelectorAll("[data-lh]").forEach((x) => x.onclick = (ev) => { ev.stopPropagation(); const h = hits[+x.dataset.lh]; if (h.local) playerOpenPath(h.local); else api.open_link("https://www.youtube.com/results?search_query=" + encodeURIComponent(h.artist + " " + h.title)); });
+    return;
+  }
+  if (act === "scenes") {
+    const path = PL.info?.path;
+    if (!path || PL.info?.kind !== "video") { toast(plL("Sahne tespiti için bir video açık olmalı", "Open a video for scene detection"), true); return; }
+    const box = $("#peSceneRes");
+    if (box) box.innerHTML = `<p class="px-hint">${plL("Sahneler bulunuyor…", "Detecting scenes…")}</p>`;
+    toast(plL("Sahne tespiti başladı…", "Scene detection started…"));
+    let r; try { r = await slow("player_detect_scenes", path, 0.32); } catch (e) { r = { ok: false, error: String(e) }; }
+    const scenes = r?.scenes || [];
+    if (box) {
+      box.innerHTML = scenes.length
+        ? scenes.map((s, i) => `<button class="px-row" data-scd="${i}"><span>#${i + 1} · ${fmtT(s.start)} → ${s.end != null ? fmtT(s.end) : plL("son", "end")}</span></button>`).join("")
+        : `<p class="px-hint">${plL("Sahne bulunamadı.", "No scenes found.")}</p>`;
+      box.querySelectorAll("[data-scd]").forEach((x) => x.onclick = (ev) => { ev.stopPropagation(); const s = scenes[+x.dataset.scd]; if (s != null) plSeek(s.start, true); });
+    }
+    toast(r?.ok ? `✓ ${scenes.length} ${plL("sahne bulundu", "scenes found")}` : plL("Olmadı: ", "Failed: ") + (r?.error || "?"), !r?.ok);
     return;
   }
   if (!["ca", "cb", "copy", "gif", "discord", "audio", "repair"].includes(act)) return;

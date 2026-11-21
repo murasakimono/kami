@@ -207,6 +207,14 @@ function bindMediaSettings() {
     refreshMediaSettings();
   });
   $("#geniusClear").addEventListener("click", async () => { await api.genius_clear(); refreshMediaSettings(); });
+  $("#tmdbSave").addEventListener("click", async () => {
+    const v = $("#tmdbKey").value.trim();
+    if (!v) return;
+    const r = await api.tmdb_set_key(v);
+    $("#tmdbKey").value = "";
+    const st = $("#tmdbState");
+    if (st) { st.textContent = r?.ok ? "kayıtlı ✓" : (r?.error || "hatalı"); st.style.color = r?.ok ? "#2EE6A6" : "#FF6B8B"; }
+  });
   $("#musicDirChange").addEventListener("click", async () => {
     const dir = await api.choose_folder();
     if (dir) { await setSetting("music_dir", dir); refreshMediaSettings(); }

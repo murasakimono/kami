@@ -36,6 +36,9 @@
         <option value="icerik">İçerik Üretimi</option>
         <option value="magaza">Mağaza-İş</option>
       </select>
+      <input type="text" id="profileNew" placeholder="Yeni profil adı" style="display:none;width:120px;">
+      <button type="button" class="btn" id="profileAdd" title="Yeni Profil">+</button>
+      <button type="button" class="btn" id="profileDel" title="Profili Sil (basılı tut)">✕</button>
       <button type="button" class="btn island-btn" id="islandBtn" title="Masaüstü Mini-Ada Şeridi">Ada</button>
     </div>
     <button class="icon-btn" id="settingsBtn" data-i18n-title="settings" aria-haspopup="dialog">
@@ -371,6 +374,9 @@
           <input type="password" id="geniusToken" spellcheck="false" autocomplete="off" data-i18n-placeholder="s_genius_ph">
           <button type="button" class="btn ghost" id="geniusSave" data-i18n="save"></button>
           <button type="button" class="btn ghost" id="geniusClear" data-i18n="s_genius_clear" hidden></button></span></div>
+        <div class="row"><span>TMDB Anahtarı</span><span><span class="hint" id="tmdbState"></span>
+          <input type="password" id="tmdbKey" spellcheck="false" autocomplete="off" placeholder="api.themoviedb.org anahtarı (v3)">
+          <button type="button" class="btn ghost" id="tmdbSave">Kaydet</button></span></div>
         <details class="howto"><summary data-i18n="s_genius_how"></summary><div class="hint" data-i18n="s_genius_how_body"></div></details>
         <label class="check"><input type="checkbox" name="lyrics_ai"><span data-i18n="s_lyrics_ai"></span></label>
         <label class="check"><input type="checkbox" name="music_archive"><span data-i18n="s_archive"></span></label>
