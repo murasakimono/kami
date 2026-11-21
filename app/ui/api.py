@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from app.core.manager import CaptureRejected, PageLinkRejected
 from app.core.watchdog import log_slow_calls
 from app.core.models import DownloadRequest, Status
+from app.ui.api_enhance import EnhanceMixin
 from app.ui.api_studio import STUDIO_JOBS, StudioMixin
 
 if TYPE_CHECKING:
@@ -26,7 +27,7 @@ log = logging.getLogger(__name__)
 
 
 @log_slow_calls
-class Api(StudioMixin):
+class Api(StudioMixin, EnhanceMixin):
     # pywebview, alt cizgiyle baslayan nitelikleri JS'e acmaz
     def __init__(self, manager: "DownloadManager", engine: "Aria2Engine", registry: "PluginRegistry",
                  bridge_port_getter) -> None:

@@ -72,6 +72,7 @@
           <input class="eco-tfind" id="ecoTabFilter" type="search" placeholder="Araç ara..." autocomplete="off">
           <div class="eco-tgrp" data-grp="medya">Medya & Yakalama</div>
           <button class="eco-tab on" data-tab="rec" data-grp="medya">Ekran Kaydedici & Geçiş</button>
+          <button class="eco-tab" data-tab="enhance" data-grp="medya">Video İyileştirici</button>
           <button class="eco-tab" data-tab="hardsub" data-grp="medya">Kami Hardsub</button>
           <button class="eco-tab" data-tab="ghost" data-grp="medya">Kami Ghost</button>
           <div class="eco-tgrp" data-grp="arac">Araç & İndirme</div>
@@ -114,6 +115,7 @@
     const I = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${d}</svg>`;
     const META = {
       rec: [I('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/>'), "Ekranı kaydet, son 30 sn'yi klip yap"],
+      enhance: [I('<path d="M12 3l1.7 6.3L20 11l-6.3 1.7L12 19l-1.7-6.3L4 11l6.3-1.7z"/>'), "Eski videoyu temizle, büyüt, 60 fps yap"],
       bypass: [I('<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>'), "Kısaltma / reklamlı linki çöz"],
       season: [I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 3v4m8-4v4M3 10h18"/>'), "Bir dizinin tüm bölümlerini bul"],
       grab: [I('<path d="M4 6h16M4 12h16M4 18h10"/>'), "Sayfadaki tüm dosyaları listele"],
@@ -174,6 +176,19 @@
       const rows = items.map((e) => '<div class="eco-row" style="justify-content:space-between"><span>' + escE(e.op === "move" ? "Taşıma" : e.op === "rename" ? "Yeniden adlandırma" : e.op) + ' · <small>' + escE(e.src) + ' → ' + escE(e.dst) + '</small></span><button class="eco-btn sec" data-undo="' + escE(e.id) + '">Geri Al</button></div>').join("");
       bd.innerHTML = '<div class="eco-card"><strong>Kami Echo — Geri Alınabilir İşlemler</strong><div class="eco-hint">Son taşıma / yeniden adlandırma işlemleri. "Geri Al" dosyayı önceki yerine taşır.</div>' + (rows || '<div class="eco-hint">Henüz işlem yok.</div>') + '</div>';
       bd.querySelectorAll("[data-undo]").forEach((b) => b.onclick = async () => { const r = await api.oplog_undo?.(b.dataset.undo).catch(() => null); if (r?.ok) renderTab(); else alert("Geri alınamadı: " + (r?.error || "hata")); });
+      return;
+    }
+
+    if (activeTab === "enhance") {
+      const [ps, tl] = await Promise.all([ld(api.enhance_presets?.(), []), ld(api.enhance_tools?.(), { tools: {} })]);
+      if (seq !== renderSeq) return;
+      const rows = (ps || []).map((p) => `<div class="eco-row" style="justify-content:space-between;align-items:flex-start"><span><b>${p.ad}</b><br><small class="eco-hint">${p.aciklama}</small></span><span class="eco-hint" style="white-space:nowrap">${p.model ? "model gerekir" : "model gerekmez"}</span></div>`).join("");
+      bd.innerHTML = `<div class="eco-card"><strong>Video İyileştirici</strong>
+        <div class="eco-hint">Eski / bozuk videoyu yerel GPU ile temizler, büyütür, akıcılaştırır. Oynatma sırasında değil, ayrı pencerede dosya üretir — bu yüzden Sinema HD gibi gerçek zamanlı filtrelerden belirgin şekilde iyi sonuç verir (gerçek zamanlıda kare başına ~16 ms var, burada yok).</div>
+        <div class="eco-row"><button class="eco-btn" id="ecoEnhOpen">İyileştirici penceresini aç</button><span class="eco-hint">sürükle-bırak · 5 hazır mod</span></div>
+        <div style="margin-top:10px">${rows}</div>
+        <div class="eco-hint" style="margin-top:8px">Çıktı klasörü: ${(tl && tl.out_dir) || "—"}</div></div>`;
+      bd.querySelector("#ecoEnhOpen").onclick = () => api.enhance_open?.();
       return;
     }
 
@@ -875,6 +890,7 @@
   window.KPAL = window.KPAL || [];
   window.KPAL.push(() => [
     { ic: "🎥", t: "Ekran Kaydedici", sub: "kayıt / son 30sn klip", run: () => openModal("rec") },
+    { ic: "✨", t: "Video İyileştirici", sub: "eski videoyu temizle / büyüt / 60 fps", run: () => api.enhance_open?.() },
     { ic: "🔓", t: "Kami Bypass", sub: "kısa / reklamlı link çöz", run: () => openModal("bypass") },
     { ic: "📺", t: "Tam Sezon Kazıyıcı", sub: "dizi bölümleri toplu indir", run: () => openModal("season") },
     { ic: "📦", t: "Kami Grab-All", sub: "IG / X / Pinterest / Reddit arşivi", run: () => openModal("grab") },

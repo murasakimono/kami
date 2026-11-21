@@ -565,12 +565,14 @@ def main() -> int:
     api._make_picture_window = make_picture_window
     api._front_picture = picture_front.request
 
-    # ---- Kami Oyun / Muzik / Suzgec (her biri kendi ayri penceresinde) ----
-    _MOD_ICON_COLORS = {"games": (129, 140, 248), "music": (192, 132, 252), "cleaner": (244, 114, 182)}
+    # ---- Kami Oyun / Muzik / Suzgec / Iyilestirici (her biri kendi ayri penceresinde) ----
+    _MOD_ICON_COLORS = {"games": (129, 140, 248), "music": (192, 132, 252), "cleaner": (244, 114, 182),
+                        "enhance": (163, 230, 53)}
     for _mkey, _mtitle, _mfile, _mw, _mh in (
         ("games", "Kami Games", "games.html", 1320, 840),
         ("music", "Kamify", "music.html", 1240, 800),
         ("cleaner", "Kami Cleaner", "cleaner.html", 1220, 780),
+        ("enhance", "Kami İyileştirici", "enhance.html", 1180, 820),
     ):
         def _bind_mod(k=_mkey, t=_mtitle, f=_mfile, ww=_mw, hh=_mh, col=_MOD_ICON_COLORS[_mkey]):
             fr = WindowFront(t)

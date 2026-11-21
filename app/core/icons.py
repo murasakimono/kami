@@ -22,6 +22,7 @@ MODULES: dict[str, tuple[str, tuple[int, int, int]]] = {
     "music": ("Kamify", (29, 185, 84)),           # Zumrut/Spotify Yesili (#1DB954)
     "cleaner": ("Kami Cleaner", (251, 113, 133)), # Mercan Pembe (#FB7185)
     "room": ("Kami Oda", (168, 85, 247)),         # O1 Mor/Zumrut Canli Sinyal (#A855F7)
+    "enhance": ("Kami İyileştirici", (163, 230, 53)), # Misket Limonu (#A3E635) — parlaklik/yukseltme
 }
 
 
@@ -121,6 +122,7 @@ def render_icon_image(key: str, size: int = 256, use_cache: bool = False):
         "music": (46, 230, 166),
         "cleaner": (251, 113, 133),
         "room": (46, 230, 166),
+        "enhance": (163, 230, 53),
     }
     _draw_horned_chassis(im, d, S, accent, glow_map.get(key, accent))
 
@@ -195,6 +197,15 @@ def render_icon_image(key: str, size: int = 256, use_cache: bool = False):
         lav = (196, 181, 253, 255)
         d.arc([cx - ar, cy - ar, cx + ar, cy + ar], start=138, end=222, fill=lav, width=w_arc)
         d.arc([cx - ar, cy - ar, cx + ar, cy + ar], start=-42, end=42, fill=lav, width=w_arc)
+    elif key == "enhance":
+        # E1: Dort uclu parilti (yapay zeka netlestirme) + kucuk ikinci parilti
+        lime = (163, 230, 53, 255)
+        cx, cy, R, r = 12.0 * k, 13.1 * k, 5.1 * k, 1.35 * k
+        d.polygon([(cx, cy - R), (cx + r, cy - r), (cx + R, cy), (cx + r, cy + r),
+                   (cx, cy + R), (cx - r, cy + r), (cx - R, cy), (cx - r, cy - r)], fill=lime)
+        sx, sy, S, s = 17.6 * k, 8.4 * k, 2.5 * k, 0.7 * k
+        d.polygon([(sx, sy - S), (sx + s, sy - s), (sx + S, sy), (sx + s, sy + s),
+                   (sx, sy + S), (sx - s, sy + s), (sx - S, sy), (sx - s, sy - s)], fill=lime)
 
     out = im.resize((size, size), Image.Resampling.LANCZOS)
     if size <= 48:

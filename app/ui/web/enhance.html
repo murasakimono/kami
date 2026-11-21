@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami İyileştirici</title>
+<style>
+  :root{color-scheme:dark;accent-color:#A3E635;--bg:#08070C;--card:#12101A;--line:#2A2A36;--tx:#EDEFE6;--mut:#9AA08F;--ac:#A3E635;--ac2:#65A30D;--em:#2EE6A6;--warn:#FBBF24;--bad:#FB7185}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px "Chakra Petch","Segoe UI",sans-serif;padding:16px 20px 96px}
+  .top{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .top h1{margin:0;font-size:18px;color:#D9F99D;display:inline-flex;align-items:center;gap:8px}
+  .top h1 svg{width:20px;height:20px;color:var(--ac)}
+  .hint{color:var(--mut);font-size:12px}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--line);background:#191722;color:var(--tx);border-radius:9px;padding:8px 13px;cursor:pointer;font:600 12.5px inherit}
+  .btn:hover{border-color:var(--ac)}
+  .btn.pri{background:var(--ac2);border-color:var(--ac);color:#0A0A0A}
+  .btn.pri:disabled{opacity:.45;cursor:not-allowed}
+  .btn.danger{border-color:#5B2233;color:#FFB3C4}
+  .drop{border:1.6px dashed #3A3A48;border-radius:13px;padding:22px;text-align:center;background:var(--card);transition:.15s}
+  .drop.drag{border-color:var(--ac);background:#161C10}
+  .drop b{display:block;font-size:14px;margin-bottom:4px}
+  .grid{display:grid;grid-template-columns:1fr 340px;gap:14px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .panel h3{margin:0 0 9px;font-size:12px;color:var(--ac);text-transform:uppercase;letter-spacing:.7px}
+  .chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+  .chip{background:#1D1B26;border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:11.5px;color:#CFD6C3}
+  .chip b{color:var(--ac)}
+  .pre{display:grid;gap:7px}
+  .pcard{display:flex;gap:9px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 11px;cursor:pointer;background:#171521;transition:.12s}
+  .pcard:hover{border-color:#4A5568}
+  .pcard.on{border-color:var(--ac);background:#1B2113}
+  .pcard .dot{width:9px;height:9px;border-radius:50%;border:2px solid #4B5563;margin-top:4px;flex:none}
+  .pcard.on .dot{border-color:var(--ac);background:var(--ac)}
+  .pcard .t{font-weight:600;font-size:13px}
+  .pcard .d{color:var(--mut);font-size:11.5px;line-height:1.45;margin-top:2px}
+  .pcard .need{color:var(--warn);font-size:11px;margin-top:3px}
+  label.row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;font-size:12.5px;color:#C7CEBD}
+  select{background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:5px 8px;font:inherit;font-size:12px}
+  details{margin-top:6px}
+  summary{cursor:pointer;color:var(--mut);font-size:12px;padding:4px 0}
+  .runbar{position:fixed;left:0;right:0;bottom:0;background:#0C0B12;border-top:1px solid var(--line);padding:11px 20px;display:flex;gap:11px;align-items:center}
+  .bar{flex:1;height:8px;background:#232130;border-radius:4px;overflow:hidden;min-width:120px}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,#65A30D,#A3E635);transition:width .3s}
+  .res{display:none;margin-bottom:10px;border:1px solid #3F6212;background:#141B0E;border-radius:10px;padding:10px 12px}
+  .res.on{display:block}
+  .res .p{font-size:12px;color:#D9F99D;word-break:break-all;margin:4px 0 8px}
+  .bad{border-color:#5B2233;color:#FFB3C4}
+  .warnbox{display:none;border:1px solid #5A4A16;background:#1B1708;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;color:#FDE68A}
+  .warnbox.on{display:block}
+</style>
+<script src="kami-embed.js"></script>
+</head>
+<body>
+  <div class="top">
+    <h1>
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 6.2L20 10l-6.4 1.8L12 18l-1.6-6.2L4 10l6.4-1.8L12 2z"/><path d="M18.5 15l.8 2.7 2.7.8-2.7.8-.8 2.7-.8-2.7-2.7-.8 2.7-.8.8-2.7z" opacity=".75"/></svg>
+      KAMI İYİLEŞTİRİCİ
+    </h1>
+    <span class="hint">Eski / bozuk videoyu temizler, büyütür, akıcılaştırır · yerel, ücretsiz, GPU</span>
+    <span class="spacer"></span>
+    <button class="btn" id="pick">Dosya seç</button>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="drop" id="drop">
+        <b>Videoyu buraya bırak</b>
+        <span class="hint">mp4 · mkv · mov · webm · avi · ts — ya da “Dosya seç”</span>
+      </div>
+      <div class="chips" id="chips"></div>
+
+      <div class="warnbox" id="warn"></div>
+      <div class="res" id="res"></div>
+
+      <div class="panel" style="margin-top:12px;padding-bottom:16px">
+        <h3>Ne yapılsın?</h3>
+        <div class="pre" id="pre"></div>
+        <details>
+          <summary>İnce ayar</summary>
+          <label class="row">Büyütme oranı
+            <select id="oScale"><option value="2">2×</option><option value="4">4×</option></select>
+          </label>
+          <label class="row">AI modeli
+            <select id="oModel"><option value="anime">Video (hafif)</option><option value="photo">Foto (ağır, keskin)</option></select>
+          </label>
+          <label class="row">Gürültü temizliği
+            <select id="oDn"><option value="-1">Otomatik</option><option value="0">Kapalı</option><option value="1">Az</option><option value="2">Orta</option><option value="3">Güçlü</option></select>
+          </label>
+          <label class="row">Interlace (tarama)
+            <select id="oDeint"><option value="auto">Otomatik</option><option value="on">Zorla aç</option><option value="off">Kapalı</option></select>
+          </label>
+          <label class="row">Akıcılaştırma
+            <select id="oFactor"><option value="2">2× fps</option><option value="4">4× fps</option></select>
+          </label>
+        </details>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h3>Kaynak</h3>
+        <div id="srcInfo" class="hint">Henüz video seçilmedi.</div>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <h3>Makine</h3>
+        <div id="toolInfo" class="hint">—</div>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <h3>Not</h3>
+        <div class="hint" style="line-height:1.6">
+          Upscale <b>olmayan bilgiyi geri getirmez</b>; bozulmayı temizler ve makul detay üretir.
+          Yüz ve yazı en zayıf nokta. AI presetlerinde kareler arası hafif titreme (flicker) olabilir —
+          uzun videodan önce 10-15 saniyelik bir kesitle dene.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="runbar">
+    <div class="bar"><i id="barFill" style="width:0"></i></div>
+    <span class="hint" id="stat" style="min-width:190px;text-align:right">Hazır</span>
+    <button class="btn pri" id="go" disabled>İyileştir</button>
+    <button class="btn danger" id="cancel" style="display:none">İptal</button>
+  </div>
+
+<script>
+  const api = () => window.pywebview?.api;
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtB = (b) => !b ? "—" : b > 1e9 ? (b / 1e9).toFixed(2) + " GB" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.round(b / 1024) + " KB";
+  const fmtDur = (s) => {
+    if (!s) return "—";
+    const m = Math.floor(s / 60), r = Math.round(s % 60);
+    return m ? `${m} dk ${r} sn` : `${(s).toFixed(1)} sn`;
+  };
+
+  const S = { src: "", info: null, presets: [], preset: "sinema", tools: { esrgan: false, rife: false }, job: "", timer: null, busy: false };
+
+  // ---------------------------------------------------------------- render
+  function toolLabel(t) {
+    return t === "esrgan" ? "Real-ESRGAN (~45 MB)"
+      : t === "rife" ? "RIFE (~430 MB)"
+      : t === "trt" ? "TensorRT (~2.9 GB)"
+      : "FlashVSR (~7.5 GB: PyTorch CUDA + model)";
+  }
+
+  function needOf(p) {
+    if (p.flashvsr) return ["flashvsr"];
+    if (p.trt) return ["trt"];
+    const t = [];
+    if (p.upscale) t.push("esrgan");
+    if (p.interp) t.push("rife");
+    return t;
+  }
+
+  function renderPresets() {
+    $("#pre").innerHTML = S.presets.map((p) => {
+      const miss = needOf(p).filter((t) => !S.tools[t]);
+      const need = miss.length
+        ? `<div class="need">model gerekli: ${miss.map(toolLabel).join(" + ")}</div>`
+        : "";
+      return `<div class="pcard ${p.id === S.preset ? "on" : ""}" data-p="${p.id}">
+        <span class="dot"></span>
+        <div><div class="t">${esc(p.ad)}</div><div class="d">${esc(p.aciklama)}</div>${need}</div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderChips() {
+    const i = S.info;
+    if (!i || !i.width) { $("#chips").innerHTML = ""; return; }
+    const out = [
+      `<span class="chip"><b>${i.width}×${i.height}</b></span>`,
+      `<span class="chip">${(+i.fps).toFixed(0)} fps</span>`,
+      `<span class="chip">${i.frames || "?"} kare</span>`,
+      `<span class="chip">${fmtDur(i.duration)}</span>`,
+      `<span class="chip">${esc((i.vcodec || "?").toUpperCase())}</span>`,
+      i.interlaced ? `<span class="chip" style="border-color:#5A4A16;color:#FDE68A">interlaced</span>` : "",
+      i.audio ? `<span class="chip">ses: ${esc(i.acodec || "var")}</span>` : `<span class="chip" style="color:#FB7185">ses yok</span>`,
+    ];
+    $("#chips").innerHTML = out.join("");
+  }
+
+  async function setSrc(path) {
+    if (!path) return;
+    S.src = path;
+    S.info = null;
+    $("#srcInfo").textContent = "Okunuyor…";
+    renderChips();
+    const i = await api()?.enhance_probe?.(path).catch(() => null);
+    S.info = i && i.width ? i : null;
+    $("#srcInfo").innerHTML = S.info
+      ? `<div style="word-break:break-all;color:#CFD6C3;margin-bottom:6px">${esc(path.split(/[\\/]/).pop())}</div>
+         <div class="hint">${esc(path)}</div>`
+      : `<span style="color:#FB7185">Video okunamadı: ${esc(path)}</span>`;
+    renderChips();
+    const est = S.info && S.info.frames ? `${S.info.frames} kare` : "";
+    $("#stat").textContent = est ? `Hazır · ${est}` : "Hazır";
+    $("#go").disabled = !S.info || S.busy;
+    presetNote();
+  }
+
+  // ---------------------------------------------------------------- is
+  function opts() {
+    return {
+      scale: +$("#oScale").value,
+      model: $("#oModel").value,
+      denoise: +$("#oDn").value,
+      deinterlace: $("#oDeint").value,
+      factor: +$("#oFactor").value,
+    };
+  }
+
+  function setBusy(on) {
+    S.busy = on;
+    $("#go").disabled = on || !S.info;
+    $("#go").style.display = on ? "none" : "";
+    $("#cancel").style.display = on ? "" : "none";
+    $("#pick").disabled = on;
+  }
+
+  function showResult(r) {
+    const box = $("#res");
+    if (!r || !r.path) { box.classList.remove("on"); return; }
+    const inf = r.info || {};
+    box.className = "res on";
+    box.innerHTML = `<b style="color:#D9F99D">Bitti ✓</b>
+      ${inf.width ? `<span class="hint"> · ${inf.width}×${inf.height} · ${(+inf.fps || 0).toFixed(0)} fps</span>` : ""}
+      <div class="p">${esc(r.path)}</div>
+      <button class="btn" data-open="${esc(r.path)}">Klasörü aç</button>
+      <button class="btn" data-play="${esc(r.path)}">Aç</button>`;
+  }
+
+  function warn(html) {
+    const w = $("#warn");
+    if (!html) { w.classList.remove("on"); w.innerHTML = ""; w.dataset.kind = ""; return; }
+    w.className = "warnbox on";
+    w.innerHTML = html;
+  }
+
+  // Difuzyon preseti: sure ve risk uyarisi (olculen ~10 sn/kare, RTX 4050 6 GB)
+  function presetNote() {
+    if (S.preset !== "yeniden") {
+      if ($("#warn").dataset.kind === "fvsr") warn("");
+      return;
+    }
+    const n = S.info?.frames || 0;
+    const est = n ? Math.max(1, Math.round((n * 10) / 60)) : 0;
+    $("#warn").dataset.kind = "fvsr";
+    warn(`<b>Yeniden üret (difüzyon):</b> en yavaş mod — 6 GB kartta kare başına ~10 sn.` +
+      (est ? ` Bu klip için yaklaşık <b>${est} dk</b>.` : "") +
+      ` Kısa kesitlerde kullan; yüz ve yazı değişebilir.`);
+  }
+
+  function poll() {
+    clearInterval(S.timer);
+    S.timer = setInterval(async () => {
+      if (!S.job) { clearInterval(S.timer); return; }
+      const j = await api()?.enhance_job?.(S.job).catch(() => null);
+      if (!j) return;
+      $("#barFill").style.width = Math.round((j.p || 0) * 100) + "%";
+      $("#stat").textContent = j.line || j.state;
+      if (j.state === "running") return;
+      clearInterval(S.timer);
+      setBusy(false);
+      if (j.state === "done") {
+        $("#stat").textContent = "Bitti ✓";
+        $("#barFill").style.width = "100%";
+        showResult(j.result);
+      } else if (j.state === "cancelled") {
+        $("#stat").textContent = "İptal edildi";
+        $("#barFill").style.width = "0";
+      } else {
+        $("#stat").textContent = "Hata";
+        warn(`<b>Olmadı:</b> ${esc(j.error || "bilinmeyen hata")}`);
+        $("#barFill").style.width = "0";
+      }
+      S.job = "";
+    }, 450);
+  }
+
+  async function installAndRetry(tool) {
+    setBusy(true);
+    $("#stat").textContent = "Model indiriliyor…";
+    const r = await api()?.enhance_install?.(tool).catch(() => null);
+    if (!r?.ok) { setBusy(false); warn("Model indirilemedi: " + esc(r?.error || "?")); return; }
+    S.job = r.job;
+    // indirme biterse otomatik baslat
+    const t = setInterval(async () => {
+      const j = await api()?.enhance_job?.(S.job).catch(() => null);
+      if (!j) return;
+      $("#barFill").style.width = Math.round((j.p || 0) * 100) + "%";
+      $("#stat").textContent = j.line || "İndiriliyor";
+      if (j.state === "running") return;
+      clearInterval(t);
+      S.job = "";
+      if (j.state !== "done") { setBusy(false); warn("Model kurulamadı: " + esc(j.error || "?")); return; }
+      S.tools = (await api()?.enhance_tools?.().catch(() => null))?.tools || S.tools;
+      renderPresets();
+      setBusy(false);
+      go();
+    }, 700);
+  }
+
+  async function go() {
+    if (!S.src) { warn("Önce bir video seç."); return; }
+    warn("");
+    showResult(null);
+    setBusy(true);
+    $("#barFill").style.width = "0";
+    $("#stat").textContent = "Başlıyor…";
+    const r = await api()?.enhance_start?.(S.preset, S.src, opts()).catch((e) => ({ ok: false, error: String(e) }));
+    if (!r?.ok) {
+      setBusy(false);
+      if (r?.error === "need_tool") {
+        const nm = toolLabel(r.tool);
+        if (confirm(`${nm} gerekli. Şimdi indirilsin mi? (bir kez indirilir)`)) { await installAndRetry(r.tool); return; }
+        warn("Bu mod motor olmadan çalışmaz. “Temizle” ve “Hızlı büyüt” model gerektirmez.");
+      } else {
+        warn(`<b>Başlatılamadı:</b> ${esc(r?.error || "?")}`);
+      }
+      return;
+    }
+    S.job = r.job;
+    poll();
+  }
+
+  // ---------------------------------------------------------------- init
+  document.addEventListener("click", (e) => {
+    const pc = e.target.closest(".pcard");
+    if (pc) { S.preset = pc.dataset.p; renderPresets(); presetNote(); return; }
+    const o = e.target.closest("[data-open]");
+    if (o) { api()?.enhance_open_output?.(o.dataset.open); return; }
+    const p = e.target.closest("[data-play]");
+    if (p) { api()?.open_path?.(p.dataset.play); return; }
+  });
+
+  $("#pick").onclick = async () => {
+    const list = await api()?.enhance_pick?.().catch(() => null);
+    if (list && list.length) setSrc(list[0]);
+  };
+  $("#go").onclick = go;
+  $("#cancel").onclick = async () => { if (S.job) await api()?.enhance_cancel?.(S.job); };
+
+  const dz = $("#drop");
+  dz.addEventListener("click", () => $("#pick").click());
+  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+  dz.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dz.classList.remove("drag");
+    const f = [...(e.dataTransfer?.files || [])][0];
+    if (!f) return;
+    const p = f.path || f.name;
+    if (!/\.(mp4|mkv|mov|webm|avi|ts|m2ts|wmv|flv|mpg|mpeg|m4v|3gp|ogv)$/i.test(f.name)) {
+      warn("Bu dosya video değil: " + esc(f.name));
+      return;
+    }
+    setSrc(p);
+  });
+
+  window.addEventListener("pywebviewready", async () => {
+    S.presets = (await api()?.enhance_presets?.().catch(() => null)) || [];
+    const t = await api()?.enhance_tools?.().catch(() => null);
+    if (t) {
+      S.tools = t.tools || S.tools;
+      const ok = (v) => v ? "✓ kurulu" : "— eksik";
+      $("#toolInfo").innerHTML =
+        `Real-ESRGAN: ${ok(S.tools.esrgan)}<br>RIFE: ${ok(S.tools.rife)}<br>TensorRT: ${ok(S.tools.trt)}<br>FlashVSR: ${ok(S.tools.flashvsr)}<br>` +
+        `<span class="hint">ffmpeg: ${t.ffmpeg ? "✓" : "✗"}</span><br>` +
+        `<span class="hint" style="word-break:break-all">çıktı: ${esc(t.out_dir || "")}</span>`;
+    }
+    renderPresets();
+  });
+</script>
+</body>
+</html>
