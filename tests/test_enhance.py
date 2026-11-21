@@ -215,6 +215,31 @@ def test_gecersiz_girdiler():
     assert ve.install_start("olmayan-arac")["ok"] is False
 
 
+# ---------------------------------------------------------------- disk temizligi
+
+def test_rm_dir_siler(workdir):
+    d = workdir / "in_p000"
+    d.mkdir()
+    (d / "00000001.png").write_bytes(b"x")
+    job = {}
+    assert ve._rm_dir(d, job) is True
+    assert not d.exists()
+    assert job.get("leftover", 0) == 0
+    # zaten yok olan klasor de sorun degil
+    assert ve._rm_dir(d, job) is True
+
+
+def test_rm_dir_hatayi_sessiz_yutmez(workdir):
+    """Eski davranis: rmtree(ignore_errors=True) hatayi yutuyordu, GB'larca PNG kaliyordu."""
+    f = workdir / "silinemez.txt"
+    f.write_bytes(b"x")
+    job = {}
+    assert ve._rm_dir(f, job) is False          # dosyaya rmtree -> hata
+    assert job["leftover"] == 1
+    assert job["leftover_path"].endswith("silinemez.txt")
+    assert f.is_file()
+
+
 # ---------------------------------------------------------------- gercek ffmpeg
 
 @pytest.mark.skipif(not _ffmpeg(), reason="ffmpeg yok")
@@ -233,7 +258,6 @@ def test_probe_gercek_dosya(workdir):
 
 @pytest.mark.skipif(not _ffmpeg(), reason="ffmpeg yok")
 def test_temizle_uctan_uca(workdir):
-    """Model gerektirmeyen preset gercekten oynatilabilir dosya uretmeli, sesi korumali."""
     ff = _ffmpeg()
     src = workdir / "kaynak.mp4"
     subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y",
@@ -257,4 +281,45 @@ def test_temizle_uctan_uca(workdir):
     inf = ve.probe(ff, str(out))
     assert (inf["width"], inf["height"]) == (320, 240)   # temizle boyut degistirmez
     assert inf["audio"] is True                          # ses korunmus
+
+
+@pytest.mark.skipif(not _ffmpeg(), reason="ffmpeg yok")
+def test_parcali_iste_her_parca_temizlenir(workdir, monkeypatch):
+    """Uzun video parcalanir; HER parca bitince o parcanin PNG'leri silinmeli.
+
+    Disk davranisi: tum videonun kareleri degil, tek parcanin kareleri kadar yer kaplar.
+    """
+    from app.core import studio_enhance as se
+    if not se.installed("esrgan"):
+        pytest.skip("Real-ESRGAN kurulu degil")
+    ff = _ffmpeg()
+    src = workdir / "uzun.mp4"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y",
+                    "-f", "lavfi", "-i", "testsrc=size=160x120:rate=25:duration=8",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(src)], check=True)
+    monkeypatch.setenv(ve.WORK_ENV, str(workdir / "work"))   # sistem temp'i yerine test alani
+    removed: list[str] = []
+    real = ve._rm_dir
+
+    def spy(p, job=None):
+        removed.append(Path(p).name)
+        return real(p, job)
+
+    monkeypatch.setattr(ve, "_rm_dir", spy)
+    res = ve.start("netlestir", str(src), ff,
+                   {"scale": 2, "denoise": 0, "chunk_frames": 130}, workdir / "out")
+    assert res["ok"], res
+    jid = res["job"]
+    t0 = time.time()
+    st: dict = {}
+    while time.time() - t0 < 300:
+        st = ve.job(jid)
+        if st["state"] != "running":
+            break
+        time.sleep(0.2)
+    assert st.get("state") == "done", st
+    # 8 sn @25 fps = 200 kare, 130'luk parca -> 2 parca -> her parca temizlenmeli
+    parca_temizligi = [n for n in removed if n.startswith("in_p")]
+    assert len(parca_temizligi) >= 2, f"parca basina temizlik yok: {removed}"
+    assert st["result"]["info"]["frames"] >= 190
 

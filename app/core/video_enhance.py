@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import logging
 import os
 import re
 import shutil
@@ -35,6 +36,8 @@ from pathlib import Path
 from typing import Any
 
 from app.core import studio_enhance as se
+
+log = logging.getLogger(__name__)
 
 NO_WINDOW = se.NO_WINDOW
 OUT_SUBDIR = "İyileştirilmiş"
@@ -240,6 +243,37 @@ def _count(d: Path) -> int:
         return 0
 
 
+def _rm_dir(path: Path, job: dict | None = None, attempts: int = 3) -> bool:
+    """Gecici klasoru siler; BASARISIZ olursa sessizce yutMAZ (log + job['leftover']).
+
+    Iki gercek sorun vardi:
+    1) `shutil.rmtree(ignore_errors=True)` kilitli dosyada hatayi yutuyordu -> GB'larca PNG
+       kaliyor, "temizlendi" gorunuyordu.
+    2) Tek deneme yetmiyor: yeni yazilmis mp4'u antivirus/indeksleyici bir an tutuyor,
+       ilk rmtree dusuyor ama 200 ms sonra basarili oluyor. Kisa araliklarla tekrar denenir.
+    """
+    p = Path(path) if path else None
+    if not p or not p.exists():
+        return True
+    last: OSError | None = None
+    for i in range(max(1, int(attempts))):
+        try:
+            shutil.rmtree(p)
+            return True
+        except OSError as exc:
+            last = exc
+            if not p.exists():      # kismen silinmis ama hedefe ulasilmis
+                return True
+            if i + 1 < int(attempts):
+                time.sleep(0.2 * (i + 1))
+    log.warning("gecici klasor silinemedi: %s (%s)", p, last)
+    log.warning("elle temizlik: Remove-Item '%s' -Recurse -Force", p)
+    if job is not None:
+        job["leftover"] = int(job.get("leftover") or 0) + 1
+        job["leftover_path"] = str(p)
+    return False
+
+
 def _workdir() -> Path:
     """Gecici calisma klasoru. KAMI_ENH_WORK verilirse orada, yoksa sistem temp'inde."""
     base = os.environ.get(WORK_ENV)
@@ -344,12 +378,18 @@ def _run_filter_only(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[
 
 def _segment(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, Any],
              info: dict[str, Any], work: Path, start: float, dur: float,
-             base: str, with_audio: bool, p0: float, p1: float, label: str = "") -> Path:
-    """Bir araligi kare hattindan gecirip mp4 dondurur (parcali modda sesis)."""
+             base: str, with_audio: bool, p0: float, p1: float, label: str = "",
+             cleanup: bool = True) -> Path:
+    """Bir araligi kare hattindan gecirip mp4 dondurur (parcali modda sesis).
+
+    cleanup=True: bu araligin PNG klasorleri mp4 yazildiktan HEMEN sonra silinir.
+    Parcali islemede disk, tum videonun kareleri yerine tek parcanin kareleri kadar kalir.
+    """
     p = PRESETS[preset]
     pre = (label + " · ") if label else ""
     src = work / f"in_{base}"
     src.mkdir(parents=True, exist_ok=True)
+    tmp_dirs: list[Path] = [src]
     vf = filters(preset, info, opts)
     scale = 4 if (p.get("upscale") and int(opts.get("scale", 2)) == 4) else 2
     if p.get("upscale") and info["width"] > 3840 // scale:   # 4K'yi asma
@@ -378,6 +418,7 @@ def _segment(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, Any
             raise RuntimeError("Real-ESRGAN kurulu degil")
         out = work / f"up_{base}"
         out.mkdir(parents=True, exist_ok=True)
+        tmp_dirs.append(out)
         model = "realesrgan-x4plus" if str(opts.get("model")) == "photo" else "realesr-animevideov3"
         sc = 4 if model == "realesrgan-x4plus" else scale
         job["line"] = pre + f"netleştiriliyor ({n_cur} kare)"
@@ -391,6 +432,7 @@ def _segment(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, Any
         factor = 4 if int(opts.get("factor", 2)) >= 4 else 2
         out = work / f"rife_{base}"
         out.mkdir(parents=True, exist_ok=True)
+        tmp_dirs.append(out)
         expect = _count(cur) * factor
         job["line"] = pre + f"ara kareler üretiliyor ({expect} kare)"
         _run_tool(job, se.rife_args(str(ex), cur, out, expect), ex, out, expect,
@@ -416,6 +458,9 @@ def _segment(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, Any
     r = subprocess.run(cmd, capture_output=True, timeout=7200, creationflags=NO_WINDOW)
     if r.returncode != 0:
         raise RuntimeError("birlestirme hatasi: " + r.stderr.decode("utf-8", "replace")[-200:])
+    if cleanup:   # parca bitti: bu araligin PNG'leri artik gereksiz -> disk sabit kalir
+        for d in tmp_dirs:
+            _rm_dir(d, job)
     return dst
 
 
@@ -632,13 +677,16 @@ def _worker(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, Any]
             dst = _run_model(job, ffmpeg, preset, path, opts, info, out_dir, work)
         else:
             dst = _run_filter_only(job, ffmpeg, preset, path, opts, info, out_dir)
-        job.update(state="done", p=1.0, line="Bitti", result={"path": str(dst), "info": probe(ffmpeg, str(dst))})
+        job.update(state="done", p=1.0, line="Bitti",
+                   result={"path": str(dst), "info": probe(ffmpeg, str(dst))})
     except _Cancelled:
         job.update(state="cancelled", line="İptal edildi")
     except Exception as exc:
+        log.exception("video iyilestirme hatasi (preset=%s)", preset)
         job.update(state="error", error=str(exc)[:300], line="Hata")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if not _rm_dir(work, job):
+            job.update(line="Uyarı: geçici dosyalar silinemedi (elle temizlenebilir)")
 
 
 def start(preset: str, path: str, ffmpeg: str, opts: dict[str, Any] | None = None,
