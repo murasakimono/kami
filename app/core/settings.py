@@ -100,6 +100,7 @@ DEFAULTS: dict[str, Any] = {
     "lyrics_embed": True,
     "lyrics_ai": False,            # 0.8.1: varsayilan KAPALI (sormadan GB'lik UVR+Whisper calistirmasin)
     "acoustid_key": "",            # istege bagli AcoustID uygulama anahtari (acoustid.org/new-application); gizli degil             # soz bulunamazsa UVR vokal + Whisper ile yaziya dok (iki arac kuruluysa)
+    "listenbrainz_token": "",      # ListenBrainz scrobbling token'i (dinlenen sarkilari kaydetmek icin; bos = kapali)
     "music_archive": False,        # MusicBrainz etiket + Sanatci/Album klasoru + kapak
     "music_dir": "",               # Muzik kutuphanesi klasoru; bos = Indirilenler\Muzik (Dopamine bu klasoru izler)
     "whisper_auto": False,         # altyazisi olmayan videoya otomatik Whisper altyazi

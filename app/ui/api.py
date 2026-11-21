@@ -5906,7 +5906,112 @@ class Api(StudioMixin):
             p = self._scrobble_file()
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(json.dumps(cur[:200], ensure_ascii=False, indent=2), encoding="utf-8")
+            # ListenBrainz scrobbling (token ayarliysa)
+            try:
+                self.scrobble_send(entry["artist"], entry["title"], "", 0, False)
+            except Exception:
+                pass
         return {"ok": True, "song": entry, "history_count": len(cur)}
+
+    def scrobble_send(self, artist: str, title: str, album: str = "", duration: int = 0, playing: bool = False) -> dict[str, Any]:
+        """ListenBrainz scrobbling: dinlenen sarkiyi gonder (playing_now veya scrobble). Token bos = no-op."""
+        token = str(self._manager.settings.get("listenbrainz_token") or "").strip()
+        if not token or not title:
+            return {"ok": False, "error": "no_token"}
+        import requests
+        meta = {"artist_name": str(artist or ""), "track_name": str(title or "")}
+        if album:
+            meta["release_name"] = str(album)
+        if playing:
+            body = {"listen_type": "playing_now", "payload": [{"track_metadata": meta}]}
+        else:
+            body = {"listen_type": "single", "payload": [{"listened_at": int(time.time()), "track_metadata": meta}]}
+        try:
+            r = requests.post("https://api.listenbrainz.org/1/submit-listens", json=body,
+                              headers={"Authorization": f"Token {token}", "Content-Type": "application/json"}, timeout=15)
+            return {"ok": r.status_code in (200, 202), "status": r.status_code}
+        except requests.RequestException as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    # ---------- Kamify calma listeleri ----------
+    def _playlists_file(self) -> Path:
+        from app import paths
+        return paths.DATA_DIR / "playlists.json"
+
+    def _playlists_load(self) -> dict[str, list[str]]:
+        p = self._playlists_file()
+        try:
+            if p.is_file():
+                d = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(d, dict):
+                    return d
+        except Exception:
+            pass
+        return {}
+
+    def _playlists_save(self, d: dict) -> None:
+        p = self._playlists_file()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def playlist_list(self) -> dict[str, Any]:
+        """Calma listeleri: ad -> sarki yolu listesi."""
+        return {"ok": True, "playlists": self._playlists_load()}
+
+    def playlist_create(self, name: str) -> dict[str, Any]:
+        n = str(name or "").strip()
+        if not n:
+            return {"ok": False, "error": "empty"}
+        d = self._playlists_load()
+        if n in d:
+            return {"ok": False, "error": "exists"}
+        d[n] = []
+        self._playlists_save(d)
+        return {"ok": True}
+
+    def playlist_add(self, name: str, path: str) -> dict[str, Any]:
+        n = str(name or "").strip()
+        pth = str(path or "").strip()
+        if not n or not pth:
+            return {"ok": False, "error": "empty"}
+        d = self._playlists_load()
+        lst = d.get(n)
+        if lst is None:
+            return {"ok": False, "error": "no_list"}
+        if pth not in lst:
+            lst.append(pth)
+            self._playlists_save(d)
+        return {"ok": True, "count": len(lst)}
+
+    def playlist_remove(self, name: str, path: str) -> dict[str, Any]:
+        n = str(name or "").strip()
+        d = self._playlists_load()
+        lst = d.get(n)
+        if lst is None:
+            return {"ok": False, "error": "no_list"}
+        if str(path or "") in lst:
+            lst.remove(str(path or ""))
+            self._playlists_save(d)
+        return {"ok": True}
+
+    def playlist_delete(self, name: str) -> dict[str, Any]:
+        n = str(name or "").strip()
+        d = self._playlists_load()
+        if n in d:
+            del d[n]
+            self._playlists_save(d)
+        return {"ok": True}
+
+    def playlist_rename(self, name: str, new_name: str) -> dict[str, Any]:
+        n, nn = str(name or "").strip(), str(new_name or "").strip()
+        if not n or not nn:
+            return {"ok": False, "error": "empty"}
+        d = self._playlists_load()
+        if n not in d or nn in d:
+            return {"ok": False, "error": "bad"}
+        d[nn] = d.pop(n)
+        self._playlists_save(d)
+        return {"ok": True}
 
     def active_jobs_hud(self) -> dict[str, Any]:
         """A3 Birlesik Arka Plan Islem & Kuyruk HUD'u: Ortada aktif is yokken count=0 doner ve HUD tamamen gizlenir."""
