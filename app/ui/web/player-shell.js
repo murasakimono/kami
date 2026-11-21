@@ -41,6 +41,14 @@ async function shellPoll() {
     for (const it of q || []) {
       if (it.path) {
         await playerOpenPath(it.path, it.queue);
+        if (window._plSkipSil) {
+          // ayar açık: ses analizörü hazır olunca sessizlik atlayıcıyı otomatik başlat
+          let tries = 0;
+          const t = setInterval(() => {
+            if (++tries > 20 || !window._plSkipSil) { clearInterval(t); return; }
+            if (window._plGetAna?.()) { clearInterval(t); try { plToggleSilenceSkip(true); } catch { /* hazir degil */ } }
+          }, 300);
+        }
         if (it.at > 0) {   // Kami Kasa: sahnenin saniyesinden baslat (sure bilinince)
           for (let i = 0; i < 40 && !(PL.dur > 0); i++) await new Promise((ok) => setTimeout(ok, 150));
           try { await plSeek(it.at, true); } catch { /* oynatici hazir degil */ }
@@ -56,6 +64,7 @@ async function shellPoll() {
 window.addEventListener("pywebviewready", async () => {
   api = window.pywebview.api;
   try { state.settings = await api.get_settings(); state.lang = state.settings.language || "tr"; } catch { /* varsayilan */ }
+  window._plSkipSil = !!state.settings.player_skip_silence;   // sessizlik atlayici ayari (player-extra.js)
   plBuild();
   plIdle(true);
   shellPoll();

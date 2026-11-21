@@ -859,8 +859,10 @@ document.addEventListener("input", (e) => {
 let _silTimer = 0, _silBaseRate = 1.0, _silLowSince = 0, _silBoosted = false;
 function plToggleSilenceSkip(force) {
   const next = typeof force === "boolean" ? force : !window._plSkipSil;
-  if (next === !!window._plSkipSil) return;
+  // off->off ya da zaten calisiyorsa no-op; bayrak true ama interval yoksa (ilk yukleme) baslat
+  if (next === !!window._plSkipSil && (next === false || _silTimer)) return;
   window._plSkipSil = next;
+  try { window.pywebview?.api?.set_setting?.("player_skip_silence", next); } catch { /* yok */ }
   const v = $("#plVideo");
   document.querySelectorAll("#plSkipSilSeg [data-sil]").forEach((x) => x.classList.toggle("on", (x.dataset.sil === "1") === next));
   if (!window._plSkipSil) {
