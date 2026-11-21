@@ -413,7 +413,9 @@ class DebridService:
         if not self.pending_path:
             return
         try:
-            self.pending_path.write_text(json.dumps(self._pending), encoding="utf-8")
+            tmp = self.pending_path.with_name(self.pending_path.name + ".tmp")
+            tmp.write_text(json.dumps(self._pending), encoding="utf-8")
+            os.replace(tmp, self.pending_path)
         except OSError:
             log.exception("rd_pending yazilamadi")
 
@@ -435,7 +437,9 @@ class DebridService:
             self._wake.clear()
 
     def poll_once(self) -> None:
-        for tid in list(self._pending):
+        with self._lock:
+            tids = list(self._pending)
+        for tid in tids:
             try:
                 self._step(tid)
             except DebridError as exc:

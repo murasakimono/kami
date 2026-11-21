@@ -5,12 +5,16 @@ const VW = { list: [], i: 0, z: 1, x: 0, y: 0, rot: 0, el: null };
 const vwL = (tr, en) => (state.lang !== "en" ? tr : en);
 const VW_EXT = /\.(jpe?g|png|webp|gif|bmp|avif|jfif|heic|tiff?)$/i;
 
-async function vwOpen(path, lens) {
+async function vwOpen(path, lens, fromEl) {
   if (api.picture_open) { api.picture_open(path, !!lens); return; }   // ayri pencere: Kami Picture
   VW.list = (await api.image_siblings(path)) || [path];
   VW.i = Math.max(0, VW.list.indexOf(path));
   if (!VW.el) vwBuild();
   VW.el.hidden = false;
+  // A4: shared-element gecisi (kuyruk karti -> inline viewer buyuk goruntu); destek yoksa sessiz gec
+  if (fromEl && window.KamiMotion?.sharedElement) {
+    KamiMotion.sharedElement(fromEl.querySelector(".sk-paper") || fromEl, "#kvwImg");
+  }
   vwLoad();
 }
 function vwBuild() {
@@ -76,7 +80,7 @@ function vwClose() { if (VW.el) { VW.el.hidden = true; $("#kvwImg").src = ""; } 
 // kartta cift tik (gorsel) + alt cubukta "Goruntule"
 $("#skTrack")?.addEventListener("dblclick", (e) => {
   const b = e.target.closest(".sk-strip"); const d = b && state.items.find((x) => String(x.id) === b.dataset.id);
-  if (d && d.status === "complete" && VW_EXT.test(d.filename || "")) vwOpen(d.path);
+  if (d && d.status === "complete" && VW_EXT.test(d.filename || "")) vwOpen(d.path, false, b);
 });
 const _vwBar = skRenderBar;
 skRenderBar = function (d) {   // eslint-disable-line no-global-assign

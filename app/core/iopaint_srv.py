@@ -84,6 +84,7 @@ class IOPaint:
                 log.info("IOPaint baslatiliyor (%s, port %s)", dev, self.port)
                 self.proc = attach(subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                              creationflags=NOWIN, env=aitools._clean_env(), cwd=mdir))
+                logf.close()   # alt surec kendi fd'sini miras aldi; ust taraf handle'i kapatilir
             end = time.time() + timeout
             while time.time() < end:
                 if self.proc.poll() is not None:

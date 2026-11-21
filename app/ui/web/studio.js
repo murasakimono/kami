@@ -75,7 +75,7 @@ function defaultFit(c) { return c.fit || (c.track === "v1" || vidTracks().length
 const selClips = () => ST.p.clips.filter(c => ST.sel.has(c.id));
 
 // ---------------------------------------------------------------- gecmis / kayit
-function snap() { ST.undo.push(JSON.stringify(ST.p)); if (ST.undo.length > 120) ST.undo.shift(); ST.redo = []; }
+function snap() { ST.undo.push(JSON.stringify(ST.p)); if (ST.undo.length > 120) ST.undo.shift(); ST.redo = []; try { const log = JSON.parse(localStorage.getItem("kami.studio.rev") || "[]"); log.unshift({ t: Date.now(), clips: ST.p.clips.length, tracks: ST.p.tracks.length }); localStorage.setItem("kami.studio.rev", JSON.stringify(log.slice(0, 200))); } catch {} }
 function changed(full = true) {
   ST.dirty = true; $("#saved").textContent = "● kaydedilmedi"; $("#saved").classList.add("dirty");
   if (full) renderTimeline(); renderInsp(); assDirty(); draw(); scheduleSave();

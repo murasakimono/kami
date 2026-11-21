@@ -209,10 +209,17 @@ def decrypt_file(path: str, key_hex: str) -> bool:
             pad = plain + b"\0" * (-len(plain) % 16)
             cmac = AES.new(aes_key, AES.MODE_CBC, iv=nonce + nonce).encrypt(pad)[-16:]
             file_mac = ecb.encrypt(_xor(file_mac, cmac))
-    os.replace(tmp, path)
     w = struct.unpack(">4I", file_mac)
     condensed = struct.pack(">2I", w[0] ^ w[1], w[2] ^ w[3])
-    return condensed == meta_mac
+    if condensed != meta_mac:
+        # MAC tutmadi: orijinali koru, gecici cozulmus dosyayi sil (veri kaybi yok)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
+    os.replace(tmp, path)
+    return True
 
 
 class MegaDecrypt(PostProcessor):

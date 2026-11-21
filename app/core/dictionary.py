@@ -16,6 +16,7 @@ import sqlite3
 import threading
 import time
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
@@ -37,13 +38,18 @@ class Dictionary:
         self._lock = threading.Lock()
 
     # ---------- durum ----------
-    def _conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _conn(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         c = sqlite3.connect(str(self.path), timeout=5)
-        c.execute("PRAGMA journal_mode=WAL")   # kurulum yazarken arama okuyabilsin
-        c.execute("CREATE TABLE IF NOT EXISTS entry(word TEXT, lw TEXT, lang TEXT, pos TEXT, gloss TEXT, ipa TEXT, src TEXT, base TEXT)")
-        c.execute("CREATE TABLE IF NOT EXISTS pack(name TEXT PRIMARY KEY, done INTEGER, rows INTEGER)")
-        return c
+        try:
+            c.execute("PRAGMA journal_mode=WAL")   # kurulum yazarken arama okuyabilsin
+            c.execute("CREATE TABLE IF NOT EXISTS entry(word TEXT, lw TEXT, lang TEXT, pos TEXT, gloss TEXT, ipa TEXT, src TEXT, base TEXT)")
+            c.execute("CREATE TABLE IF NOT EXISTS pack(name TEXT PRIMARY KEY, done INTEGER, rows INTEGER)")
+            yield c
+            c.commit()
+        finally:
+            c.close()
 
     def status(self) -> dict[str, Any]:
         out = {"packs": {}, "progress": dict(self.progress)}

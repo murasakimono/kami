@@ -54,7 +54,7 @@
     const res = r?.results || [];
     if (!res.length) { grid.innerHTML = `<div class="empty">Sonuç yok.${r?.semantic ? "" : " (Anlamsal arama kurulu değil: yalnızca kelime eşleşmesi aranıyor.)"}</div>`; return; }
     grid.innerHTML = res.map((x, i) => `<div class="card" data-i="${i}">
-      <div class="th" style="${x.thumb_url ? `background-image:url('${x.thumb_url}')` : ""}">${x.kind === "doc" ? `<i>s.${Math.max(1, Math.round(x.start_sec || 1))}</i>` : x.kind !== "image" ? `<i>${fmt(x.start_sec)}</i>` : ""}${x.why ? `<em>${esc(x.why)}</em>` : ""}</div>
+      <div class="th" style="${x.thumb_url ? `background-image:url('${esc(x.thumb_url)}')` : ""}">${x.kind === "doc" ? `<i>s.${Math.max(1, Math.round(x.start_sec || 1))}</i>` : x.kind !== "image" ? `<i>${fmt(x.start_sec)}</i>` : ""}${x.why ? `<em>${esc(x.why)}</em>` : ""}</div>
       <div class="meta"><b title="${esc(x.path)}">${esc(x.title)}</b><span>${esc(x.snippet || "")}</span></div></div>`).join("");
     grid.onclick = (e) => { const c = e.target.closest(".card"); if (!c) return; const x = res[+c.dataset.i]; A().kasa_open(x.path, x.start_sec || 0); };
   }

@@ -81,6 +81,7 @@
     <button class="eco-tab" data-tab="rename" data-grp="arac">Toplu Adlandır</button>
     <button class="eco-tab" data-tab="subs" data-grp="arac">Altyazı Yöneticisi</button>
     <button class="eco-tab" data-tab="tag" data-grp="arac">Etiket Editörü</button>
+    <button class="eco-tab" data-tab="scene" data-grp="arac">Sahne Arama</button>
           <div class="eco-tgrp" data-grp="ses">Ses & Oyun</div>
           <button class="eco-tab" data-tab="beat" data-grp="ses">Kami Beat</button>
           <button class="eco-tab" data-tab="hunter" data-grp="ses">Kami Hunter</button>
@@ -182,29 +183,70 @@
     }
 
     if (activeTab === "subs") {
-      bd.innerHTML = `<div class="eco-card"><strong>Altyazı Yöneticisi</strong><div class="eco-hint">Klasör seç, eksik altyazılı videoları tara, toplu indir (OpenSubtitles anahtarı gerekli).</div><div class="eco-row"><input class="eco-in" id="subFolder" placeholder="Klasör yolu (örn. C:/Videolar)" style="flex:1"><button class="eco-btn" id="subScan">Tara</button></div><div class="eco-hint" id="subStat"></div><div id="subList" style="max-height:260px;overflow:auto"></div><div class="eco-row"><button class="eco-btn" id="subAll">Eksiklerin hepsine altyazı indir</button></div></div>`;
+      bd.innerHTML = `<div class="eco-card"><strong>Altyazı Yöneticisi</strong><div class="eco-hint">Klasör seç, eksik altyazılı videoları tara, toplu indir (OpenSubtitles anahtarı gerekli).</div><div class="eco-row"><input class="eco-in" id="subFolder" placeholder="Klasör yolu (örn. C:/Videolar)" style="flex:1"><button class="eco-btn sec" id="subBrowse">Gözat</button><button class="eco-btn" id="subScan">Tara</button></div><div class="eco-hint" id="subStat"></div><div id="subList" style="max-height:260px;overflow:auto"></div><div class="eco-row"><button class="eco-btn" id="subAll">Eksiklerin hepsine altyazı indir</button><span class="eco-hint" id="subProg"></span></div></div>`;
       const escS = s => String(s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
       let missing = [];
+      $("#subBrowse").onclick = async () => { const f = await api.choose_folder?.(); if (f) { $("#subFolder").value = f; $("#subScan").click(); } };
       $("#subScan").onclick = async () => { const f = ($("#subFolder").value || "").trim(); if (!f) { alert("Klasör yolu gir"); return; } const r = await ld(api.subtitle_scan?.(f), null); if (!r || !r.ok) { alert("Tarama başarısız: " + ((r && r.error) || "hata")); return; } missing = (r.videos || []).filter(v => !v.has_sub); $("#subStat").textContent = r.total + " video, " + missing.length + " altyazısız"; $("#subList").innerHTML = missing.map(v => '<div class="eco-row"><small>' + escS(v.name) + '</small></div>').join("") || '<div class="eco-hint">Altyazısız video yok.</div>'; };
-      $("#subAll").onclick = async () => { if (!missing.length) { alert("Önce tara"); return; } $("#subAll").disabled = true; const r = await ld(api.subtitle_batch?.(missing.map(v => v.path)), null); $("#subAll").disabled = false; alert(r ? (r.done.length + " altyazı indi, " + r.errors.length + " hata") : "Hata"); };
+      $("#subAll").onclick = async () => { if (!missing.length) { alert("Önce tara"); return; } $("#subAll").disabled = true; $("#subProg").textContent = "0/" + missing.length;
+        let done = 0, err = 0;
+        for (let i = 0; i < missing.length; i++) {
+          $("#subProg").textContent = (i + 1) + "/" + missing.length + " · " + escS(missing[i].name);
+          const r = await ld(api.subtitle_fetch?.(missing[i].path), null);
+          if (r?.ok) done++; else err++;
+          const row = $("#subList .eco-row")[i]; if (row) row.innerHTML = '<small>' + escS(missing[i].name) + '</small><span class="eco-tag">' + (r?.ok ? "✓" : "✕") + '</span>';
+        }
+        $("#subAll").disabled = false;
+        $("#subProg").textContent = done + " indi, " + err + " hata";
+      };
       return;
     }
 
     if (activeTab === "tag") {
-      bd.innerHTML = `<div class="eco-card"><strong>Etiket Editörü</strong><div class="eco-hint">Müzik dosyasının ID3/FLAC/MP4 etiketlerini düzenle (mutagen).</div><div class="eco-row"><input class="eco-in" id="tagPath" placeholder="Dosya yolu (örn. C:/muzik/a.mp3)" style="flex:1"><button class="eco-btn" id="tagRead">Oku</button></div><div class="eco-row" style="margin-top:6px"><input class="eco-in" id="tagTitle" placeholder="Başlık" style="flex:1"><input class="eco-in" id="tagArtist" placeholder="Sanatçı" style="flex:1"><input class="eco-in" id="tagAlbum" placeholder="Albüm" style="flex:1"></div><div class="eco-row"><button class="eco-btn" id="tagSave">Kaydet</button></div></div>`;
+      bd.innerHTML = `<div class="eco-card"><strong>Etiket Editörü</strong><div class="eco-hint">Müzik dosyasının ID3/FLAC/MP4 etiketlerini düzenle (mutagen). Tek dosya ya da toplu (birden çok dosyaya aynı etiket).</div><div class="eco-row"><input class="eco-in" id="tagPath" placeholder="Dosya yolu (örn. C:/muzik/a.mp3)" style="flex:1"><button class="eco-btn sec" id="tagBrowse">Gözat</button><button class="eco-btn" id="tagRead">Oku</button></div><div class="eco-row" style="margin-top:6px"><input class="eco-in" id="tagTitle" placeholder="Başlık" style="flex:1"><input class="eco-in" id="tagArtist" placeholder="Sanatçı" style="flex:1"><input class="eco-in" id="tagAlbum" placeholder="Albüm" style="flex:1"></div><div class="eco-row" style="margin-top:6px"><input class="eco-in" id="tagYear" placeholder="Yıl" style="width:90px"><input class="eco-in" id="tagTrack" placeholder="Parça no" style="width:90px"><input class="eco-in" id="tagType" placeholder="Tür" style="flex:1"></div><div class="eco-hint" style="margin-top:6px">Toplu: birden çok dosya yapıştır (her satıra bir yol) — aynı etiketler hepsine yazılır.</div><textarea id="tagBatch" class="eco-in" rows="3" placeholder="C:/muzik/a.mp3" style="width:100%;min-height:54px"></textarea><div class="eco-row"><button class="eco-btn" id="tagSave">Kaydet</button><button class="eco-btn sec" id="tagCover">Kapak</button><button class="eco-btn sec" id="tagBatchGo">Toplu uygula</button></div></div>`;
       let cur = "";
-      $("#tagRead").onclick = async () => { cur = ($("#tagPath").value || "").trim(); if (!cur) { alert("Dosya yolu gir"); return; } const r = await ld(api.tag_read?.(cur), null); if (!r || !r.ok) { alert("Okunamadı: " + ((r && r.error) || "hata")); return; } $("#tagTitle").value = (r.tags && r.tags.title) || ""; $("#tagArtist").value = (r.tags && r.tags.artist) || ""; $("#tagAlbum").value = (r.tags && r.tags.album) || ""; };
-      $("#tagSave").onclick = async () => { if (!cur) { alert("Önce oku"); return; } const tags = { title: $("#tagTitle").value.trim(), artist: $("#tagArtist").value.trim(), album: $("#tagAlbum").value.trim() }; const r = await ld(api.tag_write?.(cur, tags), null); alert(r && r.ok ? "Kaydedildi" : ("Hata: " + ((r && r.error) || "?"))); };
+      const readInto = (t) => { $("#tagTitle").value = t.title || ""; $("#tagArtist").value = t.artist || ""; $("#tagAlbum").value = t.album || ""; $("#tagYear").value = t.date || t.year || ""; $("#tagTrack").value = t.tracknumber || t.track || ""; $("#tagType").value = t.genre || t.type || ""; };
+      const gather = () => ({ title: $("#tagTitle").value.trim(), artist: $("#tagArtist").value.trim(), album: $("#tagAlbum").value.trim(), date: $("#tagYear").value.trim(), tracknumber: $("#tagTrack").value.trim(), genre: $("#tagType").value.trim() });
+      $("#tagBrowse").onclick = async () => { const fs = await api.choose_files?.([".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wma"]); if (fs?.length) { $("#tagPath").value = fs[0]; $("#tagBatch").value = fs.join(String.fromCharCode(10)); $("#tagRead").click(); } };
+      $("#tagRead").onclick = async () => { cur = ($("#tagPath").value || "").trim(); if (!cur) { alert("Dosya yolu gir"); return; } const r = await ld(api.tag_read?.(cur), null); if (!r || !r.ok) { alert("Okunamadı: " + ((r && r.error) || "hata")); return; } readInto(r.tags || {}); };
+      $("#tagSave").onclick = async () => { if (!cur) { alert("Önce oku"); return; } const r = await ld(api.tag_write?.(cur, gather()), null); alert(r && r.ok ? "Kaydedildi" : ("Hata: " + ((r && r.error) || "?"))); };
+      $("#tagBatchGo").onclick = async () => { const ps = ($("#tagBatch").value || "").split(String.fromCharCode(10)).map(s => s.trim()).filter(Boolean); if (!ps.length) { alert("Toplu dosya yolu yapıştır"); return; } const tags = gather(); let ok = 0; for (const p of ps) { const r = await ld(api.tag_write?.(p, tags), null); if (r?.ok) ok++; } alert(ok + "/" + ps.length + " dosyaya yazıldı"); };
+      $("#tagCover").onclick = async () => { if (!cur) { alert("Önce dosyayı oku"); return; } const fs = await api.choose_files?.([".jpg", ".jpeg", ".png", ".webp"]); if (!fs?.length) return; const im = await ld(api.image_data?.(fs[0], 800), null); if (!im?.ok) { alert("Kapak okunamadı"); return; } const r = await ld(api.tag_cover_write?.(cur, im.url), null); alert(r?.ok ? "Kapak yazıldı" : ("Hata: " + ((r && r.error) || "?"))); };
+      return;
+    }
+    if (activeTab === "scene") {
+      bd.innerHTML = `<div class="eco-card"><strong>Sahne Arama</strong><div class="eco-hint">Bir kare (ekran görüntüsü) seç, indirilen videolarda hangi dosya + dakikada olduğunu bul (algısal hash).</div><div class="eco-row"><input class="eco-in" id="sceneImg" placeholder="Kare yolu (örn. C:/ekran.png)" style="flex:1"><button class="eco-btn sec" id="sceneBrowse">Gözat</button></div><div class="eco-row"><input class="eco-in" id="sceneFolder" placeholder="Klasör (boş = indirilenler)" style="flex:1"><button class="eco-btn" id="sceneGo">Ara</button></div><div class="eco-hint" id="sceneMsg"></div></div>`;
+      $("#sceneBrowse").onclick = async () => { const fs = await api.choose_files?.([".jpg", ".jpeg", ".png", ".webp"]); if (fs?.length) $("#sceneImg").value = fs[0]; };
+      $("#sceneGo").onclick = async () => {
+        const img = $("#sceneImg").value.trim(), fol = $("#sceneFolder").value.trim();
+        if (!img) { alert("Kare yolu gir ya da Gözat ile seç"); return; }
+        $("#sceneMsg").textContent = "Aranıyor… (videolar taranıyor, biraz sürebilir)";
+        const r = await ld(api.scene_search?.(img, fol), null);
+        $("#sceneMsg").textContent = r?.found ? ("✓ " + r.name + " · ~" + Math.floor((r.seconds || 0) / 60) + ":" + String((r.seconds || 0) % 60).padStart(2, "0")) : ((r?.error) || "Eşleşme bulunamadı");
+      };
       return;
     }
 
     if (activeTab === "rename") {
-      bd.innerHTML = `<div class="eco-card"><strong>Toplu Adlandır</strong><div class="eco-hint">Her satıra bir dosya yolu yapıştır (örn. C:/videolar/a.mp4); önek + sayaç ile yeniden adlandırılır. Echo ile geri alınabilir.</div><textarea id="renPaths" class="eco-in" rows="6" placeholder="C:/videolar/a.mp4" style="width:100%;min-height:90px"></textarea><div class="eco-row" style="margin-top:6px"><input class="eco-in" id="renPrefix" placeholder="Önek (örn. tatil_)" style="flex:1"><input class="eco-in" id="renStart" type="number" value="1" style="width:80px"></div><div class="eco-hint" id="renPrev" style="white-space:pre-wrap;min-height:20px"></div><div class="eco-row"><button class="eco-btn" id="renGo">Uygula</button><span class="eco-hint">Uzantı korunur; çakışan adlar atlanır.</span></div></div>`;
+      bd.innerHTML = `<div class="eco-card"><strong>Toplu Adlandır</strong><div class="eco-hint">Dosya yolu yapıştır, "Gözat" ile seç ya da buraya sürükle. Önek + sayaç ile yeniden adlandırılır; aşağıda eski → yeni ve çakışmalar görünür. Echo ile geri alınabilir.</div><div class="eco-row" style="margin-bottom:6px"><button class="eco-btn sec" id="renBrowse">Gözat (dosya seç)</button><span class="eco-hint">veya dosyaları kutuya sürükle</span></div><textarea id="renPaths" class="eco-in" rows="6" placeholder="C:/videolar/a.mp4" style="width:100%;min-height:90px"></textarea><div class="eco-row" style="margin-top:6px"><input class="eco-in" id="renPrefix" placeholder="Önek (örn. tatil_)" style="flex:1"><input class="eco-in" id="renStart" type="number" value="1" style="width:80px"></div><div class="eco-hint" id="renPrev" style="white-space:pre-wrap;min-height:20px;font-family:monospace;font-size:11px"></div><div class="eco-hint" id="renWarn" style="color:#F5B94A;display:none"></div><div class="eco-row"><button class="eco-btn" id="renGo">Uygula</button><span class="eco-hint">Uzantı korunur; çakışan adlar atlanır (Echo ile geri alınır).</span></div></div>`;
       const paths = () => (($("#renPaths").value || "").split(String.fromCharCode(10)).map(s => s.trim()).filter(Boolean));
-      const refresh = () => { const p = ($("#renPrefix").value || "").trim(), s = +$("#renStart").value || 1; $("#renPrev").textContent = paths().map((f, i) => { const e = (f.split(".").pop() || "").toLowerCase(); return p + String(s + i).padStart(3, "0") + (e ? "." + e : ""); }).join(String.fromCharCode(10)); };
+      const newName = (f, i, s, p) => { const e = (f.split(".").pop() || "").toLowerCase(); return p + String(s + i).padStart(3, "0") + (e ? "." + e : ""); };
+      const refresh = () => {
+        const p = ($("#renPrefix").value || "").trim(), s = +$("#renStart").value || 1;
+        const ps = paths();
+        const seen = new Set(), dup = new Set();
+        ps.forEach((f, i) => { const n = newName(f, i, s, p); const key = (f.split(/[\\/]/).slice(0, -1).join("/") || ".") + "/" + n; if (seen.has(key)) dup.add(key); seen.add(key); });
+        $("#renPrev").textContent = ps.map((f, i) => (f.split(/[\\/]/).pop()) + "  →  " + newName(f, i, s, p)).join(String.fromCharCode(10));
+        $("#renWarn").style.display = dup.size ? "" : "none";
+        $("#renWarn").textContent = dup.size ? "⚠ " + dup.size + " dosya aynı hedef ada düşüyor (uygulamada atlanır)" : "";
+      };
       ["renPaths", "renPrefix", "renStart"].forEach(id => $("#" + id).addEventListener("input", refresh));
+      $("#renBrowse").onclick = async () => { const fs = await api.choose_files?.([".mp4", ".mkv", ".avi", ".mov", ".webm", ".mp3", ".flac", ".wav", ".m4a"]); if (fs?.length) { $("#renPaths").value = (paths().concat(fs)).join(String.fromCharCode(10)); refresh(); } };
+      const ta = $("#renPaths");
+      ta.addEventListener("dragover", (e) => e.preventDefault());
+      ta.addEventListener("drop", (e) => { e.preventDefault(); const fs = [...(e.dataTransfer?.files || [])].map(f => f.path || f.name).filter(Boolean); if (fs.length) { $("#renPaths").value = (paths().concat(fs)).join(String.fromCharCode(10)); refresh(); } });
       refresh();
-      $("#renGo").onclick = async () => { const p = ($("#renPrefix").value || "").trim(), s = +$("#renStart").value || 1; const pairs = paths().map((f, i) => { const e = (f.split(".").pop() || "").toLowerCase(); return { path: f, new_name: p + String(s + i).padStart(3, "0") + (e ? "." + e : "") }; }); if (!pairs.length) { alert("Önce dosya yolu yapıştır"); return; } const r = await ld(api.batch_rename?.(pairs), null); alert(r && r.ok ? (r.done.length + " dosya yeniden adlandırıldı" + (r.errors.length ? ", " + r.errors.length + " hata" : "")) : "Hata"); };
+      $("#renGo").onclick = async () => { const p = ($("#renPrefix").value || "").trim(), s = +$("#renStart").value || 1; const pairs = paths().map((f, i) => ({ path: f, new_name: newName(f, i, s, p) })); if (!pairs.length) { alert("Önce dosya yolu yapıştır ya da seç"); return; } const r = await ld(api.batch_rename?.(pairs), null); alert(r && r.ok ? (r.done.length + " dosya yeniden adlandırıldı" + (r.errors.length ? ", " + r.errors.length + " atlandı" : "")) : "Hata"); };
       return;
     }
 
@@ -233,6 +275,11 @@
             <input class="eco-in" id="ecoRecFile" placeholder="Son kayıt veya klip yolu (GIF / Discord için)">
             <button class="eco-btn sec" id="ecoRecGif">GIF Yap</button>
             <button class="eco-btn sec" id="ecoRecDisc">Discord'a Sığdır</button>
+          </div>
+          <div class="eco-row">
+            <label class="eco-hint">Planlı kayıt: <input class="eco-in" id="ecoRecSched" placeholder="19:30" style="width:70px"></label>
+            <button class="eco-btn sec" id="ecoRecSchedGo">Planla</button>
+            <span class="eco-hint" id="ecoRecSchedStat"></span>
           </div>
           <label class="eco-hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ecoChRecStu" ${ch.chain_rec_studio ? "checked" : ""}> Zincir: Kayıt bitince otomatik Studio'da aç</label>
           <label class="eco-hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ecoRecZoom" ${ch.rec_cursor_zoom !== false ? "checked" : ""}> Screen Studio Modu: Tıklama noktalarına otomatik yaylı imleç zoom'u uygula</label>
@@ -282,6 +329,17 @@
       };
       bd.querySelector("#ecoRecBuf").onclick = async () => { await api.rec_replay(!st.replay); renderTab(); };
       bd.querySelector("#ecoRecDir").onclick = () => api.rec_open_folder();
+      bd.querySelector("#ecoRecSchedGo").onclick = async () => {
+        const t = bd.querySelector("#ecoRecSched").value.trim();
+        const r = await api.rec_schedule_at?.(t);
+        bd.querySelector("#ecoRecSchedStat").textContent = r?.ok ? ("Planlandı: " + r.at + " (iptal için yeniden tıkla)") : ("Hata: " + (r?.error || "?"));
+        if (r?.ok) bd.querySelector("#ecoRecSchedGo").textContent = "İptal";
+        else bd.querySelector("#ecoRecSchedGo").textContent = "Planla";
+      };
+      {
+        const sc = await api.rec_schedule_status?.().catch(() => null);
+        if (sc?.scheduled) { bd.querySelector("#ecoRecSchedStat").textContent = "Planlı: " + sc.at; bd.querySelector("#ecoRecSchedGo").textContent = "İptal"; bd.querySelector("#ecoRecSchedGo").onclick = async () => { await api.rec_schedule_cancel?.(); renderTab(); }; }
+      }
       bd.querySelector("#ecoGoStudio").onclick = () => { closeModal(); api.studio_show(""); };
       bd.querySelector("#ecoGoRoom").onclick = () => { closeModal(); api.room_open?.(true); };
       bd.querySelector("#ecoGoPic").onclick = () => { closeModal(); api.picture_open_editor?.(); };
@@ -599,7 +657,7 @@
         const voc = bd.querySelector("#ecoBtVoc").value.trim();
         if (!voc) return;
         const r = await api.beat_stems?.(voc);
-        bd.querySelector("#ecoBtMsg").innerHTML = r?.ok ? `<span class="eco-ok">4-Kanal ayrıştırma başlatıldı (${esc(r.job_id)}) ✓</span>` : (r?.error || "Hata");
+        bd.querySelector("#ecoBtMsg").innerHTML = r?.ok ? `<span class="eco-ok">4-Kanal ayrıştırma başlatıldı (${esc(r.job_id)}) ✓</span>` : esc(r?.error || "Hata");
       };
       bd.querySelector("#ecoBtGo").onclick = async () => {
         const voc = bd.querySelector("#ecoBtVoc").value.trim();

@@ -656,7 +656,8 @@ class Api(StudioMixin):
                     sp = base + side_ext
                     if os.path.isfile(sp):
                         try:
-                            raw_side = open(sp, encoding="utf-8", errors="replace").read(32768)
+                            with open(sp, encoding="utf-8", errors="replace") as _sf:
+                                raw_side = _sf.read(32768)
                             idx_hit = raw_side.lower().find(ql)
                             if idx_hit >= 0:
                                 snippet = raw_side[max(0, idx_hit - 20):idx_hit + 55].replace("\n", " ").strip()
@@ -955,7 +956,29 @@ class Api(StudioMixin):
 
     @staticmethod
     def _fetch_torrent(url: str) -> bytes:
-        import requests
+        import requests, socket, ipaddress
+        from urllib.parse import urlparse
+        u = urlparse(url)
+        if u.scheme not in ("http", "https") or not u.hostname:
+            raise ValueError("unsupported url")
+        host = u.hostname
+
+        def _blocked(ip_str: str) -> bool:
+            try:
+                a = ipaddress.ip_address(ip_str)
+            except ValueError:
+                return False
+            return (a.is_private or a.is_loopback or a.is_link_local or a.is_reserved
+                    or a.is_multicast or a.is_unspecified)
+
+        if _blocked(host):
+            raise ValueError("blocked host")
+        try:
+            for info in socket.getaddrinfo(host, None):
+                if _blocked(info[4][0]):
+                    raise ValueError("blocked host")
+        except socket.gaierror:
+            pass
         limit = 10 * 1024 * 1024
         with requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"}, stream=True) as r:
             r.raise_for_status()
@@ -1368,6 +1391,18 @@ class Api(StudioMixin):
         result = self._window.create_file_dialog(dialog, directory=self._manager.base_dir())
         return result[0] if result else ""
 
+    def choose_files(self, exts: list[str] | None = None) -> list[str]:
+        """Coklu dosya secici (Toplu Adlandir / Etiket Editörü)."""
+        if not self._window:
+            return []
+        import webview
+        dialog = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        ft = ()
+        if exts:
+            ft = ("Dosyalar (" + ";".join("*" + e for e in exts) + ")",)
+        res = self._window.create_file_dialog(dialog, allow_multiple=True, file_types=ft)
+        return list(res) if res else []
+
     def plugins(self) -> list[dict[str, Any]]:
         """Ayarlar > Eklentiler: liste + plugin.json ayar semasi + mevcut degerler (gizliler sadece var/yok)."""
         store = self._registry.store
@@ -1593,6 +1628,92 @@ class Api(StudioMixin):
         if self._history:
             self._history.clear()
         return {"ok": True}
+
+    def history_source(self, path: str) -> dict[str, Any]:
+        """Fikir 4 (Kaynak Gunlugu): bir dosyanin indirme kaynagini goster (history'den ters arama)."""
+        p = str(path or "")
+        if not p or not self._history:
+            return {"ok": False, "error": "no_path" if not p else "no_history"}
+        try:
+            items = self._history.search(os.path.basename(p), 50)
+        except Exception:
+            items = []
+        for it in items:
+            if (it.get("path") or "") == p or (it.get("filename") or "") == os.path.basename(p):
+                return {"ok": True, "source": it.get("page_url") or it.get("url") or "",
+                        "page_url": it.get("page_url") or "", "url": it.get("url") or ""}
+        return {"ok": True, "source": ""}
+
+    def anki_add(self, front: str, back: str, deck: str = "Kami") -> dict[str, Any]:
+        """Fikir 7 (Anki Koprusu): Reader'dan secilen metni Anki karti olarak CSV'ye kaydet (Anki'ye import edilebilir)."""
+        import csv
+        p = paths.DATA_DIR / "anki_export.csv"
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            new = not p.is_file()
+            with open(p, "a", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                if new:
+                    w.writerow(["Deck", "Front", "Back"])
+                w.writerow([str(deck or "Kami"), str(front or ""), str(back or "")])
+            return {"ok": True, "path": str(p)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    def scene_search(self, image_path: str, folder: str = "") -> dict[str, Any]:
+        """Fikir 10 (Sahne Arama): bir kareden hangi video + dakika oldugunu bul (algisal aHash)."""
+        from PIL import Image
+        from app.engines.ytdlp_engine import find_ffmpeg as _ffmpeg
+        p = str(image_path or "")
+        if not p or not os.path.isfile(p):
+            return {"ok": False, "error": "no_file"}
+
+        def _ahash(im):
+            im = im.convert("L").resize((16, 16))
+            px = list(im.getdata())
+            avg = sum(px) / len(px)
+            return "".join("1" if x > avg else "0" for x in px)
+
+        def _dist(a, b):
+            return sum(1 for x, y in zip(a, b) if x != y)
+
+        try:
+            target = _ahash(Image.open(p))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+        ff = _ffmpeg() or ""
+        if not ff:
+            return {"ok": False, "error": "no_ffmpeg"}
+        base = str(folder or self._manager.base_dir())
+        vids = []
+        for dp, _dn, fn in os.walk(base):
+            for f in fn:
+                if os.path.splitext(f)[1].lower() in (".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"):
+                    vids.append(os.path.join(dp, f))
+            if len(vids) > 120:
+                break
+        import tempfile
+        best = None
+        for v in vids:
+            try:
+                with tempfile.TemporaryDirectory() as td:
+                    out = os.path.join(td, "f%02d.jpg")
+                    subprocess.run([ff, "-loglevel", "error", "-i", v, "-vf", "fps=1/60", "-frames:v", "8", out],
+                                   capture_output=True, creationflags=0x08000000, timeout=90)
+                    for i in range(8):
+                        fp = os.path.join(td, f"f{i + 1:02d}.jpg")
+                        if not os.path.isfile(fp):
+                            continue
+                        d = _dist(target, _ahash(Image.open(fp)))
+                        if best is None or d < best[0]:
+                            best = (d, v, (i + 1) * 60)
+            except Exception:
+                continue
+        if best is None:
+            return {"ok": True, "found": False}
+        return {"ok": True, "found": True, "video": best[1], "name": os.path.basename(best[1]),
+                "seconds": best[2], "dist": best[0]}
 
     def history_open(self, path: str) -> bool:
         path = str(path or "")
@@ -1908,7 +2029,38 @@ class Api(StudioMixin):
         if "error" in res:
             return {"ok": False, "error": str(res["error"])[:200]}
         self._last_song = res.get("done") or {}
+        try:   # Fikir 13: sarki kesif notu — taninan sarkiyi zaman damgali logla
+            self._discovery_add(self._last_song)
+        except Exception:
+            pass
         return {"ok": True, "song": self._last_song}
+
+    def _discovery_add(self, song: dict) -> None:
+        import json, time
+        p = paths.DATA_DIR / "discovery_log.json"
+        items = []
+        try:
+            if p.is_file():
+                items = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            items = []
+        items.insert(0, {"artist": str((song or {}).get("artist") or ""), "title": str((song or {}).get("title") or ""), "ts": int(time.time())})
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(items[:50], ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    def discovery_list(self) -> dict[str, Any]:
+        """Sarki kesif notlari (Fikir 13): 'Bu sarki ne?' ile taninan sarkilarin zaman damgali listesi."""
+        import json
+        p = paths.DATA_DIR / "discovery_log.json"
+        try:
+            if not p.is_file():
+                return {"ok": True, "items": []}
+            return {"ok": True, "items": json.loads(p.read_text(encoding="utf-8"))}
+        except Exception:
+            return {"ok": True, "items": []}
 
     # ---------- Donusturucu ----------
     def convert_view(self, on: bool = True) -> None:
@@ -2623,6 +2775,53 @@ class Api(StudioMixin):
         os.startfile(str(clips_dir())) if os.name == "nt" else None
         return True
 
+    def rec_schedule_at(self, hh_mm: str) -> dict[str, Any]:
+        """Fikir 12: planli ekran kaydi (ornek '19:30'da otomatik kayda basla)."""
+        import re as _re
+        import threading as _th
+        import datetime as _dt
+        m = _re.fullmatch(r"(\d{1,2})[:.](\d{2})", str(hh_mm or "").strip())
+        if not m:
+            return {"ok": False, "error": "bad_time"}
+        h, mm = int(m.group(1)), int(m.group(2))
+        if not (0 <= h <= 23 and 0 <= mm <= 59):
+            return {"ok": False, "error": "bad_time"}
+        now = _dt.datetime.now()
+        target = now.replace(hour=h, minute=mm, second=0, microsecond=0)
+        if target <= now:
+            target += _dt.timedelta(days=1)
+        self._rec_sched_cancel()
+        self._rec_sched_at = target
+        self._rec_sched_stop = _th.Event()
+
+        def _wait() -> None:
+            while not self._rec_sched_stop.wait(10):
+                if _dt.datetime.now() >= target:
+                    try:
+                        if not self.recorder.status().get("recording"):
+                            self.rec_toggle()
+                    except Exception:
+                        pass
+                    break
+            self._rec_sched_at = None
+
+        _th.Thread(target=_wait, name="kami-rec-sched", daemon=True).start()
+        return {"ok": True, "at": target.strftime("%H:%M")}
+
+    def rec_schedule_cancel(self) -> dict[str, Any]:
+        self._rec_sched_cancel()
+        return {"ok": True}
+
+    def rec_schedule_status(self) -> dict[str, Any]:
+        at = getattr(self, "_rec_sched_at", None)
+        return {"ok": True, "scheduled": bool(at), "at": at.strftime("%H:%M") if at else ""}
+
+    def _rec_sched_cancel(self) -> None:
+        ev = getattr(self, "_rec_sched_stop", None)
+        if ev:
+            ev.set()
+        self._rec_sched_at = None
+
     def _rec_done(self, res: dict[str, Any], start_msg: bool = False) -> None:
         from app.core import desktop
         en = self._manager.settings.get("language") == "en"
@@ -2684,7 +2883,10 @@ class Api(StudioMixin):
                 exif = {k: str(v)[:60] for k, v in {"Kamera": ex.get(0x0110), "Tarih": ex.get(0x0132)}.items() if v}
             except Exception:
                 pass
-            raw = open(path, "rb").read() if fmt in ("JPEG", "PNG", "WEBP", "GIF") and max(w, h) <= max_side and os.path.getsize(path) < 25e6 else None
+            raw = None
+            if fmt in ("JPEG", "PNG", "WEBP", "GIF") and max(w, h) <= max_side and os.path.getsize(path) < 25e6:
+                with open(path, "rb") as _if:
+                    raw = _if.read()
             if raw is None:
                 im = ImageOps.exif_transpose(im)
                 im.thumbnail((max_side, max_side))
@@ -2692,6 +2894,10 @@ class Api(StudioMixin):
                 im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") else "RGB").save(buf, "PNG" if im.mode in ("RGBA", "LA", "P") else "JPEG", quality=92)
                 raw, fmt = buf.getvalue(), ("PNG" if im.mode in ("RGBA", "LA", "P") else "JPEG")
             mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp", "GIF": "image/gif"}.get(fmt, "image/png")
+            try:
+                im.close()
+            except Exception:
+                pass
             return {"ok": True, "url": f"data:{mime};base64," + base64.b64encode(raw).decode(), "w": w, "h": h,
                     "size": os.path.getsize(path), "name": os.path.basename(path), "exif": exif}
         except Exception as exc:
@@ -2875,7 +3081,13 @@ class Api(StudioMixin):
 
     def editor_project_save(self, path: str, name: str, data: str) -> dict[str, Any]:
         """.kami projesi (katmanlar, metinler, ayarlar) — JSON."""
+        home = os.path.realpath(os.path.expanduser("~"))
         path = str(path or "")
+        if path:
+            # Guvenlik: yalnizca home altindaki .kami dosyalarina izin ver; disi reddedilir (path traversal)
+            target = os.path.realpath(path)
+            if not target.lower().endswith(".kami") or not (target == home or target.startswith(home + os.sep)):
+                path = ""
         if not path:
             base = re.sub(r'[\\/:*?"<>|]+', "_", str(name or "Kami"))[:80] or "Kami"
             path = os.path.join(self._edit_out_dir(""), base + ".kami")
@@ -3268,6 +3480,51 @@ class Api(StudioMixin):
                     continue
                 f[str(k)] = str(v)
             f.save()
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    def tag_cover_write(self, path: str, data_url: str) -> dict[str, Any]:
+        """Muzik dosyasina kapak resmi yazar (ID3 APIC / FLAC PICTURE / MP4 covr)."""
+        import base64
+        p = str(path or "").strip()
+        if not p or not os.path.isfile(p):
+            return {"ok": False, "error": "no_file"}
+        try:
+            raw = base64.b64decode(str(data_url or "").split(",", 1)[1])
+        except Exception:
+            return {"ok": False, "error": "bad_image"}
+        mime = "image/png" if str(data_url or "").startswith("data:image/png") else "image/jpeg"
+        try:
+            import mutagen
+            ext = os.path.splitext(p)[1].lower()
+            if ext == ".mp3":
+                from mutagen.id3 import APIC, ID3
+                id3 = mutagen.File(p)
+                if id3 is None or id3.tags is None:
+                    id3 = ID3()
+                id3.delall("APIC")
+                id3.add(APIC(encoding=3, mime=mime, type=3, desc="cover", data=raw))
+                id3.save(p)
+            elif ext == ".flac":
+                from mutagen.flac import Picture
+                f = mutagen.File(p)
+                pic = Picture()
+                pic.type = 3
+                pic.mime = mime
+                pic.desc = "cover"
+                pic.data = raw
+                f.clear_pictures()
+                f.add_picture(pic)
+                f.save()
+            elif ext in (".m4a", ".mp4"):
+                from mutagen.mp4 import MP4Cover
+                f = mutagen.File(p)
+                fmt = MP4Cover.FORMAT_PNG if mime == "image/png" else MP4Cover.FORMAT_JPEG
+                f.tags["covr"] = [MP4Cover(raw, imageformat=fmt)]
+                f.save()
+            else:
+                return {"ok": False, "error": "unsupported"}
             return {"ok": True}
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:120]}
@@ -5431,12 +5688,16 @@ class Api(StudioMixin):
                 return {"ok": False, "error": str(exc)[:120]}
         if act == "copy":
             if os.name == "nt":
+                import base64
+                # Yol, f-string/quoting yerine ortam degiskeni + EncodedCommand ile guvenli gecirilir
                 ps = (
                     "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; "
-                    f"$img = [System.Drawing.Image]::FromFile('{p.replace(chr(39), chr(39)*2)}'); "
+                    "$img = [System.Drawing.Image]::FromFile($env:KAMI_IMG); "
                     "[System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()"
                 )
-                subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=8,
+                enc = base64.b64encode(ps.encode("utf-16le")).decode()
+                subprocess.run(["powershell", "-NoProfile", "-EncodedCommand", enc], timeout=8,
+                               env={**os.environ, "KAMI_IMG": p},
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 return {"ok": True, "message": "Panoya kopyalandı ✓"}
             return {"ok": False, "error": "unsupported"}

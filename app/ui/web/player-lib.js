@@ -172,6 +172,12 @@ window.plDrawer = (tab) => {
   if (tab) PX.libTab = tab;
   else if (!d.hidden) { d.hidden = true; return; }
   d.hidden = false;
+  // A5: yonlu panel itme (motion_dirpanel) — cekmece acilisinda
+  if (document.body.classList.contains("km-dir-on")) {
+    d.classList.remove("km-dir-panel");
+    void d.offsetWidth;
+    d.classList.add("km-dir-panel");
+  }
   if (!PL.open && PX.libTab === "queue") PX.libTab = "lib";
   pxDrawerRender();
 };

@@ -82,9 +82,17 @@ DEFAULTS: dict[str, Any] = {
     "motion_magnet": False,
     "motion_mesh": False,
     "motion_grain": False,
+    "motion_scramble": False,        # A1: metin cozumleme (indirme bitince dosya adi glif glif oturur)
+    "motion_skeleton": False,        # A2: iskelet parilti yukleyici (liste dolarken yer tutucu satirlar)
+    "motion_gooey": False,           # A3: sivi (gooey) filtre (tek konteyner/toast kabı)
+    "motion_shared": False,          # A4: shared-element gecisi (kart gorseli -> Player acilisi)
+    "motion_dirpanel": False,        # A5: yonlu panel itme (sag cekmeceler)
+    "motion_refract": False,         # A6: cam kirilmasi (medya karti hover)
+    "motion_nixie": False,           # A7: parcacik tozu + bitis kivilcimi (Sunak)
     "reader_page_anim": "curl3d",  # Kami Reader sayfa cevirme: curl3d | slide | off
     "sunak_kamify_sync": False,    # Kamify calarken kapak rengini Sunak arka planina hafifce yansit
     "island_music_expand": True,   # Kamify Mini-Ada: ustune gelince kapak rengiyle genisleyen Dinamik Ada (secilebilir)
+    "high_contrast": False,        # Okunabilirlik modu (Fikir 9): yuksek kontrast + renk yerine desen/simge; varsayilan kapali
     # Ag: bazi sunucularin IPv6 adresi bu agda cevapsiz (RD: 21 sn x adres). Kapali = aria2 sadece IPv4.
     "aria2_ipv6": False,           # degisiklik Kami yeniden acilinca gecerli
     # Asama 6b: medya ekstralari

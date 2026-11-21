@@ -145,6 +145,39 @@ function fileToB64(file) {
     fr.readAsDataURL(file);
   });
 }
+
+// Fikir 14: suruklenen medya dosyasi icin onizleme karti (oynat / duzenle / AI)
+function showDropPreview(files) {
+  const existing = document.getElementById("kmDropPreview");
+  if (existing) existing.remove();
+  const box = document.createElement("div");
+  box.id = "kmDropPreview";
+  box.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:70;width:340px;max-height:320px;overflow:auto;background:rgba(16,12,26,.97);border:1px solid var(--ac,#9D6BFF);border-radius:14px;padding:12px;box-shadow:0 16px 40px rgba(0,0,0,.65);font:500 12.5px 'Chakra Petch',sans-serif;color:#EDE9F6";
+  const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  box.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>Dosya Önizleme</b><button data-x type="button" style="border:0;background:none;color:var(--mut,#A39BB5);cursor:pointer;font-size:14px">✕</button></div>` +
+    files.map((m, i) => {
+      const name = (m.path || "").split(/[\\/]/).pop() || m.path || m.name;
+      const isImg = m.kind === "image";
+      const isAud = /\.(mp3|flac|wav|m4a|ogg|opus|aac|wma)$/i.test(name);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(157,107,255,.15)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.path)}">${esc(name)}</span><span style="display:flex;gap:6px;flex:none">` +
+        `<button data-a="play" data-i="${i}" style="border:1px solid var(--ac,#9D6BFF);background:rgba(157,107,255,.15);color:#EDE9F6;border-radius:6px;padding:4px 8px;cursor:pointer">${isImg ? "Görüntüle" : "Oynat"}</button>` +
+        `<button data-a="edit" data-i="${i}" style="border:1px solid rgba(157,107,255,.35);background:transparent;color:#EDE9F6;border-radius:6px;padding:4px 8px;cursor:pointer">Düzenle</button>` +
+        (isAud ? `<button data-a="ai" data-i="${i}" style="border:1px solid rgba(46,230,166,.5);background:rgba(46,230,166,.12);color:#D1FAE5;border-radius:6px;padding:4px 8px;cursor:pointer">AI Altyazı-Vokal</button>` : "") +
+        `</span></div>`;
+    }).join("");
+  document.body.appendChild(box);
+  box.querySelector("[data-x]").onclick = () => box.remove();
+  box.onclick = (e) => {
+    const b = e.target.closest("button[data-a]");
+    if (!b) return;
+    const m = files[+b.dataset.i]; const a = b.dataset.a;
+    if (a === "play") { api.player_open_path?.(m.path); }
+    else if (a === "edit") { api.picture_open?.(m.path, false, true); }
+    else if (a === "ai") { api.player_open_path?.(m.path); toast("AI araçları (altyazı/vokal) Player'da erişilebilir"); }
+    box.remove();
+  };
+}
+
 function bindDrop() {
   let depth = 0;
   const veil = $("#dropVeil");
@@ -157,12 +190,16 @@ function bindDrop() {
     depth = 0; veil.hidden = true;
     const files = [...(e.dataTransfer.files || [])];
     if (files.length) {
+      const mediaFiles = [];
       for (const f of files) {
-        if (/\.(mkv|mp4|m4v|webm|avi|mov|ts|m2ts|wmv|flv|mpg|mpeg|3gp|ogv|mp3|flac|wav|ogg|oga|opus|m4a|aac|wma|ape|aiff|mka|wv)$/i.test(f.name)) continue;   // oynatici: Python tarafi yakalar (main.bind_drop)
+        const p = f.path || "";
+        if (/\.(jpe?g|png|webp|gif|bmp|avif|jfif|heic|tiff?)$/i.test(f.name)) { mediaFiles.push({ path: p || f.name, kind: "image" }); continue; }
+        if (/\.(mkv|mp4|m4v|webm|avi|mov|ts|m2ts|wmv|flv|mpg|mpeg|3gp|ogv|mp3|flac|wav|ogg|oga|opus|m4a|aac|wma|ape|aiff|mka|wv)$/i.test(f.name)) { mediaFiles.push({ path: p || f.name, kind: "media" }); continue; }
         if (!/\.torrent$/i.test(f.name) || f.size > 10 * 1024 * 1024) { toast(T("drop_only_torrent"), true); continue; }
         const r = await api.drop_torrent(await fileToB64(f));
         dispatchAdd(r, f.name, {});
       }
+      if (mediaFiles.length) showDropPreview(mediaFiles);
       return;
     }
     const text = (e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain") || "")

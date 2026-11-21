@@ -273,7 +273,7 @@ function renderTab() {
   if (RD.tab === "hl") {
     const list = [...RD.st.hl].sort((a, b) => a.page - b.page || a.rects[0][1] - b.rects[0][1]);
     box.innerHTML = (pdf() ? "" : `<p class="rd-hint">${L("Vurgu ve notlar PDF'lerde çalışır. Çizgi romanlarda yer imi kullanabilirsin (B).", "Highlights work in PDFs. Use bookmarks (B) for comics.")}</p>`) +
-      (list.length ? `<button class="btn" data-a="export">${L("Notları Markdown olarak dışa aktar", "Export notes as Markdown")}</button>` +
+      (list.length ? `<button class="btn" data-a="export">${L("Notları Markdown olarak dışa aktar", "Export notes as Markdown")}</button><button class="btn" data-a="anki">${L("Anki'ye aktar", "Export to Anki")}</button>` +
         list.map((h) => `<div class="rd-item ${h.color}" data-go="${h.page}" data-id="${h.id}"><button class="x" data-del="${h.id}" title="Sil">✕</button>
         <small>${L("Sayfa", "Page")} ${h.page + 1}</small><p>${esc(h.text)}</p>${h.note ? `<div class="nt">${esc(h.note)}</div>` : ""}</div>`).join("")
         : pdf() ? `<p class="rd-hint">${L("Metni seç, rengini tıkla. Not eklemek için seçtikten sonra 'Not'a bas. Kısayollar: ← → sayfa, Ctrl+F ara, B yer imi, N gece, T sesli oku, D çift sayfa, R yön.", "Select text and pick a colour. Shortcuts: ← → pages, Ctrl+F search, B bookmark, N night, T read aloud, D double, R direction.")}</p>` : "");
@@ -441,6 +441,7 @@ document.addEventListener("click", async (e) => {
   else if (a === "mark") toggleMark();
   else if (a === "drawer") { $("#rdDrawer").hidden = !$("#rdDrawer").hidden; renderTab(); setTimeout(render, 0); }
   else if (a === "export") { const r = await api.reader_export_notes(); toast(r?.ok ? L("Kaydedildi: ", "Saved: ") + r.path.split(/[\\/]/).pop() : L("Olmadı", "Failed")); }
+  else if (a === "anki") { for (const h of [...RD.st.hl]) await api.anki_add?.(h.text, h.note || "", "Kami Reader"); toast(L("Anki kartları kaydedildi", "Anki cards saved")); }
   else if (a === "tts") TTS.on ? stopTts() : startTts();
   else if (a === "ttsstop") stopTts();
   else if (a === "ttsplay") { if (TTS.audio.paused) { TTS.audio.play(); b.textContent = "⏸"; } else { TTS.audio.pause(); b.textContent = "▶"; } }

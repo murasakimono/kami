@@ -371,7 +371,7 @@ def _office(src: str, ext: str, opts: dict, cancel: threading.Event) -> Path:
         args = [so, "--headless", "--norestore", "--convert-to", filt, "--outdir", str(tmp), src]
     profile = Path(tempfile.gettempdir()) / "kami_lo_profile"   # kullanicinin acik LibreOffice'ini engellemesin
     args.insert(1, "-env:UserInstallation=" + profile.as_uri())
-    p = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=NO_WINDOW)
+    p = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
     deadline = time.time() + 300   # LibreOffice asilirsa sonsuza dek bekleme
     while p.poll() is None:
         if cancel.wait(0.3):

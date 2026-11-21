@@ -605,26 +605,6 @@ body.kami-hidden .km-eq i {
   color: #fff;
 }
 
-/* ---- M7: Ruh nefesi (idle breathing) — maskot gözü/glow yavaşça nefes alır ---- */
-.km-breathe {
-  animation: km-breathe 4.2s ease-in-out infinite;
-  transform-origin: center;
-}
-@keyframes km-breathe {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.06); opacity: 0.82; }
-}
-
-/* ---- M8: Kıvılcım parıltısı — Sunak arka plan parçacıkları hafifçe parıldar ---- */
-.km-twinkle {
-  animation: km-twinkle 2.8s ease-in-out infinite;
-  transform-origin: center;
-}
-@keyframes km-twinkle {
-  0%, 100% { transform: scale(0.4); opacity: 0.12; }
-  50% { transform: scale(1); opacity: 0.85; }
-}
-
 /* ---- M9: Kart eğilmesi (tilt) — hover'da 3D derinlik + zümrüt/mor gölge ---- */
 .km-tilt {
   transition: transform 200ms var(--km-ease-out), box-shadow 200ms var(--km-ease-out);
@@ -678,25 +658,6 @@ body.kami-hidden .km-eq i {
 @keyframes km-spark-burst {
   0% { transform: scale(0.4); opacity: 1; box-shadow: 0 0 0 0 rgba(46, 230, 166, 0.7); }
   100% { transform: scale(1); opacity: 0; box-shadow: 0 0 0 24px rgba(46, 230, 166, 0); }
-}
-
-/* ---- M13: Sıvı dolum parlaklığı — ilerleme çubuğunda akan parlama ---- */
-.km-liquid-fill {
-  position: relative;
-  overflow: hidden;
-}
-.km-liquid-fill::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.32) 50%, transparent 70%);
-  background-size: 220% 100%;
-  animation: km-liquid 1.8s linear infinite;
-  pointer-events: none;
-}
-@keyframes km-liquid {
-  0% { background-position: 220% 0; }
-  100% { background-position: -220% 0; }
 }
 
 /* ---- M14: Kart dalgalanması — hover'da hafif ışık dalgası (ripppl esinli) ---- */
@@ -765,14 +726,47 @@ body.km-grain::after {
 body.km-mesh::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: .06; mix-blend-mode: screen; background: radial-gradient(90% 90% at 15% 20%, rgba(157,107,255,.5), transparent 45%), radial-gradient(90% 90% at 85% 80%, rgba(46,230,166,.4), transparent 45%); animation: km-mesh-drift 18s ease-in-out infinite alternate; }
 @keyframes km-mesh-drift { 0% { transform: scale(1) translate(0, 0); } 50% { transform: scale(1.06) translate(-1%, 1%); } 100% { transform: scale(1.02) translate(1%, -1%); } }
 
+/* Iskelet parilti (motion_skeleton) */
+.km-skeleton { position: relative; overflow: hidden; background: rgba(157,107,255,.10); border-radius: 6px; color: transparent !important; }
+.km-skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.09), transparent); animation: km-shimmer 1.4s ease-in-out infinite; }
+@keyframes km-shimmer { 100% { transform: translateX(100%); } }
+
+/* Sivi (gooey) filtre (motion_gooey) */
+.km-gooey { filter: url(#km-gooey-f); }
+
+/* Yonlu panel itme (motion_dirpanel) */
+.km-dir-panel { animation: km-dir-in 260ms var(--km-ease-out); }
+@keyframes km-dir-in { from { transform: translateX(22px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Cam kırılması hover (motion_refract) */
+.km-refract { position: relative; overflow: hidden; }
+.km-refract img, .km-refract .cov { transition: transform .3s var(--km-ease-out), filter .3s; }
+.km-refract:hover img, .km-refract:hover .cov { transform: scale(1.06); filter: blur(0.5px) brightness(1.08); }
+.km-refract::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.16), transparent 55%); }
+.km-refract:hover::after { opacity: 1; }
+
+/* Nixie tozu (motion_nixie) */
+.km-nixie-dust::after { content: ""; position: absolute; inset: -6px; pointer-events: none;
+  background: radial-gradient(1px 1px at 20% 30%, rgba(46,230,166,.9), transparent 60%), radial-gradient(1.5px 1.5px at 70% 20%, rgba(157,107,255,.9), transparent 60%), radial-gradient(1px 1px at 55% 80%, rgba(255,255,255,.8), transparent 60%);
+  animation: km-dust 0.7s ease-out forwards; }
+@keyframes km-dust { 0% { opacity: 0; transform: scale(.5); } 30% { opacity: 1; } 100% { opacity: 0; transform: scale(1.6) translateY(-4px); } }
+
+/* Okunabilirlik modu (high_contrast) — Fikir 9 */
+body.km-high-contrast { --tx: #FFFFFF; --mut: #C4B5FD; --line: rgba(255, 255, 255, 0.32); }
+body.km-high-contrast .sk-sub, body.km-high-contrast .sk-pct,
+body.km-high-contrast .sk-name, body.km-high-contrast .eco-hint { color: #FFFFFF !important; }
+body.km-high-contrast .sk-strip { border-color: rgba(255, 255, 255, 0.45); }
+body.km-high-contrast .sk-liquid { background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgba(255, 255, 255, 0.4) 6px 8px) !important; }
+
 /* ---- Reduced Motion / Animasyon Kapali Korumasi ---- */
 @media (prefers-reduced-motion: reduce) {
   .km-pop-origin, .km-toast, .km-glider, .km-glow::after,
   #kmTip, .km-odo-track, .km-hold-ring .km-hr-fg,
   .km-cascade-item, .km-eq i,
-  .km-breathe, .km-twinkle, .km-tilt, .km-pulse-ring,
-  .km-wave > *, .km-spark-burst::after, .km-liquid-fill::after, .km-ripple::after,
+  .km-tilt, .km-pulse-ring,
+  .km-wave > *, .km-spark-burst::after, .km-ripple::after,
   .km-elastic, .km-lift, .km-gather::after,
+  .km-skeleton::after, .km-dir-panel, .km-nixie-dust::after, .km-refract img, .km-refract .cov,
   .rd-main::before, #settingsForm .dialog-head::after, .cl-scroll::before,
   #sunak .sk-strip.burst .sk-paper::after, .km-absorb,
   #k20AiDropZone.drag, .cv-drop.drag, .pc-stage.drag, #rdStage.drag, #chat.drop,

@@ -113,6 +113,7 @@
     if (!deck) {
       deck = document.createElement("div");
       deck.id = "kmToastDeck";
+      deck.classList.add("km-gooey"); // A3: sivi (gooey) filtre — tek konteyner
       document.body?.appendChild(deck);
     }
     return deck;
@@ -513,7 +514,7 @@
   }
 
   // M9: Kart eğilmesi (tilt) + M14: kart dalgalanması (ripple) — ayar duyarlı
-  const cardFx = { tilt: true, ripple: false, advanced: true };
+  const cardFx = { tilt: true, ripple: false, advanced: true, scramble: false, gooey: false, shared: false };
   function initMicro() {
     if (isReduced()) return;
     document.querySelectorAll(".gcard, .qa-card, .acard").forEach((c) => {
@@ -530,6 +531,30 @@
     el.classList.add("km-spark-burst");
     clearTimeout(el._kmSparkT);
     el._kmSparkT = setTimeout(() => el.classList.remove("km-spark-burst"), 600);
+  }
+
+  // A2: Iskelet parilti (motion_skeleton) — N adet yer tutucu satir
+  function skeleton(container, n = 6) {
+    if (!container || isReduced() || !document.body.classList.contains("km-skeleton-on")) return;
+    container.innerHTML = "";
+    for (let i = 0; i < n; i++) {
+      const s = document.createElement("div");
+      s.className = "km-skeleton";
+      s.style.height = "64px";
+      s.style.marginBottom = "8px";
+      container.appendChild(s);
+    }
+  }
+
+  // A7: Nixie tozu + kivilcim (motion_nixie) — indirme bitince kartta tek seferlik
+  function nixie(el) {
+    if (!el || isReduced() || !cardFx.nixie) return;
+    sparkBurst(el);
+    el.classList.remove("km-nixie-dust");
+    void el.offsetWidth;
+    el.classList.add("km-nixie-dust");
+    clearTimeout(el._kmNixT);
+    el._kmNixT = setTimeout(() => el.classList.remove("km-nixie-dust"), 700);
   }
 
   // M11: Tılsım dalgası (liste yenilenince kademeli geçiş)
@@ -577,6 +602,50 @@ function initMagnet() {
     el.addEventListener("pointerleave", () => { el.style.transform = ""; });
   });
 }
+
+  // A1: Metin cozumleme (motion_scramble) — indirme bitince dosya adi glif glif oturur
+  function scramble(el, text) {
+    if (!el) return;
+    if (isReduced() || !cardFx.scramble) { el.textContent = text; return; }
+    const chars = "!<>-_[]{}%=+*^?#";
+    const src = String(text || "");
+    let frame = 0; const total = 14;
+    clearInterval(el._scrT);
+    el._scrT = setInterval(() => {
+      frame++;
+      const done = Math.floor((frame / total) * src.length);
+      let out = "";
+      for (let i = 0; i < src.length; i++) out += i < done ? src[i] : chars[(Math.random() * chars.length) | 0];
+      el.textContent = out;
+      if (frame >= total) { clearInterval(el._scrT); el.textContent = src; }
+    }, 28);
+  }
+
+  // A3: Sivi (gooey) SVG filtre (motion_gooey) — TEK konteyner icin filter:url(#km-gooey-f)
+  function initGooey() {
+    if (isReduced() || !cardFx.gooey) return;
+    if (document.getElementById("kmGooeyDefs")) return;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.id = "kmGooeyDefs"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.setAttribute("aria-hidden", "true");
+    svg.style.position = "absolute";
+    svg.innerHTML = '<defs><filter id="km-gooey-f"><feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="g"/><feComposite in="SourceGraphic" in2="g" operator="atop"/></filter></defs>';
+    document.body.appendChild(svg);
+  }
+
+  // A4: Shared-element gecisi (motion_shared) — kart gorseli -> Player/Picture buyuk goruntu
+  function sharedElement(fromSel, toSel) {
+    if (isReduced() || !cardFx.shared || typeof document.startViewTransition !== "function") return;
+    const from = typeof fromSel === "string" ? document.querySelector(fromSel) : fromSel;
+    const to = typeof toSel === "string" ? document.querySelector(toSel) : toSel;
+    if (!from || !to) return;
+    const name = "km-se";
+    from.style.viewTransitionName = name;
+    try {
+      document.startViewTransition(() => { to.style.viewTransitionName = name; });
+    } catch { /* destek yoksa sessiz gec */ }
+    setTimeout(() => { from.style.viewTransitionName = ""; to.style.viewTransitionName = ""; }, 620);
+  }
+
 function bootstrap() {
     initProximityGlow();
     initInstantTooltips();
@@ -584,6 +653,7 @@ function bootstrap() {
     initMicro();
     initAdvanced();
     initMagnet();
+    initGooey();
     const bindKnownGliders = () => {
       const cl = document.getElementById("clTabs");
       if (cl) bindGlider(cl, ".cl-tab", "on");
@@ -639,15 +709,29 @@ function bootstrap() {
     sparkBurst,
     wave,
     gather,
+    scramble,
+    initGooey,
+    sharedElement,
+    nixie,
+    skeleton,
     applySettings(s) {
       if (!s) return;
       cardFx.tilt = s.games_tilt !== false;
       cardFx.ripple = s.card_ripple === true;
       cardFx.advanced = s.advanced_micro_animations !== false;
       document.body.classList.toggle("km-grain", s.motion_grain === true);
+      document.body.classList.toggle("km-skeleton-on", s.motion_skeleton === true);
       cardFx.magnet = s.motion_magnet === true;
+      cardFx.scramble = s.motion_scramble === true;
       document.body.classList.toggle("km-mesh", s.motion_mesh === true);
+      cardFx.gooey = s.motion_gooey === true;
+      cardFx.shared = s.motion_shared === true;
+      document.body.classList.toggle("km-dir-on", s.motion_dirpanel === true);
+      document.querySelectorAll(".sk-paper, .gcard").forEach(c => c.classList.toggle("km-refract", s.motion_refract === true));
+      cardFx.nixie = s.motion_nixie === true;
+      document.body.classList.toggle("km-high-contrast", s.high_contrast === true);
       initMagnet();
+      initGooey();
       document.querySelectorAll(".km-tilt, .km-ripple").forEach((c) => c.classList.remove("km-tilt", "km-ripple"));
       initMicro();
       initAdvanced();

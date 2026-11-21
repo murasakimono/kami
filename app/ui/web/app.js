@@ -272,7 +272,20 @@ async function tick() {
 function notifyFinished(items) {
   for (const d of items) {
     const prev = state.known.get(d.id);
-    if (prev && prev !== "complete" && d.status === "complete") toast(T("completed", d.filename));
+    if (prev && prev !== "complete" && d.status === "complete") {
+      toast(T("completed", d.filename));
+      // A1 metin cozumleme + A7 nixie tozu (render sonrasina ertelenir)
+      if (window.KamiMotion) {
+        const id = d.id, name = d.filename;
+        setTimeout(() => {
+          const li = document.querySelector(`.item[data-id="${id}"]`);
+          if (li) {
+            KamiMotion.scramble(li.querySelector(".name"), name);
+            KamiMotion.nixie(li);
+          }
+        }, 0);
+      }
+    }
     state.known.set(d.id, d.status);
   }
 }

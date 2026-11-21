@@ -348,4 +348,20 @@
       }
     }
   });
+  // ---- Fikir 13: Şarkı Keşif Notları ("Bu şarkı ne?" ile tanınanların zaman damgalı logu) ----
+  (() => {
+    const btn = document.createElement("button");
+    btn.textContent = "🎵 Keşif";
+    btn.style.cssText = "position:fixed;right:20px;bottom:140px;z-index:45;background:rgba(16,12,26,.96);border:1px solid var(--ac);border-radius:10px;padding:6px 10px;color:var(--tx);font:600 12px 'Chakra Petch',sans-serif;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.6)";
+    document.body.appendChild(btn);
+    let panel = null;
+    btn.onclick = async () => {
+      if (panel) { panel.remove(); panel = null; return; }
+      const r = await callApi()?.discovery_list?.().catch(() => null) || { items: [] };
+      panel = document.createElement("div");
+      panel.style.cssText = "position:fixed;right:20px;bottom:180px;z-index:46;width:300px;max-height:320px;overflow:auto;background:rgba(16,12,26,.97);border:1px solid var(--ac);border-radius:12px;padding:12px;box-shadow:0 12px 30px rgba(0,0,0,.6)";
+      panel.innerHTML = "<b style='font-size:13px'>Şarkı Keşif Notları</b>" + ((r.items && r.items.length) ? r.items.map(h => `<div style="margin-top:8px;font-size:12px"><b>${String(h.title || "").replace(/</g, "&lt;")}</b><small style="color:var(--mut)"> ${String(h.artist || "").replace(/</g, "&lt;")} · ${new Date((h.ts || 0) * 1000).toLocaleString("tr-TR")}</small></div>`).join("") : "<div style='color:var(--mut);margin-top:8px'>Henüz keşif yok.</div>");
+      document.body.appendChild(panel);
+    };
+  })();
 })();

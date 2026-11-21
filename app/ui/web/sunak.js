@@ -218,7 +218,7 @@ function skBind() {
           if (!m || !peekEl.classList.contains("on") || peekEl.dataset.id !== id) return;
           const res = m.h ? (m.h >= 2100 ? "4K" : m.h >= 1400 ? "1440p" : m.h >= 1000 ? "1080p" : m.h >= 700 ? "720p" : m.h + "p") : "";
           const bits = [res, m.duration ? fmtEta(m.duration) : "", [m.vcodec, m.acodec].filter(Boolean).join(" / ").toUpperCase()].filter(Boolean);
-          peekEl.insertAdjacentHTML("afterbegin", m.thumb ? `<img class="sk-peek-th" src="${m.thumb}" alt="">` : "");
+          peekEl.insertAdjacentHTML("afterbegin", m.thumb ? `<img class="sk-peek-th" src="${escapeHtml(m.thumb)}" alt="">` : "");
           if (bits.length) peekEl.insertAdjacentHTML("beforeend", `<small class="sk-peek-m">${escapeHtml(bits.join(" · "))}</small>`);
           const r2 = st.getBoundingClientRect();
           peekEl.style.top = Math.max(12, r2.top - peekEl.offsetHeight - 8) + "px";
@@ -394,6 +394,7 @@ function skStripHtml(d) {
     </div></button>`;
 }
 
+let skSyncedOnce = false;   // A2: ilk veri senkronu geldi mi (iskelet yer tutucu icin)
 function skRender(onlyMove) {
   if (!SK.built) return;
   const its = skItems();
@@ -403,7 +404,13 @@ function skRender(onlyMove) {
   if (!onlyMove && selIdx >= 0 && (selIdx < SK.page || selIdx >= SK.page + per)) SK.page = Math.max(0, Math.min(selIdx, its.length - per));
   SK.page = Math.max(0, Math.min(SK.page, Math.max(0, its.length - per)));
   const track = $("#skTrack");
-  if (!its.length) track.innerHTML = `<div class="sk-empty">${skL("Sunak boş. Bir bağlantı yapıştır ya da dosyayı ruha bırak.", "The altar is empty. Paste a link or drop a file on the spirit.")}</div>`;
+  if (!its.length) {
+    if (!skSyncedOnce && window.KamiMotion?.skeleton) {
+      KamiMotion.skeleton(track, 6);   // A2: ilk yuklemede iskelet yer tutucu
+    } else {
+      track.innerHTML = `<div class="sk-empty">${skL("Sunak boş. Bir bağlantı yapıştır ya da dosyayı ruha bırak.", "The altar is empty. Paste a link or drop a file on the spirit.")}</div>`;
+    }
+  }
   else skPatchStrips(track, its);
   track.style.transform = `translateX(${-SK.page * SK_STRIP_W}px)`;
   $("#skPrev").classList.toggle("on", SK.page > 0);
@@ -600,6 +607,15 @@ function skDock(k) {
     $$("#skDock button").forEach((b) => b.classList.toggle("on", b.dataset.sk === k));
     const nav = k === "list" ? $('.nav-item[data-filter="all"]') : $(`.nav-item[data-view="${k}"]`);
     nav?.click();
+    // A5: yonlu panel itme (motion_dirpanel) — cekmece paneli acilisinda
+    if (document.body.classList.contains("km-dir-on")) {
+      const panel = document.querySelector(".main");
+      if (panel) {
+        panel.classList.remove("km-dir-panel");
+        void panel.offsetWidth;
+        panel.classList.add("km-dir-panel");
+      }
+    }
   };
   window.KamiFX?.vt ? window.KamiFX.vt(go) : go();
 }
@@ -622,6 +638,7 @@ function skMood(s, active) {
 
 function skState(s) {
   if (!SK.built) return;
+  skSyncedOnce = true;   // A2: veri geldi, iskelet yer tutucuyu kaldir
   const its = s.items || [];
   const active = its.filter((d) => d.status === "active");
   for (const d of its) {
@@ -629,6 +646,17 @@ function skState(s) {
     if (p && p !== "complete" && d.status === "complete") {
       SK.happyUntil = Date.now() + 4000;
       window.KamiFX?.pulse?.();
+      // A1 metin cozumleme + A7 nixie tozu (Sunak seridi; render sonrasina ertelenir)
+      if (window.KamiMotion) {
+        const id = d.id, name = d.filename;
+        setTimeout(() => {
+          const strip = document.querySelector(`.sk-strip[data-id="${id}"]`);
+          if (strip) {
+            KamiMotion.scramble(strip.querySelector(".sk-name"), name);
+            KamiMotion.nixie(strip);
+          }
+        }, 0);
+      }
       if (SK.autoPlay.has(d.id)) { SK.autoPlay.delete(d.id); skAutoSave(); playerOpen(d.id); }   // bitince oynat
     }
     SK.prevStatus.set(d.id, d.status);
@@ -644,7 +672,8 @@ function skState(s) {
   const mbit = (spd * 8) / 1e6;
   $("#skSub").textContent = active.length ? `${mbit >= 100 ? Math.round(mbit) : mbit.toFixed(1)} Mbit/s` : skL("boşta", "idle");
   const left = active.reduce((a, d) => a + Math.max(0, (d.size || 0) - d.downloaded), 0);
-  $("#skCnt").textContent = `${skL(active.length + " aktif", active.length + " active")} · ${its.filter((d) => ["queued", "waiting", "confirm"].includes(d.status)).length} ${skL("sırada", "queued")}${left && spd ? " · " + skL("kalan ", "eta ") + fmtEta(left / spd) : ""}`;
+  const finishAt = left && spd ? new Date(Date.now() + (left / spd) * 1000) : null;
+  $("#skCnt").textContent = `${skL(active.length + " aktif", active.length + " active")} · ${its.filter((d) => ["queued", "waiting", "confirm"].includes(d.status)).length} ${skL("sırada", "queued")}${finishAt ? " · " + skL("bitecek ", "by ") + finishAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}${left && spd ? " · " + skL("kalan ", "eta ") + fmtEta(left / spd) : ""}`;
   $("#skMood").textContent = skMood(s, active.length);
   const eng = $("#skEngine"); eng.textContent = s.engine_ok ? "aria2" : skL("kapalı", "down"); eng.classList.toggle("bad", !s.engine_ok);
   $("#skBridge").textContent = s.bridge_port || "—";
