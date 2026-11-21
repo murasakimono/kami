@@ -191,6 +191,7 @@
       <b style="color:#C4B5FD">📝 Damgalı Karalama Kartı (Alt+N)</b>
       <div style="display:flex;gap:5px">
         <button class="btn" id="k20SnapSave" title="Açık Oturumu Kaydet (Snapshot)" style="padding:2px 7px;font-size:10.5px">📸 Oturum</button>
+        <button class="btn" id="k20SnapRestore" title="Kaydedilmiş Oturumu Geri Yükle" style="padding:2px 7px;font-size:10.5px">↩ Geri Yükle</button>
         <button class="btn" id="k20ScClose" style="padding:2px 7px;font-size:11px">✕</button>
       </div>
     </div>
@@ -255,6 +256,12 @@
   scBox.querySelector("#k20SnapSave").onclick = async () => {
     const r = await callApi()?.session_snapshot_save?.("Hızlı Oturum").catch(() => null);
     if (r?.ok) scBox.querySelector("#k20ScCtx").textContent = "✓ Oturum Snapshot kaydedildi";
+  };
+  scBox.querySelector("#k20SnapRestore").onclick = async () => {
+    const r = await callApi()?.session_snapshot_restore?.().catch(() => null);
+    scBox.querySelector("#k20ScCtx").textContent = r?.ok
+      ? "↩ Oturum geri yüklendi"
+      : (r?.error === "no_snapshot" ? "Kayıtlı oturum yok" : "Geri yükleme hatası");
   };
 
   function toggleScratchpad() {
