@@ -129,6 +129,7 @@
       rename: [I('<path d="M4 5h16M4 12h10M4 19h16"/><path d="M14 8l4 4-4 4"/>'), "Dosyaları önek + sayaç ile toplu yeniden adlandır (Echo ile geri alınır)"],
       subs: [I('<path d="M4 6h16v12H4zM7 10h10M7 14h6"/>'), "Klasördeki videolara toplu altyazı indir (OpenSubtitles)"],
       tag: [I('<path d="M4 4l7 16h2l7-16h-3l-5 12L7 4z"/>'), "Müzik etiketlerini düzenle (title/artist/album)"],
+      scene: [I('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="11" cy="11" r="4"/><path d="m20 20-4-4"/>'), "Bir kareden hangi video + dakika olduğunu bul (algısal hash)"],
     };
     root.querySelectorAll(".eco-tab").forEach((b) => { const m = META[b.dataset.tab]; if (m) b.innerHTML = `${m[0]}<span><b>${b.textContent}</b><small>${m[1]}</small></span>`; });
     root.addEventListener("click", (e) => {

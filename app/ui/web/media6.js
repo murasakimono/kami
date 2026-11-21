@@ -191,6 +191,9 @@ async function refreshMediaSettings() {
   const ak = String(state.settings.acoustid_key || "").trim();
   const ast = $("#acoustidState");
   if (ast) { ast.textContent = ak ? "kayıtlı ✓" : ""; ast.style.color = ak ? "#2EE6A6" : ""; }
+  const lb = String(state.settings.listenbrainz_token || "").trim();
+  const lbst = $("#lbState");
+  if (lbst) { lbst.textContent = lb ? "kayıtlı ✓" : ""; lbst.style.color = lb ? "#2EE6A6" : ""; }
 }
 
 function bindMediaSettings() {
@@ -218,6 +221,18 @@ function bindMediaSettings() {
     const r = await api.acoustid_test?.(k).catch(() => null);
     if (ast) {
       ast.textContent = r?.ok ? "✓ Geçerli" : `✗ ${r?.error || "Geçersiz"}`;
+      ast.style.color = r?.ok ? "#2EE6A6" : "#FF5C8A";
+    }
+  });
+  $("#lbTest")?.addEventListener("click", async () => {
+    const inp = document.querySelector('#settingsModal input[name="listenbrainz_token"]');
+    const ast = $("#lbState");
+    const k = (inp?.value || "").trim();
+    if (ast) { ast.textContent = "test ediliyor…"; ast.style.color = ""; }
+    if (k) await setSetting("listenbrainz_token", k);
+    const r = await api.listenbrainz_test?.(k).catch(() => null);
+    if (ast) {
+      ast.textContent = r?.ok ? `✓ Geçerli (${r.user || "ok"})` : `✗ ${r?.error || "Geçersiz"}`;
       ast.style.color = r?.ok ? "#2EE6A6" : "#FF5C8A";
     }
   });

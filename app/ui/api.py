@@ -4688,7 +4688,12 @@ class Api(StudioMixin):
             return
         h = winwin.find_window("Kamify")
         kamify_open = bool(h) and winwin.is_visible(h)
-        want = playing and not kamify_open
+        dl_active = False
+        try:
+            dl_active = int(self.card_state().get("n", 0) or 0) > 0
+        except Exception:
+            dl_active = False
+        want = (playing or dl_active) and not kamify_open
         if want and not self._island_shown:
             self.mini_island_toggle(True, persist=False)
             self._island_auto = True
@@ -5149,6 +5154,16 @@ class Api(StudioMixin):
     def music_spotify_playlist_modify(self, playlist_id: str, uris: list[str], remove: bool = False) -> dict[str, Any]:
         from app.core.music_hub import spotify_playlist_modify
         return spotify_playlist_modify(playlist_id, uris, remove=remove)
+
+    def music_spotify_playlist_details(self, playlist_id: str, name: str = "", description: str = "") -> dict[str, Any]:
+        """Playlist adini ve/veya aciklamasini degistir."""
+        from app.core.music_hub import spotify_playlist_details
+        return spotify_playlist_details(playlist_id, name=name, description=description)
+
+    def music_spotify_playlist_cover(self, playlist_id: str, image_b64: str) -> dict[str, Any]:
+        """Playlist kapagini degistir (base64 JPEG)."""
+        from app.core.music_hub import spotify_playlist_cover
+        return spotify_playlist_cover(playlist_id, image_b64)
 
     def music_spotify_devices(self) -> dict[str, Any]:
         from app.core.music_hub import spotify_devices
@@ -5930,6 +5945,22 @@ class Api(StudioMixin):
             r = requests.post("https://api.listenbrainz.org/1/submit-listens", json=body,
                               headers={"Authorization": f"Token {token}", "Content-Type": "application/json"}, timeout=15)
             return {"ok": r.status_code in (200, 202), "status": r.status_code}
+        except requests.RequestException as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    def listenbrainz_test(self, token: str = "") -> dict[str, Any]:
+        """ListenBrainz token'ini validate-token ucunda dogrular."""
+        import requests
+        t = str(token or self._manager.settings.get("listenbrainz_token") or "").strip()
+        if not t:
+            return {"ok": False, "error": "empty_token"}
+        try:
+            r = requests.get("https://api.listenbrainz.org/1/validate-token",
+                             headers={"Authorization": f"Token {t}"}, timeout=10)
+            if r.status_code == 200:
+                d = r.json()
+                return {"ok": True, "user": d.get("user_name") or d.get("user") or ""}
+            return {"ok": False, "error": f"http_{r.status_code}"}
         except requests.RequestException as exc:
             return {"ok": False, "error": str(exc)[:120]}
 

@@ -315,6 +315,38 @@
     t.textContent = msg; t.className = bad ? "bad on" : "on";
     clearTimeout(mToast.t); mToast.t = setTimeout(() => { t.className = ""; }, bad ? 6000 : 2500);
   }
+  function openPlEdit() {
+    if (!CUR_PL || !CUR_PL.id) return;
+    const ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center";
+    ov.innerHTML = `<div style="width:min(420px,92vw);background:#120E1C;border:1px solid var(--ac);border-radius:14px;padding:18px;color:var(--tx)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>Çalma Listesini Düzenle</b><button data-x style="border:0;background:none;color:var(--mut);font-size:16px;cursor:pointer">✕</button></div>
+      <label style="font-size:12px;color:var(--mut)">Ad</label><input id="plEditName" style="width:100%;box-sizing:border-box;margin:4px 0 10px;background:#0D0A14;border:1px solid var(--ac);border-radius:6px;color:var(--tx);padding:7px" value="${esc(CUR_PL.title)}">
+      <label style="font-size:12px;color:var(--mut)">Açıklama (bio)</label><input id="plEditDesc" placeholder="(opsiyonel)" style="width:100%;box-sizing:border-box;margin:4px 0 10px;background:#0D0A14;border:1px solid var(--ac);border-radius:6px;color:var(--tx);padding:7px">
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button id="plEditCover" class="btn">Kapak Değiştir</button><button id="plEditSave" class="btn pri">Kaydet</button></div>
+      <div id="plEditMsg" style="font-size:12px;color:var(--mut);margin-top:8px"></div>
+    </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector("[data-x]").onclick = () => ov.remove();
+    ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+    ov.querySelector("#plEditCover").onclick = async () => {
+      const fs = await api()?.choose_files?.([".jpg", ".jpeg", ".png"]);
+      if (!fs?.length) return;
+      const im = await api()?.image_data?.(fs[0], 800).catch(() => null);
+      const b64 = im?.url?.split(",")[1] || "";
+      if (!b64) { ov.querySelector("#plEditMsg").textContent = "Kapak okunamadı"; return; }
+      const r = await api()?.music_spotify_playlist_cover?.(CUR_PL.id, b64).catch(() => null);
+      ov.querySelector("#plEditMsg").textContent = r?.ok ? "✓ Kapak güncellendi" : "Kapak hatası";
+    };
+    ov.querySelector("#plEditSave").onclick = async () => {
+      const nm = ov.querySelector("#plEditName").value.trim();
+      const ds = ov.querySelector("#plEditDesc").value.trim();
+      if (!nm) return;
+      const r = await api()?.music_spotify_playlist_details?.(CUR_PL.id, nm, ds).catch(() => null);
+      if (r?.ok) { mToast("✓ Liste güncellendi"); CUR_PL.title = nm; ov.remove(); setTimeout(() => setNav(NAV), 350); }
+      else ov.querySelector("#plEditMsg").textContent = "Hata: " + ((r && r.error) || "?");
+    };
+  }
   async function spPlay(uri, ctx, btn) {
     const old = btn ? btn.innerHTML : "";
     if (btn) { btn.disabled = true; btn.innerHTML = "…"; }
@@ -738,8 +770,9 @@
     if (opl) {
       CUR_PL = { id: opl.dataset.openpl, title: opl.dataset.pltitle, uri: opl.dataset.pluri };
       subBar.hidden = false;
-      subBar.innerHTML = `<button class="btn" id="backPl">← Geri</button><b>${esc(CUR_PL.title)}</b><button class="btn pri" data-splayctx="${esc(CUR_PL.uri)}">${_ICO_PLAY} Tümünü Çal</button><button class="btn" id="spPlToMp3">${_ICO_DL} Listeyi MP3 İndir</button>`;
+      subBar.innerHTML = `<button class="btn" id="backPl">← Geri</button><b>${esc(CUR_PL.title)}</b><button class="btn pri" data-splayctx="${esc(CUR_PL.uri)}">${_ICO_PLAY} Tümünü Çal</button><button class="btn" id="spPlToMp3">${_ICO_DL} Listeyi MP3 İndir</button><button class="btn" id="spPlEdit">✎ Düzenle</button>`;
       subBar.querySelector("#backPl").onclick = () => setNav(NAV);
+      subBar.querySelector("#spPlEdit").onclick = () => openPlEdit();
       subBar.querySelector("[data-splayctx]").onclick = (ev) => { ev.stopPropagation(); spPlay("", CUR_PL.uri, ev.currentTarget); };
       const r = await api()?.music_spotify_playlist_tracks?.(CUR_PL.id).catch(() => null);
       const plTracks = r?.items || [];

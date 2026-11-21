@@ -601,6 +601,42 @@ def spotify_playlist_modify(playlist_id: str, uris: list[str], remove: bool = Fa
     return _sp_api("POST", f"/playlists/{pid}/items", {"uris": list(uris)})
 
 
+def spotify_playlist_details(playlist_id: str, name: str = "", description: str = "") -> dict[str, Any]:
+    """Playlist adini ve/veya aciklamasini (bio) degistir."""
+    pid = str(playlist_id or "").strip()
+    if not pid:
+        return {"ok": False, "error": "missing_args"}
+    body: dict[str, Any] = {}
+    if str(name or "").strip():
+        body["name"] = str(name).strip()
+    if str(description or "").strip():
+        body["description"] = str(description)
+    if not body:
+        return {"ok": False, "error": "empty"}
+    return _sp_api("PUT", f"/playlists/{pid}", body)
+
+
+def spotify_playlist_cover(playlist_id: str, image_b64: str) -> dict[str, Any]:
+    """Playlist kapagini degistir (base64 JPEG, max 256KB)."""
+    pid = str(playlist_id or "").strip()
+    if not pid or not image_b64:
+        return {"ok": False, "error": "missing_args"}
+    tok = get_spotify_token("")
+    if not tok:
+        return {"ok": False, "error": "no_token"}
+    import base64
+    raw = base64.b64decode(image_b64)
+    req = urllib.request.Request(f"https://api.spotify.com/v1/playlists/{pid}/images", data=raw, method="PUT",
+                                 headers={"Authorization": f"Bearer {tok}", "Content-Type": "image/jpeg"})
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            return {"ok": resp.status in (200, 202, 204)}
+    except urllib.error.HTTPError as exc:
+        return {"ok": False, "status": exc.code, "error": exc.read().decode("utf-8", errors="replace")[:180]}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:120]}
+
+
 def spotify_devices() -> dict[str, Any]:
     r = _sp_api("GET", "/me/player/devices")
     devs = [{

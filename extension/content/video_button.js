@@ -15,6 +15,7 @@
 
   let host = null, root = null, btn = null, menu = null;
   let current = null, hideTimer = 0, overUi = false, busy = false;
+  let dismissed = null;
 
   function build() {
     host = document.createElement("kami-video-button");
@@ -23,7 +24,12 @@
     root.innerHTML = `
       <style>
         :host { all: initial; }
-        .wrap { font: 600 13px/1 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+        .wrap { font: 600 13px/1 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; position: relative; }
+        .dismiss { display: none; position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%;
+                   background: rgba(15,11,22,.96); color: #C4B5FD; border: 1px solid #3A2E52; font: 700 11px/1 sans-serif;
+                   align-items: center; justify-content: center; z-index: 1; }
+        .wrap:hover .dismiss { display: inline-flex; }
+        .dismiss:hover { color: #fff; border-color: #8B5CF6; }
         button { all: unset; box-sizing: border-box; cursor: pointer; }
         .main { display: inline-flex; align-items: center; gap: 9px; height: 38px; padding: 0 16px 0 4px; color: #fff; border-radius: 999px;
                 background: rgba(15, 11, 22, .92); border: 1.5px solid #8B5CF6; box-shadow: 0 4px 18px rgba(0,0,0,.5), 0 0 16px rgba(139, 92, 246, .35);
@@ -47,6 +53,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <img alt=""><span class="label"></span>
         </button>
+        <button class="dismiss" title="Kapat">✕</button>
         <div class="menu" role="menu">
           <button role="menuitem" data-mode="mp4">MP4<small></small></button>
           <button role="menuitem" data-mode="mp3">MP3<small></small></button>
@@ -68,6 +75,10 @@
     host.addEventListener("mouseenter", () => { overUi = true; clearTimeout(hideTimer); });
     host.addEventListener("mouseleave", () => { overUi = false; scheduleHide(); });
     btn.addEventListener("click", (e) => { e.preventDefault(); menu.classList.toggle("open"); });
+    root.querySelector(".dismiss").addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      dismissed = current; hide();
+    });
     menu.addEventListener("click", (e) => {
       const item = e.target.closest("button[data-mode]");
       if (item) { e.preventDefault(); send(item.dataset.mode); }
@@ -126,6 +137,8 @@
       const v = findVideo(e.clientX, e.clientY);
       if (v && onCloudShare()) { hide(); return; }
       if (v) {
+        if (v === dismissed) { hide(); return; }
+        dismissed = null;
         if (!host) build();
         if (v !== current) { current = v; menu.classList.remove("open"); }
         place();

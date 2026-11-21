@@ -237,8 +237,15 @@
       <fieldset>
         <legend data-i18n="s_animations"></legend>
         <label class="check"><input type="checkbox" name="motion_magnet"><span data-i18n="s_motion_magnet"></span></label>
+        <label class="check"><input type="checkbox" name="motion_scramble"><span data-i18n="s_motion_scramble"></span></label>
+        <label class="check"><input type="checkbox" name="motion_skeleton"><span data-i18n="s_motion_skeleton"></span></label>
+        <label class="check"><input type="checkbox" name="motion_gooey"><span data-i18n="s_motion_gooey"></span></label>
+        <label class="check"><input type="checkbox" name="motion_shared"><span data-i18n="s_motion_shared"></span></label>
+        <label class="check"><input type="checkbox" name="motion_dirpanel"><span data-i18n="s_motion_dirpanel"></span></label>
         <label class="check"><input type="checkbox" name="motion_mesh"><span data-i18n="s_motion_mesh"></span></label>
         <label class="check"><input type="checkbox" name="motion_grain"><span data-i18n="s_motion_grain"></span></label>
+        <label class="check"><input type="checkbox" name="motion_refract"><span data-i18n="s_motion_refract"></span></label>
+        <label class="check"><input type="checkbox" name="motion_nixie"><span data-i18n="s_motion_nixie"></span></label>
       </fieldset>
 
       <fieldset>
@@ -368,8 +375,9 @@
         <label class="check"><input type="checkbox" name="lyrics_ai"><span data-i18n="s_lyrics_ai"></span></label>
         <label class="check"><input type="checkbox" name="music_archive"><span data-i18n="s_archive"></span></label>
         <div class="row"><span data-i18n="s_acoustid"></span><span style="display:inline-flex;align-items:center;gap:6px"><span class="hint" id="acoustidState"></span><input type="text" name="acoustid_key" spellcheck="false" autocomplete="off" data-i18n-placeholder="s_acoustid_ph"><button type="button" class="btn ghost" id="acoustidTest">Test Et</button></span></div>
-        <div class="row"><span data-i18n="s_listenbrainz"></span><input type="text" name="listenbrainz_token" spellcheck="false" autocomplete="off" data-i18n-placeholder="s_listenbrainz_ph"></div>
         <details class="howto"><summary data-i18n="s_acoustid_how"></summary><div class="hint" data-i18n="s_acoustid_how_body"></div></details>
+        <div class="row"><span data-i18n="s_listenbrainz"></span><span style="display:inline-flex;align-items:center;gap:6px"><span class="hint" id="lbState"></span><input type="text" name="listenbrainz_token" spellcheck="false" autocomplete="off" data-i18n-placeholder="s_listenbrainz_ph"><button type="button" class="btn ghost" id="lbTest">Test Et</button></span></div>
+        <details class="howto"><summary data-i18n="s_listenbrainz_how"></summary><div class="hint" data-i18n="s_listenbrainz_how_body"></div></details>
         <div class="row"><span data-i18n="s_music_dir"></span><span><span class="hint" id="musicDir"></span>
           <button type="button" class="btn ghost" id="musicDirChange" data-i18n="change_dir"></button>
           <button type="button" class="btn ghost" id="musicDirReset" data-i18n="reset_dir"></button></span></div>
