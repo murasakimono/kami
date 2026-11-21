@@ -21,6 +21,18 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+
+def _js(obj: Any) -> str:
+    """`<script>` blogunun icine gomulecek JSON (XSS-korumali).
+
+    json.dumps tek basina YETMEZ: dosya adinda `</script>` gecerse blok kirilir ve
+    keyfi JS calisir. `<`, `>`, `&` ve satir ayiricilari \\uXXXX kacisiyla yazilir;
+    JSON'un anlami degismez, sadece tarayicinin blok/etiket gormesi engellenir.
+    """
+    return (json.dumps(obj, ensure_ascii=False)
+            .replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
 from app import paths
 
 log = logging.getLogger(__name__)
@@ -209,8 +221,8 @@ input{{background:#08060E;border:1px solid #2A2140;border-radius:9px;color:inher
 <input id="cn" placeholder="Adın" maxlength="40"><input id="ct" placeholder="Bir şey yaz (paylaşan kişi bildirim alır)" maxlength="500"><button id="cs">Gönder</button></div>
 </div></div></div>
 <script>
-const LOCKED = {json.dumps(bool(it.get("pw")))}, KIND = {json.dumps(kind)}, BASE = location.pathname.replace(/\\/$/, "");
-const FILES = {json.dumps([{"name": f["name"], "size": _fmt_size(f["size"])} for f in files], ensure_ascii=False)};
+const LOCKED = {_js(bool(it.get("pw")))}, KIND = {_js(kind)}, BASE = location.pathname.replace(/\\/$/, "");
+const FILES = {_js([{"name": f["name"], "size": _fmt_size(f["size"])} for f in files])};
 document.getElementById("cs").onclick = async () => {{
   const t = document.getElementById("ct").value.trim(); if (!t) return;
   const r = await fetch(BASE + "/comment" + (key ? "?p=" + key : ""), {{ method: "POST", headers: {{ "Content-Type": "application/json" }}, body: JSON.stringify({{ name: document.getElementById("cn").value, text: t }}) }});

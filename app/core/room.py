@@ -639,7 +639,39 @@ def _handler(srv: RoomServer):
                         return self._err(404)
                     import mimetypes
                     ctype = mimetypes.guess_type(fpath)[0] or "application/octet-stream"
-                    self._send(Path(fpath).read_bytes(), ctype)
+                    # Dosyanin TAMAMI RAM'e okunmuyor (buyuk videoda bellek sismesi) ve
+                    # Range destekleniyor (video sarma/seek + telefonda 206 istegi).
+                    fsize = os.path.getsize(fpath)
+                    rng = self.headers.get("Range") or ""
+                    start, end = 0, fsize - 1
+                    partial = rng.startswith("bytes=")
+                    if partial:
+                        try:
+                            p1, p2 = rng[6:].split("-", 1)
+                            if p1.strip():
+                                start = max(0, min(fsize - 1, int(p1)))
+                            if p2.strip():
+                                end = max(start, min(fsize - 1, int(p2)))
+                        except ValueError:
+                            partial, start, end = False, 0, fsize - 1
+                    length = max(0, end - start + 1)
+                    self.send_response(206 if partial else 200)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Length", str(length))
+                    self.send_header("Cache-Control", "no-store")
+                    if partial:
+                        self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
+                    self.end_headers()
+                    with open(fpath, "rb") as fh:
+                        fh.seek(start)
+                        rem = length
+                        while rem > 0:
+                            chunk = fh.read(min(65536, rem))
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                            rem -= len(chunk)
                 elif rest[0] == "s" and len(rest) == 2 and rest[1] in STATIC:
                     f = paths.WEB_DIR / STATIC[rest[1]]
                     self._send(f.read_bytes(), MIME.get(f.suffix, "application/octet-stream"), "max-age=300")

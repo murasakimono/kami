@@ -457,3 +457,21 @@ class Recorder:
                 log.exception("kayit kapatilamadi")
         self.stop_replay()
         self.sys.stop(); self.mic.stop()
+
+
+# ---------------------------------------------------------------- aktif ornek
+# main.py tek bir Recorder olusturur ve buraya kaydeder; games.py otomatik replay
+# gibi Api'ye erisimi olmayan yerler buradan alir. (Eskiden `RECORDER` diye bir isim
+# import edilmeye calisiliyordu; hic var olmadigi icin ozellik sessizce oluydu.)
+_ACTIVE: "Recorder | None" = None
+
+
+def set_active(rec: "Recorder | None") -> None:
+    """main.py baglar: api.recorder ornegini modul duzeyinde gorunur yapar."""
+    global _ACTIVE
+    _ACTIVE = rec
+
+
+def active() -> "Recorder | None":
+    """Bagli Recorder ornegi (yoksa None)."""
+    return _ACTIVE

@@ -4651,6 +4651,27 @@ class Api(StudioMixin, EnhanceMixin):
             self._manager.settings.set("mini_island", self._island_shown)
         return {"ok": True, "visible": self._island_shown}
 
+    def mini_island_open_main(self) -> dict[str, Any]:
+        """Mini-Ada'daki 'Ana Pencereyi Ac' butonu: ana pencereyi one getirir.
+
+        mini-island.html bu metodu cagiriyordu ama api.py'de hic tanimli degildi
+        (buton sessizce hicbir sey yapmiyordu).
+        """
+        try:
+            if self._window is not None:
+                self._window.restore()
+                self._window.show()
+        except Exception:
+            log.debug("ana pencere gosterilemedi", exc_info=True)
+        try:
+            from app.core import winwin
+            hwnd = winwin.find_window("Kami")
+            if hwnd:
+                winwin.bring_to_front(hwnd)
+        except Exception:
+            log.debug("ana pencere one getirilemedi", exc_info=True)
+        return {"ok": True}
+
     def music_island_tick(self) -> None:
         """v1.38.0: Kamify gizliyken arka planda Spotify/librespot durumunu tazeler, Mini-Ada'yi ve gorev cubugu ThumbButtons'u senkronlar."""
         import time as _t

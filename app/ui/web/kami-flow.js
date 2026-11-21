@@ -324,21 +324,21 @@
         if (!global.api?.[fn]) return log(`API yok: ${fn}`);
         log(await global.api[fn](...args));
       };
-      ov.querySelector("#ktReframe").onclick = () => { const p = ov.querySelector("#ktClipSrc").value.trim(); if (p) callApi("clip_vertical_reframe", p, p.replace(/\.[^.]+$/, "_9x16.mp4")); };
-      ov.querySelector("#ktUgc").onclick = () => { const p = ov.querySelector("#ktClipSrc").value.trim(); if (p) callApi("clip_ugc_matrix", [p], p, [p], p.replace(/[^\\/]+$/, "ugc_out")); };
+      ov.querySelector("#ktReframe").onclick = () => { const p = ov.querySelector("#ktClipSrc").value.trim(); if (p) callApi("clip_factory_vertical", p, p.replace(/\.[^.]+$/, "_9x16.mp4")); };
+      ov.querySelector("#ktUgc").onclick = () => { const p = ov.querySelector("#ktClipSrc").value.trim(); if (p) callApi("clip_factory_ugc_matrix", [p], p, [p], p.replace(/[^\\/]+$/, "ugc_out")); };
       ov.querySelector("#ktHlStart").onclick = () => callApi("highlight_watcher_start");
       ov.querySelector("#ktHlStop").onclick = () => callApi("highlight_watcher_stop");
       ov.querySelector("#ktFrag").onclick = () => {
         const p = ov.querySelector("#ktClipSrc").value.trim();
         if (p) callApi("highlight_build_fragmovie", [p]);
       };
-      ov.querySelector("#ktVcam").onclick = () => callApi("vcam_status");
+      ov.querySelector("#ktVcam").onclick = () => callApi("virtual_cam_status");
       ov.querySelector("#ktPdfMd").onclick = () => { const p = ov.querySelector("#ktDocSrc").value.trim(); if (p) callApi("doc_pdf_to_markdown", p); };
       ov.querySelector("#ktDocConv").onclick = () => { const p = ov.querySelector("#ktDocSrc").value.trim(); if (p) callApi("doc_convert", p, "html"); };
       ov.querySelector("#ktManga").onclick = () => { const p = ov.querySelector("#ktDocSrc").value.trim(); if (p) callApi("manga_translate_page", p); };
-      ov.querySelector("#ktBridgeSt").onclick = () => callApi("screen_bridge_status");
-      ov.querySelector("#ktScrcpy").onclick = () => callApi("scrcpy_start");
-      ov.querySelector("#ktUxplay").onclick = () => callApi("uxplay_start");
+      ov.querySelector("#ktBridgeSt").onclick = () => callApi("bridge_mirror_status");
+      ov.querySelector("#ktScrcpy").onclick = () => callApi("bridge_mirror_start", "scrcpy");
+      ov.querySelector("#ktUxplay").onclick = () => callApi("bridge_mirror_start", "uxplay");
       ov.querySelector("#ktLanShare").onclick = () => { const p = ov.querySelector("#ktSharePath").value.trim(); if (p) callApi("lan_share_file", p); };
       ov.querySelector("#ktVoiceSt").onclick = () => callApi("voice_status");
       ov.querySelector("#ktVoiceCmd").onclick = () => callApi("voice_parse_command", ov.querySelector("#ktSharePath").value.trim() || "Hey Kami klip al");

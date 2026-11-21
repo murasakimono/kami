@@ -118,10 +118,15 @@ def _default_node_runner(node: dict[str, Any], inputs: dict[int, Any]) -> dict[s
         res = pdf_to_markdown(first_in or props.get("path", ""))
         return {"ok": bool(res.get("ok")), "outputs": {0: res.get("markdown", "")}, "detail": res}
     if ntype == "clip/vertical_reframe":
-        from app.core.clip_factory import vertical_reframe
+        from app.core.clip_factory import auto_vertical_reframe
         src = str(first_in or props.get("path", ""))
         out = str(Path(src).with_name(f"{Path(src).stem}_9x16.mp4")) if src else ""
-        res = vertical_reframe(src, out, platform=props.get("platform", "tiktok")) if src else {"ok": False, "error": "Kaynak yok"}
+        # platform -> hedef olcu (auto_vertical_reframe target_w/target_h bekler, platform almaz)
+        tw, th = {"tiktok": (1080, 1920), "reels": (1080, 1920), "shorts": (1080, 1920),
+                  "square": (1080, 1080), "ig": (1080, 1350), "youtube": (1920, 1080),
+                  }.get(str(props.get("platform") or "tiktok").lower(), (1080, 1920))
+        res = (auto_vertical_reframe(src, out, target_w=tw, target_h=th) if src
+               else {"ok": False, "error": "Kaynak yok"})
         return {"ok": bool(res.get("ok")), "outputs": {0: res.get("path", out)}, "detail": res}
     if ntype == "output/export":
         return {"ok": True, "outputs": {0: first_in}, "quality": props.get("quality", "high")}

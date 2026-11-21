@@ -924,7 +924,9 @@ def main() -> int:
             return
         with recreate_lock:
             if quitting["v"] or winwin.find_window("Kami"):
-                winwin.show_front("Kami")
+                hwnd = winwin.find_window("Kami")
+                if hwnd:
+                    winwin.bring_to_front(hwnd)
                 return
             if main_win.get("w") in list(webview.windows):
                 return
@@ -991,6 +993,8 @@ def main() -> int:
     from app.core.recorder import Recorder
     from app.engines.ytdlp_engine import find_ffmpeg as _ff
     api.recorder = Recorder(_ff, settings, lambda *a: None)
+    from app.core import recorder as _recorder_mod
+    _recorder_mod.set_active(api.recorder)   # games.py otomatik replay buradan alir
     rec_replay_key = desktop.HotKey(lambda: threading.Thread(target=api.rec_save_replay, daemon=True).start())
     rec_record_key = desktop.HotKey(lambda: threading.Thread(target=api.rec_toggle, daemon=True).start())
     rec_replay_key.start(settings.get("rec_replay_hotkey"))

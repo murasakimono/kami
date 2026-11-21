@@ -660,7 +660,7 @@ def t_clipboard_bridge(action: str, t: float = 0.0, selected_ids: list[str] | No
     from app.core.studio_workflow import clipboard_copy_frame, clipboard_paste_image
     p, pr = load(path)
     if action == "copy":
-        return clipboard_copy_frame(pr, float(t or 0.0), ST, selected_ids=selected_ids, out_dir=S.cache_dir() / "clipboard")
+        return clipboard_copy_frame(pr, float(t or 0.0), ST, selected_ids=selected_ids, out_dir=S.CACHE / "clipboard")
     if action == "paste":
         res = clipboard_paste_image(S.home_dir() / "Pano")
         if res.get("ok") and add_to_timeline:

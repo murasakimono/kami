@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -12,6 +13,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 def _norm_title(name: str) -> str:
@@ -992,11 +995,18 @@ class GamePlayTracker:
             _record_last_played(found_key)
             if self._auto_replay and self._replay_started_for != found_key:
                 self._replay_started_for = found_key
+                # Recorder ornegini main.py olusturur (api.recorder); burada modul kaydindan alinir.
+                # Eskiden `from recorder import RECORDER` vardi - o isim hic tanimli degildi ve
+                # `except: pass` hatayi yutuyordu; ozellik sessizce hic calismiyordu.
                 try:
-                    from app.core.recorder import RECORDER
-                    RECORDER.start_replay()
+                    from app.core import recorder as _rec
+                    rec = _rec.active()
+                    if rec is None:
+                        log.debug("otomatik replay: Recorder ornegi baglanmamis (main.py set_active)")
+                    else:
+                        rec.start_replay()
                 except Exception:
-                    pass
+                    log.exception("otomatik replay baslatilamadi: %s", found_key)
         else:
             self._replay_started_for = ""
 

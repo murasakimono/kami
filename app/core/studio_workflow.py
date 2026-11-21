@@ -72,7 +72,7 @@ def version_up_project(project: dict[str, Any], cur_path: str = "", mode: str = 
                        save_dir: str | Path = "") -> dict[str, Any]:
     """Projeyi artirilmis surum adiyla diske kaydeder."""
     from app.core import studio
-    info = next_version_path(cur_path or (studio.projects_dir() / f"{project.get('name') or 'proje'}.kstudio.json"), mode, save_dir)
+    info = next_version_path(cur_path or ((studio.home_dir() / "Projeler") / f"{project.get('name') or 'proje'}.kstudio.json"), mode, save_dir)
     out = Path(info["path"])
     out.parent.mkdir(parents=True, exist_ok=True)
     pr = copy.deepcopy(project)
@@ -308,7 +308,7 @@ def create_variations(project: dict[str, Any], presets: list[str] | None = None,
         return {"ok": False, "error": "no_valid_presets"}
     src_w = max(1, int(project.get("w") or 1920))
     src_h = max(1, int(project.get("h") or 1080))
-    out_dir = Path(save_dir) if save_dir else (Path(cur_path).parent if cur_path else studio.projects_dir())
+    out_dir = Path(save_dir) if save_dir else (Path(cur_path).parent if cur_path else (studio.home_dir() / "Projeler"))
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = re.sub(r"\.kstudio$", "", Path(cur_path).stem if cur_path else str(project.get("name") or "proje"))
     results: list[dict[str, Any]] = []
