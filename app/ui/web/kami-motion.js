@@ -113,7 +113,7 @@
     if (!deck) {
       deck = document.createElement("div");
       deck.id = "kmToastDeck";
-      deck.classList.add("km-gooey"); // A3: sivi (gooey) filtre — tek konteyner
+      deck.classList.toggle("km-gooey", cardFx.gooey === true); // A3: sivi (gooey) filtre — tek konteyner; ayara saygılı
       document.body?.appendChild(deck);
     }
     return deck;
@@ -594,6 +594,7 @@ function initMagnet() {
     if (el._magBound) return;
     el._magBound = true;
     el.addEventListener("pointermove", (e) => {
+      if (!cardFx.magnet || isReduced()) { el.style.transform = ""; return; }  // kapalıyken çekim sürmemeli
       const r = el.getBoundingClientRect();
       const dx = (e.clientX - (r.left + r.width / 2)) / (r.width || 1);
       const dy = (e.clientY - (r.top + r.height / 2)) / (r.height || 1);
@@ -623,7 +624,13 @@ function initMagnet() {
 
   // A3: Sivi (gooey) SVG filtre (motion_gooey) — TEK konteyner icin filter:url(#km-gooey-f)
   function initGooey() {
-    if (isReduced() || !cardFx.gooey) return;
+    const deck = document.getElementById("kmToastDeck");
+    const on = !isReduced() && cardFx.gooey === true;
+    deck?.classList.toggle("km-gooey", on);
+    if (!on) {
+      document.getElementById("kmGooeyDefs")?.remove();  // kapatınca SVG filtresi DOM'dan kaldırılsın
+      return;
+    }
     if (document.getElementById("kmGooeyDefs")) return;
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.id = "kmGooeyDefs"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.setAttribute("aria-hidden", "true");
@@ -641,7 +648,10 @@ function initMagnet() {
     const name = "km-se";
     from.style.viewTransitionName = name;
     try {
-      document.startViewTransition(() => { to.style.viewTransitionName = name; });
+      document.startViewTransition(() => {
+        from.style.viewTransitionName = "";  // çift viewTransitionName -> Chromium geçişi iptal ediyordu
+        to.style.viewTransitionName = name;
+      });
     } catch { /* destek yoksa sessiz gec */ }
     setTimeout(() => { from.style.viewTransitionName = ""; to.style.viewTransitionName = ""; }, 620);
   }
@@ -727,7 +737,21 @@ function bootstrap() {
       cardFx.gooey = s.motion_gooey === true;
       cardFx.shared = s.motion_shared === true;
       document.body.classList.toggle("km-dir-on", s.motion_dirpanel === true);
+      if (window._kmRefractObs) { window._kmRefractObs.disconnect(); window._kmRefractObs = null; }
       document.querySelectorAll(".sk-paper, .gcard").forEach(c => c.classList.toggle("km-refract", s.motion_refract === true));
+      if (s.motion_refract === true && document.body) {
+        // Sunak .sk-paper'ı dinamik oluşturuyor; sonradan eklenen kartlara da cam kırılması uygula
+        window._kmRefractObs = new MutationObserver((muts) => {
+          for (const m of muts) {
+            m.addedNodes?.forEach?.((n) => {
+              if (n.nodeType !== 1) return;
+              if (n.matches?.(".sk-paper, .gcard")) n.classList.add("km-refract");
+              n.querySelectorAll?.(".sk-paper, .gcard").forEach((c) => c.classList.add("km-refract"));
+            });
+          }
+        });
+        window._kmRefractObs.observe(document.body, { childList: true, subtree: true });
+      }
       cardFx.nixie = s.motion_nixie === true;
       document.body.classList.toggle("km-high-contrast", s.high_contrast === true);
       initMagnet();

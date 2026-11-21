@@ -48,6 +48,14 @@
       const m = document.createElement("script");
       m.id = "kamiMotionJs";
       m.src = base + "kami-motion.js";
+      // Alt pencereler (player/games/music/studio/picture/reader/cleaner/room) main app.js gibi
+      // applySettings çağırmıyordu -> animasyon ayarları hep false kalıyordu. Burada yüklenince çek + uygula.
+      m.onload = () => {
+        try {
+          const a = window.pywebview?.api;
+          if (a?.get_settings) a.get_settings().then((s) => { if (s && window.KamiMotion) window.KamiMotion.applySettings(s); }).catch(() => {});
+        } catch (_) { /* get_settings yoksa sessiz gec */ }
+      };
       document.body.appendChild(m);
     }
     const s = document.createElement("script");
