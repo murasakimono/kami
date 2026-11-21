@@ -45,6 +45,7 @@ class Api(StudioMixin, EnhanceMixin):
         self._inbox_lock = threading.Lock()
         self._jobs: dict[str, dict[str, Any]] = {}       # arka plan isleri (job_start / job_result)
         self._job_ids = itertools.count(1)
+        self._lrc_cancels: dict[str, threading.Event] = {}   # .lrc isleri için iptal olayları (music_lrc_cancel)
         self._clip_offers: list[str] = []               # pano izleyicinin buldugu linkler
         self._clip_watcher = None
         self._rd_events: list[dict[str, Any]] = []      # RD bildirimleri (arka plan torrentleri, kopru)
@@ -5849,11 +5850,15 @@ class Api(StudioMixin, EnhanceMixin):
         model_s = str(self._manager.settings.get("whisper_model") or "large-v3-turbo")
         uvr_s = str(self._manager.settings.get("uvr_model") or "")
         embed_b = bool(self._manager.settings.get("lyrics_embed", True))
+        uvr_eksik = strong_b and not aitools.installed("uvr")
+        cancel_ev = threading.Event()
         with self._inbox_lock:
+            self._lrc_cancels[jid] = cancel_ev
             self._jobs[jid] = {
                 "state": "running",
                 "name": f"LRC: {os.path.basename(p)}",
-                "msg": "UVR5 + Whisper başlatıldı…",
+                # UVR istenip kurulu değilse kullanıcıyı uyar (eskiden sessizce vokalsiz çözüyordu)
+                "msg": ("UVR5 kurulu değil — vokalsiz çözülüyor (Güçlü Mod devre dışı)" if uvr_eksik else "UVR5 + Whisper başlatıldı…"),
                 "p": 0.05,
                 "t": time.monotonic(),
                 "result": None,
@@ -5870,13 +5875,19 @@ class Api(StudioMixin, EnhanceMixin):
                 res = aitools.generate_mp3_lrc(
                     p, lang=lang_s, strong=strong_b, use_uvr=strong_b,
                     model_name=model_s, uvr_model=uvr_s, embed=embed_b,
-                    on_progress=_on_prog,
+                    on_progress=_on_prog, cancel=cancel_ev,
                 )
+                if uvr_eksik:
+                    res["uvr_missing"] = True
                 with self._inbox_lock:
                     if jid in self._jobs:
-                        self._jobs[jid]["state"] = "done" if res.get("ok") else "error"
+                        if res.get("error") == "cancelled":
+                            self._jobs[jid]["state"] = "cancelled"
+                            self._jobs[jid]["msg"] = "İptal edildi"
+                        else:
+                            self._jobs[jid]["state"] = "done" if res.get("ok") else "error"
+                            self._jobs[jid]["msg"] = "Hazır ✓" if res.get("ok") else str(res.get("error") or "hata")
                         self._jobs[jid]["p"] = 1.0 if res.get("ok") else self._jobs[jid].get("p", 0.0)
-                        self._jobs[jid]["msg"] = "Hazır ✓" if res.get("ok") else str(res.get("error") or "hata")
                         self._jobs[jid]["result"] = res
                 if res.get("ok"):
                     self._notify_player_lyrics(p)
@@ -5886,6 +5897,8 @@ class Api(StudioMixin, EnhanceMixin):
                         self._jobs[jid]["state"] = "error"
                         self._jobs[jid]["msg"] = str(exc)[:180]
                         self._jobs[jid]["result"] = {"ok": False, "error": str(exc)[:180]}
+            finally:
+                self._lrc_cancels.pop(jid, None)
 
         threading.Thread(target=_worker, name=f"kami-{jid}", daemon=True).start()
         return {"ok": True, "queued": True, "job_id": jid, "path": p}
@@ -5899,6 +5912,17 @@ class Api(StudioMixin, EnhanceMixin):
             if not j:
                 return {"ok": False, "error": "unknown_job"}
             return {"ok": True, **j}
+
+    def music_lrc_cancel(self, job_id: str) -> dict[str, Any]:
+        jid = str(job_id or "")
+        ev = self._lrc_cancels.get(jid)
+        if ev is not None:
+            ev.set()
+        with self._inbox_lock:
+            if jid in self._jobs:
+                self._jobs[jid]["state"] = "cancelled"
+                self._jobs[jid]["msg"] = "İptal edildi"
+        return {"ok": ev is not None}
 
     def music_lrc_polish_ollama(self, raw_lrc: str, title: str = "", artist: str = "") -> dict[str, Any]:
         from app.core import lyrics

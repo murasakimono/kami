@@ -877,6 +877,7 @@ def generate_mp3_lrc(
     uvr_model: str = "",
     embed: bool = True,
     on_progress: Callable[[float, str], None] = lambda p, st: None,
+    cancel: threading.Event | None = None,
 ) -> dict[str, Any]:
     """Kami 2.0: Herhangi bir yerel MP3/ses dosyasindan (indirme kuyrugunda olmasa bile) Whisper ile zaman damgali
     .lrc (+ kelime zamanli ELRC) uretir. strong=True iken UVR5 ile vokali ayirir ve bar atlamayan Guclu Mod ile cozer."""
@@ -887,7 +888,7 @@ def generate_mp3_lrc(
         return {"ok": False, "error": "no_file"}
     if not installed("whisper"):
         return {"ok": False, "error": "tool_missing", "tool": "whisper"}
-    ev = threading.Event()
+    ev = cancel or threading.Event()   # iptal sistemi (music_lrc_cancel) bu ev'i set ederek alt sureci oldurebilir
     tmp = tempfile.mkdtemp(prefix="kami_mp3_lrc_")
     try:
         audio_in = p
@@ -895,7 +896,7 @@ def generate_mp3_lrc(
             on_progress(0.1, "uvr_vocal")
             um = uvr_model or UVR_MODELS[0]
             res_u = _run_json(["app.tools.uvr_run", p, tmp, um, models_dir("uvr"), "wav", "fast"],
-                              lambda m: on_progress(0.25, "uvr_separate"), ev, "uvr")
+                              lambda m: "p" in m and on_progress(0.1 + float(m["p"]) * 0.3, "uvr_separate"), ev, "uvr")
             if "error" not in res_u:
                 vocal = next((f for f in (res_u.get("done") or []) if "(Vokal)" in os.path.basename(f)), "")
                 if vocal and os.path.isfile(vocal):

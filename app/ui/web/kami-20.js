@@ -442,6 +442,7 @@
       return;
     }
     entry.toolMissing = "";
+    entry.job_id = r.job_id || null;
     // Arka plan isini yokla (.lrc olusana veya is bitene kadar)
     for (let step = 0; step < 300; step++) {
       await new Promise((res) => setTimeout(res, 1500));
@@ -453,6 +454,12 @@
             renderAiFileList();
             continue;
           }
+          if (jst.state === "cancelled") {
+            entry.status = "error";
+            entry.msg = "İptal edildi";
+            renderAiFileList();
+            return;
+          }
           if (jst.state === "error" || (jst.result && jst.result.ok === false)) {
             entry.status = "error";
             entry.toolMissing = jst.result?.error === "tool_missing" ? (jst.result.tool || "whisper") : "";
@@ -463,7 +470,7 @@
           if (jst.state === "done") {
             const cnt = jst.result?.lines?.length || 0;
             entry.status = "done";
-            entry.msg = cnt ? `✓ ${cnt} satır zaman damgalı (.lrc + MP3 USLT) hazır` : "İşlem tamamlandı — Söz Düzenle ile kontrol edebilirsin";
+            entry.msg = (jst.result?.uvr_missing ? "UVR5 yok — vokalsiz çözüldü. " : "") + (cnt ? `✓ ${cnt} satır zaman damgalı (.lrc + MP3 USLT) hazır` : "İşlem tamamlandı — Söz Düzenle ile kontrol edebilirsin");
             renderAiFileList();
             return;
           }
@@ -475,16 +482,10 @@
         entry.msg = `${running.title} · %${running.pct || 0}`;
         renderAiFileList();
       }
-      const lrc = await callApi()?.music_lrc_read?.(path).catch(() => null);
-      if (lrc?.ok && lrc.lines?.length && !running) {
-        entry.status = "done";
-        entry.msg = `✓ ${lrc.lines.length} satır zaman damgalı (.lrc + MP3 USLT) hazır`;
-        renderAiFileList();
-        return;
-      }
     }
-    entry.status = "done";
-    entry.msg = "İşlem tamamlandı — Söz Düzenle ile kontrol edebilirsin";
+    // 300 × 1.5 sn doldu ve kesin durum yok: yalancı "tamamlandı" basma, dürüst zaman aşımı göster
+    entry.status = "error";
+    entry.msg = "Zaman aşımı — iş bitmedi (Whisper/UVR5 hâlâ çalışıyor olabilir). ↻ ile tekrar deneyin";
     renderAiFileList();
   }
 
@@ -503,6 +504,7 @@
         </div>
         <div style="display:flex;gap:6px;flex:none">
           ${f.toolMissing ? `<button type="button" class="btn pri" data-aiinst="${idx}">⬇ ${f.toolMissing === "uvr" ? "UVR5" : "Whisper"} Kur</button>` : ""}
+          ${f.status === "running" ? `<button type="button" class="btn" data-aicancel="${idx}" title="İptal Et">✕</button>` : ""}
           <button type="button" class="btn" data-airetry="${idx}" title="Yeniden Çalıştır">↻</button>
           <button type="button" class="btn pri" data-aiedit="${idx}">✎ Söz Düzenle</button>
           <button type="button" class="btn" data-aiplay="${idx}" title="Kami Player'da Oynat">▶</button>
@@ -517,7 +519,7 @@
         f.toolMissing = "";
         f.msg = "Whisper / AI ortamı kuruluyor (Ayarlar > AI Araçları)…";
         renderAiFileList();
-        const ir = await callApi()?.ai_install?.("whisper").catch((e) => ({ ok: false, error: String(e) }));
+        const ir = await callApi()?.ai_install?.(f.toolMissing || "whisper").catch((e) => ({ ok: false, error: String(e) }));
         if (ir?.ok) {
           f.msg = "Kurulum başlatıldı — hazır olduğunda ↻ ile tekrar dene";
         } else {
@@ -544,6 +546,16 @@
       b.onclick = () => {
         const f = aiFiles[+b.dataset.aiplay];
         if (f) callApi()?.player_show?.({ path: f.path });
+      };
+    });
+    box.querySelectorAll("[data-aicancel]").forEach((b) => {
+      b.onclick = () => {
+        const f = aiFiles[+b.dataset.aicancel];
+        if (!f?.job_id) return;
+        callApi()?.music_lrc_cancel?.(f.job_id);
+        f.status = "error";
+        f.msg = "İptal ediliyor…";
+        renderAiFileList();
       };
     });
   }
