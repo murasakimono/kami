@@ -788,6 +788,49 @@ def local_folders_remove(folder: str) -> dict[str, Any]:
     return {"ok": True, "folders": cur}
 
 
+def local_folder_rename(folder: str, new_name: str) -> dict[str, Any]:
+    """Yerel muzik klasorunun adini degistir (dosya sisteminde) + listeyi guncelle."""
+    from pathlib import Path
+    fp = Path(str(folder or "").strip().strip('"'))
+    nn = str(new_name or "").strip()
+    if not fp.is_dir():
+        return {"ok": False, "error": "Klasor bulunamadi"}
+    if not nn or any(c in nn for c in '<>:"|?*') or nn in (".", ".."):
+        return {"ok": False, "error": "Gecersiz ad"}
+    target = fp.parent / nn
+    if target.exists():
+        return {"ok": False, "error": "Bu ad zaten var"}
+    try:
+        fp.rename(target)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)[:120]}
+    cur = local_folders_list()
+    s_old, s_new = str(fp), str(target)
+    cur = [s_new if x == s_old else x for x in cur]
+    _folders_file().parent.mkdir(parents=True, exist_ok=True)
+    _folders_file().write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "new_path": s_new}
+
+
+def local_folder_cover(folder: str, image_b64: str) -> dict[str, Any]:
+    """Yerel muzik klasorune folder.jpg kapak yazar."""
+    from pathlib import Path
+    import base64
+    fp = Path(str(folder or "").strip().strip('"'))
+    if not fp.is_dir():
+        return {"ok": False, "error": "Klasor bulunamadi"}
+    try:
+        raw = base64.b64decode(image_b64)
+    except Exception:
+        return {"ok": False, "error": "bad_image"}
+    out = fp / "folder.jpg"
+    try:
+        out.write_bytes(raw)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)[:120]}
+    return {"ok": True, "path": str(out)}
+
+
 def local_scan_folder(folder: str = "", query: str = "", limit: int = 500) -> dict[str, Any]:
     from pathlib import Path
     roots = [Path(folder)] if folder else [Path(x) for x in local_folders_list()]

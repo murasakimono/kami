@@ -247,6 +247,7 @@
     else if (n === "local") loadLocal();
     else if (n === "foryou") loadMix();
     else if (n === "ytm") loadYtmBar();
+    else if (n === "scrobble") loadScrobble();
     else if (q.value.trim()) search();
     else renderHome();
   }
@@ -345,6 +346,35 @@
       const r = await api()?.music_spotify_playlist_details?.(CUR_PL.id, nm, ds).catch(() => null);
       if (r?.ok) { mToast("✓ Liste güncellendi"); CUR_PL.title = nm; ov.remove(); setTimeout(() => setNav(NAV), 350); }
       else ov.querySelector("#plEditMsg").textContent = "Hata: " + ((r && r.error) || "?");
+    };
+  }
+  function openLocEdit(folder) {
+    const ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center";
+    ov.innerHTML = `<div style="width:min(420px,92vw);background:#120E1C;border:1px solid var(--ac);border-radius:14px;padding:18px;color:var(--tx)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>Klasörü Düzenle</b><button data-x style="border:0;background:none;color:var(--mut);font-size:16px;cursor:pointer">✕</button></div>
+      <label style="font-size:12px;color:var(--mut)">Klasör adı</label><input id="locEditName" style="width:100%;box-sizing:border-box;margin:4px 0 10px;background:#0D0A14;border:1px solid var(--ac);border-radius:6px;color:var(--tx);padding:7px" value="${esc(folder.split(/[\\/]/).pop() || folder)}">
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button id="locEditCover" class="btn">Kapak Değiştir</button><button id="locEditSave" class="btn pri">Yeniden Adlandır</button></div>
+      <div id="locEditMsg" style="font-size:12px;color:var(--mut);margin-top:8px"></div>
+    </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector("[data-x]").onclick = () => ov.remove();
+    ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+    ov.querySelector("#locEditCover").onclick = async () => {
+      const fs = await api()?.choose_files?.([".jpg", ".jpeg", ".png"]);
+      if (!fs?.length) return;
+      const im = await api()?.image_data?.(fs[0], 800).catch(() => null);
+      const b64 = im?.url?.split(",")[1] || "";
+      if (!b64) { ov.querySelector("#locEditMsg").textContent = "Kapak okunamadı"; return; }
+      const r = await api()?.music_local_cover?.(folder, b64).catch(() => null);
+      ov.querySelector("#locEditMsg").textContent = r?.ok ? "✓ Kapak güncellendi (folder.jpg)" : "Kapak hatası";
+    };
+    ov.querySelector("#locEditSave").onclick = async () => {
+      const nm = ov.querySelector("#locEditName").value.trim();
+      if (!nm) return;
+      const r = await api()?.music_local_rename?.(folder, nm).catch(() => null);
+      if (r?.ok) { mToast("✓ Klasör yeniden adlandırıldı"); ov.remove(); loadLocal(); }
+      else ov.querySelector("#locEditMsg").textContent = "Hata: " + ((r && r.error) || "?");
     };
   }
   async function spPlay(uri, ctx, btn) {
@@ -570,7 +600,7 @@
     subBar.innerHTML = `<label class="field"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><input id="locPath" placeholder="Müzik klasörünün yolunu yapıştır — örn. C:\\Users\\...\\Downloads\\Contra"><button class="btn" id="locPick">Gözat…</button><button class="btn pri" id="locAddPath">Ekle</button></label>`;
     const r = await api()?.music_local_scan?.("", q.value.trim()).catch(() => null);
     const folders = r?.folders || [], items = r?.items || [];
-    folderChips.innerHTML = folders.map((f) => `<span class="chip" title="${esc(f)}">${esc(f.split(/[\\/]/).pop() || f)}<button data-locplaydir="${esc(f)}" title="Tümünü çal">▶</button><button data-locdel="${esc(f)}" title="Listeden kaldır (dosyalara dokunmaz)">✕</button></span>`).join("");
+    folderChips.innerHTML = folders.map((f) => `<span class="chip" title="${esc(f)}">${esc(f.split(/[\\/]/).pop() || f)}<button data-locplaydir="${esc(f)}" title="Tümünü çal">▶</button><button data-locedit="${esc(f)}" title="Düzenle (ad/kapak)">✎</button><button data-locdel="${esc(f)}" title="Listeden kaldır (dosyalara dokunmaz)">✕</button></span>`).join("");
     list.innerHTML = items.length ? items.map((it) => `<div class="row" data-title="${esc(it.title || "")}"><div class="meta"><b>${esc(it.title)}</b><small>${esc(it.folder)} · ${esc(it.ext.toUpperCase())}</small></div><button class="btn" data-locwhisper="${esc(it.path)}" title="Whisper Güçlü Mod ile zaman damgalı .lrc çıkar">🎙 Whisper Söz (.lrc)</button><button class="btn" data-loclrcedit="${esc(it.path)}" data-loctitle="${esc(it.title)}" title="Canlı LRC & Zamanlama Düzenleyici">✎ Söz Düzenle</button><button class="btn pri" data-locplay="${esc(it.path)}" data-locroot="${esc(it.root)}">▶ Kami Player</button></div>`).join("") : `<div style="color:var(--mut);padding:14px">Henüz yerel klasör eklenmedi.</div>`;
     refreshListMotion();
   }
@@ -582,6 +612,24 @@
     folderChips.innerHTML = (saved || []).map((p) => `<span class="chip" data-ytpl="${esc(p.id)}">📜 ${esc(p.title)}</span>`).join("");
     if (q.value.trim()) search();
     else list.innerHTML = `<div style="color:var(--mut);padding:14px">YouTube Music'te ara ya da yukarıya playlist linkini yapıştır.</div>`;
+  }
+
+  async function loadScrobble() {
+    subBar.hidden = false; folderChips.hidden = true;
+    subBar.innerHTML = `<b>Dinleme Günlüğü</b>`;
+    const [hist, disc] = await Promise.all([
+      api()?.scrobbler_history?.(200).catch(() => []),
+      api()?.discovery_list?.().catch(() => ({ items: [] })),
+    ]);
+    const h = hist || [];
+    const d = (disc && disc.items) || [];
+    list.innerHTML = `<div class="sec-h">📜 Şarkı Keşif Notları</div>` +
+      (d.length ? d.map(x => `<div class="row"><div class="meta"><b>${esc(x.title || "")}</b><small>${esc(x.artist || "")} · ${new Date((x.ts || 0) * 1000).toLocaleString("tr-TR")}</small></div></div>`).join("")
+                : `<div style="color:var(--mut);padding:8px">Henüz keşif yok (Ctrl+Shift+S ile tanı).</div>`) +
+      `<div class="sec-h" style="margin-top:14px">🎧 Dinleme Günlüğü</div>` +
+      (h.length ? h.map(x => `<div class="row"><div class="meta"><b>${esc(x.title || "")}</b><small>${esc(x.artist || "")} · ${new Date((x.ts || 0) * 1000).toLocaleString("tr-TR")}</small></div></div>`).join("")
+                : `<div style="color:var(--mut);padding:8px">Henüz dinleme yok.</div>`);
+    refreshListMotion();
   }
 
   async function refreshAuthUi() {
@@ -748,6 +796,8 @@
     if (ytp) { ytPlIn.value = ytp.dataset.ytpl; document.getElementById("ytPlOpen")?.click(); return; }
     const d = e.target.closest("[data-locdel]");
     if (d) { await api()?.music_local_remove?.(d.dataset.locdel); loadLocal(); return; }
+    const ed = e.target.closest("[data-locedit]");
+    if (ed) { openLocEdit(ed.dataset.locedit); return; }
     const p = e.target.closest("[data-locplaydir]");
     if (p) { const sc = await api()?.music_local_scan?.(p.dataset.locplaydir, "").catch(() => null); if (sc?.items?.[0]) api()?.music_local_play?.(sc.items[0].path, p.dataset.locplaydir); }
   };
