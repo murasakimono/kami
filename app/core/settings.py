@@ -221,7 +221,10 @@ class Settings:
                                         except Exception:
                                             pass
                                     v = merged
-                                self._data[k] = v
+                                try:
+                                    self._data[k] = _coerce(k, v)
+                                except (ValueError, TypeError):
+                                    log.warning("Bozuk ayar degeri varsayilana dondu: %s", k)
                 except Exception:
                     log.exception("Ayarlar okunamadi, varsayilanlar kullaniliyor")
 

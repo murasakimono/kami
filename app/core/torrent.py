@@ -257,16 +257,24 @@ class TorrentService:
                 self._jobs.pop(k, None)
             self._jobs[jid] = job
 
+        def _upd(**kw: Any) -> None:
+            with self._lock:
+                job.update(kw)
+
+        def _on_prog(d: dict[str, Any]) -> None:
+            with self._lock:
+                job.update(d)
+
         def run() -> None:
             try:
-                token, meta = self.from_magnet(magnet, timeout, on_progress=job.update, cancel=job["cancel"])
-                job.update(state="done", token=token)
+                token, meta = self.from_magnet(magnet, timeout, on_progress=_on_prog, cancel=job["cancel"])
+                _upd(state="done", token=token)
             except TorrentError as exc:
                 log.warning("Magnet meta verisi alinamadi: %s %s", exc.code, exc.detail)
-                job.update(state="error", error=exc.code, detail=exc.detail)
+                _upd(state="error", error=exc.code, detail=exc.detail)
             except Exception as exc:
                 log.exception("Magnet meta verisi hatasi")
-                job.update(state="error", error="torrent_meta_failed", detail=type(exc).__name__)
+                _upd(state="error", error="torrent_meta_failed", detail=type(exc).__name__)
 
         threading.Thread(target=run, name="kami-magnet-meta", daemon=True).start()
         return jid
@@ -274,9 +282,9 @@ class TorrentService:
     def job(self, jid: str) -> dict[str, Any]:
         with self._lock:
             job = self._jobs.get(str(jid))
-        if not job:
-            return {"state": "error", "error": "cloud_expired"}
-        return {k: v for k, v in job.items() if k not in ("cancel", "at")}
+            if not job:
+                return {"state": "error", "error": "cloud_expired"}
+            return {k: v for k, v in job.items() if k not in ("cancel", "at")}
 
     def cancel_job(self, jid: str) -> None:
         with self._lock:

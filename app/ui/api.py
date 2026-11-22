@@ -119,7 +119,8 @@ class Api(StudioMixin, EnhanceMixin):
         "media_lyrics", "media_archive", "genius_set_token", "follow_add", "follow_check_now", "reader_series_add", "reader_series_check", "reader_epub_font", "lens_price", "lens_text", "lens_table", "lens_codes", "rss_add", "rss_check", "rss_preview", "subtitle_translate", "subtitle_sync", "player_open_url",
         "library_get", "library_albums", "lyrics_search", "song_identify", "subtitle_fetch", "subtitle_search", "image_data", "library_organize", "player_skips", "library_posters", "library_meta", "tmdb_set_key", "iptv_load", "iptv_epg", "cast_devices", "cast_play", "cast_control", "media_extract_audio", "media_clip", "media_repair", "ocr_image", "ocr_translate", "player_lyrics",
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
-        "music_whisper_lrc", "music_lrc_polish_ollama", "cleaner_dust", "cleaner_janitor", "games_scan_folder", "scrobbler_recognize_now",
+        "music_lrc_polish_ollama", "cleaner_dust", "cleaner_janitor", "games_scan_folder", "scrobbler_recognize_now",
+        "scene_search", "item_peek",
         # Denetim 2.3.5: arayüze bağlanan yavaş araçlar (ffmpeg/ağ) — job_start ile arka planda çalışmalı
         "audio_fx_apply", "audio_to_midi", "tts_speak", "beat_analyze", "beat_grid", "player_detect_scenes",
         "crawler_crawl", "web_archive_save", "library_find_duplicates", "library_scan_health", "library_smart_compress",
@@ -1404,11 +1405,35 @@ class Api(StudioMixin, EnhanceMixin):
                 return legacy
         return ""
 
+    @staticmethod
+    def _oracle_secret_store():
+        from app.core.debrid import TokenStore
+        return TokenStore(paths.DATA_DIR / "oracle_relay_secret.bin")
+
+    def _oracle_secret(self) -> str:
+        store = self._oracle_secret_store()
+        tok = (store.load() or "").strip()
+        if tok:
+            return tok
+        mgr = getattr(self, "_manager", None)
+        if mgr is not None:
+            legacy = str(mgr.settings.get("oracle_relay_secret") or "").strip()
+            if legacy:
+                try:
+                    store.save(legacy)
+                    mgr.settings.set("oracle_relay_secret", "")
+                except Exception:
+                    pass
+                return legacy
+        return ""
+
     def get_settings(self) -> dict[str, Any]:
         s = self._manager.settings.all()
         s["_effective_download_dir"] = self._manager.base_dir()
         s["_has_listenbrainz"] = bool(self._lb_token())
         s["listenbrainz_token"] = ""   # duz metin UI/yedekte tasinmaz; DPAPI'de saklanir
+        s["_has_oracle_relay_secret"] = bool(self._oracle_secret())
+        s["oracle_relay_secret"] = ""  # duz metin UI/yedekte tasinmaz; DPAPI'de saklanir
         return s
 
     def set_setting(self, key: str, value: Any) -> dict[str, Any]:
@@ -1419,6 +1444,11 @@ class Api(StudioMixin, EnhanceMixin):
             self._lb_token_store().save(clean)
             self._manager.settings.set("listenbrainz_token", "")
             return {"ok": True, "value": "", "_has_listenbrainz": bool(clean)}
+        if key == "oracle_relay_secret":
+            clean = str(value or "").strip()
+            self._oracle_secret_store().save(clean)
+            self._manager.settings.set("oracle_relay_secret", "")
+            return {"ok": True, "value": "", "_has_oracle_relay_secret": bool(clean)}
         try:
             self._manager.settings.set(key, value)
             if key == "discord_rp_enabled" and not self._manager.settings.get("discord_rp_enabled"):
@@ -6570,13 +6600,13 @@ class Api(StudioMixin, EnhanceMixin):
     def oracle_relay_ping(self, relay_url: str = "", secret: str = "") -> dict[str, Any]:
         from app.core import oracle_relay
         u = relay_url or str(self._manager.settings.get("oracle_relay_url", "") or "")
-        s = secret or str(self._manager.settings.get("oracle_relay_secret", "") or "")
+        s = str(secret or "").strip() or self._oracle_secret()
         return oracle_relay.relay_ping(u, s)
 
     def oracle_relay_pull(self) -> dict[str, Any]:
         from app.core import oracle_relay
         u = str(self._manager.settings.get("oracle_relay_url", "") or "")
-        s = str(self._manager.settings.get("oracle_relay_secret", "") or "")
+        s = self._oracle_secret()
         res = oracle_relay.relay_pull_queue(u, s)
         if res.get("ok"):
             for it in res.get("items") or []:

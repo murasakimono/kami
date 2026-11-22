@@ -151,13 +151,13 @@ def _media(src: str, ext: str, opts: dict, tools: dict, on_p, cancel) -> Path:
         flt = f"fps={fps},scale=-2:{w}:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer"
         args = ["-i", src, "-an", "-filter_complex", flt, str(out)]
     elif ext == "webm":
-        args = ["-i", src, *(["-vf", ",".join(vf)] if vf else []), "-c:v", "libvpx-vp9", "-b:v", "0",
+        args = ["-i", src, "-map", "0:v:0", "-map", "0:a:0?", *(["-vf", ",".join(vf)] if vf else []), "-c:v", "libvpx-vp9", "-b:v", "0",
                 "-crf", str(CRF[q] + 12), "-row-mt", "1", "-deadline", "good", "-cpu-used", "4", "-c:a", "libopus", "-b:a", "128k", str(out)]
     else:   # mp4 / mkv / mov: H.264 (varsa NVENC) + AAC
         use_nvenc = bool(opts.get("hw", True)) and has_nvenc(tools["ffmpeg"])
         vcodec = (["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", str(CRF[q]), "-b:v", "0"]
                   if use_nvenc else ["-c:v", "libx264", "-preset", "medium", "-crf", str(CRF[q])])
-        args = ["-i", src, *(["-vf", ",".join(vf)] if vf else []), *vcodec,
+        args = ["-i", src, "-map", "0:v:0", "-map", "0:a:0?", *(["-vf", ",".join(vf)] if vf else []), *vcodec,
                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"]
         if ext in ("mp4", "mov"):
             args += ["-movflags", "+faststart"]

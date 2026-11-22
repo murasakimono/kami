@@ -11,7 +11,7 @@ import time
 import urllib.parse
 import uuid
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app import paths
@@ -239,6 +239,23 @@ def list_snapshots(game_key: str) -> dict[str, Any]:
     return {"ok": True, "snapshots": out}
 
 
+def _safe_zip_target(dst: Path, member_name: str) -> Path | None:
+    """Zip-slip ve Windows surucu-oneki (`C:evil`, `/abs`, `..`) girislerini engeller."""
+    raw = str(member_name or "").replace("\\", "/")
+    if not raw or raw.startswith("/") or ":" in raw:
+        return None
+    parts = PurePosixPath(raw).parts
+    if not parts or any(p in ("", ".", "..", "/") for p in parts):
+        return None
+    if Path(raw).is_absolute():
+        return None
+    base = dst.resolve()
+    target = (base / Path(*parts)).resolve()
+    if target == base or not target.is_relative_to(base):
+        return None
+    return target
+
+
 def restore_snapshot(snapshot_path: str, target_path: str) -> dict[str, Any]:
     zp = Path(str(snapshot_path or ""))
     dst = Path(str(target_path or ""))
@@ -248,7 +265,15 @@ def restore_snapshot(snapshot_path: str, target_path: str) -> dict[str, Any]:
         dst = dst.parent
     dst.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zp, "r") as zf:
-        zf.extractall(dst)
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            target = _safe_zip_target(dst, info.filename)
+            if target is None:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out)
     return {"ok": True, "restored_to": str(dst)}
 
 
@@ -263,16 +288,17 @@ def mod_install_zip(game_key: str, game_dir: str, zip_path: str) -> dict[str, An
     bdir = _mod_backups_dir() / safe_g / mid
     bdir.mkdir(parents=True, exist_ok=True)
 
+    base_gdir = gdir.resolve()
     overwritten: list[str] = []
     added: list[str] = []
     with zipfile.ZipFile(zp, "r") as zf:
         for info in zf.infolist():
             if info.is_dir():
                 continue
-            rel = Path(info.filename)
-            if rel.is_absolute() or ".." in rel.parts:
+            target = _safe_zip_target(base_gdir, info.filename)
+            if target is None:
                 continue
-            target = gdir / rel
+            rel = target.relative_to(base_gdir)
             if target.exists():
                 bak = bdir / "orig" / rel
                 bak.parent.mkdir(parents=True, exist_ok=True)

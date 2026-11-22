@@ -721,7 +721,7 @@
       const msg = ed.querySelector("#k20LqMsg");
       if (!ta.value.trim()) return;
       msg.textContent = "Ollama düzeltiyor…";
-      const res = await (callApi()?.music_lrc_polish_ollama || callApi()?.music_lrc_ollama_polish)?.(ta.value, cleanTitle, "").catch(() => null);
+      const res = await (typeof slow === "function" ? slow("music_lrc_polish_ollama", ta.value, cleanTitle, "") : (callApi()?.music_lrc_polish_ollama || callApi()?.music_lrc_ollama_polish)?.(ta.value, cleanTitle, "")).catch(() => null);
       if (res?.ok && res.text) { ta.value = res.text; msg.textContent = "✓ Ollama ile düzeltildi"; }
       else msg.textContent = res?.error || "Ollama kapalı (Kami Doktor'dan başlat)";
     };

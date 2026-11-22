@@ -345,6 +345,12 @@ def _verify_pw(stored: str, given: str) -> bool:
     return hmac.compare_digest(raw_hash.encode(), stored.lower().encode()) or hmac.compare_digest(given.lower().encode(), stored.lower().encode())
 
 
+_ROOM_ORIGIN_RE = re.compile(
+    r"^https?://(?:127\.0\.0\.1|localhost)(?::\d+)?$|^https://[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:workers\.dev|trycloudflare\.com)$",
+    re.I,
+)
+
+
 class RoomServer:
     def __init__(self) -> None:
         self.room: Room | None = None
@@ -580,9 +586,13 @@ def _handler(srv: RoomServer):
                 return None, seg
             return r, seg[1:]
 
-        def end_headers(self):   # Kami Player (file://) yayinci olarak baglanabilsin
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Kami-Key")
+        def end_headers(self):   # Yalnizca guvenli kokenlere (Kami Player file:// 'null', localhost, Worker/CF tunel) izin ver
+            hdrs = getattr(self, "headers", None)
+            origin = (hdrs.get("Origin") or "").strip() if hdrs is not None else ""
+            if origin and (origin == "null" or _ROOM_ORIGIN_RE.match(origin)):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Kami-Key")
             super().end_headers()
 
         def do_OPTIONS(self):
@@ -687,7 +697,11 @@ def _handler(srv: RoomServer):
                         ack = int((q.get("a") or ["-1"])[0])
                     except ValueError:
                         ack = -1
-                    self._json(r.poll(pid, int((q.get("n") or ["0"])[0] or 0), (q.get("rv") or [""])[0], 20.0, ack))
+                    try:
+                        since = int((q.get("n") or ["0"])[0] or 0)
+                    except ValueError:
+                        since = 0
+                    self._json(r.poll(pid, since, (q.get("rv") or [""])[0], 20.0, ack))
                 elif rest[0] == "bridge":
                     from app.core.phone import _BRIDGE_HTML
                     self._send(_BRIDGE_HTML.encode("utf-8"), MIME[".html"])

@@ -508,13 +508,15 @@ def speak(text: str, lang: str = "", rate: float = 1.0) -> str:
     lang = lang or guess_lang(text)
     model = ensure_tts(lang)
     out = Path(tempfile.gettempdir()) / f"kami_tts_{threading.get_ident()}.wav"
-    r = subprocess.run([str(piper_exe()), "-m", str(model), "-f", str(out), "--length_scale", f"{1 / max(0.5, rate):.2f}"],
-                       input=text.encode("utf-8"), capture_output=True, creationflags=NOWIN, timeout=120,
-                       cwd=str(piper_exe().parent))
-    if r.returncode != 0 or not out.exists():
-        raise RuntimeError((r.stderr or b"").decode("utf-8", "replace").strip()[-160:] or "piper hata")
-    raw = out.read_bytes()
-    out.unlink(missing_ok=True)
+    try:
+        r = subprocess.run([str(piper_exe()), "-m", str(model), "-f", str(out), "--length_scale", f"{1 / max(0.5, rate):.2f}"],
+                           input=text.encode("utf-8"), capture_output=True, creationflags=NOWIN, timeout=120,
+                           cwd=str(piper_exe().parent))
+        if r.returncode != 0 or not out.exists():
+            raise RuntimeError((r.stderr or b"").decode("utf-8", "replace").strip()[-160:] or "piper hata")
+        raw = out.read_bytes()
+    finally:
+        out.unlink(missing_ok=True)
     return _data_url(raw, "audio/wav")
 
 

@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import base64
+import hmac
 import json
 import logging
 import os
+import secrets
 import socket
 import threading
 import time
+import urllib.parse
 import uuid
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -154,6 +158,7 @@ class BoothServer:
         self._srv: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._port = 0
+        self._token = ""
         self._project_id = ""
         self._track_id = "vocal1"
         self._last_upload: dict[str, Any] | None = None
@@ -164,11 +169,12 @@ class BoothServer:
 
     def status(self) -> dict[str, Any]:
         running = self._srv is not None
-        url = f"http://{_local_ip()}:{self._port}" if running and self._port else ""
+        url = f"http://{_local_ip()}:{self._port}/?token={self._token}" if running and self._port and self._token else ""
         return {
             "ok": True,
             "running": running,
             "port": self._port,
+            "token": self._token,
             "url": url,
             "project_id": self._project_id,
             "track_id": self._track_id,
@@ -181,6 +187,7 @@ class BoothServer:
             self._track_id = track_id or self._track_id
             if self._srv is not None:
                 return self.status()
+            self._token = secrets.token_urlsafe(24)
             owner = self
 
             class _Handler(BaseHTTPRequestHandler):
@@ -195,8 +202,35 @@ class BoothServer:
                     self.end_headers()
                     self.wfile.write(raw)
 
+                def _check_auth(self) -> tuple[bool, bool]:
+                    tok = owner._token
+                    if not tok:
+                        return False, False
+                    hdr = (self.headers.get("X-Booth-Token") or "").strip()
+                    if hdr and hmac.compare_digest(hdr, tok):
+                        return True, False
+                    raw_cookie = self.headers.get("Cookie") or ""
+                    if raw_cookie:
+                        try:
+                            jar = SimpleCookie()
+                            jar.load(raw_cookie)
+                            morsel = jar.get("kami_booth_tok")
+                            if morsel and morsel.value and hmac.compare_digest(morsel.value, tok):
+                                return True, False
+                        except Exception:
+                            pass
+                    q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("token", [""])[0].strip()
+                    if q and hmac.compare_digest(q, tok):
+                        return True, True
+                    return False, False
+
                 def do_GET(self):
-                    if self.path.startswith("/api/teleprompter"):
+                    parsed = urllib.parse.urlsplit(self.path)
+                    ok, _ = self._check_auth()
+                    if not ok:
+                        code = 401 if parsed.path.startswith("/api/") else 403
+                        return self._send_json(code, {"ok": False, "error": "unauthorized"})
+                    if parsed.path.startswith("/api/teleprompter"):
                         lyrics = ""
                         bpm = 120.0
                         name = "Kami Booth"
@@ -216,11 +250,16 @@ class BoothServer:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.send_header("Content-Length", str(len(raw)))
+                    self.send_header("Set-Cookie", f"kami_booth_tok={owner._token}; HttpOnly; SameSite=Strict; Path=/")
                     self.end_headers()
                     self.wfile.write(raw)
 
                 def do_POST(self):
-                    if not self.path.startswith("/api/upload_wav"):
+                    parsed = urllib.parse.urlsplit(self.path)
+                    ok, _ = self._check_auth()
+                    if not ok:
+                        return self._send_json(401, {"ok": False, "error": "unauthorized"})
+                    if not parsed.path.startswith("/api/upload_wav"):
                         return self._send_json(404, {"ok": False})
                     try:
                         ln = int(self.headers.get("Content-Length") or "0")
@@ -262,6 +301,7 @@ class BoothServer:
                     pass
                 self._srv = None
                 self._port = 0
+                self._token = ""
                 self._thread = None
             return {"ok": True}
 

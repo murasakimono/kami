@@ -24,8 +24,8 @@ NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 def _search_dirs() -> list[Path]:
     dirs = [
         paths.DATA_DIR / "bin" / "mpv",
-        paths.BASE_DIR / "bin" / "mpv",
-        paths.BASE_DIR / "bin",
+        paths.BIN_DIR / "mpv",
+        paths.BIN_DIR,
         Path(r"C:\Program Files\mpv"),
         Path(r"C:\Program Files (x86)\mpv"),
     ]

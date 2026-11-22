@@ -256,7 +256,7 @@
         const img = $("#sceneImg").value.trim(), fol = $("#sceneFolder").value.trim();
         if (!img) { alert("Kare yolu gir ya da Gözat ile seç"); return; }
         $("#sceneMsg").textContent = "Aranıyor… (videolar taranıyor, biraz sürebilir)";
-        const r = await ld(api.scene_search?.(img, fol), null);
+        const r = await ld(typeof slow === "function" ? slow("scene_search", img, fol) : api.scene_search?.(img, fol), null);
         $("#sceneMsg").textContent = r?.found ? ("✓ " + r.name + " · ~" + Math.floor((r.seconds || 0) / 60) + ":" + String((r.seconds || 0) % 60).padStart(2, "0")) : ((r?.error) || "Eşleşme bulunamadı");
       };
       return;

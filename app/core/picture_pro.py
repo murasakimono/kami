@@ -560,7 +560,10 @@ def _parse_hex_rgba(c: str | None) -> tuple[int, int, int, int]:
         s = "".join(ch * 2 for ch in s)
     if len(s) != 6:
         return (255, 255, 255, 255)
-    return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16), 255)
+    try:
+        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16), 255)
+    except ValueError:
+        return (255, 255, 255, 255)
 
 
 def add_contact_shadow(

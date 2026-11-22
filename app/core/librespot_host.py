@@ -177,14 +177,13 @@ def ensure_started(download: bool = False) -> dict[str, Any]:
         log_file = cfg_dir / "librespot.log"
         creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
-            lf = open(log_file, "ab")
-            _PROC = subprocess.Popen(
-                [exe, "--config_dir", str(cfg_dir)],
-                stdout=lf,
-                stderr=subprocess.STDOUT,
-                creationflags=creation,
-            )
-            lf.close()
+            with open(log_file, "ab") as lf:
+                _PROC = subprocess.Popen(
+                    [exe, "--config_dir", str(cfg_dir)],
+                    stdout=lf,
+                    stderr=subprocess.STDOUT,
+                    creationflags=creation,
+                )
         except Exception as exc:
             _PROC = None
             _PORT = 0

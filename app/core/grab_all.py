@@ -165,9 +165,17 @@ def start(url: str, dest_dir: str, limit: int = 0, use_archive: bool = True,
         cmd += ["--range", f"1-{int(limit)}"]
     cmd.append(url)
     env = aitools._clean_env() if paths.FROZEN else None
-    proc = attach(subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, encoding="utf-8", errors="replace",
-        creationflags=NOWIN, env=env,
-    ))
+    try:
+        proc = attach(subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace",
+            creationflags=NOWIN, env=env,
+        ))
+    except BaseException:
+        if cookie_file:
+            try:
+                os.remove(cookie_file)
+            except OSError:
+                pass
+        raise
     return {"ok": True, "pid": proc.pid, "dest": dest_dir, "proc": proc, "cookie_file": cookie_file}

@@ -280,23 +280,27 @@ class Recorder:
 
     def save_replay(self, seconds: int | None = None) -> str:
         seconds = int(seconds or self.settings.get("rec_replay_seconds") or 30)
-        if not (self.buf and self.buf.poll() is None):
+        with self.lock:
+            running = bool(self.buf and self.buf.poll() is None)
+        if not running:
             if not self.start_replay():
                 raise RuntimeError(self.last_error or "kayit tamponu calismiyor")
             raise RuntimeError("tampon yeni basladi, birkac saniye sonra tekrar dene")
         now = time.time()
-        segs = sorted(glob.glob(str(self.work / "seg_*.ts")), key=os.path.getmtime)
-        segs = [s for s in segs if os.path.getmtime(s) >= now - seconds - SEG * 2 and os.path.getsize(s) > 0]
-        if not segs:
-            raise RuntimeError("tampon bos")
         job = Path(tempfile.mkdtemp(prefix="kami_clip_"))
-        # yazilmakta olan son parca da dahil (ts kismen okunabilir)
         local = []
-        for i, s in enumerate(segs):
-            dst = job / f"{i:03d}.ts"
-            shutil.copyfile(s, dst)
-            local.append(dst)
-        t_first = os.path.getmtime(segs[0]) - SEG          # ilk parcanin baslangici (yaklasik)
+        with self.lock:
+            segs = sorted(glob.glob(str(self.work / "seg_*.ts")), key=os.path.getmtime)
+            segs = [s for s in segs if os.path.getmtime(s) >= now - seconds - SEG * 2 and os.path.getsize(s) > 0]
+            if not segs:
+                shutil.rmtree(job, ignore_errors=True)
+                raise RuntimeError("tampon bos")
+            # yazilmakta olan son parca da dahil (ts kismen okunabilir)
+            for i, s in enumerate(segs):
+                dst = job / f"{i:03d}.ts"
+                shutil.copyfile(s, dst)
+                local.append(dst)
+            t_first = os.path.getmtime(segs[0]) - SEG          # ilk parcanin baslangici (yaklasik)
         (job / "list.txt").write_text("".join(f"file '{p.name}'\n" for p in local), encoding="utf-8")
         ff = self._ffmpeg()
         joined = job / "v.mkv"

@@ -383,9 +383,17 @@ def m3u_export(folder: str, recursive: bool = False, name: str = "") -> dict[str
     if not files:
         return {"ok": False, "error": "empty_folder"}
     folder_name = os.path.basename(os.path.normpath(folder)) or "Kami"
+    raw_name = str(name or "").strip()
+    if raw_name and (".." in raw_name or "/" in raw_name or "\\" in raw_name or ":" in raw_name):
+        return {"ok": False, "error": "invalid_name"}
+    clean_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", raw_name).strip(" .") or folder_name
+    base_dir = Path(folder).resolve()
+    out_obj = (base_dir / f"{clean_name}.m3u").resolve()
+    if out_obj == base_dir or not out_obj.is_relative_to(base_dir):
+        return {"ok": False, "error": "invalid_name"}
     lines = ["#EXTM3U"]
     lines += [os.path.relpath(path, folder).replace("\\", "/") for path in files]
-    out_path = os.path.join(folder, (name or folder_name) + ".m3u")
+    out_path = str(out_obj)
     try:
         with open(out_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")

@@ -28,12 +28,15 @@
     <button id="recBtn">🎙 Kayda Başla</button>
   </div>
 <script>
+const _tok = new URLSearchParams(location.search).get("token") || "";
+if (_tok) { try { history.replaceState(null, "", location.pathname); } catch {} }
+const _hdrs = () => (_tok ? { "X-Booth-Token": _tok } : {});
 let ctx = null, stream = null, node = null, chunks = [], recording = false, recStart = 0, tInt = 0, scrollInt = 0, scrolling = false;
 const tp = document.getElementById("tp"), st = document.getElementById("st"), recBtn = document.getElementById("recBtn"), scrollBtn = document.getElementById("scrollBtn");
 
 async function loadLyrics() {
   try {
-    const r = await (await fetch("/api/teleprompter")).json();
+    const r = await (await fetch("/api/teleprompter", { headers: _hdrs(), credentials: "same-origin" })).json();
     if (r.ok) {
       document.getElementById("projName").textContent = r.project_name || "Kami Booth";
       tp.textContent = r.lyrics || "PC'deki Söz Defteri boş. Yazdığın sözler burada canlı görünür.";
@@ -94,7 +97,7 @@ recBtn.onclick = async () => {
       let off = 0; for (const c of chunks) { merged.set(c, off); off += c.length; }
       const blob = encodeWav(merged, ctx.sampleRate);
       await ctx.close();
-      const resp = await fetch("/api/upload_wav", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: blob });
+      const resp = await fetch("/api/upload_wav", { method: "POST", headers: { "Content-Type": "audio/wav", ..._hdrs() }, credentials: "same-origin", body: blob });
       const j = await resp.json();
       st.textContent = j.ok ? "✓ PC'deki aktif Vokal kanalına eklendi!" : ("Hata: " + (j.error || "?"));
     } catch (e) { st.textContent = "Gönderim hatası: " + e.message; }

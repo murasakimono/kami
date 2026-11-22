@@ -259,21 +259,33 @@ class Aria2Engine(Engine):
 
     def start(self, download: Download) -> str:
         uris = [download.url]
-        if download.kind != "torrent" and self.auto_mirror:
-            try:   # coklu kaynak: ayni dosyanin aynalari (SourceForge, Metalink/HTTP Link: rel=duplicate)
-                from app.core import mirrors
-                uris += mirrors.find(download.url, dict(download.headers or {}) if isinstance(download.headers, dict) else None)
-            except Exception:
-                log.debug("ayna arama basarisiz", exc_info=True)
         with self._lock:
             if download.kind == "torrent":
                 import base64
                 data = Path(download.options["torrent_file"]).read_bytes()
                 return self.call("aria2.addTorrent", base64.b64encode(data).decode("ascii"), [],
                                  self.build_torrent_options(download))
-            if len(uris) > 1:
-                log.info("Coklu kaynak: %d ayna eklendi (%s)", len(uris) - 1, download.url[:80])
-            return self.call("aria2.addUri", uris, self.build_options(download))
+            gid = self.call("aria2.addUri", uris, self.build_options(download))
+        if self.auto_mirror:
+            headers_copy = dict(download.headers or {}) if isinstance(download.headers, dict) else None
+            threading.Thread(
+                target=self._attach_mirrors,
+                args=(gid, download.url, headers_copy),
+                name=f"kami-mirrors-{str(gid)[:6]}",
+                daemon=True,
+            ).start()
+        return gid
+
+    def _attach_mirrors(self, gid: str, url: str, headers: dict[str, str] | None) -> None:
+        try:   # coklu kaynak: ag aramasi kilit ve indirme baslangici disinda yapilir
+            from app.core import mirrors
+            extra = mirrors.find(url, headers)
+            if not extra:
+                return
+            log.info("Coklu kaynak: %d ayna eklendi (%s)", len(extra), url[:80])
+            self.call("aria2.changeUri", gid, 1, [], extra)
+        except Exception:
+            log.debug("ayna arama/ekleme basarisiz", exc_info=True)
 
     def pause(self, gid: str) -> None:
         try:

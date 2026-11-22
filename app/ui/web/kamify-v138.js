@@ -285,7 +285,7 @@
       const curRaw = rawBox.hidden ? rowsToRaw() : rawBox.value;
       if (!curRaw.trim()) { stEl.textContent = "Önce söz çıkar veya yapıştır."; return; }
       stEl.textContent = "✨ Yerel Ollama (qwen2.5:3b) ile yazım düzeltiliyor…";
-      const res = await callApi()?.music_lrc_polish_ollama?.(curRaw, titleHint, "").catch(() => null);
+      const res = await (typeof slow === "function" ? slow("music_lrc_polish_ollama", curRaw, titleHint, "") : callApi()?.music_lrc_polish_ollama?.(curRaw, titleHint, "")).catch(() => null);
       if (res?.ok && res.text) {
         rows = rawToRows(res.text);
         rawBox.value = res.text;

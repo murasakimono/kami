@@ -853,6 +853,59 @@ def main() -> int:
 
     # ---- sistem tepsisi + X ile tepsiye gizleme
     quitting = {"v": False}
+    shutdown_lock = threading.Lock()
+    shutdown_done = {"v": False}
+    cleanup_refs: dict[str, Any] = {}
+
+    def _safe_stop(label: str, fn) -> None:
+        try:
+            fn()
+        except Exception:
+            log.debug("Kapatma adimi atlandi (%s)", label, exc_info=True)
+
+    def _shutdown_once() -> None:
+        with shutdown_lock:
+            if shutdown_done["v"]:
+                return
+            shutdown_done["v"] = True
+        log.info("Kami kapaniyor")
+        for key in ("shield", "song_hotkey", "lens_hotkey", "rec_replay_key", "rec_record_key", "scrobbler_hotkey", "hotkey"):
+            obj = cleanup_refs.get(key)
+            if obj is not None:
+                _safe_stop(key, obj.stop)
+        tray_obj = cleanup_refs.get("tray")
+        if tray_obj is not None:
+            _safe_stop("tray", tray_obj.stop)
+        for mod_name, attr, mth in (
+            ("app.core.room", "SERVER", "stop"),
+            ("app.core.mpv_engine", "CONTROLLER", "stop"),
+            ("app.core.discord_rp", "PRESENCE", "close"),
+            ("app.core.librespot_host", "stop", ""),
+            ("app.core.kami_booth", "BOOTH", "stop"),
+        ):
+            def _call_mod(mn: str = mod_name, at: str = attr, mt: str = mth) -> None:
+                mod = __import__(mn, fromlist=[at])
+                tgt = getattr(mod, at)
+                getattr(tgt, mt)() if mt else tgt()
+            _safe_stop(mod_name, _call_mod)
+        if getattr(api, "_media", None) is not None:
+            _safe_stop("api._media", api._media.stop)
+        if getattr(api, "_ai", None) is not None:
+            _safe_stop("api._ai", api._ai.stop)
+        if getattr(api, "recorder", None) is not None:
+            _safe_stop("api.recorder", api.recorder.shutdown)
+        for key in ("scheduler", "shutdown", "follow", "phone"):
+            obj = cleanup_refs.get(key)
+            if obj is not None:
+                _safe_stop(key, obj.stop)
+        for name, fn in (
+            ("bridge", bridge.stop),
+            ("debrid", debrid.stop),
+            ("manager", manager.stop),
+            ("engine", engine.shutdown),
+            ("store", store.close),
+        ):
+            _safe_stop(name, fn)
 
     def pause_all() -> None:
         api.pause_all()
@@ -864,38 +917,19 @@ def main() -> int:
         if quitting["v"]:
             return
         quitting["v"] = True
-        try:
-            tray.stop()
-        except Exception:
-            pass
-        for fn in (
-            lambda: getattr(api, "_game_shield", None) and api._game_shield.stop(),
-            lambda: __import__("app.core.mpv_engine", fromlist=["CONTROLLER"]).CONTROLLER.stop(),
-            lambda: __import__("app.core.discord_rp", fromlist=["PRESENCE"]).PRESENCE.close(),
-            lambda: __import__("app.core.librespot_host", fromlist=["stop"]).stop(),
-            lambda: __import__("app.core.room", fromlist=["SERVER"]).SERVER.stop(),
-            lambda: getattr(api, "_media", None) and api._media.stop(),
-            lambda: getattr(api, "_ai", None) and api._ai.stop(),
-            lambda: getattr(api, "recorder", None) and api.recorder.shutdown(),
-            lambda: manager.stop(),
-            lambda: engine.shutdown(),
-            lambda: bridge.stop(),
-        ):
-            try:
-                fn()
-            except Exception:
-                pass
+        _shutdown_once()
         for w in list(webview.windows):
             try:
                 w.destroy()
             except Exception:
                 log.debug("Pencere kapatilamadi")
-        t = threading.Timer(1.2, lambda: os._exit(0))
+        t = threading.Timer(3.0, lambda: os._exit(0))
         t.daemon = True
         t.start()
 
     bridge.on_quit = quit_app   # Kami.exe --quit (kurulum/kaldirma/guncelleme)
     tray = desktop.Tray(show_window, pause_all, resume_all, quit_app, lambda: settings.get("language"))
+    cleanup_refs["tray"] = tray
     if settings.get("tray_enabled"):
         tray.start()
 
@@ -962,6 +996,7 @@ def main() -> int:
             log.exception("Kisayol: pano okunamadi")
 
     hotkey = desktop.HotKey(on_hotkey)
+    cleanup_refs["hotkey"] = hotkey
     api._hotkey = hotkey
     if settings.get("hotkey_enabled"):
         hotkey.start(settings.get("hotkey"))
@@ -988,6 +1023,8 @@ def main() -> int:
 
     song_hotkey = desktop.HotKey(on_song_hotkey)
     lens_hotkey = desktop.HotKey(lambda: threading.Thread(target=api.picture_open, args=("screen", True), daemon=True).start())
+    cleanup_refs["song_hotkey"] = song_hotkey
+    cleanup_refs["lens_hotkey"] = lens_hotkey
     if settings.get("lens_hotkey_enabled"):
         lens_hotkey.start(settings.get("lens_hotkey"))
 
@@ -999,6 +1036,8 @@ def main() -> int:
     _recorder_mod.set_active(api.recorder)   # games.py otomatik replay buradan alir
     rec_replay_key = desktop.HotKey(lambda: threading.Thread(target=api.rec_save_replay, daemon=True).start())
     rec_record_key = desktop.HotKey(lambda: threading.Thread(target=api.rec_toggle, daemon=True).start())
+    cleanup_refs["rec_replay_key"] = rec_replay_key
+    cleanup_refs["rec_record_key"] = rec_record_key
     rec_replay_key.start(settings.get("rec_replay_hotkey"))
     rec_record_key.start(settings.get("rec_record_hotkey"))
     if settings.get("rec_replay_enabled") and os.name == "nt":
@@ -1018,6 +1057,7 @@ def main() -> int:
         threading.Thread(target=run_scrob, name="kami-scrobbler", daemon=True).start()
 
     scrobbler_hotkey = desktop.HotKey(on_scrobbler_hotkey)
+    cleanup_refs["scrobbler_hotkey"] = scrobbler_hotkey
     try:
         scrobbler_hotkey.start(settings.get("scrobbler_hotkey") or "ctrl+shift+g")
     except Exception:
@@ -1175,6 +1215,7 @@ def main() -> int:
     from app.core.extras import Scheduler
     from app.core.postcomplete import PostComplete
     scheduler = Scheduler(settings, resume_all, pause_all)
+    cleanup_refs["scheduler"] = scheduler
     scheduler.start()
     post = PostComplete(manager, tray.notify,
                         focused=lambda: winwin.is_foreground(front._hwnd()))
@@ -1223,6 +1264,7 @@ def main() -> int:
                                                                                     **opts},
                                                                       title=title, source="follow"),
                            notify=api._on_ai_event)
+    cleanup_refs["follow"] = follow
     api._follow = follow
     follow.start()
 
@@ -1250,6 +1292,7 @@ def main() -> int:
 
     shutdown = automate.ShutdownWatcher(
         manager, busy_extra=lambda: bool(ai._cancel), on_queue_done=queue_done)
+    cleanup_refs["shutdown"] = shutdown
     shutdown.start()
     # v1.29 coklu kuyruk (adli kuyruklar: kendi esZamanli/hiz siniri, saat penceresi, bitince bildir/kapat)
     from app.core.queues import QueueRunner
@@ -1297,6 +1340,7 @@ def main() -> int:
     phone = PhoneServer(int(settings.get("phone_port")), phone_key.load,
                         lambda text, fmt="": api.add_text_detail(text, "phone", fmt),
                         status=api.phone_status_items, control=api.phone_control)
+    cleanup_refs["phone"] = phone
     phone.on_upload = api.phone_on_upload
     phone.on_deck = api.phone_deck
     phone.recent_media = api.phone_recent_media
@@ -1422,6 +1466,7 @@ def main() -> int:
             api._on_game_active_change("", "")
 
     shield = GameShield(settings, on_enter=_on_shield_enter, on_leave=_on_shield_leave)
+    cleanup_refs["shield"] = shield
     api._game_shield = shield
     shield.start()
     manager.start()
@@ -1437,38 +1482,7 @@ def main() -> int:
         webview.start(debug=bool(os.environ.get("KAMI_DEBUG")), private_mode=False,
                       storage_path=str(paths.DATA_DIR / "webview"))
     finally:
-        log.info("Kami kapaniyor")
-        shield.stop()
-        song_hotkey.stop()
-        lens_hotkey.stop()
-        rec_replay_key.stop(); rec_record_key.stop()
-        try:
-            from app.core import room as _room
-            _room.SERVER.stop()
-        except Exception:
-            pass
-        try:
-            from app.core import mpv_engine as _mpv, discord_rp as _drp, kami_booth as _booth
-            _mpv.CONTROLLER.stop()
-            _drp.PRESENCE.close()
-            _booth.BOOTH.stop()
-        except Exception:
-            pass
-        try:
-            api.recorder.shutdown()
-        except Exception:
-            log.exception("kayit kapatilamadi")
-        hotkey.stop()
-        tray.stop()
-        scheduler.stop()
-        shutdown.stop()      # kapali veritabanina dokunmasin
-        follow.stop()
-        phone.stop()
-        bridge.stop()
-        debrid.stop()
-        manager.stop()
-        engine.shutdown()
-        store.close()
+        _shutdown_once()
     return 0
 
 

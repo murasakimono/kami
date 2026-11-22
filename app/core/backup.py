@@ -55,6 +55,7 @@ DPAPI_KEY_LABELS: dict[str, str] = {
     "ntfy_topic.bin": "ntfy",
     "phone_key.bin": "Kami Telefon",
     "listenbrainz_token.bin": "ListenBrainz",
+    "oracle_relay_secret.bin": "Oracle Relay",
     "archive_passwords.bin": "Arşiv parolaları",
 }
 

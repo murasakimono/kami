@@ -466,15 +466,39 @@ class CastServer:
                         return
                     size = os.path.getsize(f)
                     rng = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))
-                    a, b = 0, size - 1
+                    a, b = 0, max(0, size - 1)
                     if rng:
-                        a = int(rng.group(1) or 0)
-                        b = int(rng.group(2)) if rng.group(2) else size - 1
-                    b = min(b, size - 1)
+                        def _send_416() -> None:
+                            self.send_response(416)
+                            self.send_header("Content-Range", f"bytes */{size}")
+                            self.end_headers()
+
+                        if size <= 0:
+                            _send_416()
+                            return
+                        g1, g2 = rng.group(1), rng.group(2)
+                        if not g1 and g2:
+                            n = int(g2)
+                            if n <= 0:
+                                _send_416()
+                                return
+                            a = max(0, size - n)
+                            b = size - 1
+                        elif g1:
+                            a = int(g1)
+                            b = int(g2) if g2 else size - 1
+                        else:
+                            _send_416()
+                            return
+                        if a >= size or b < a:
+                            _send_416()
+                            return
+                        b = min(b, size - 1)
+                    total_len = 0 if size == 0 else (b - a + 1)
                     self.send_response(206 if rng else 200)
                     self.send_header("Content-Type", _mime(f))
                     self.send_header("Accept-Ranges", "bytes")
-                    self.send_header("Content-Length", str(b - a + 1))
+                    self.send_header("Content-Length", str(total_len))
                     if rng:
                         self.send_header("Content-Range", f"bytes {a}-{b}/{size}")
                     self.send_header("transferMode.dlna.org", "Streaming")
@@ -485,7 +509,7 @@ class CastServer:
                     try:
                         with open(f, "rb") as fh:
                             fh.seek(a)
-                            left = b - a + 1
+                            left = total_len
                             while left > 0:
                                 chunk = fh.read(min(1 << 20, left))
                                 if not chunk:

@@ -216,7 +216,7 @@ function skBind() {
       peekEl.classList.add("on");
       if (d.status === "complete" && ["video", "music"].includes(d.category)) {   // medya ozeti (+ video karesi)
         const id = st.dataset.id;
-        api.item_peek(d.id).then((m) => {
+        (typeof slow === "function" ? slow("item_peek", d.id) : api.item_peek(d.id)).then((m) => {
           if (!m || !peekEl.classList.contains("on") || peekEl.dataset.id !== id) return;
           const res = m.h ? (m.h >= 2100 ? "4K" : m.h >= 1400 ? "1440p" : m.h >= 1000 ? "1080p" : m.h >= 700 ? "720p" : m.h + "p") : "";
           const bits = [res, m.duration ? fmtEta(m.duration) : "", [m.vcodec, m.acodec].filter(Boolean).join(" / ").toUpperCase()].filter(Boolean);

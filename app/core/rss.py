@@ -206,46 +206,60 @@ class RssService:
         return [{"title": it["title"], "size": it["size"], "match": matches(f, it), "seen": it["id"] in f.get("seen", [])} for it in items[:50]]
 
     def _take(self, f: dict[str, Any], it: dict[str, Any]) -> bool:
-        ek = episode_key(it["title"]) if f.get("smart_ep", True) else ""
-        if ek and ek in f.get("eps", []):
-            return False
+        with self._lock:
+            ek = episode_key(it["title"]) if f.get("smart_ep", True) else ""
+            if ek and ek in f.get("eps", []):
+                return False
         ok = False
         try:
             ok = bool(self.add(it, f))
         except Exception:
             log.exception("RSS girdisi eklenemedi: %s", it.get("title"))
         if ok and ek:
-            f.setdefault("eps", []).append(ek)
-            del f["eps"][:-SEEN_KEEP]
+            with self._lock:
+                f.setdefault("eps", []).append(ek)
+                del f["eps"][:-SEEN_KEEP]
         return ok
 
     def check(self, fid: str | None = None, force: bool = False) -> int:
         new = 0
-        for f in list(self.feeds):
-            if fid and f["id"] != fid:
-                continue
-            if not fid and (not f.get("enabled") or (not force and time.time() - f.get("last", 0) < f.get("interval_min", 30) * 60)):
-                continue
+        with self._lock:
+            feeds_copy = list(self.feeds)
+        for f in feeds_copy:
+            with self._lock:
+                if fid and f["id"] != fid:
+                    continue
+                if not fid and (not f.get("enabled") or (not force and time.time() - f.get("last", 0) < f.get("interval_min", 30) * 60)):
+                    continue
+                url = f["url"]
+                title = f["title"]
             try:
-                _, items = parse_feed(self.fetch(f["url"]))
-                f["error"] = ""
+                _, items = parse_feed(self.fetch(url))
+                with self._lock:
+                    f["error"] = ""
             except Exception as exc:
-                f["error"], f["last"] = str(exc)[:160], time.time()
+                with self._lock:
+                    f["error"], f["last"] = str(exc)[:160], time.time()
                 continue
-            seen = set(f.get("seen", []))
+            with self._lock:
+                seen = set(f.get("seen", []))
             got = []
             for it in reversed(items):   # eskiden yeniye: ayni bolumun ilk cikan surumu alinir
                 if it["id"] in seen:
                     continue
-                f.setdefault("seen", []).append(it["id"])
-                if matches(f, it) and self._take(f, it):
+                with self._lock:
+                    f.setdefault("seen", []).append(it["id"])
+                    should_take = matches(f, it)
+                if should_take and self._take(f, it):
                     got.append(it["title"])
-            del f["seen"][:-SEEN_KEEP]
-            f["last"] = time.time()
+            with self._lock:
+                del f["seen"][:-SEEN_KEEP]
+                f["last"] = time.time()
+                if got:
+                    f["last_new"] = time.time()
             if got:
-                f["last_new"] = time.time()
                 new += len(got)
-                self.notify("Kami RSS", f"{f['title']}: {len(got)} yeni" + (f" — {got[0][:80]}" if got else ""))
+                self.notify("Kami RSS", f"{title}: {len(got)} yeni" + (f" — {got[0][:80]}" if got else ""))
         with self._lock:
             self._save()
         return new
