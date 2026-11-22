@@ -54,6 +54,7 @@ DPAPI_KEY_LABELS: dict[str, str] = {
     "turn_key.bin": "Kami Oda TURN",
     "ntfy_topic.bin": "ntfy",
     "phone_key.bin": "Kami Telefon",
+    "listenbrainz_token.bin": "ListenBrainz",
     "archive_passwords.bin": "Arşiv parolaları",
 }
 

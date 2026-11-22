@@ -330,8 +330,14 @@
       setBusy(false);
       if (r?.error === "need_tool") {
         const nm = toolLabel(r.tool);
-        if (confirm(`${nm} gerekli. Şimdi indirilsin mi? (bir kez indirilir)`)) { await installAndRetry(r.tool); return; }
-        warn("Bu mod motor olmadan çalışmaz. “Temizle” ve “Hızlı büyüt” model gerektirmez.");
+        warn(`${esc(nm)} gerekli. Şimdi indirilsin mi? (bir kez indirilir)
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn pri" id="instGo" type="button">İndir &amp; Başlat</button>
+            <button class="btn" id="instNo" type="button">Vazgeç</button>
+          </div>`);
+        $("#instGo").onclick = () => { warn(""); installAndRetry(r.tool); };
+        $("#instNo").onclick = () => warn("Bu mod motor olmadan çalışmaz. “Temizle” ve “Hızlı büyüt” model gerektirmez.");
+        return;
       } else {
         warn(`<b>Başlatılamadı:</b> ${esc(r?.error || "?")}`);
       }

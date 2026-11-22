@@ -23,7 +23,8 @@ STUDIO_JOBS = {"studio_info", "studio_peaks", "studio_thumbs", "studio_beats", "
                "studio_gemini_models", "studio_lottie", "studio_catalog_fonts",
                "studio_multicam_sync", "studio_smart_cut", "studio_audio_enhance", "studio_audio_duck",
                "studio_clipboard_copy", "studio_open_icon_search", "studio_open_icon_fetch", "studio_export_gif", "studio_sound_similar",
-               "studio_qc", "studio_poster", "studio_ref_profile", "studio_ref_lut", "studio_pipeline_run", "studio_make_shorts"}
+               "studio_qc", "studio_poster", "studio_ref_profile", "studio_ref_lut", "studio_pipeline_run", "studio_make_shorts",
+               "studio_pixel_sort", "studio_datamosh", "studio_beatshift", "studio_data_graphic", "studio_audio_pro_process"}
 
 
 def _parse_myinstants(page_html: str, limit: int = 60) -> list[dict[str, Any]]:

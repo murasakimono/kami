@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -23,7 +24,7 @@ from app import paths
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 GITHUB_REPO = "murasakimono/kami"
 CREATE_NO_WINDOW = 0x08000000
 
@@ -205,10 +206,32 @@ def check_update(current: str = APP_VERSION, repo: str = GITHUB_REPO, channel: s
     if not url.startswith(f"https://github.com/{repo}/"):
         url = f"https://github.com/{repo}/releases"
     asset = next((a for a in j.get("assets") or [] if re.fullmatch(r"Kami-Setup-[\d.]+\.exe", a.get("name", ""))), {})
+    digest = str(asset.get("digest") or "")
+    sha256 = digest.split(":", 1)[1].lower() if digest.lower().startswith("sha256:") else (
+        digest.lower() if re.fullmatch(r"[0-9a-fA-F]{64}", digest) else ""
+    )
     return {"available": _ver(tag) > _ver(current), "version": tag.lstrip("v"), "url": url,
             "notes": str(j.get("body") or "")[:600], "asset": asset.get("name", ""), "tag": tag,
-            "asset_url": asset.get("browser_download_url", ""), "prerelease": bool(j.get("prerelease")),
-            "channel": ch}
+            "asset_url": asset.get("browser_download_url", ""), "sha256": sha256,
+            "prerelease": bool(j.get("prerelease")), "channel": ch}
+
+
+def _verify_sha256(path: Path, expected: str) -> None:
+    exp = str(expected or "").strip().lower()
+    if exp.startswith("sha256:"):
+        exp = exp.split(":", 1)[1].strip()
+    if not exp:
+        return
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    if not hmac.compare_digest(h.hexdigest().lower(), exp):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise ValueError("checksum_mismatch")
 
 
 def download_update(info: dict[str, Any], dest_dir: Path, repo: str = GITHUB_REPO) -> Path:
@@ -218,6 +241,7 @@ def download_update(info: dict[str, Any], dest_dir: Path, repo: str = GITHUB_REP
     name = str(info.get("asset") or "")
     if not re.fullmatch(r"Kami-Setup-[\d.]+\.exe", name):
         raise ValueError("asset")
+    expected_sha = str(info.get("sha256") or info.get("digest") or "")
     dest_dir.mkdir(parents=True, exist_ok=True)
     out = dest_dir / name
     url = str(info.get("asset_url") or "")
@@ -227,6 +251,7 @@ def download_update(info: dict[str, Any], dest_dir: Path, repo: str = GITHUB_REP
             with open(out, "wb") as f:
                 for chunk in r.iter_content(1 << 20):
                     f.write(chunk)
+            _verify_sha256(out, expected_sha)
             return out
     gh = _gh()
     if not gh:
@@ -236,6 +261,7 @@ def download_update(info: dict[str, Any], dest_dir: Path, repo: str = GITHUB_REP
                         creationflags=0x08000000)
     if r2.returncode != 0 or not out.is_file():
         raise RuntimeError("download_failed: " + (r2.stderr or "")[-200:])
+    _verify_sha256(out, expected_sha)
     return out
 
 

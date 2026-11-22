@@ -45,7 +45,13 @@ class EnhanceMixin:
 
     def enhance_pick(self) -> list[str]:
         """Video dosyasi secme diyalogu."""
-        return self.studio_pick_media()
+        import webview
+        w = getattr(self, "_enhance_win", None) or self._window
+        if not w:
+            return []
+        types = ("Medya (*.mp4;*.mkv;*.mov;*.webm;*.avi;*.ts;*.m2ts;*.wmv;*.flv;*.m4v)", "Tüm dosyalar (*.*)")
+        r = w.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False, file_types=types)
+        return list(r or [])
 
     # ---- is
 

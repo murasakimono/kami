@@ -1375,14 +1375,43 @@ class Api(StudioMixin, EnhanceMixin):
                 "defender": bool(extras.mpcmdrun()), "version": extras.APP_VERSION}
 
     # ---------- ayarlar ----------
+    @staticmethod
+    def _lb_token_store():
+        from app.core.debrid import TokenStore
+        return TokenStore(paths.DATA_DIR / "listenbrainz_token.bin")
+
+    def _lb_token(self) -> str:
+        store = self._lb_token_store()
+        tok = (store.load() or "").strip()
+        if tok:
+            return tok
+        mgr = getattr(self, "_manager", None)
+        if mgr is not None:
+            legacy = str(mgr.settings.get("listenbrainz_token") or "").strip()
+            if legacy:
+                try:
+                    store.save(legacy)
+                    mgr.settings.set("listenbrainz_token", "")
+                except Exception:
+                    pass
+                return legacy
+        return ""
+
     def get_settings(self) -> dict[str, Any]:
         s = self._manager.settings.all()
         s["_effective_download_dir"] = self._manager.base_dir()
+        s["_has_listenbrainz"] = bool(self._lb_token())
+        s["listenbrainz_token"] = ""   # duz metin UI/yedekte tasinmaz; DPAPI'de saklanir
         return s
 
     def set_setting(self, key: str, value: Any) -> dict[str, Any]:
         if key == "speed_profile":
             return self.speed_profile_set(str(value or "full"), auto=False)
+        if key == "listenbrainz_token":
+            clean = str(value or "").strip()
+            self._lb_token_store().save(clean)
+            self._manager.settings.set("listenbrainz_token", "")
+            return {"ok": True, "value": "", "_has_listenbrainz": bool(clean)}
         try:
             self._manager.settings.set(key, value)
             return {"ok": True, "value": self._manager.settings.get(key)}
@@ -2516,17 +2545,18 @@ class Api(StudioMixin, EnhanceMixin):
 
     # ---- oda sifresi + Mini-Ada oda seridi
     def room_set_password(self, password: str = "") -> dict[str, Any]:
-        """Bos: sifreyi kaldir. Sifrenin kendisi saklanmaz, sha256'si ayarlara yazilir (misafir de ayni ozeti gonderir)."""
-        import hashlib
+        """Bos: sifreyi kaldir. Tuzlu scrypt ozeti ayarlara yazilir."""
+        from app.core import room
         pw = str(password or "").strip()
         if pw and len(pw) < 4:
             return {"ok": False, "error": "short"}
-        self._manager.settings.set("room_password_hash", hashlib.sha256(pw.encode("utf-8")).hexdigest() if pw else "")
+        self._manager.settings.set("room_password_hash", room.hash_pw(pw) if pw else "")
         return {"ok": True, "locked": bool(pw)}
 
     def room_key(self) -> str:
         """Yalnizca Kami pencereleri (ev sahibinin oda penceresi, Player yayini) cagirabilir: sifreyi sormadan girer."""
-        return str(self._manager.settings.get("room_password_hash") or "")
+        from app.core import room
+        return room.SERVER.host_token if room.SERVER.locked() else ""
 
     def room_island_push(self, state: dict[str, Any]) -> bool:
         """Ev sahibinin oda penceresi (room.js) -> Mini-Ada: kim var, kim konusuyor, mikrofon/kulaklik."""
@@ -3528,8 +3558,11 @@ class Api(StudioMixin, EnhanceMixin):
 
     def music_tag_pick_folder(self) -> dict[str, Any]:
         import webview
+        win = getattr(self, "_musictag_win", None) or self._window
+        if not win:
+            return {"ok": False, "error": "no_window"}
         try:
-            res = self._window.create_file_dialog(webview.FileDialog.FOLDER)
+            res = win.create_file_dialog(webview.FileDialog.FOLDER)
             return {"ok": True, "path": (res[0] if isinstance(res, (list, tuple)) else res) or ""}
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:120]}
@@ -4418,11 +4451,11 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core import room as _room
         port = int(self._manager.settings.get("phone_port") or 47322)
         key = self._phone_key.load() if self._phone_key else ""
-        local_url = f"http://{lan_ip()}:{port}/bridge" + (f"?k={key}" if key else "")
+        local_url = f"http://{lan_ip()}:{port}/bridge"
         tunnel_url = ""
         if _room.SERVER.public and _room.SERVER.room:
             base_t = _room.SERVER.public.rstrip("/")
-            tunnel_url = f"{base_t}/{_room.SERVER.room.id}/bridge" + (f"?k={key}" if key else "")
+            tunnel_url = f"{base_t}/{_room.SERVER.room.id}/bridge"
         return {"ok": True, "url": local_url, "tunnel_url": tunnel_url, "key": key}
 
     # ---------- Faz 5: Is Merkezi, Zincirler, Ekstra Araclar ----------
@@ -5884,8 +5917,11 @@ class Api(StudioMixin, EnhanceMixin):
         embed_b = bool(self._manager.settings.get("lyrics_embed", True))
         uvr_eksik = strong_b and not aitools.installed("uvr")
         cancel_ev = threading.Event()
+        cancels = getattr(self, "_lrc_cancels", None)
+        if cancels is None:
+            cancels = self._lrc_cancels = {}
         with self._inbox_lock:
-            self._lrc_cancels[jid] = cancel_ev
+            cancels[jid] = cancel_ev
             self._jobs[jid] = {
                 "state": "running",
                 "name": f"LRC: {os.path.basename(p)}",
@@ -5930,7 +5966,7 @@ class Api(StudioMixin, EnhanceMixin):
                         self._jobs[jid]["msg"] = str(exc)[:180]
                         self._jobs[jid]["result"] = {"ok": False, "error": str(exc)[:180]}
             finally:
-                self._lrc_cancels.pop(jid, None)
+                getattr(self, "_lrc_cancels", {}).pop(jid, None)
 
         threading.Thread(target=_worker, name=f"kami-{jid}", daemon=True).start()
         return {"ok": True, "queued": True, "job_id": jid, "path": p}
@@ -5947,7 +5983,7 @@ class Api(StudioMixin, EnhanceMixin):
 
     def music_lrc_cancel(self, job_id: str) -> dict[str, Any]:
         jid = str(job_id or "")
-        ev = self._lrc_cancels.get(jid)
+        ev = getattr(self, "_lrc_cancels", {}).get(jid)
         if ev is not None:
             ev.set()
         with self._inbox_lock:
@@ -6004,7 +6040,7 @@ class Api(StudioMixin, EnhanceMixin):
 
     def scrobble_send(self, artist: str, title: str, album: str = "", duration: int = 0, playing: bool = False) -> dict[str, Any]:
         """ListenBrainz scrobbling: dinlenen sarkiyi gonder (playing_now veya scrobble). Token bos = no-op."""
-        token = str(self._manager.settings.get("listenbrainz_token") or "").strip()
+        token = self._lb_token()
         if not token or not title:
             return {"ok": False, "error": "no_token"}
         import requests
@@ -6025,7 +6061,7 @@ class Api(StudioMixin, EnhanceMixin):
     def listenbrainz_test(self, token: str = "") -> dict[str, Any]:
         """ListenBrainz token'ini validate-token ucunda dogrular."""
         import requests
-        t = str(token or self._manager.settings.get("listenbrainz_token") or "").strip()
+        t = str(token or self._lb_token() or "").strip()
         if not t:
             return {"ok": False, "error": "empty_token"}
         try:

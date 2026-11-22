@@ -65,8 +65,7 @@ h3{margin:14px 0 6px;font-size:12px;color:var(--mut);text-transform:uppercase;le
 const $=i=>document.getElementById(i);let D=null,P=0,EDIT=false,tmr=0;
 const EN=(navigator.language||'tr').startsWith('en');
 const L=(tr,en)=>EN?en:tr;
-const key=()=>new URLSearchParams(location.search).get('k')||localStorage.kamiKey||'';   // linkteki taze anahtar eski kayitli anahtardan once
-if(new URLSearchParams(location.search).get('k'))localStorage.kamiKey=new URLSearchParams(location.search).get('k');
+const key=()=>localStorage.kamiKey||'';
 const msg=(t,ms=1600)=>{const m=$('msg');m.textContent=t;m.style.display='block';clearTimeout(m._t);m._t=setTimeout(()=>m.style.display='none',ms)};
 async function post(path,body={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Kami-Key':key()},body:JSON.stringify(body)});
  if(r.status===401){$('keyBox').style.display='flex';throw new Error(L('anahtar','key'))}return r.json()}

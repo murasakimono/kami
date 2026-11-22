@@ -867,23 +867,17 @@ def main() -> int:
         for fn in (
             lambda: __import__("app.core.librespot_host", fromlist=["stop"]).stop(),
             lambda: __import__("app.core.room", fromlist=["SERVER"]).SERVER.stop(),
+            lambda: getattr(api, "_media", None) and api._media.stop(),
+            lambda: getattr(api, "_ai", None) and api._ai.stop(),
+            lambda: getattr(api, "recorder", None) and api.recorder.shutdown(),
             lambda: manager.stop(),
+            lambda: engine.shutdown(),
             lambda: bridge.stop(),
         ):
             try:
                 fn()
             except Exception:
                 pass
-        # Kapanis: bin/ alt surecleri (uv.exe, aria2c, ffmpeg ...) arka planda asili kalmasin
-        # (bir sonraki kurulumda base_library.zip / bin dosyalarini kilitlemesin).
-        if os.name == "nt":
-            import subprocess as _sp
-            for _img in ("uv.exe", "aria2c.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe"):
-                try:
-                    _sp.run(["taskkill", "/F", "/IM", _img, "/T"], capture_output=True, timeout=8,
-                            creationflags=0x08000000)
-                except Exception:
-                    pass
         for w in list(webview.windows):
             try:
                 w.destroy()

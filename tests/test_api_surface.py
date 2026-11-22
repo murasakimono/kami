@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 API_PY = ROOT / "app" / "ui" / "api.py"
 STUDIO_PY = ROOT / "app" / "ui" / "api_studio.py"
+ENHANCE_PY = ROOT / "app" / "ui" / "api_enhance.py"
 WEB = ROOT / "app" / "ui" / "web"
 
 # JS tarafında bilerek köprü OLMAYAN 'api' (yerel değişken) metotları.
@@ -32,6 +33,7 @@ def _py_methods(text: str) -> set[str]:
 def test_js_bridge_surface_matches_api():
     py = _py_methods(API_PY.read_text(encoding="utf-8"))
     py |= _py_methods(STUDIO_PY.read_text(encoding="utf-8"))
+    py |= _py_methods(ENHANCE_PY.read_text(encoding="utf-8"))
     assert len(py) > 400, f"Api yüzeyi beklenenden küçük: {len(py)}"
 
     called: dict[str, list[str]] = {}
@@ -49,3 +51,18 @@ def test_js_bridge_surface_matches_api():
         "Şu JS köprü çağrıları Api'de yok (rename/typo olabilir):\n"
         + "\n".join(f"  {n}  ->  {', '.join(called[n][:3])}" for n in missing)
     )
+
+
+def test_js_job_calls_are_in_job_methods():
+    from app.ui.api import Api
+    pat = re.compile(r"\b(?:job_start|slow|job)\s*\(\s*['\"]([A-Za-z_]\w*)['\"]")
+    missing: dict[str, list[str]] = {}
+    for f in sorted(WEB.rglob("*")):
+        if f.suffix not in (".js", ".html") or "vendor" in f.parts:
+            continue
+        text = f.read_text(encoding="utf-8", errors="replace")
+        for m in pat.finditer(text):
+            name = m.group(1)
+            if name not in Api.JOB_METHODS:
+                missing.setdefault(name, []).append(str(f.relative_to(ROOT)))
+    assert not missing, f"JOB_METHODS disindaki job/slow cagrilari: {missing}"

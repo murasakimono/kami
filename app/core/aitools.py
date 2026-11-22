@@ -715,6 +715,14 @@ class AiQueue:
             self.set_extra(did, **{f"ai_{kind}": "cancelled", f"ai_{kind}_p": 0})
             cleanup_ai_partials(self.get_path(did) or "", kind)
 
+    def stop(self) -> None:
+        """Kapanista bekleyen/calisan tum AI alt sureclerini iptal et."""
+        for ev in list(self._cancel.values()):
+            try:
+                ev.set()
+            except Exception:
+                pass
+
     def _loop(self) -> None:
         while True:
             kind, did, opts = self._q.get()

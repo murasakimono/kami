@@ -42,14 +42,15 @@
       this.roster = []; this.n = 0; this.rv = ""; this.alive = false; this.ice = [];
       this.sack = 0;                              // aldigim son sinyal sirasi (sunucu kalanlari yeniden yollar)
       this.myQ = o.quality || "src";              // aldigim yayinlar icin istedigim kalite
-      this.key = o.key || "";                     // oda sifresi ozeti (sha256 hex); sifresiz odada bos
+      this.key = o.key || "";                     // host token veya istege bagli anahtar (baslikta tasinir)
     }
-    url(p) { return this.base + p + (this.key ? (p.includes("?") ? "&" : "?") + "k=" + this.key : ""); }
+    url(p) { return this.base + p; }
+    _headers(extra = {}) { return this.key ? { "X-Kami-Key": this.key, ...extra } : extra; }
     async post(p, body) {
-      try { const r = await fetch(this.url(p), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: this.id, ...body }) }); return r.ok ? r.json() : null; } catch { return null; }
+      try { const r = await fetch(this.url(p), { method: "POST", credentials: "same-origin", headers: this._headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: this.id, ...body }) }); return r.ok ? r.json() : null; } catch { return null; }
     }
     async join() {
-      try { this.ice = (await (await fetch(this.url("ice"), { cache: "no-store" })).json()).iceServers || []; } catch { this.ice = []; }
+      try { this.ice = (await (await fetch(this.url("ice"), { cache: "no-store", credentials: "same-origin", headers: this._headers() })).json()).iceServers || []; } catch { this.ice = []; }
       this.alive = true;
       this._loop();
       this._beat = setInterval(() => this.post("me", {}), 15000);
@@ -60,7 +61,11 @@
       if (!this.alive) return;
       this.alive = false; clearInterval(this._beat);
       for (const id of [...this.peers.keys()]) this._drop(id);
-      navigator.sendBeacon?.(this.url("leave"), new Blob([JSON.stringify({ id: this.id })], { type: "application/json" })) || this.post("leave", {});
+      if (this.key) {
+        fetch(this.url("leave"), { method: "POST", keepalive: true, credentials: "same-origin", headers: this._headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: this.id }) }).catch(() => {});
+      } else {
+        navigator.sendBeacon?.(this.url("leave"), new Blob([JSON.stringify({ id: this.id })], { type: "application/json" })) || this.post("leave", {});
+      }
     }
     setMe(st) { this.post("me", st); }
     chat(text, reply = 0) { this.post("chat", { text, reply }); }
@@ -72,7 +77,7 @@
       while (this.alive) {
         try {
           const q = `poll?id=${this.id}&cid=${encodeURIComponent(this.cid)}&name=${encodeURIComponent(this.name)}&kind=${this.kind}&n=${this.n}&rv=${this.rv}&a=${this.sack}`;
-          const r = await (await fetch(this.url(q), { cache: "no-store" })).json();
+          const r = await (await fetch(this.url(q), { cache: "no-store", credentials: "same-origin", headers: this._headers() })).json();
           fails = 0;
           if (r.rv !== this.rv) { this.rv = r.rv; this.roster = r.roster; this._sync(); this.on.roster?.(r.roster, r.host); }
           if (r.events?.length) { this.n = Math.max(this.n, ...r.events.map((e) => e.n)); this.on.events?.(r.events); }

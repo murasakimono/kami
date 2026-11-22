@@ -34,14 +34,9 @@ async function init() {
 $("jnGo").onclick = () => join();
 $("jnName").addEventListener("keydown", (e) => e.key === "Enter" && join());
 
-async function sha256hex(t) {
-  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
-  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
-}
-async function roomKey() {   // ev sahibi (Kami penceresi) sifreyi bilmeden girer; misafir yazdigi sifrenin ozetini gonderir
+async function roomKey() {   // ev sahibi (Kami penceresi) sifreyi bilmeden girer; misafir oturum cerezi veya baslik kullanir
   if (S.isHost) { try { return await window.pywebview.api.room_key(); } catch { return ""; } }
-  if (!S.locked) return "";
-  return sha256hex($("jnPw").value.trim());
+  return "";
 }
 async function join() {
   if (S.core?.alive) return;
@@ -50,7 +45,17 @@ async function join() {
   $("jnGo").disabled = true; $("jnErr").textContent = "";
   S.key = await roomKey().catch(() => "");
   if (S.locked) {
-    const chk = await fetch(BASE + "ice" + (S.key ? "?k=" + S.key : ""), { cache: "no-store" }).catch(() => null);
+    let chk = null;
+    if (S.isHost) {
+      chk = await fetch(BASE + "ice", { cache: "no-store", headers: S.key ? { "X-Kami-Key": S.key } : {} }).catch(() => null);
+    } else {
+      chk = await fetch(BASE + "unlock", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: $("jnPw").value.trim() }),
+      }).catch(() => null);
+    }
     if (!chk || chk.status === 401) {
       $("jnErr").textContent = chk ? "Şifre yanlış (çok deneme yapılırsa 1 dakika beklemen gerekir)." : "Odaya ulaşılamadı.";
       $("jnGo").disabled = false; $("jnPw").hidden = false; $("jnPw").focus(); return;
@@ -1251,15 +1256,16 @@ async function spIn(from, m) {
 // ---------- Dalga 2: Ortak Medya Sirasi & Sahne Emoji Tepkileri ----------
 let RM_QUEUE = [];
 function rmRoomUrl(ep) {
-  const k = new URLSearchParams(location.search).get("k") || "";
-  return (typeof BASE !== "undefined" ? BASE : ".") + "/" + ep + (k ? `?k=${encodeURIComponent(k)}` : "");
+  return (typeof BASE !== "undefined" ? BASE : ".") + "/" + ep;
 }
 async function rmPostRoom(ep, body) {
   if (!S.core) return null;
   try {
+    const hdr = { "Content-Type": "application/json", ...(S.key ? { "X-Kami-Key": S.key } : {}) };
     const r = await fetch(rmRoomUrl(ep), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      headers: hdr,
       body: JSON.stringify({ id: S.core.id, ...(body || {}) }),
     });
     return await r.json();
@@ -1267,7 +1273,8 @@ async function rmPostRoom(ep, body) {
 }
 async function rmRefreshQueue() {
   try {
-    const r = await fetch(rmRoomUrl("queue")).then((x) => x.json());
+    const hdr = S.key ? { "X-Kami-Key": S.key } : {};
+    const r = await fetch(rmRoomUrl("queue"), { credentials: "same-origin", headers: hdr }).then((x) => x.json());
     if (r?.ok) { RM_QUEUE = r.queue || []; renderRmQueue(); }
   } catch {}
 }

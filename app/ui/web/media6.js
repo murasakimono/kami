@@ -191,7 +191,7 @@ async function refreshMediaSettings() {
   const ak = String(state.settings.acoustid_key || "").trim();
   const ast = $("#acoustidState");
   if (ast) { ast.textContent = ak ? "kayıtlı ✓" : ""; ast.style.color = ak ? "#2EE6A6" : ""; }
-  const lb = String(state.settings.listenbrainz_token || "").trim();
+  const lb = Boolean(state.settings._has_listenbrainz || String(state.settings.listenbrainz_token || "").trim());
   const lbst = $("#lbState");
   if (lbst) { lbst.textContent = lb ? "kayıtlı ✓" : ""; lbst.style.color = lb ? "#2EE6A6" : ""; }
 }
@@ -237,7 +237,11 @@ function bindMediaSettings() {
     const ast = $("#lbState");
     const k = (inp?.value || "").trim();
     if (ast) { ast.textContent = "test ediliyor…"; ast.style.color = ""; }
-    if (k) await setSetting("listenbrainz_token", k);
+    if (k) {
+      await setSetting("listenbrainz_token", k);
+      state.settings._has_listenbrainz = true;
+      if (inp) inp.value = "";
+    }
     const r = await api.listenbrainz_test?.(k).catch(() => null);
     if (ast) {
       ast.textContent = r?.ok ? `✓ Geçerli (${r.user || "ok"})` : `✗ ${r?.error || "Geçersiz"}`;

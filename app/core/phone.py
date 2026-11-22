@@ -169,7 +169,29 @@ class PhoneServer:
         self._srv: ThreadingHTTPServer | None = None
         self._hits: list[float] = []
         self._lock = threading.Lock()
+        self._sessions: dict[str, float] = {}
         self.last: dict[str, Any] = {}    # son /send (Ayarlar'da gosterilir)
+
+    def session_ok(self, tok: str) -> bool:
+        if not tok:
+            return False
+        ts = self._sessions.get(tok)
+        if not ts or (time.time() - ts > 86400 * 7):
+            self._sessions.pop(tok, None)
+            return False
+        return True
+
+    def issue_session(self) -> str:
+        tok = secrets.token_urlsafe(24)
+        if len(self._sessions) > 200:
+            now = time.time()
+            for k in list(self._sessions):
+                if now - self._sessions[k] > 86400 * 7:
+                    self._sessions.pop(k, None)
+            while len(self._sessions) > 200:
+                self._sessions.pop(next(iter(self._sessions)))
+        self._sessions[tok] = time.time()
+        return tok
 
     @property
     def running(self) -> bool:
@@ -260,7 +282,7 @@ class PhoneServer:
                 ua = (self.headers.get("User-Agent") or "")
                 return "json" not in acc and "Safari" not in ua and "Mozilla" not in ua
 
-            def _send(self, code: int, obj: dict[str, Any]) -> None:
+            def _send(self, code: int, obj: dict[str, Any], extra_headers: dict[str, str] | None = None) -> None:
                 if self._wants_text() and "message" in obj:
                     data, ctype = str(obj["message"]).encode(), "text/plain; charset=utf-8"
                 else:
@@ -269,15 +291,25 @@ class PhoneServer:
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "no-store")
+                for hk, hv in (extra_headers or {}).items():
+                    self.send_header(hk, hv)
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _portal_cookie(self) -> str:
+                raw = str(self.headers.get("Cookie") or "")
+                for part in raw.split(";"):
+                    ck, sep, cv = part.strip().partition("=")
+                    if sep and ck == "kami_portal":
+                        return cv.strip()
+                return ""
+
             def _key_ok(self) -> bool:
+                tok = self._portal_cookie()
+                if tok and outer.session_ok(tok):
+                    return True
                 exp = outer.key()
                 got = str(self.headers.get("X-Kami-Key") or "")
-                if not got and "?" in self.path:
-                    q = parse_qs(self.path.split("?", 1)[1])
-                    got = str((q.get("k") or [""])[0])
                 return bool(exp) and hmac.compare_digest(got.encode(), exp.encode())
 
             def _html(self, html: str) -> None:
@@ -315,7 +347,11 @@ class PhoneServer:
                 if path == "/portal/data":
                     if not self._key_ok():
                         return self._send(401, {"ok": False, "error": "key"})
-                    return self._send(200, outer.portal_data())
+                    eh = None
+                    if not outer.session_ok(self._portal_cookie()):
+                        tok = outer.issue_session()
+                        eh = {"Set-Cookie": f"kami_portal={tok}; Path=/; HttpOnly; SameSite=Lax"}
+                    return self._send(200, outer.portal_data(), extra_headers=eh)
                 if path == "/portal/file":
                     if not self._key_ok():
                         return self._send(401, {"ok": False, "error": "key"})
@@ -327,21 +363,30 @@ class PhoneServer:
                     ctype = mimetypes.guess_type(fpath)[0] or "application/octet-stream"
                     fsize = os.path.getsize(fpath)
                     rng = self.headers.get("Range") or ""
-                    start, end = 0, fsize - 1
-                    if rng.startswith("bytes="):
+                    start, end = 0, max(0, fsize - 1)
+                    partial = False
+                    if rng.startswith("bytes=") and fsize > 0:
                         try:
                             p1, p2 = rng[6:].split("-", 1)
-                            if p1.strip():
-                                start = max(0, min(fsize - 1, int(p1)))
-                            if p2.strip():
-                                end = max(start, min(fsize - 1, int(p2)))
+                            p1s, p2s = p1.strip(), p2.strip()
+                            if p1s:
+                                start = max(0, min(fsize - 1, int(p1s)))
+                                end = max(start, min(fsize - 1, int(p2s))) if p2s else fsize - 1
+                                partial = True
+                            elif p2s:
+                                n = int(p2s)
+                                if n > 0:
+                                    start = max(0, fsize - n)
+                                    end = fsize - 1
+                                    partial = True
                         except ValueError:
-                            pass
+                            partial, start, end = False, 0, fsize - 1
+                    if partial:
                         self.send_response(206)
                         self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
                     else:
                         self.send_response(200)
-                    length = max(0, end - start + 1)
+                    length = 0 if fsize == 0 else max(0, end - start + 1)
                     self.send_header("Content-Type", ctype)
                     self.send_header("Accept-Ranges", "bytes")
                     self.send_header("Content-Length", str(length))
@@ -555,17 +600,9 @@ button{background:#7c4dff;border-color:#9d6bff;cursor:pointer;font-weight:600}
 <a id="deckGo" href="deck" style="display:block;margin-top:10px;color:#C9B3FF">🎛 Kami Deck: özelleştirilebilir tuşlar + uzaktan indirme yönetimi →</a>
 <a id="portalGo" href="portal" style="display:block;margin-top:8px;color:#2EE6A6">🍿 Kaldığın Yerden Devam Et (iPhone / iPad Medya &amp; Okuma Portalı) →</a></div>
 <script>
-const qp=new URLSearchParams(location.search).get('k');
 const kEl=document.getElementById('key');
-kEl.value=qp||localStorage.getItem('kamiKey')||'';
-if(qp)localStorage.setItem('kamiKey',qp);
-const syncDeckHref=()=>{
-  const dk=document.getElementById('deckGo'),pt=document.getElementById('portalGo'),kv=kEl.value.trim();
-  if(dk)dk.href=kv?('deck?k='+encodeURIComponent(kv)):'deck';
-  if(pt)pt.href=kv?('portal?k='+encodeURIComponent(kv)):'portal';
-};
-syncDeckHref();
-kEl.oninput=()=>{localStorage.setItem('kamiKey',kEl.value.trim());syncDeckHref();};
+kEl.value=localStorage.getItem('kamiKey')||'';
+kEl.oninput=()=>{localStorage.setItem('kamiKey',kEl.value.trim());};
 async function uploadBlob(name,kind,blob){
   const r=new FileReader();
   r.onload=async()=>{
@@ -625,29 +662,27 @@ button,a.btn.pri{background:#7C4DFF;border-color:#9D6BFF;font-weight:600;cursor:
 <div id="media"><small style="color:#9A90AB">Yükleniyor…</small></div>
 <script>
 const kEl=document.getElementById('k'),stMsg=document.getElementById('stMsg');
-const qp=new URLSearchParams(location.search).get('k');
-kEl.value=qp||localStorage.getItem('kamiKey')||'';
-if(qp)localStorage.setItem('kamiKey',qp);
+kEl.value=localStorage.getItem('kamiKey')||'';
 const esc=(s)=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const basePrefix=location.pathname.replace(/\\/+$/,'').replace(/\\/portal$/,'');
 async function load(){
   const kv=kEl.value.trim();
-  if(!kv){stMsg.textContent='Lütfen Kami > Ayarlar > Telefon bölümündeki anahtarı gir.';return;}
-  localStorage.setItem('kamiKey',kv);
-  const url=(basePrefix?basePrefix+'/portal/data':'portal/data')+'?k='+encodeURIComponent(kv);
-  const r=await fetch(url,{headers:{'X-Kami-Key':kv}}).then(x=>x.json()).catch((e)=>({ok:false,error:String(e)}));
+  if(kv)localStorage.setItem('kamiKey',kv);
+  const url=(basePrefix?basePrefix+'/portal/data':'portal/data');
+  const hdr=kv?{'X-Kami-Key':kv}:{};
+  const r=await fetch(url,{credentials:'same-origin',headers:hdr}).then(x=>x.json()).catch((e)=>({ok:false,error:String(e)}));
   if(!r||!r.ok){
-    stMsg.textContent=r?.error==='key'||r?.error==='password'?'Anahtar hatalı veya eksik.':'Kami PC sunucusuna ulaşılamadı.';
+    stMsg.textContent=r?.error==='key'||r?.error==='password'?'Lütfen Kami > Ayarlar > Telefon bölümündeki anahtarı gir.':'Kami PC sunucusuna ulaşılamadı.';
     return;
   }
   stMsg.textContent='';
-  const fileBase=(basePrefix?basePrefix+'/portal/file':'portal/file')+'?k='+encodeURIComponent(kv);
+  const fileBase=(basePrefix?basePrefix+'/portal/file':'portal/file');
   document.getElementById('books').innerHTML=(r.books||[]).map(b=>{
-    const fUrl=b.path?(fileBase+'&p='+encodeURIComponent(b.path)+'#page='+b.page):'';
+    const fUrl=b.path?(fileBase+'?p='+encodeURIComponent(b.path)+'#page='+b.page):'';
     return `<div class="card"><b>${esc(b.title)}</b><div class="bar"><i style="width:${b.pct}%"></i></div><small style="color:#2EE6A6">Sayfa ${b.page} / ${b.count} (%${b.pct})</small>${fUrl?`<div class="acts"><a class="btn pri" href="${fUrl}" target="_blank">📱 Safari'de Oku (S.${b.page})</a></div>`:''}</div>`;
   }).join('')||'<small style="color:#9A90AB">Henüz açık belge yok.</small>';
   document.getElementById('media').innerHTML=(r.media||[]).map(m=>{
-    const fUrl=m.path?(fileBase+'&p='+encodeURIComponent(m.path)):'';
+    const fUrl=m.path?(fileBase+'?p='+encodeURIComponent(m.path)):'';
     return `<div class="card"><b>${esc(m.name)}</b><div class="bar"><i style="width:${m.pct}%"></i></div><small style="color:#C4B5FD">${esc(m.label||'Hazır')}</small>${fUrl?`<div class="acts"><a class="btn pri" href="${fUrl}" target="_blank">▶ Safari'de Oynat</a></div>`:''}</div>`;
   }).join('')||'<small style="color:#9A90AB">Henüz medya kaydı yok.</small>';
 }

@@ -38,8 +38,87 @@ from app import paths
 log = logging.getLogger(__name__)
 _LOCK = threading.Lock()
 _BAD: dict[str, list[float]] = {}
+_SESSIONS: dict[str, dict[str, float]] = {}   # cid -> {cookie_token: created_ts}
 MAX_HOURS = 24 * 30
 ON_EVENT = None   # (tur, kapsul_adi, ayrinti) -> masaustu bildirimi (api baglar): "dl" | "comment"
+
+
+def hash_pw(password: str) -> str:
+    """Parolayi tuzlu scrypt ozeti olarak sakla (bos parola -> bos dize)."""
+    pw = str(password or "")
+    if not pw:
+        return ""
+    salt = os.urandom(16)
+    dk = hashlib.scrypt(pw.encode("utf-8"), salt=salt, n=16384, r=8, p=1, dklen=32)
+    return f"scrypt${salt.hex()}${dk.hex()}"
+
+
+def _verify_pw(stored: str, given: str) -> bool:
+    if not stored:
+        return True
+    if not given:
+        return False
+    if stored.startswith("scrypt$"):
+        parts = stored.split("$")
+        if len(parts) != 3:
+            return False
+        try:
+            salt = bytes.fromhex(parts[1])
+            want = bytes.fromhex(parts[2])
+        except ValueError:
+            return False
+        got = hashlib.scrypt(given.encode("utf-8"), salt=salt, n=16384, r=8, p=1, dklen=len(want))
+        return hmac.compare_digest(got, want)
+    # Geriye donuk uyumluluk: eski kapsul.json kayitlarindaki tuzsuz SHA-256
+    raw_hash = hashlib.sha256(given.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(raw_hash.encode(), stored.lower().encode()) or hmac.compare_digest(given.lower().encode(), stored.lower().encode())
+
+
+def _client_ip(h: Any) -> str:
+    peer = (h.client_address[0] if getattr(h, "client_address", None) else "") or ""
+    if peer in ("127.0.0.1", "::1"):
+        cf = str(h.headers.get("CF-Connecting-IP") or "").strip()
+        if cf:
+            return cf
+    return peer
+
+
+def _cookie_token(h: Any, cid: str) -> str:
+    raw = str(h.headers.get("Cookie") or "")
+    name = f"kami_c_{cid}"
+    for part in raw.split(";"):
+        k, sep, v = part.strip().partition("=")
+        if sep and k == name:
+            return v.strip()
+    return ""
+
+
+def _session_ok(h: Any, cid: str) -> bool:
+    tok = _cookie_token(h, cid)
+    if not tok:
+        return False
+    sess = _SESSIONS.get(cid)
+    if not sess:
+        return False
+    ts = sess.get(tok)
+    if not ts or (time.time() - ts > 86400 * 7):
+        sess.pop(tok, None)
+        return False
+    return True
+
+
+def _issue_session(cid: str) -> str:
+    tok = secrets.token_urlsafe(24)
+    sess = _SESSIONS.setdefault(cid, {})
+    if len(sess) > 200:
+        now = time.time()
+        for k in list(sess):
+            if now - sess[k] > 86400 * 7:
+                sess.pop(k, None)
+        while len(sess) > 200:
+            sess.pop(next(iter(sess)))
+    sess[tok] = time.time()
+    return tok
 
 
 def _notify(kind: str, it: dict[str, Any], detail: str = "") -> None:
@@ -77,7 +156,7 @@ def _prune(items: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
 def create(path: str | list[str], hours: float = 24, password: str = "", max_dl: int = 0, note: str = "") -> dict[str, Any]:
     """Tek dosya ya da birden fazla dosya (tek link, dosya listesi + hepsini zip)."""
     paths_ = [path] if isinstance(path, str) else list(path or [])
-    files = [Path(x) for x in paths_ if x and Path(x).is_file()]
+    files = [Path(x) for x in paths_ if x and Path(x).is_file()][:200]
     if not files:
         return {"ok": False, "error": "Dosya bulunamadi"}
     hours = max(0.25, min(float(hours or 24), MAX_HOURS))
@@ -85,10 +164,10 @@ def create(path: str | list[str], hours: float = 24, password: str = "", max_dl:
     p = files[0]
     item = {"path": str(p), "name": p.name if len(files) == 1 else f"{len(files)} dosya ({p.name}…)",
             "size": sum(f.stat().st_size for f in files), "created": time.time(),
-            "expires": time.time() + hours * 3600, "pw": hashlib.sha256(password.encode("utf-8")).hexdigest() if password else "",
+            "expires": time.time() + hours * 3600, "pw": hash_pw(password),
             "max_dl": max(0, int(max_dl or 0)), "downloads": 0, "note": str(note or "")[:200], "comments": []}
     if len(files) > 1:
-        item["files"] = [{"path": str(f), "name": f.name, "size": f.stat().st_size} for f in files[:200]]
+        item["files"] = [{"path": str(f), "name": f.name, "size": f.stat().st_size} for f in files]
     with _LOCK:
         items = _prune(_load())
         items[cid] = item
@@ -156,7 +235,7 @@ def pw_ok(it: dict[str, Any], given: str, ip: str) -> bool:
     if len(hits) >= 10:
         _BAD[ip] = hits
         return False
-    if given and hmac.compare_digest(given.lower().encode(), it["pw"].encode()):
+    if _verify_pw(str(it["pw"]), given):
         return True
     hits.append(now)
     _BAD[ip] = hits[-20:]
@@ -225,38 +304,52 @@ const LOCKED = {_js(bool(it.get("pw")))}, KIND = {_js(kind)}, BASE = location.pa
 const FILES = {_js([{"name": f["name"], "size": _fmt_size(f["size"])} for f in files])};
 document.getElementById("cs").onclick = async () => {{
   const t = document.getElementById("ct").value.trim(); if (!t) return;
-  const r = await fetch(BASE + "/comment" + (key ? "?p=" + key : ""), {{ method: "POST", headers: {{ "Content-Type": "application/json" }}, body: JSON.stringify({{ name: document.getElementById("cn").value, text: t }}) }});
+  const r = await fetch(BASE + "/comment", {{ method: "POST", credentials: "same-origin", headers: {{ "Content-Type": "application/json" }}, body: JSON.stringify({{ name: document.getElementById("cn").value, text: t }}) }});
   if (r.ok) {{ const d = document.createElement("div"); d.className = "cmi"; d.innerHTML = "<b></b><span></span>"; d.querySelector("b").textContent = document.getElementById("cn").value || "Misafir"; d.querySelector("span").textContent = t; document.getElementById("cms").appendChild(d); document.getElementById("ct").value = ""; }}
 }};
 let left = {left}; const L = document.getElementById("left");
 const fmt = (s) => s > 86400 ? Math.floor(s / 86400) + " gün" : s > 3600 ? Math.floor(s / 3600) + " saat" : Math.max(1, Math.floor(s / 60)) + " dakika";
 L.textContent = fmt(left); setInterval(() => {{ left -= 30; L.textContent = fmt(left); }}, 30000);
-async function h(t) {{ const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)); return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join(""); }}
-let key = "";
+let unlocked = !LOCKED;
 function show() {{
-  const q = key ? "?p=" + key : "";
-  document.getElementById("dl").href = BASE + (FILES.length > 1 ? "/zip" : "/dl") + q;
-  document.getElementById("fl").innerHTML = FILES.length > 1 ? FILES.map((f, i) => `<a href="${{BASE}}/dl/${{i}}${{q}}"><span>${{f.name.replace(/[<>&]/g, "")}}</span><small>${{f.size}}</small></a>`).join("") : "";
+  document.getElementById("dl").href = BASE + (FILES.length > 1 ? "/zip" : "/dl");
+  document.getElementById("fl").innerHTML = FILES.length > 1 ? FILES.map((f, i) => `<a href="${{BASE}}/dl/${{i}}"><span>${{f.name.replace(/[<>&]/g, "")}}</span><small>${{f.size}}</small></a>`).join("") : "";
   const pv = document.getElementById("pv");
-  if (KIND === "image") pv.innerHTML = `<img src="${{BASE}}/raw${{q}}" alt="">`;
-  else if (KIND === "video") pv.innerHTML = `<video src="${{BASE}}/raw${{q}}" controls playsinline preload="metadata"></video>`;
-  else if (KIND === "audio") pv.innerHTML = `<audio src="${{BASE}}/raw${{q}}" controls preload="metadata"></audio>`;
+  if (KIND === "image") pv.innerHTML = `<img src="${{BASE}}/raw" alt="">`;
+  else if (KIND === "video") pv.innerHTML = `<video src="${{BASE}}/raw" controls playsinline preload="metadata"></video>`;
+  else if (KIND === "audio") pv.innerHTML = `<audio src="${{BASE}}/raw" controls preload="metadata"></audio>`;
 }}
 if (!LOCKED) show();
 else {{
-  document.getElementById("pw").hidden = false;
-  const dl = document.getElementById("dl"); dl.textContent = "Aç";
+  const dl = document.getElementById("dl");
+  fetch(BASE + "/check", {{ credentials: "same-origin" }}).then((r) => {{
+    if (r.ok) {{ unlocked = true; show(); }}
+    else {{ document.getElementById("pw").hidden = false; dl.textContent = "Aç"; }}
+  }}).catch(() => {{ document.getElementById("pw").hidden = false; dl.textContent = "Aç"; }});
   dl.onclick = async (e) => {{
-    if (key) return;
+    if (unlocked) return;
     e.preventDefault();
-    const k = await h(document.getElementById("pwi").value);
-    const r = await fetch(BASE + "/check?p=" + k);
-    if (r.ok) {{ key = k; document.getElementById("pw").hidden = true; dl.textContent = "İndir"; show(); }}
+    const r = await fetch(BASE + "/unlock", {{
+      method: "POST",
+      credentials: "same-origin",
+      headers: {{ "Content-Type": "application/json" }},
+      body: JSON.stringify({{ password: document.getElementById("pwi").value }})
+    }});
+    if (r.ok) {{ unlocked = true; document.getElementById("pw").hidden = true; dl.textContent = "İndir"; show(); }}
     else document.getElementById("pwe").textContent = r.status === 429 ? "Çok fazla deneme, 1 dakika bekle." : "Şifre yanlış.";
   }};
   document.getElementById("pwi").addEventListener("keydown", (e) => e.key === "Enter" && dl.click());
 }}
 </script></body></html>"""
+
+
+def _auth_ok(h: Any, cid: str, it: dict[str, Any], ip: str) -> bool:
+    if not it.get("pw"):
+        return True
+    if _session_ok(h, cid):
+        return True
+    hdr = str(h.headers.get("X-Kami-Key") or "")[:256]
+    return bool(hdr) and pw_ok(it, hdr, ip)
 
 
 def serve(h: Any, rest: list[str], query: dict[str, list[str]], host: str = "") -> None:
@@ -269,8 +362,8 @@ def serve(h: Any, rest: list[str], query: dict[str, list[str]], host: str = "") 
     sub = rest[1] if len(rest) > 1 else ""
     if not sub:
         return h._send(page(cid, it, host).encode("utf-8"), "text/html; charset=utf-8")
-    ip = str(h.headers.get("CF-Connecting-IP") or (h.client_address[0] if h.client_address else ""))
-    if not pw_ok(it, (query.get("p") or [""])[0][:128], ip):
+    ip = _client_ip(h)
+    if not _auth_ok(h, cid, it, ip):
         return h._send(b'{"ok":false}', "application/json", code=429 if len(_BAD.get(ip, [])) >= 10 else 401)
     if sub == "check":
         return h._send(b'{"ok":true}', "application/json")
@@ -292,13 +385,23 @@ def serve(h: Any, rest: list[str], query: dict[str, list[str]], host: str = "") 
 
 
 def serve_post(h: Any, rest: list[str], query: dict[str, list[str]], body: dict[str, Any]) -> None:
-    """POST /c/<id>/comment {name, text}."""
+    """POST /c/<id>/unlock veya POST /c/<id>/comment."""
     cid = rest[0] if rest else ""
     it = get(cid)
-    if not it or len(rest) < 2 or rest[1] != "comment":
+    if not it or len(rest) < 2:
         return h._err(404)
-    ip = str(h.headers.get("CF-Connecting-IP") or (h.client_address[0] if h.client_address else ""))
-    if not pw_ok(it, (query.get("p") or [""])[0][:128], ip):
+    ip = _client_ip(h)
+    sub = rest[1]
+    if sub == "unlock":
+        pw = str(body.get("password") or "")[:256]
+        if not pw_ok(it, pw, ip):
+            return h._send(b'{"ok":false}', "application/json", code=429 if len(_BAD.get(ip, [])) >= 10 else 401)
+        tok = _issue_session(cid)
+        cookie = f"kami_c_{cid}={tok}; Path=/c/{cid}; HttpOnly; SameSite=Lax"
+        return h._send(b'{"ok":true}', "application/json", extra_headers={"Set-Cookie": cookie})
+    if sub != "comment":
+        return h._err(404)
+    if not _auth_ok(h, cid, it, ip):
         return h._send(b'{"ok":false}', "application/json", code=401)
     ok = add_comment(cid, str(body.get("name", "")), str(body.get("text", "")), ip)
     h._send(json.dumps({"ok": ok}).encode(), "application/json", code=200 if ok else 429)

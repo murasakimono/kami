@@ -1243,7 +1243,7 @@
       bd.innerHTML = `
         <div class="eco-card">
           <strong>Kami Booth / Pad / Snap (iPhone & iPad Köprüsü)</strong>
-          <div class="eco-hint">Canlı 48kHz mikrofon kaydı (Booth) için Kami Oda tünelinden gelen HTTPS adresini kullan (anahtar URL'de otomatik gelir):</div>
+          <div class="eco-hint">Canlı 48kHz mikrofon kaydı (Booth) için Kami Oda tünelinden gelen HTTPS adresini kullan (anahtarı bir kez gir; tarayıcı hatırlar):</div>
           <div class="eco-hint">HTTPS Tünel (Önerilen): <code>${esc(br.tunnel_url || "(Kami Oda açık değil — sadece yerel ağ)")}</code></div>
           <div class="eco-hint">Yerel Ağ: <code>${esc(br.url || "http://localhost:47322/bridge")}</code> · Anahtar: <code>${esc(br.key || "(Ayarlar > Telefon)")}</code></div>
           <div class="eco-row"><button class="eco-btn sec" id="ecoBrCopy">Bağlantıyı Kopyala</button></div>

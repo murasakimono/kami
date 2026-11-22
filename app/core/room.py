@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import logging
@@ -313,6 +314,37 @@ def soundboard_file(key: str) -> bytes | None:
     return data
 
 
+def hash_pw(password: str) -> str:
+    """Oda parolasini tuzlu scrypt ozeti olarak sakla."""
+    pw = str(password or "").strip()
+    if not pw:
+        return ""
+    salt = os.urandom(16)
+    dk = hashlib.scrypt(pw.encode("utf-8"), salt=salt, n=16384, r=8, p=1, dklen=32)
+    return f"scrypt${salt.hex()}${dk.hex()}"
+
+
+def _verify_pw(stored: str, given: str) -> bool:
+    if not stored:
+        return True
+    if not given:
+        return False
+    if stored.startswith("scrypt$"):
+        parts = stored.split("$")
+        if len(parts) != 3:
+            return False
+        try:
+            salt = bytes.fromhex(parts[1])
+            want = bytes.fromhex(parts[2])
+        except ValueError:
+            return False
+        got = hashlib.scrypt(given.encode("utf-8"), salt=salt, n=16384, r=8, p=1, dklen=len(want))
+        return hmac.compare_digest(got, want)
+    # Eski SHA-256 kayitlari icin: ham parola veya dogrudan SHA-256 ozeti
+    raw_hash = hashlib.sha256(given.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(raw_hash.encode(), stored.lower().encode()) or hmac.compare_digest(given.lower().encode(), stored.lower().encode())
+
+
 class RoomServer:
     def __init__(self) -> None:
         self.room: Room | None = None
@@ -326,8 +358,31 @@ class RoomServer:
         self._ice: tuple[float, list] = (0.0, [])
         self.stable: Callable[[], tuple[str, str]] = lambda: ("", "")   # (workers.dev adresi, gizli anahtar)
         self.on_join: Callable[[str], None] | None = None
-        self.key_hash: Callable[[], str] = lambda: ""   # oda sifresi: sha256(sifre) hex; bos = sifresiz
+        self.key_hash: Callable[[], str] = lambda: ""   # oda sifresi: scrypt$/sha256; bos = sifresiz
+        self.host_token: str = secrets.token_urlsafe(24)
+        self._sessions: dict[str, float] = {}
         self._bad: dict[str, list[float]] = {}           # ip -> yanlis sifre zamanlari (kaba kuvvet freni)
+
+    def session_ok(self, tok: str) -> bool:
+        if not tok:
+            return False
+        ts = self._sessions.get(tok)
+        if not ts or (time.time() - ts > 86400 * 7):
+            self._sessions.pop(tok, None)
+            return False
+        return True
+
+    def issue_session(self) -> str:
+        tok = secrets.token_urlsafe(24)
+        if len(self._sessions) > 200:
+            now = time.time()
+            for k in list(self._sessions):
+                if now - self._sessions[k] > 86400 * 7:
+                    self._sessions.pop(k, None)
+            while len(self._sessions) > 200:
+                self._sessions.pop(next(iter(self._sessions)))
+        self._sessions[tok] = time.time()
+        return tok
 
     # ---- oda sifresi
     def locked(self) -> bool:
@@ -340,13 +395,14 @@ class RoomServer:
         want = self.key_hash() if self.locked() else ""
         if not want:
             return True
+        if given and hmac.compare_digest(given.encode(), self.host_token.encode()):
+            return True
         now = time.time()
         hits = [t for t in self._bad.get(ip, []) if now - t < 60]
         if len(hits) >= 10:            # dakikada 10 yanlis: o adres 1 dk bekler
             self._bad[ip] = hits
             return False
-        import hmac
-        if given and hmac.compare_digest(given.lower().encode(), want.lower().encode()):
+        if _verify_pw(want, given):
             return True
         hits.append(now)
         self._bad[ip] = hits[-20:]
@@ -526,7 +582,7 @@ def _handler(srv: RoomServer):
 
         def end_headers(self):   # Kami Player (file://) yayinci olarak baglanabilsin
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Kami-Key")
             super().end_headers()
 
         def do_OPTIONS(self):
@@ -535,16 +591,20 @@ def _handler(srv: RoomServer):
             self.send_header("Content-Length", "0")
             self.end_headers()
 
-        def _send(self, data: bytes, ctype: str, cache: str = "no-store", code: int = 200) -> None:
+        def _send(self, data: bytes, ctype: str, cache: str = "no-store", code: int = 200,
+                  extra_headers: dict[str, str] | None = None) -> None:
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", cache)
+            for hk, hv in (extra_headers or {}).items():
+                self.send_header(hk, hv)
             self.end_headers()
             self.wfile.write(data)
 
-        def _json(self, obj: Any, code: int = 200) -> None:
-            self._send(json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", code=code)
+        def _json(self, obj: Any, code: int = 200, extra_headers: dict[str, str] | None = None) -> None:
+            self._send(json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8",
+                       code=code, extra_headers=extra_headers)
 
         def _err(self, code: int) -> None:
             self.send_response(code)
@@ -552,10 +612,30 @@ def _handler(srv: RoomServer):
             self.end_headers()
 
         def _ip(self) -> str:
-            return str(self.headers.get("CF-Connecting-IP") or (self.client_address[0] if self.client_address else ""))
+            peer = (self.client_address[0] if self.client_address else "") or ""
+            if peer in ("127.0.0.1", "::1"):
+                cf = str(self.headers.get("CF-Connecting-IP") or "").strip()
+                if cf:
+                    return cf
+            return peer
 
-        def _key_ok(self, q: dict) -> bool:
-            return srv.key_ok((q.get("k") or [""])[0][:128], self._ip())
+        def _cookie(self, name: str) -> str:
+            raw = str(self.headers.get("Cookie") or "")
+            for part in raw.split(";"):
+                ck, sep, cv = part.strip().partition("=")
+                if sep and ck == name:
+                    return cv.strip()
+            return ""
+
+        def _key_ok(self, q: dict | None = None) -> bool:
+            if not srv.locked():
+                return True
+            if srv.room:
+                tok = self._cookie(f"kami_room_{srv.room.id}")
+                if tok and srv.session_ok(tok):
+                    return True
+            hdr = str(self.headers.get("X-Kami-Key") or "")[:256]
+            return bool(hdr) and srv.key_ok(hdr, self._ip())
 
         def do_GET(self):
             if self.path.startswith("/c/"):   # Kami Kapsul paylasim linki (oda kimligi gerekmez)
@@ -621,19 +701,28 @@ def _handler(srv: RoomServer):
                     ph = getattr(srv, "phone_srv", None)
                     if not ph:
                         return self._json({"ok": False, "error": "phone_off"}, 503)
-                    exp = ph.key()
-                    got = str(self.headers.get("X-Kami-Key") or (q.get("k") or [""])[0])
-                    if not exp or not hmac.compare_digest(got.encode(), exp.encode()):
-                        return self._json({"ok": False, "error": "key"}, 401)
-                    self._json(ph.portal_data())
+                    ptok = self._cookie("kami_portal")
+                    sess_ok = bool(ptok and hasattr(ph, "session_ok") and ph.session_ok(ptok))
+                    if not sess_ok:
+                        exp = ph.key()
+                        got = str(self.headers.get("X-Kami-Key") or "")
+                        if not exp or not hmac.compare_digest(got.encode(), exp.encode()):
+                            return self._json({"ok": False, "error": "key"}, 401)
+                    eh = None
+                    if not sess_ok and hasattr(ph, "issue_session"):
+                        eh = {"Set-Cookie": f"kami_portal={ph.issue_session()}; Path=/; HttpOnly; SameSite=Lax"}
+                    self._json(ph.portal_data(), extra_headers=eh)
                 elif rest == ["portal", "file"]:
                     ph = getattr(srv, "phone_srv", None)
                     if not ph:
                         return self._err(503)
-                    exp = ph.key()
-                    got = str(self.headers.get("X-Kami-Key") or (q.get("k") or [""])[0])
-                    if not exp or not hmac.compare_digest(got.encode(), exp.encode()):
-                        return self._err(401)
+                    ptok = self._cookie("kami_portal")
+                    sess_ok = bool(ptok and hasattr(ph, "session_ok") and ph.session_ok(ptok))
+                    if not sess_ok:
+                        exp = ph.key()
+                        got = str(self.headers.get("X-Kami-Key") or "")
+                        if not exp or not hmac.compare_digest(got.encode(), exp.encode()):
+                            return self._err(401)
                     fpath = ph.resolve_portal_file(str((q.get("p") or [""])[0]))
                     if not fpath or not os.path.isfile(fpath):
                         return self._err(404)
@@ -643,18 +732,25 @@ def _handler(srv: RoomServer):
                     # Range destekleniyor (video sarma/seek + telefonda 206 istegi).
                     fsize = os.path.getsize(fpath)
                     rng = self.headers.get("Range") or ""
-                    start, end = 0, fsize - 1
-                    partial = rng.startswith("bytes=")
-                    if partial:
+                    start, end = 0, max(0, fsize - 1)
+                    partial = False
+                    if rng.startswith("bytes=") and fsize > 0:
                         try:
                             p1, p2 = rng[6:].split("-", 1)
-                            if p1.strip():
-                                start = max(0, min(fsize - 1, int(p1)))
-                            if p2.strip():
-                                end = max(start, min(fsize - 1, int(p2)))
+                            p1s, p2s = p1.strip(), p2.strip()
+                            if p1s:
+                                start = max(0, min(fsize - 1, int(p1s)))
+                                end = max(start, min(fsize - 1, int(p2s))) if p2s else fsize - 1
+                                partial = True
+                            elif p2s:
+                                n = int(p2s)
+                                if n > 0:
+                                    start = max(0, fsize - n)
+                                    end = fsize - 1
+                                    partial = True
                         except ValueError:
                             partial, start, end = False, 0, fsize - 1
-                    length = max(0, end - start + 1)
+                    length = 0 if fsize == 0 else max(0, end - start + 1)
                     self.send_response(206 if partial else 200)
                     self.send_header("Content-Type", ctype)
                     self.send_header("Accept-Ranges", "bytes")
@@ -771,11 +867,17 @@ def _handler(srv: RoomServer):
                 body = json.loads(self.rfile.read(min(n, 200000)) or b"{}")
             except ValueError:
                 return self._err(400)
+            if k == "unlock":
+                pw = str((body if isinstance(body, dict) else {}).get("password") or "")[:256]
+                if not srv.key_ok(pw, self._ip()):
+                    return self._json({"ok": False, "error": "password"}, 401)
+                tok = srv.issue_session()
+                cookie = f"kami_room_{r.id}={tok}; Path=/{r.id}; HttpOnly; SameSite=Lax"
+                return self._json({"ok": True}, extra_headers={"Set-Cookie": cookie})
             pid = str(body.get("id", ""))[:40]
             if not pid:
                 return self._err(400)
-            from urllib.parse import parse_qs, urlsplit
-            if not self._key_ok(parse_qs(urlsplit(self.path).query)):
+            if not self._key_ok():
                 return self._json({"ok": False, "error": "password"}, 401)
             if k == "sig":
                 return self._json({"ok": r.signal(pid, str(body.get("to", ""))[:40], body.get("data"))})

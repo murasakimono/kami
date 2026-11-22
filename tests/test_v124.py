@@ -32,12 +32,12 @@ def test_doctor_runs_all_checks(tmp_path, monkeypatch):
 
 
 def test_room_password_and_soundboard():
-    from app.core.room import RoomServer, soundboard_list
+    import http.cookiejar
+    from app.core.room import RoomServer, hash_pw, soundboard_list
     sounds = soundboard_list()
     assert len(sounds) >= 20 and all({"id", "label", "cat"} <= set(s) for s in sounds)
     srv = RoomServer()
-    pw = hashlib.sha256(b"gizli").hexdigest()
-    srv.key_hash = lambda: pw
+    srv.key_hash = lambda: hash_pw("gizli")
     srv.start("Test", tunnel=False, room_id="odatest123")
     try:
         base = f"http://127.0.0.1:{srv.httpd.server_address[1]}/odatest123/"
@@ -48,9 +48,20 @@ def test_room_password_and_soundboard():
             raise AssertionError("sifresiz girdi")
         except urllib.error.HTTPError as e:
             assert e.code == 401
-        ok = json.loads(urllib.request.urlopen(base + "ice?k=" + pw).read())
-        assert "iceServers" in ok
-        lst = json.loads(urllib.request.urlopen(base + "sb?k=" + pw).read())
+        # Eski ?k= sorgu parametresi artik kabul edilmemeli
+        try:
+            urllib.request.urlopen(base + "ice?k=gizli")
+            raise AssertionError("URL query ile girdi")
+        except urllib.error.HTTPError as e:
+            assert e.code == 401
+        # X-Kami-Key basligi veya POST /unlock oturum cerezi ile giris
+        req_hdr = urllib.request.Request(base + "ice", headers={"X-Kami-Key": "gizli"})
+        assert "iceServers" in json.loads(urllib.request.urlopen(req_hdr).read())
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        ureq = urllib.request.Request(base + "unlock", data=json.dumps({"password": "gizli"}).encode(),
+                                      headers={"Content-Type": "application/json"})
+        assert json.loads(opener.open(ureq).read())["ok"] is True
+        lst = json.loads(opener.open(base + "sb").read())
         assert lst["sounds"]
     finally:
         srv.stop()
@@ -90,6 +101,7 @@ def test_kasa_falls_back_without_tool(tmp_path, monkeypatch):
 
 
 def test_kapsul_share_page_range_password(tmp_path, monkeypatch):
+    import http.cookiejar
     monkeypatch.setattr("app.core.kapsul._store", lambda: tmp_path / "kapsul.json")
     from app.core import kapsul
     from app.core.room import RoomServer
@@ -103,16 +115,25 @@ def test_kapsul_share_page_range_password(tmp_path, monkeypatch):
         base = f"http://127.0.0.1:{srv.httpd.server_address[1]}/c/{r['id']}"
         html_ = urllib.request.urlopen(base).read().decode()
         assert "KAMI KAPSÜL" in html_ and "şarkı demo.mp3" in html_
+        assert "?p=" not in html_
         try:
             urllib.request.urlopen(base + "/raw")
             raise AssertionError("sifresiz indi")
         except urllib.error.HTTPError as e:
             assert e.code == 401
-        k = hashlib.sha256(b"1234").hexdigest()
-        req = urllib.request.Request(base + "/raw?p=" + k, headers={"Range": "bytes=10-19"})
-        resp = urllib.request.urlopen(req)
+        try:
+            urllib.request.urlopen(base + "/raw?p=1234")
+            raise AssertionError("URL query ile indi")
+        except urllib.error.HTTPError as e:
+            assert e.code == 401
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        ureq = urllib.request.Request(base + "/unlock", data=json.dumps({"password": "1234"}).encode(),
+                                      headers={"Content-Type": "application/json"})
+        assert json.loads(opener.open(ureq).read())["ok"] is True
+        req = urllib.request.Request(base + "/raw", headers={"Range": "bytes=10-19"})
+        resp = opener.open(req)
         assert resp.status == 206 and resp.read() == bytes(range(10, 20))
-        dl = urllib.request.urlopen(base + "/dl?p=" + k)
+        dl = opener.open(base + "/dl")
         assert len(dl.read()) == 256 * 40 and "filename*=UTF-8''" in dl.headers["Content-Disposition"]
         try:   # indirme siniri 1: kapsul oldu
             urllib.request.urlopen(base)

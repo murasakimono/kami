@@ -103,7 +103,7 @@ def cover_embed(path: str, data: bytes) -> bool:
                 tags = ID3()
             tags.delall("APIC")
             tags.add(APIC(encoding=3, mime=mime, type=3, desc="Cover", data=data))
-            tags.save(path, v2_version=4)
+            tags.save(path, v2_version=3)
             return True
         if ext == ".flac":
             from mutagen.flac import FLAC, Picture

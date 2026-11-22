@@ -258,7 +258,7 @@ dialog[open] { animation: rise .16s ease-out; }
 .dialog-head h2 { margin: 0; font: 600 20px/1.2 var(--font-display); letter-spacing: .3px; }
 fieldset { border: 1px solid rgba(157, 107, 255, .14); border-radius: 12px; padding: 16px 20px; margin: 20px 0 0; background: rgba(255, 255, 255, .018); }
 legend { float: left; width: 100%; padding: 0 0 10px; margin: 0 0 10px; border-bottom: 1px solid rgba(157, 107, 255, .12); font: 600 13px var(--font-display); color: var(--accent); letter-spacing: .3px; }
-legend + * { clear: both; }
+legend + *, legend ~ * { clear: both; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; }
 .row.stack { flex-direction: column; align-items: stretch; gap: 6px; }
 .row input[type=number] { width: 110px; }

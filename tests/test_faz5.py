@@ -104,11 +104,12 @@ def test_hunter_preview_archive_org():
     assert "archive.org/download/demo-id/track.mp3" in res["stream"]
 
 
-def test_phone_bridge_https_and_query_key():
+def test_phone_bridge_https_and_header_key():
     html = phone_mod._BRIDGE_HTML
     assert "navigator.mediaDevices.getUserMedia" in html
     assert 'accept="audio/*" capture' in html
-    assert "URLSearchParams(location.search).get('k')" in html
+    assert "'X-Kami-Key'" in html
+    assert "URLSearchParams(location.search).get('k')" not in html
 
 
 def test_link_check_content_range_and_html():

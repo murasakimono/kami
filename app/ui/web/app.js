@@ -679,6 +679,11 @@ function bindSettings() {
     if (!r.ok) { toast(T(r.error), true); return; }
     if (el.type === "number") el.value = r.value;
     state.settings[el.name] = r.value;
+    if (el.name === "listenbrainz_token") {
+      state.settings._has_listenbrainz = !!r._has_listenbrainz;
+      el.value = "";
+      if (typeof refreshMediaSettings === "function") refreshMediaSettings();
+    }
     syncToolbar();
     if (["hotkey", "hotkey_enabled", "autostart"].includes(el.name)) setTimeout(refreshDesktop, 300);
     if (el.name === "language") { state.lang = r.value; applyI18n(); }
