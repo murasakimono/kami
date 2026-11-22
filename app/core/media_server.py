@@ -54,15 +54,18 @@ def find_ffprobe(ffmpeg: str) -> str:
     return shutil.which("ffprobe") or ""
 
 
-def probe(ffprobe: str, path: str) -> dict[str, Any]:
+def probe(ffprobe: str, path: str, headers: str = "") -> dict[str, Any]:
     """ffprobe ozeti: sure, goruntu codec'i, ses izleri, gomulu altyazilar, kapak."""
     out: dict[str, Any] = {"duration": 0.0, "vcodec": "", "width": 0, "height": 0, "audio": [], "subs": [], "cover": False,
                            "fonts": [], "tags": {}}
     if not ffprobe:
         return out
     try:
-        r = subprocess.run([ffprobe, "-v", "error", "-show_format", "-show_streams", "-show_chapters", "-of", "json", path],
-                           capture_output=True, timeout=20, creationflags=NO_WINDOW)
+        pcmd = [ffprobe, "-v", "error"]
+        if headers:
+            pcmd += ["-headers", headers]
+        pcmd += ["-show_format", "-show_streams", "-show_chapters", "-of", "json", path]
+        r = subprocess.run(pcmd, capture_output=True, timeout=20, creationflags=NO_WINDOW)
         data = json.loads(r.stdout or b"{}")
     except Exception:
         log.exception("ffprobe basarisiz: %s", path)
@@ -268,17 +271,17 @@ class MediaServer:
         if not self.ffmpeg():
             return {"ok": False, "error": "no_ffmpeg"}
         hdr = "".join(f"{k}: {v}\r\n" for k, v in (headers or {}).items() if k.lower() not in ("accept-encoding",))
-        info = probe(find_ffprobe(self.ffmpeg()), urls[0]) if len(urls) == 1 else {"duration": 0.0, "vcodec": "", "width": 0, "height": 0,
-                                                                                   "audio": [{"codec": "aac", "channels": 2, "lang": "", "title": "", "default": True}],
-                                                                                   "subs": [], "cover": False, "fonts": []}
+        info = probe(find_ffprobe(self.ffmpeg()), urls[0], hdr) if len(urls) == 1 else {"duration": 0.0, "vcodec": "", "width": 0, "height": 0,
+                                                                                        "audio": [{"codec": "aac", "channels": 2, "lang": "", "title": "", "default": True}],
+                                                                                        "subs": [], "cover": False, "fonts": []}
         if len(urls) > 1:
-            v = probe(find_ffprobe(self.ffmpeg()), urls[0])
+            v = probe(find_ffprobe(self.ffmpeg()), urls[0], hdr)
             info.update(vcodec=v["vcodec"], width=v["width"], height=v["height"], duration=v["duration"])
         if duration and not info["duration"]:
             info["duration"] = float(duration)
         if not info["vcodec"] and not info["audio"]:
             kind = kind or "video"
-        kind = "video" if info["vcodec"] else "audio"
+        kind = "video" if (info["vcodec"] or len(urls) > 1 or kind == "video") else "audio"
         mode = "transcode" if info["vcodec"] and info["vcodec"] not in OK_VCODEC else "remux"
         key = secrets.token_urlsafe(9)
         with self._lock:
@@ -372,7 +375,8 @@ class MediaServer:
             return self._files.get(key)
 
     # ---------- ffmpeg akisi ----------
-    def stream_cmd(self, e: dict[str, Any], start: float, audio_index: int, dialog: bool = False) -> list[str]:
+    def stream_cmd(self, e: dict[str, Any], start: float, audio_index: int, dialog: bool = False,
+                   audio_shift_ms: int = 0) -> list[str]:
         ff = self.ffmpeg()
         cmd = [ff, "-hide_banner", "-loglevel", "error", "-nostdin"]
         inputs = e.get("urls") or [e["path"]]
@@ -384,10 +388,11 @@ class MediaServer:
             if start > 0:
                 cmd += ["-ss", f"{start:.3f}"]
             cmd += ["-i", u]
-        if e["kind"] == "video" and len(inputs) > 1:   # ayri goruntu + ses akislari
-            cmd += ["-map", "0:v:0", "-map", "1:a:0"]
-        elif e["kind"] == "video":
-            cmd += ["-map", "0:v:0", "-map", f"0:a:{audio_index}?"]
+        if e["kind"] == "video":
+            if len(inputs) > 1:   # ayri goruntu + ses akislari
+                cmd += ["-map", "0:v:0", "-map", "1:a:0"]
+            else:
+                cmd += ["-map", "0:v:0", "-map", f"0:a:{audio_index}?"]
             if e["mode"] == "transcode":
                 cmd += self.encoder() + ["-pix_fmt", "yuv420p", "-g", "48"]
                 h = int(e["info"].get("height") or 0)
@@ -399,9 +404,16 @@ class MediaServer:
             cmd += ["-map", f"0:a:{audio_index}" if len(inputs) == 1 else "1:a:0", "-vn"]
         auds = e["info"].get("audio") or []
         ch = (auds[audio_index] if audio_index < len(auds) else {}).get("channels", 0)
+        af_parts = ["aresample=async=1:first_pts=0"]
         if dialog and ch >= 6:   # 5.1/7.1 -> stereo, merkez (diyalog) one: c2 = FC, c4/c5 = arka/yan
-            cmd += ["-af", "pan=stereo|c0=c2+0.30*c0+0.30*c4|c1=c2+0.30*c1+0.30*c5"]
-        cmd += ["-c:a", "aac", "-b:a", "224k", "-ac", "2", "-sn", "-dn",
+            af_parts.append("pan=stereo|c0=c2+0.30*c0+0.30*c4|c1=c2+0.30*c1+0.30*c5")
+        shift = max(-3000, min(3000, int(audio_shift_ms or 0)))
+        if shift > 0:
+            af_parts.append(f"adelay={shift}|{shift}")
+        elif shift < 0:
+            af_parts.append(f"atrim=start={abs(shift) / 1000.0:.3f},asetpts=PTS-STARTPTS")
+        cmd += ["-af", ",".join(af_parts)]
+        cmd += ["-avoid_negative_ts", "make_zero", "-c:a", "aac", "-b:a", "224k", "-ac", "2", "-sn", "-dn",
                 "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]
         return cmd
 
@@ -510,7 +522,7 @@ def _make_handler(server: MediaServer):
                     if m in ("remux", "transcode"):   # dogrudan oynatma basarisiz olunca arayuz zorlar
                         e = {**e, "mode": m}
                     self._stream(e, float((q.get("t") or ["0"])[0] or 0), int((q.get("a") or ["0"])[0] or 0), head,
-                                 (q.get("dm") or [""])[0] == "1")
+                                 (q.get("dm") or [""])[0] == "1", int((q.get("as") or ["0"])[0] or 0))
                 elif route == "s":
                     if e["path"].lower().endswith((".ass", ".ssa")) and server.ffmpeg():   # ASS -> duz VTT (yedek gorunum)
                         r = subprocess.run([server.ffmpeg(), "-hide_banner", "-loglevel", "error", "-i", e["path"], "-f", "webvtt", "pipe:1"],
@@ -615,7 +627,8 @@ def _make_handler(server: MediaServer):
                     left -= len(buf)
                     pos += len(buf)
 
-        def _stream(self, e: dict[str, Any], start: float, audio_index: int, head: bool, dialog: bool = False) -> None:
+        def _stream(self, e: dict[str, Any], start: float, audio_index: int, head: bool, dialog: bool = False,
+                    audio_shift_ms: int = 0) -> None:
             if not server.ffmpeg():
                 return self._err(503)
             self.send_response(200)
@@ -626,7 +639,7 @@ def _make_handler(server: MediaServer):
             self.close_connection = True
             if head:
                 return
-            p = server.spawn(server.stream_cmd(e, start, audio_index, dialog))
+            p = server.spawn(server.stream_cmd(e, start, audio_index, dialog, audio_shift_ms))
             try:
                 while True:
                     buf = p.stdout.read(CHUNK)

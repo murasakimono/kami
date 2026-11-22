@@ -703,6 +703,23 @@ function bindSettings() {
     await api.set_setting("download_dir", "");
     $("#dirPath").textContent = (await api.get_settings())._effective_download_dir;
   });
+  $("#orRelayPing")?.addEventListener("click", async () => {
+    const r = await slow("oracle_relay_ping");
+    toast(r?.ok ? "✓ Oracle Relay bağlantısı aktif" : ("Oracle Relay yanıt vermedi: " + (r?.error || "?")), !r?.ok);
+  });
+  $("#orRelayPull")?.addEventListener("click", async () => {
+    const r = await slow("oracle_relay_pull");
+    toast(r?.ok ? `✓ Relay kuyruğundan ${(r.items || []).length} öğe çekildi` : ("Relay çekme hatası: " + (r?.error || "?")), !r?.ok);
+  });
+  $("#orCrashSnap")?.addEventListener("click", async () => {
+    const r = await api.oracle_crash_snapshot();
+    toast(r?.ok ? `✓ Kurtarma yedeği alındı (${r.count || 0} indirme)` : "Yedek alınamadı", !r?.ok);
+  });
+  $("#orCrashRest")?.addEventListener("click", async () => {
+    const r = await api.oracle_crash_restore();
+    const n = (r?.items || []).length;
+    toast(n ? `Kurtarma yedeğinde ${n} yarım indirme var` : "Kurtarılacak yarım indirme yok");
+  });
   $("#settings").addEventListener("click", (e) => { if (e.target === $("#settings")) $("#settings").close(); });
 }
 

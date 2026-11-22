@@ -113,7 +113,29 @@ async function buildMic() {
     } catch (e) { console.warn("RNNoise", e); toast("Güçlü gürültü engelleme açılamadı; tarayıcınınki kullanılıyor."); }
   }
   node = voiceFx(node, PREF.vfx || "none");   // "Doğal" seciliyken hat hic degismez (ses kalitesi korunur)
+  if (S.gateTimer) { clearInterval(S.gateTimer); S.gateTimer = 0; }
+  const hpMic = S.ctx.createBiquadFilter(); hpMic.type = "highpass"; hpMic.frequency.value = 85;
+  const cmpMic = S.ctx.createDynamicsCompressor();
+  cmpMic.threshold.value = -24; cmpMic.knee.value = 18; cmpMic.ratio.value = 3.5;
+  cmpMic.attack.value = 0.008; cmpMic.release.value = 0.18;
+  node.connect(hpMic); hpMic.connect(cmpMic); node = cmpMic;
   const an = S.ctx.createAnalyser(); an.fftSize = 512; node.connect(an);
+  const gateMode = PREF.gate || "med";
+  const gateGain = S.ctx.createGain();
+  node.connect(gateGain); node = gateGain;
+  if (gateMode !== "off") {
+    const thr = gateMode === "high" ? 0.028 : (gateMode === "low" ? 0.007 : 0.015);
+    const gBuf = new Float32Array(256);
+    S.gateTimer = setInterval(() => {
+      if (!S.ctx || S.ctx.state !== "running") return;
+      an.getFloatTimeDomainData(gBuf);
+      let ss = 0;
+      for (let i = 0; i < gBuf.length; i++) ss += gBuf[i] * gBuf[i];
+      const rms = Math.sqrt(ss / gBuf.length);
+      const tgt = rms >= thr ? 1.0 : 0.025;
+      gateGain.gain.setTargetAtTime(tgt, S.ctx.currentTime, rms >= thr ? 0.01 : 0.06);
+    }, 25);
+  }
   const dest = S.ctx.createMediaStreamDestination(); node.connect(dest);
   const track = dest.stream.getAudioTracks()[0];
   if (S.mic && S.core && S.micSid) S.core.replaceTrack(S.micSid, S.mic, track);
@@ -189,17 +211,14 @@ document.addEventListener("keyup", (e) => { if (S.ptt && e.code === (PREF.pttKey
 window.addEventListener("blur", () => { if (S.ptt && S.pttDown && !window.pywebview) pttKey(false); });
 
 // ---------------------------------------------------------------- ekran paylasimi
-$("bShare").onclick = async () => {
-  if (S.share) { stopShare(); return; }
+async function beginScreenShare(sq, shareAudio) {
   try {
-    const sq = PREF.shareQ || "";
     const vid = sq === "sharp" ? { frameRate: { ideal: 30, max: 30 }, width: { ideal: 2560 }, height: { ideal: 1440 } }
-      : { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+      : sq === "smooth" ? { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      : { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } };
     const st = await navigator.mediaDevices.getDisplayMedia({ video: vid,
-      // restrictOwnAudio: sistem sesinden Kami Oda'nin kendi caldigi sesi (karsi tarafin konusmasi) cikarir; yoksa
-      // tam ekran + "sistem sesini paylas" secilince konusan kendi sesini geri duyar (Discord bunu kendi yapiyor)
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
-      systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include" });
+      audio: shareAudio ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true } : false,
+      systemAudio: shareAudio ? "include" : "exclude", selfBrowserSurface: "exclude", surfaceSwitching: "include" });
     S.share = st;
     const sa = st.getAudioTracks()[0];
     if (sa && !sa.getSettings().restrictOwnAudio) {
@@ -207,13 +226,29 @@ $("bShare").onclick = async () => {
       if (!sa.getSettings().restrictOwnAudio)
         toast("Sistem sesi paylaşılıyor, ama bu sürüm odadaki sesleri ayıklayamıyor: yankı olursa kulaklık tak veya “Sistem sesini paylaş”ı kapat.");
     }
+    st.getVideoTracks().forEach((vt) => { if ("contentHint" in vt) vt.contentHint = sq === "sharp" ? "detail" : "motion"; });
     st.getVideoTracks()[0].addEventListener("ended", stopShare);
-    S.shareSid = S.core.addLocal("screen", st, PREF.shareQ || "");
+    S.shareSid = S.core.addLocal("screen", st, sq || "");
     S.core.setMe({ sharing: "screen" });
     $("bShare").classList.add("act");
     addTile("me", st, "screen", true);
   } catch (e) { if (e.name !== "NotAllowedError") toast("Ekran paylaşılamadı: " + e.message); }
+}
+$("bShare").onclick = async () => {
+  if (S.share) { stopShare(); return; }
+  const dlg = $("shareDlg");
+  if (!dlg) { await beginScreenShare(PREF.shareQ || "", true); return; }
+  $("shQual").value = PREF.shareQ || "";
+  dlg.hidden = false;
 };
+$("shCancel")?.addEventListener("click", () => { $("shareDlg").hidden = true; });
+$("shStart")?.addEventListener("click", async () => {
+  const sq = $("shQual").value;
+  const aud = $("shAudio").checked;
+  PREF.shareQ = sq; save();
+  $("shareDlg").hidden = true;
+  await beginScreenShare(sq, aud);
+});
 function stopShare() {
   if (!S.share) return;
   S.share.getTracks().forEach((t) => t.stop());
@@ -307,7 +342,7 @@ function addTile(pid, stream, kind, mine) {
   el.innerHTML = `<video autoplay playsinline ${mine ? "muted" : ""}></video>
     <div class="vt-bar">${kind === "cam" ? "" : `<span class="live">CANLI</span>`}<b>${esc(who.includes(lbl) ? who : who + " · " + lbl)}</b><span class="info"></span><span class="sp"></span>
       ${mine ? "" : `<select class="q" title="Kalite"><option value="auto">Otomatik</option><option value="src">Kaynak</option><option value="1080">1080p60</option><option value="1080_30">1080p30</option><option value="720">720p30</option><option value="480">480p30</option></select>
-      <input type="range" class="vol" min="0" max="1" step="0.05" value="1" title="Ses">`}
+      <input type="range" class="vol" min="0" max="1" step="0.05" value="${(PREF.streamVol?.[who] ?? 1)}" title="Yayın Sesi (mikrofondan bağımsız)">`}
       ${kind === "screen" ? `<button class="pen" title="Ekranın üstüne çiz / göster"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16zM14 6l3 3"/></svg></button>` : ""}
       <button class="fs" title="Tam ekran"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>`;
   const v = el.querySelector("video");
@@ -321,7 +356,17 @@ function addTile(pid, stream, kind, mine) {
     const q = el.querySelector(".q"); q.value = T.q;
     q.onchange = () => { T.q = q.value; PREF.q = q.value; save(); if (q.value !== "auto") S.core.requestQuality(q.value, pid); else { T.autoQ = "src"; S.core.requestQuality("src", pid); } };
     if (T.q !== "auto") S.core.requestQuality(T.q, pid);
-    el.querySelector(".vol").oninput = (e) => { v.volume = +e.target.value; T.userMuted = +e.target.value === 0; v.muted = S.deaf || T.userMuted || outMuted(); };
+    const savedSv = PREF.streamVol?.[who];
+    if (typeof savedSv === "number") {
+      v.volume = Math.max(0, Math.min(1, savedSv));
+      T.userMuted = savedSv === 0;
+      v.muted = S.deaf || T.userMuted || outMuted();
+    }
+    el.querySelector(".vol").oninput = (e) => {
+      const sv = +e.target.value;
+      v.volume = sv; T.userMuted = sv === 0; v.muted = S.deaf || T.userMuted || outMuted();
+      (PREF.streamVol ||= {})[who] = sv; save();
+    };
   }
   el.insertAdjacentHTML("beforeend", `<div class="vt-ctl"><button data-c="mic" title="Mikrofon">${$("bMic").innerHTML}</button><button data-c="deaf" title="Kulaklık">${$("bDeaf").innerHTML}</button><button data-c="exit" title="Tam ekrandan çık"><svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>`);
   el.querySelector(".vt-ctl").onclick = (e) => {
@@ -379,6 +424,7 @@ function syncFsCtl() {
 }
 const fmtT = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = t % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
 function onAppMsg(from, m) {
+  if (m?.k === "pl_stop") { onPeerGone(from); return; }
   if (m?.k === "yt") return ytIn(from, m);
   if (m?.k === "sp") return spIn(from, m);
   if (m?.k === "sb") return sbIn(from, m);
@@ -609,6 +655,10 @@ function setupSettings() {
   $("bSet").onclick = (e) => { e.stopPropagation(); $("set").hidden = !$("set").hidden; if (!$("set").hidden) listMics($("sMic")); };
   document.addEventListener("click", (e) => { if (!e.target.closest("#set") && !e.target.closest("#bSet")) $("set").hidden = true; });
   $("sNs").value = PREF.ns || "rnnoise";
+  if ($("sGate")) {
+    $("sGate").value = PREF.gate || "med";
+    $("sGate").onchange = async (e) => { PREF.gate = e.target.value; save(); try { await buildMic(); } catch { toast("Mikrofon açılamadı"); } };
+  }
   $("sMode").value = S.ptt ? "ptt" : "vad";
   $("sPtt").textContent = PREF.pttKey || "KeyV";
   $("sPttRow").hidden = !S.ptt;
@@ -929,7 +979,19 @@ function pipStop() {
   $("pipBox").hidden = true; $("bPip").classList.remove("act");
   applyMicState();
 }
-$("bPip").onclick = () => (PIP.on && pipActive() ? pipStop() : pipStart());
+$("bPip").onclick = async () => {
+  if (window.pywebview?.api?.set_setting) {
+    S._deskIsland = !S._deskIsland;
+    try {
+      await window.pywebview.api.set_setting("room_island", true);
+      await window.pywebview.api.set_setting("mini_island", S._deskIsland);
+      $("bPip").classList.toggle("act", S._deskIsland);
+      toast(S._deskIsland ? "Masaüstü Mini-Ada açıldı" : "Masaüstü Mini-Ada kapatıldı");
+    } catch { toast("Mini-Ada değiştirilemedi"); }
+    return;
+  }
+  return PIP.on && pipActive() ? pipStop() : pipStart();
+};
 $("pipGo").onclick = (e) => { e.stopPropagation(); pipEnter(); };
 $("pipX").onclick = (e) => { e.stopPropagation(); pipStop(); };
 
@@ -1089,12 +1151,12 @@ function ytState(ev) {
   YT.lead = true;
   ytSend({ act: "state", id: YT.id, t: YT.p.getCurrentTime(), playing: st === 1 });
   clearInterval(YT.beat);
-  YT.beat = setInterval(() => { if (YT.p && YT.lead && YT.p.getPlayerState?.() === 1) ytSend({ act: "beat", id: YT.id, t: YT.p.getCurrentTime(), playing: true }); }, 5000);
+  YT.beat = setInterval(() => { if (YT.p && YT.lead && YT.p.getPlayerState?.() === 1) ytSend({ act: "beat", id: YT.id, t: YT.p.getCurrentTime(), playing: true }); }, 2000);
 }
 function ytSet(t, playing) {
   if (!YT.p?.getCurrentTime) return;
   YT.apply = Date.now();
-  if (Math.abs(YT.p.getCurrentTime() - t) > 1.2) YT.p.seekTo(t, true);
+  if (Math.abs(YT.p.getCurrentTime() - t) > 0.6) YT.p.seekTo(t, true);
   if (playing && YT.p.getPlayerState() !== 1) YT.p.playVideo();
   if (!playing && YT.p.getPlayerState() === 1) YT.p.pauseVideo();
 }

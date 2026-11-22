@@ -3,15 +3,15 @@
 "use strict";
 (function () {
   const QUALITY = {   // izleyicinin istedigi kalite -> yayincinin gonderim ayari
-    src: { h: 0, fps: 60, br: 12_000_000 },
-    "1080": { h: 1080, fps: 60, br: 8_000_000 },
-    "1080_30": { h: 1080, fps: 30, br: 5_000_000 },
-    "720": { h: 720, fps: 30, br: 3_000_000 },
-    "480": { h: 480, fps: 30, br: 1_500_000 },
+    src: { h: 0, fps: 60, br: 8_000_000 },
+    "1080": { h: 1080, fps: 60, br: 5_500_000 },
+    "1080_30": { h: 1080, fps: 30, br: 3_500_000 },
+    "720": { h: 720, fps: 30, br: 2_200_000 },
+    "480": { h: 480, fps: 30, br: 1_000_000 },
   };
   const rid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-  function mungeOpus(sdp) {   // stereo, yuksek bit hizi + video baslangic bit hizi (300kbps -> 120p cokmesini onler)
+  function mungeOpus(sdp) {   // stereo, yuksek bit hizi + uyarlanabilir video baslangic bit hizi
     const m = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/i);
     if (m) {
       const pt = m[1], extra = "stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;useinbandfec=1;usedtx=0;cbr=0";
@@ -21,7 +21,7 @@
     }
     const vm = [...sdp.matchAll(/a=rtpmap:(\d+) (?:H264|VP8|VP9|AV1)\/90000/gi)];
     for (const v of vm) {
-      const vpt = v[1], vextra = "x-google-min-bitrate=1200;x-google-start-bitrate=3500;x-google-max-bitrate=12000";
+      const vpt = v[1], vextra = "x-google-min-bitrate=300;x-google-start-bitrate=1800;x-google-max-bitrate=8000";
       const vre = new RegExp(`a=fmtp:${vpt} ([^\\r\\n]*)`);
       if (vre.test(sdp)) sdp = sdp.replace(vre, (all, p) => `a=fmtp:${vpt} ${p.split(";").filter((x) => !/^x-google-(min|start|max)-bitrate=/.test(x)).concat(vextra.split(";")).join(";")}`);
       else sdp = sdp.replace(v[0], `${v[0]}\r\na=fmtp:${vpt} ${vextra}`);
@@ -62,7 +62,7 @@
       this.alive = false; clearInterval(this._beat);
       for (const id of [...this.peers.keys()]) this._drop(id);
       if (this.key) {
-        fetch(this.url("leave"), { method: "POST", keepalive: true, credentials: "same-origin", headers: this._headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: this.id }) }).catch(() => {});
+        await fetch(this.url("leave"), { method: "POST", keepalive: true, credentials: "same-origin", headers: this._headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: this.id }) }).catch(() => {});
       } else {
         navigator.sendBeacon?.(this.url("leave"), new Blob([JSON.stringify({ id: this.id })], { type: "application/json" })) || this.post("leave", {});
       }
@@ -256,8 +256,7 @@
             p.encodings[0].maxBitrate = pref === "sharp" ? Math.max(Q.br, 6_000_000) : Q.br;
             p.encodings[0].priority = "high";
             p.encodings[0].networkPriority = "high";
-            // Ekran paylasiminda cozunurlugu koru (maintain-resolution), 120p camurlasmasini engelle
-            p.degradationPreference = (isScreen && pref !== "smooth") || pref === "sharp" ? "maintain-resolution" : (pref === "smooth" ? "maintain-framerate" : "balanced");
+            p.degradationPreference = pref === "sharp" ? "maintain-resolution" : (pref === "smooth" ? "maintain-framerate" : "balanced");
           }
           await snd.setParameters(p);
         } catch { /* ilk muzakereden once olabilir */ }

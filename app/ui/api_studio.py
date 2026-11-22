@@ -1794,3 +1794,18 @@ class StudioMixin:
         dst = out_dir / f"{safe}_chapters.txt"
         dst.write_text(txt, encoding="utf-8")
         return {"ok": True, "path": str(dst), "text": txt}
+
+    def studio_probe_encoders(self) -> dict[str, Any]:
+        return self._st().probe_encoders()
+
+    def studio_render_queue_add(self, project: dict[str, Any], out: str, opts: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._st().queue_add(project or {}, str(out or ""), opts or {})
+
+    def studio_render_queue_list(self) -> dict[str, Any]:
+        return self._st().queue_list()
+
+    def studio_render_queue_cancel(self, qid: str) -> dict[str, Any]:
+        return self._st().queue_cancel(str(qid or ""))
+
+    def studio_render_queue_clear(self) -> dict[str, Any]:
+        return self._st().queue_clear()

@@ -97,6 +97,7 @@
       this.altarApp = null;
       this.bgReady = false;
       this.altarReady = false;
+      this.lowPower = false;
       this.fxOn = (() => {
         try {
           return localStorage.getItem("kami.fx") !== "0";
@@ -155,7 +156,7 @@
         app.canvas.className = "sk-fx-gpu";
         document.body.prepend(app.canvas);
         this.bgApp = app;
-        guardApp(app, () => this.fxOn && !document.hidden && document.hasFocus() && !this.reduced);
+        guardApp(app, () => !this.lowPower && this.fxOn && !document.hidden && document.hasFocus() && !this.reduced);
 
         const sprNear = makePaperTexture(PIXI, 0);
         const sprMid = makePaperTexture(PIXI, 1.1);
@@ -328,7 +329,7 @@
         app.canvas.className = "sk-altar-gpu";
         altarEl.prepend(app.canvas);
         this.altarApp = app;
-        guardApp(app, () => !document.hidden && (document.hasFocus() || (this.state.speedFrac || 0) > 0.01 || !!this.state.drop || this.swallowT > 0));
+        guardApp(app, () => !this.lowPower && !document.hidden && (document.hasFocus() || (this.state.speedFrac || 0) > 0.01 || !!this.state.drop || this.swallowT > 0));
 
         // 1. Hiz halkasi & yorunge katmani
         const ringLayer = new PIXI.Container();
@@ -523,6 +524,12 @@
         this.bgApp.canvas.style.display = this.fxOn ? "block" : "none";
         this.bgApp._kamiSyncRun?.();
       }
+    }
+
+    setLowPower(on) {
+      this.lowPower = !!on;
+      this.bgApp?._kamiSyncRun?.();
+      this.altarApp?._kamiSyncRun?.();
     }
 
     triggerSwallow() {

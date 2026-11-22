@@ -4,7 +4,7 @@
   const PRO = {
     shader: "off", // off | krig | ssim | grain
     dialogueClarity: false,
-    replayGain: true,
+    replayGain: false,
     pitchSemi: 0,
     workletReady: false,
     workletNode: null,
@@ -184,13 +184,43 @@
     wireChain();
   }
 
+  async function syncLoudnessSetting() {
+    try {
+      if (typeof api !== "undefined" && api.get_settings) {
+        const s = await api.get_settings();
+        PRO.replayGain = !!s?.player_loudness_norm;
+        const cb = document.getElementById("kpRg");
+        if (cb) cb.checked = PRO.replayGain;
+      }
+    } catch { /* sessiz */ }
+    return PRO.replayGain;
+  }
+
   async function applyReplayGain(path) {
-    if (!PRO.replayGain || !path || typeof api === "undefined" || !api.player_replaygain) return;
+    if (!PRO.replayGain) {
+      if (PRO.rgGain) PRO.rgGain.gain.value = 1.0;
+      return;
+    }
+    if (!path || typeof api === "undefined") return;
     try {
       await ensureAudioDsp();
-      const r = await api.player_replaygain(path);
-      if (r?.ok && PRO.rgGain) PRO.rgGain.gain.value = r.linear_gain || 1.0;
+      const r = typeof slow === "function"
+        ? await slow("player_replaygain", path)
+        : (api.player_replaygain ? await api.player_replaygain(path) : null);
+      if (r?.ok && PRO.rgGain) PRO.rgGain.gain.value = PRO.replayGain ? (r.linear_gain || 1.0) : 1.0;
     } catch { /* sessiz */ }
+  }
+
+  async function setLoudnessNorm(on) {
+    PRO.replayGain = !!on;
+    const cb = document.getElementById("kpRg");
+    if (cb) cb.checked = PRO.replayGain;
+    if (!PRO.replayGain) {
+      if (PRO.rgGain) PRO.rgGain.gain.value = 1.0;
+      return;
+    }
+    const p = window.PL?.info?.path;
+    if (p) await applyReplayGain(p);
   }
 
   // ---------- 12.3 Muzik Gorsellestirici ----------
@@ -320,9 +350,9 @@
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", mountProPanel);
+    document.addEventListener("DOMContentLoaded", () => { syncLoudnessSetting(); });
   } else {
-    mountProPanel();
+    syncLoudnessSetting();
   }
 
   window.KamiPlayerPro = {
@@ -332,6 +362,8 @@
     setDialogueClarity,
     setPitchSemitones,
     applyReplayGain,
+    setLoudnessNorm,
+    syncLoudnessSetting,
     startAudioVisualizer,
     triggerDrum,
     startDaw,

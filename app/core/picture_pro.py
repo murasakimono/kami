@@ -881,3 +881,82 @@ def send_to_studio_asset(image_path: str, folder: str = "Gorseller") -> dict[str
     dst = dst_dir / p.name
     shutil.copy2(p, dst)
     return {"ok": True, "path": str(dst), "folder": safe_dir, "name": dst.name}
+
+
+def run_tarif_pipeline(paths_or_folder: str | list[str], steps: list[dict[str, Any]],
+                       out_dir: str = "") -> dict[str, Any]:
+    """Toplu 'Tarif' (Batch Pipeline) Motoru: secili gorsellere art arda adimlar uygular."""
+    from PIL import ImageEnhance, ImageFilter, ImageOps
+
+    exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+    files: list[Path] = []
+    if isinstance(paths_or_folder, str):
+        base = Path(paths_or_folder)
+        if base.is_dir():
+            files = sorted(f for f in base.iterdir() if f.is_file() and f.suffix.lower() in exts)
+        elif base.is_file():
+            files = [base]
+    else:
+        for item in paths_or_folder or []:
+            p = Path(str(item))
+            if p.is_file():
+                files.append(p)
+            elif p.is_dir():
+                files.extend(sorted(f for f in p.iterdir() if f.is_file() and f.suffix.lower() in exts))
+
+    if not files:
+        return {"ok": False, "error": "no_images"}
+
+    od = Path(out_dir) if out_dir else (files[0].parent / "tarif_cikti")
+    od.mkdir(parents=True, exist_ok=True)
+    out_fmt = "png"
+    done_files: list[str] = []
+    errors: list[str] = []
+
+    for f in files:
+        try:
+            im = Image.open(f).convert("RGBA")
+            for st in steps or []:
+                op = str(st.get("op") or "").lower()
+                if op == "resize":
+                    w = int(st.get("width") or 0)
+                    h = int(st.get("height") or 0)
+                    if w > 0 and h > 0:
+                        im = im.resize((w, h), Image.Resampling.LANCZOS)
+                    elif w > 0:
+                        nh = max(1, int(round(im.height * w / max(1, im.width))))
+                        im = im.resize((w, nh), Image.Resampling.LANCZOS)
+                elif op == "fit_square":
+                    sz = max(64, int(st.get("size") or 1080))
+                    im = ImageOps.pad(im, (sz, sz), method=Image.Resampling.LANCZOS, color=(13, 10, 18, 255))
+                elif op == "sharpen":
+                    im = im.filter(ImageFilter.UnsharpMask(radius=1.4, percent=int(st.get("amount") or 120), threshold=2))
+                elif op == "grayscale":
+                    alpha = im.getchannel("A")
+                    im = ImageOps.grayscale(im).convert("RGBA")
+                    im.putalpha(alpha)
+                elif op == "contrast":
+                    alpha = im.getchannel("A")
+                    rgb = ImageEnhance.Contrast(im.convert("RGB")).enhance(float(st.get("factor") or 1.15)).convert("RGBA")
+                    rgb.putalpha(alpha)
+                    im = rgb
+                elif op == "format":
+                    out_fmt = str(st.get("ext") or "png").lower().lstrip(".")
+                    if out_fmt not in ("png", "jpg", "jpeg", "webp"):
+                        out_fmt = "png"
+
+            ext = "jpg" if out_fmt == "jpeg" else out_fmt
+            dst = od / f"{f.stem}_tarif.{ext}"
+            if ext in ("jpg", "jpeg"):
+                im.convert("RGB").save(dst, quality=92)
+            elif ext == "webp":
+                im.save(dst, quality=92)
+            else:
+                im.save(dst)
+            done_files.append(str(dst))
+        except Exception as exc:
+            errors.append(f"{f.name}: {str(exc)[:80]}")
+
+    return {"ok": len(done_files) > 0, "done": done_files, "count": len(done_files), "total": len(files),
+            "out_dir": str(od), "errors": errors}
+

@@ -101,6 +101,8 @@ class Api(StudioMixin, EnhanceMixin):
         self._island_sp_t = 0.0
         self._island_lyric_cache: tuple[str, str, list[dict[str, Any]]] = ("", "", [])
         self._thumb_playing: bool | None = None
+        self._game_shield = None
+        self._shield_state: dict[str, Any] = {"active": False, "exe": "", "profile": ""}
         manager.events.on("ui.warn", lambda **kw: self._on_warn(kw))
         manager.events.on("download.completed", lambda download=None, **_: self._on_notify_dl("completed", "İndirme tamamlandı", download))
         manager.events.on("download.failed", lambda download=None, **_: self._on_notify_dl("error", "İndirme başarısız", download))
@@ -123,6 +125,11 @@ class Api(StudioMixin, EnhanceMixin):
         "crawler_crawl", "web_archive_save", "library_find_duplicates", "library_scan_health", "library_smart_compress",
         "subtitle_batch", "clip_factory_highlights", "hardsub_extract", "kamipack_export", "kamipack_import",
         "kasa_index_media", "lyrics_word_sync",
+        "mpv_install", "mix_autodj", "music_tag_fetch_cover", "music_tag_auto_apply", "player_replaygain",
+        "beat_render_mixdown", "beat_apply_fx", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
+        "enhance_preview_split", "enhance_batch_start", "pic_tarif_run",
+        "games_hltb_real", "games_pcgamingwiki", "games_mod_install", "games_ocr_translate",
+        "oracle_relay_ping", "oracle_relay_pull",
     }) | STUDIO_JOBS
 
     def job_start(self, name: str, args: list | None = None) -> dict[str, Any]:
@@ -1414,6 +1421,8 @@ class Api(StudioMixin, EnhanceMixin):
             return {"ok": True, "value": "", "_has_listenbrainz": bool(clean)}
         try:
             self._manager.settings.set(key, value)
+            if key == "discord_rp_enabled" and not self._manager.settings.get("discord_rp_enabled"):
+                self.discord_rp_clear()
             return {"ok": True, "value": self._manager.settings.get(key)}
         except (KeyError, ValueError, TypeError) as exc:
             return {"ok": False, "error": str(exc)}
@@ -1826,6 +1835,36 @@ class Api(StudioMixin, EnhanceMixin):
         items = library.scan(dirs)["items"]
         tracks = mix.build_mix(items, history=self.scrobbler_history(200), n=int(n or 20))
         return {"ok": True, "tracks": [{"path": t["path"], "name": t["name"], "kind": t.get("kind", "")} for t in tracks]}
+
+    def mix_autodj(self, n: int = 20, seed_path: str = "") -> dict[str, Any]:
+        """Gercek Auto-DJ: harmonik BPM + ton gecis uyumlu kuyruk."""
+        from app.core import library, mix
+        dirs = self._library_dirs()
+        if not dirs:
+            return {"ok": False, "error": "no_library"}
+        items = library.scan(dirs)["items"]
+        ff = self._media.ffmpeg() if self._media else ""
+        tracks = mix.build_autodj_mix(
+            items,
+            n=int(n or 20),
+            ffmpeg=ff,
+            seed_path=str(seed_path or ""),
+            cache_path=paths.DATA_DIR / "bpm_cache.json",
+        )
+        return {
+            "ok": True,
+            "tracks": [
+                {
+                    "path": t["path"],
+                    "name": t["name"],
+                    "kind": t.get("kind", ""),
+                    "bpm": t.get("bpm", 0),
+                    "key": t.get("key", ""),
+                    "transition_score": t.get("transition_score", 0),
+                }
+                for t in tracks
+            ],
+        }
 
     def library_albums(self) -> dict[str, Any]:
         """Kutuphanedeki muzik: album kartlari (kapak, sanatci, parcalar)."""
@@ -3118,6 +3157,41 @@ class Api(StudioMixin, EnhanceMixin):
             f.write(str(data))
         return {"ok": True, "path": path}
 
+    def picture_draft_save(self, data: str) -> dict[str, Any]:
+        """Kami Picture kapanmadan/duzenlenirken tuvali DATA_DIR altina otomatik taslak kaydeder."""
+        raw = str(data or "")
+        if not raw or len(raw) > 40 * 1024 * 1024:
+            return {"ok": False, "error": "invalid_size"}
+        draft_path = paths.DATA_DIR / "picture_draft.kami"
+        tmp = draft_path.with_suffix(".kami.tmp")
+        try:
+            draft_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(raw, encoding="utf-8")
+            os.replace(tmp, draft_path)
+            return {"ok": True}
+        except Exception as exc:
+            log.debug("picture_draft_save", exc_info=True)
+            return {"ok": False, "error": str(exc)[:120]}
+
+    def picture_draft_load(self) -> dict[str, Any]:
+        draft_path = paths.DATA_DIR / "picture_draft.kami"
+        try:
+            if draft_path.is_file():
+                return {"ok": True, "data": draft_path.read_text(encoding="utf-8")}
+        except Exception as exc:
+            log.debug("picture_draft_load", exc_info=True)
+            return {"ok": False, "error": str(exc)[:120]}
+        return {"ok": False}
+
+    def picture_draft_clear(self) -> dict[str, Any]:
+        draft_path = paths.DATA_DIR / "picture_draft.kami"
+        try:
+            if draft_path.exists():
+                draft_path.unlink()
+        except Exception:
+            pass
+        return {"ok": True}
+
     def editor_project_open(self) -> dict[str, Any]:
         import webview
         w = getattr(self, "_picture_win", None)
@@ -3581,6 +3655,18 @@ class Api(StudioMixin, EnhanceMixin):
     def music_tag_export_m3u(self, folder: str, recursive: bool = False) -> dict[str, Any]:
         from app.core import music_tag
         return music_tag.m3u_export(str(folder or ""), bool(recursive))
+
+    def music_tag_fetch_cover(self, artist: str, title: str = "", album: str = "") -> dict[str, Any]:
+        from app.core import music_tag
+        return music_tag.fetch_hires_cover(str(artist or ""), str(title or ""), str(album or ""))
+
+    def music_tag_auto_plan(self, folder: str, recursive: bool = False) -> dict[str, Any]:
+        from app.core import music_tag
+        return music_tag.auto_tag_plan(str(folder or ""), bool(recursive))
+
+    def music_tag_auto_apply(self, items: list, fetch_covers: bool = False, overwrite: bool = False) -> dict[str, Any]:
+        from app.core import music_tag
+        return music_tag.auto_tag_apply(items or [], bool(fetch_covers), bool(overwrite))
 
     def library_organize(self, paths: list | None = None, apply: bool = False) -> dict[str, Any]:
         """Dizi bolumlerini 'Dizi / Sezon 01 / bolum' duzenine tasi (once onizleme, apply=True ile tasir; yan altyazilar da gider)."""
@@ -4623,6 +4709,42 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core.vram_guard import preflight
         return preflight(required_mb=required_mb)
 
+    def ram_status(self) -> dict[str, Any]:
+        from app.core.ram_guard import get_memory_stats, has_active_background_work
+        stats = get_memory_stats(self)
+        work = has_active_background_work(self)
+        sh = getattr(self, "_shield_state", None) or {"active": False, "exe": "", "profile": ""}
+        return {"ok": True, **stats, "work": work, "game_shield": dict(sh)}
+
+    def ram_purge(self) -> dict[str, Any]:
+        from app.core.ram_guard import purge_idle_windows
+        res = purge_idle_windows(self, include_visible=False)
+        res["game_shield"] = dict(getattr(self, "_shield_state", None) or {"active": False, "exe": "", "profile": ""})
+        return res
+
+    def game_shield_status(self) -> dict[str, Any]:
+        from app.core.ram_guard import has_active_background_work
+        st = getattr(self, "_shield_state", None) or {"active": False, "exe": "", "profile": ""}
+        return {
+            "ok": True,
+            "enabled": bool(self._manager.settings.get("game_shield_enabled", True)),
+            "profiles": dict(self._manager.settings.get("game_shield_profiles") or {}),
+            "active": bool(st.get("active")),
+            "exe": str(st.get("exe") or ""),
+            "profile": str(st.get("profile") or ""),
+            "work": has_active_background_work(self),
+        }
+
+    def game_shield_set_profile(self, exe: str, profile: str = "story") -> dict[str, Any]:
+        k = os.path.basename(str(exe or "").strip()).lower()
+        p = str(profile or "story").strip().lower()
+        if not k or p not in ("competitive", "story", "off"):
+            return {"ok": False, "error": "invalid_profile"}
+        cur = dict(self._manager.settings.get("game_shield_profiles") or {})
+        cur[k] = p
+        self._manager.settings.set("game_shield_profiles", cur)
+        return {"ok": True, "exe": k, "profile": p, "profiles": dict(self._manager.settings.get("game_shield_profiles") or {})}
+
     def profiles_list(self) -> dict[str, Any]:
         store = self._profile_store()
         return {
@@ -4831,9 +4953,47 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core.scene_detect import detect_scenes
         return detect_scenes(video_path, threshold=threshold)
 
-    def player_replaygain(self, media_path: str, target_lufs: float = -18.0) -> dict[str, Any]:
+    def player_replaygain(self, media_path: str, target_lufs: float | None = None) -> dict[str, Any]:
         from app.core.scene_detect import measure_replaygain
-        return measure_replaygain(media_path, target_lufs=target_lufs)
+        lufs = float(target_lufs) if target_lufs is not None else float(self._manager.settings.get("player_target_lufs", -14.0))
+        return measure_replaygain(media_path, target_lufs=lufs)
+
+    def mpv_status(self) -> dict[str, Any]:
+        from app.core import mpv_engine
+        return mpv_engine.CONTROLLER.status(self._manager.settings)
+
+    def mpv_install(self) -> dict[str, Any]:
+        from app.core import mpv_engine
+        return mpv_engine.install_mpv()
+
+    def mpv_play(self, path: str, start: float = 0.0, rate: float = 1.0, volume: float = 100.0) -> dict[str, Any]:
+        from app.core import mpv_engine
+        return mpv_engine.CONTROLLER.play(path, start=float(start or 0), rate=float(rate or 1.0), volume=float(volume or 100.0))
+
+    def mpv_command(self, cmd: list) -> dict[str, Any]:
+        from app.core import mpv_engine
+        return mpv_engine.CONTROLLER.command(list(cmd or []))
+
+    def mpv_stop(self) -> dict[str, Any]:
+        from app.core import mpv_engine
+        mpv_engine.CONTROLLER.stop()
+        return {"ok": True}
+
+    def discord_rp_update(self, title: str, artist: str = "", mode: str = "Kami Player",
+                          duration: float = 0.0, elapsed: float = 0.0, paused: bool = False) -> dict[str, Any]:
+        if not bool(self._manager.settings.get("discord_rp_enabled", False)):
+            from app.core import discord_rp
+            discord_rp.PRESENCE.clear()
+            return {"ok": True, "disabled": True}
+        from app.core import discord_rp
+        return discord_rp.PRESENCE.update(
+            title=title, artist=artist, mode=mode,
+            duration=float(duration or 0), elapsed=float(elapsed or 0), paused=bool(paused),
+        )
+
+    def discord_rp_clear(self) -> dict[str, Any]:
+        from app.core import discord_rp
+        return discord_rp.PRESENCE.clear()
 
     def beat_grid(self, audio_path: str, duration: float = 0.0) -> dict[str, Any]:
         from app.core.kami_beat import build_beatgrid
@@ -6228,5 +6388,219 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core import winwin
         ok = winwin.set_fullscreen("Kami Games", bool(on))
         return {"ok": bool(ok), "fullscreen": bool(on)}
+
+    # ---------- Dalga 3: Kami Beat & Kami Booth ----------
+    def beat_open(self) -> dict[str, Any]:
+        return self._open_mod_window("beat")
+
+    def beat_vst_scan(self) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.scan_vst3()
+
+    def beat_presets(self) -> dict[str, Any]:
+        from app.core import beat_studio
+        return {"ok": True, "presets": beat_studio.VOCAL_PRESETS}
+
+    def beat_list_projects(self) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.list_projects()
+
+    def beat_create_project(self, name: str = "Yeni Parça") -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.create_project(name)
+
+    def beat_load_project(self, pid: str) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.load_project(pid)
+
+    def beat_save_project(self, proj: dict[str, Any]) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.save_project(proj)
+
+    def beat_add_take(self, pid: str, track_id: str, audio_path: str, label: str = "") -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.add_take_to_track(pid, track_id, audio_path, label=label)
+
+    def beat_waveform(self, audio_path: str, buckets: int = 160) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.waveform_peaks(audio_path, buckets=buckets)
+
+    def beat_measure_lufs(self, audio_path: str) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.measure_lufs(audio_path)
+
+    def beat_lyrics_analyze(self, text: str, bpm: float = 0.0) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.analyze_lyrics_bars(text, bpm=float(bpm or 0.0))
+
+    def beat_apply_fx(self, in_path: str, out_path: str, fx_list: list, use_denoise: bool = False) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.apply_fx_chain(in_path, out_path, fx_list, use_denoise=bool(use_denoise))
+
+    def beat_render_mixdown(self, pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.render_mixdown(pid, out_path=out_path, target_lufs=float(target_lufs))
+
+    def beat_ai_mix(self, pid: str, instruction: str, track_id: str = "vocal1") -> dict[str, Any]:
+        from app.core import beat_mcp
+        return beat_mcp.apply_ai_mix_instruction(pid, instruction, track_id=track_id)
+
+    def beat_export_lyric_video(self, pid: str, title: str = "") -> dict[str, Any]:
+        from app.core import beat_studio
+        res = beat_studio.export_to_lyric_video(pid, title=title)
+        if res.get("ok"):
+            try:
+                self.studio_show(str(res.get("kstudio_path") or ""))
+            except Exception:
+                pass
+        return res
+
+    def beat_studio_mashup(self, vocal_path: str, beat_path: str, out_path: str = "", vocal_gain_db: float = 1.0, beat_gain_db: float = -2.0) -> dict[str, Any]:
+        from app.core import kami_beat
+        return kami_beat.mashup(vocal_path, beat_path, out_path or "", vocal_gain_db=float(vocal_gain_db), beat_gain_db=float(beat_gain_db))
+
+    def beat_pick_audio(self) -> dict[str, Any]:
+        import webview
+        win = getattr(self, "_beat_win", None) or self._window
+        if not win:
+            return {"ok": False, "error": "no_window"}
+        try:
+            dialog = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+            res = win.create_file_dialog(dialog, allow_multiple=False, file_types=("Ses Dosyaları (*.wav;*.mp3;*.flac;*.m4a;*.ogg)", "Tümü (*.*)"))
+            p = (res[0] if isinstance(res, (list, tuple)) else res) or ""
+            return {"ok": True, "path": str(p)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    def booth_devices(self) -> dict[str, Any]:
+        from app.core import kami_booth
+        return kami_booth.list_input_devices()
+
+    def booth_rec_start(self, pid: str = "", track_id: str = "vocal1", device_id: int = -1) -> dict[str, Any]:
+        from app.core import kami_booth
+        return kami_booth.RECORDER.start(pid, track_id, None if device_id < 0 else int(device_id))
+
+    def booth_rec_stop(self, ai_clean: bool = True) -> dict[str, Any]:
+        from app.core import kami_booth
+        return kami_booth.RECORDER.stop(ai_clean=bool(ai_clean))
+
+    def booth_rec_status(self) -> dict[str, Any]:
+        from app.core import kami_booth
+        return kami_booth.RECORDER.status()
+
+    def booth_server_start(self, pid: str = "", track_id: str = "vocal1") -> dict[str, Any]:
+        from app.core import kami_booth
+        return kami_booth.BOOTH.start(pid, track_id)
+
+    def booth_server_stop(self) -> dict[str, Any]:
+        from app.core import kami_booth
+        return kami_booth.BOOTH.stop()
+
+    def booth_server_status(self) -> dict[str, Any]:
+        from app.core import kami_booth
+        return kami_booth.BOOTH.status()
+
+    # ---------- Dalga 4: Video Iyilestirici Split/Toplu & Picture Tarif ----------
+    def enhance_preview_split(self, preset: str, path: str, start_sec: float = 0.0,
+                              opts: dict[str, Any] | None = None) -> dict[str, Any]:
+        from app.core import video_enhance
+        ff = self._media.ffmpeg() if self._media else ""
+        return video_enhance.preview_split(str(preset or ""), str(path or ""), ff, float(start_sec or 0.0), opts or {})
+
+    def enhance_batch_start(self, preset: str, paths: list[str],
+                            opts: dict[str, Any] | None = None) -> dict[str, Any]:
+        from app.core import video_enhance
+        ff = self._media.ffmpeg() if self._media else ""
+        return video_enhance.batch_start(str(preset or ""), list(paths or []), ff, opts or {})
+
+    def pic_tarif_run(self, paths_or_folder: Any, steps: list[dict[str, Any]],
+                      out_dir: str = "") -> dict[str, Any]:
+        from app.core import picture_pro
+        return picture_pro.run_tarif_pipeline(paths_or_folder, steps or [], str(out_dir or ""))
+
+    # ---------- Dalga 5: Games Companion & Oracle Relay ----------
+    def games_hltb_real(self, title: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.fetch_hltb_real(str(title or ""))
+
+    def games_pcgamingwiki(self, title: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.fetch_pcgamingwiki(str(title or ""))
+
+    def games_save_inspect(self, path: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.save_inspect(str(path or ""))
+
+    def games_save_write(self, path: str, text: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.save_write(str(path or ""), str(text or ""))
+
+    def games_fix_ini(self, ini_path: str, presets: list[str] | None = None) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.fix_game_ini(str(ini_path or ""), presets)
+
+    def games_snapshot_save(self, game_key: str, source_path: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.snapshot_save(str(game_key or ""), str(source_path or ""))
+
+    def games_tm_list(self, game_key: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.list_snapshots(str(game_key or ""))
+
+    def games_tm_restore(self, snapshot_path: str, target_path: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.restore_snapshot(str(snapshot_path or ""), str(target_path or ""))
+
+    def games_mod_install(self, game_key: str, game_dir: str, zip_path: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.mod_install_zip(str(game_key or ""), str(game_dir or ""), str(zip_path or ""))
+
+    def games_mod_rollback(self, backup_dir: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.mod_rollback(str(backup_dir or ""))
+
+    def games_launch_tool(self, exe_path: str) -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.launch_external_tool(str(exe_path or ""))
+
+    def games_ocr_translate(self, roi: list[float] | None = None, lang: str = "en") -> dict[str, Any]:
+        from app.core import games_companion
+        return games_companion.game_ocr_translate(roi, str(lang or "en"))
+
+    def oracle_relay_ping(self, relay_url: str = "", secret: str = "") -> dict[str, Any]:
+        from app.core import oracle_relay
+        u = relay_url or str(self._manager.settings.get("oracle_relay_url", "") or "")
+        s = secret or str(self._manager.settings.get("oracle_relay_secret", "") or "")
+        return oracle_relay.relay_ping(u, s)
+
+    def oracle_relay_pull(self) -> dict[str, Any]:
+        from app.core import oracle_relay
+        u = str(self._manager.settings.get("oracle_relay_url", "") or "")
+        s = str(self._manager.settings.get("oracle_relay_secret", "") or "")
+        res = oracle_relay.relay_pull_queue(u, s)
+        if res.get("ok"):
+            for it in res.get("items") or []:
+                if it.get("url"):
+                    try:
+                        self.add_url(str(it["url"]))
+                    except Exception:
+                        pass
+        return res
+
+    def oracle_crash_snapshot(self) -> dict[str, Any]:
+        from app.core import oracle_relay
+        snaps = self._manager.snapshot() if self._manager else []
+        dls = [
+            {"id": d.id, "url": d.url, "title": d.filename, "status": d.status, "dir": d.directory}
+            for d in snaps
+        ]
+        return oracle_relay.save_crash_snapshot(dls)
+
+    def oracle_crash_restore(self) -> dict[str, Any]:
+        from app.core import oracle_relay
+        return oracle_relay.load_crash_snapshot()
+
+
+
 
 

@@ -594,14 +594,26 @@
 
   async function loadMix() {
     subBar.hidden = false; folderChips.hidden = true;
-    subBar.innerHTML = '<button class="btn pri" id="mixRefresh">↻ Yenile</button><small style="color:var(--mut)">Dinleme geçmişine göre kişisel, tekrar etmeyen karışım</small>';
+    subBar.innerHTML = '<button class="btn pri" id="mixRefresh">↻ Yenile</button><button class="btn" id="mixAutoDj">🎧 Auto-DJ (BPM/Ton)</button><small style="color:var(--mut)">Dinleme geçmişine göre kişisel, tekrar etmeyen karışım</small>';
+    const renderTracks = (tracks, isAutoDj = false) => {
+      if (!tracks.length) { list.innerHTML = '<div style="color:var(--mut);padding:12px">Kütüphane boş ya da yeterli parça yok. Yerel klasör ekleyip dinledikçe karışım zenginleşir.</div>'; return; }
+      list.innerHTML = tracks.map((t) => {
+        const meta = isAutoDj
+          ? [t.bpm ? `${Math.round(t.bpm)} BPM` : "", t.key || "", t.transition_score ? `Uyum %${Math.round(t.transition_score)}` : ""].filter(Boolean).join(" · ") || (t.kind || "audio")
+          : (t.kind || "audio");
+        return '<div class="row" data-title="' + esc(t.name || "") + '"><div class="meta"><b>' + esc(t.name || "") + '</b><small>' + esc(meta) + '</small></div><button class="btn pri" data-mixplay="' + esc(t.path) + '" title="Kami Player\'da çal">▶</button></div>';
+      }).join("");
+      refreshListMotion();
+    };
     list.innerHTML = '<div style="color:var(--mut);padding:12px">For You karışımı hazırlanıyor…</div>';
     const r = await api()?.mix_build?.(20).catch(() => null);
-    const tracks = r?.ok ? (r.tracks || []) : [];
-    if (!tracks.length) { list.innerHTML = '<div style="color:var(--mut);padding:12px">Kütüphane boş ya da yeterli parça yok. Yerel klasör ekleyip dinledikçe karışım zenginleşir.</div>'; return; }
-    list.innerHTML = tracks.map((t) => '<div class="row" data-title="' + esc(t.name || "") + '"><div class="meta"><b>' + esc(t.name || "") + '</b><small>' + esc(t.kind || "audio") + '</small></div><button class="btn pri" data-mixplay="' + esc(t.path) + '" title="Kami Player\'da çal">▶</button></div>').join("");
-    refreshListMotion();
+    renderTracks(r?.ok ? (r.tracks || []) : [], false);
     document.getElementById("mixRefresh").onclick = loadMix;
+    document.getElementById("mixAutoDj").onclick = async () => {
+      list.innerHTML = '<div style="color:var(--mut);padding:12px">Auto-DJ (BPM & Camelot ton uyumu) analiz ediliyor…</div>';
+      const ar = await api()?.mix_autodj?.(20).catch(() => null);
+      renderTracks(ar?.ok ? (ar.tracks || []) : [], true);
+    };
   }
 
   async function loadLocal() {
@@ -770,12 +782,22 @@
     if (!spLyr.hidden) renderLyricsPanel(curMs);
   }, 250);
 
+  let _drpLastKey = "", _drpLastTs = 0;
   async function pollSpotify() {
     const r = await api()?.music_spotify_now?.().catch(() => null);
     if (!r?.ok) return;
-    if (!r.title) { CUR_TRACK = null; SP_PLAYING = false; spTitle.textContent = "Çalan parça yok"; spArtist.textContent = "Spotify cihazı açık değil veya yerel çalabilirsin"; spCov.hidden = true; syncPlayingRow(); return; }
+    if (!r.title) {
+      CUR_TRACK = null; SP_PLAYING = false; spTitle.textContent = "Çalan parça yok"; spArtist.textContent = "Spotify cihazı açık değil veya yerel çalabilirsin"; spCov.hidden = true; syncPlayingRow();
+      if (_drpLastKey) { _drpLastKey = ""; api()?.discord_rp_clear?.().catch(() => {}); }
+      return;
+    }
     CUR_TRACK = r; SP_PLAYING = !!r.playing; SP_SHUF = !!r.shuffle; SP_REP = r.repeat || "off";
     LAST_POLL_TS = Date.now();
+    const drpKey = `${r.title}|${r.artist || ""}|${SP_PLAYING ? 1 : 0}`;
+    if (drpKey !== _drpLastKey || LAST_POLL_TS - _drpLastTs > 5000) {
+      _drpLastKey = drpKey; _drpLastTs = LAST_POLL_TS;
+      api()?.discord_rp_update?.(r.title, r.artist || "", "Kamify", (r.duration_ms || 0) / 1000, (r.progress_ms || 0) / 1000, !SP_PLAYING).catch(() => {});
+    }
     syncPlayingRow();
     spPlayBtn.innerHTML = SP_PLAYING ? '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>' : '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
     spShuf.classList.toggle("on", SP_SHUF); spRep.classList.toggle("on", SP_REP !== "off");

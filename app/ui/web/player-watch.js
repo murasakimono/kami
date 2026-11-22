@@ -61,6 +61,8 @@ setInterval(() => wpState(true), 5000);
 
 async function wpStop() {
   if (!WP.core) return;
+  try { WP.core.broadcast({ k: "pl_stop" }); } catch {}
+  try { WP.stream?.getTracks().forEach((t) => { try { t.stop(); } catch {} }); } catch {}
   WP.core.removeLocal(WP.sid); await WP.core.leave();
   WP.core = null; WP.stream = null; WP.tracks.clear();
   wpBtn(false);

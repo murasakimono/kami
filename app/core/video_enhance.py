@@ -55,6 +55,10 @@ PRESETS: dict[str, dict[str, Any]] = {
         "ad": "Hizli buyut", "model": False, "upscale": 2, "interp": 0,
         "aciklama": "2x lanczos buyutme + keskinlestirme. Model gerekmez, cok hizli; detay kurtarmaz.",
     },
+    "gpu_fast": {
+        "ad": "Hızlı GPU (RTX/NVENC)", "model": False, "upscale": 2, "interp": 0, "gpu_fast": True,
+        "aciklama": "RTX 4050 NVENC donanım kodlaması + hızlı denoise + 2x keskin büyütme (saatler yerine dakikalar).",
+    },
     "netlestir": {
         "ad": "Netlestir (AI)", "model": True, "upscale": 2, "interp": 0,
         "aciklama": "Real-ESRGAN ile 2x/4x yapay zeka buyutme. Titrek (flicker) olabilir; test et.",
@@ -380,6 +384,31 @@ def _run_tool(job: dict, args: list[str], ex: Path, out_dir: Path, expect: int,
 
 # ------------------------------------------------------------------ iki yol
 
+_NVENC_CACHE: dict[str, bool] = {}
+
+
+def _nvenc_ok(ffmpeg: str) -> bool:
+    if ffmpeg in _NVENC_CACHE:
+        return _NVENC_CACHE[ffmpeg]
+    try:
+        r = subprocess.run(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+             "-i", "color=s=256x256:d=0.05", "-frames:v", "2", "-c:v", "h264_nvenc", "-f", "null", "-"],
+            capture_output=True, timeout=6, creationflags=NO_WINDOW,
+        )
+        ok = r.returncode == 0
+    except Exception:
+        ok = False
+    _NVENC_CACHE[ffmpeg] = ok
+    return ok
+
+
+def _vcodec_args(ffmpeg: str, use_gpu: bool = True) -> list[str]:
+    if use_gpu and _nvenc_ok(ffmpeg):
+        return ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "19", "-pix_fmt", "yuv420p"]
+    return ["-c:v", "libx264", "-crf", "17", "-preset", "medium", "-pix_fmt", "yuv420p"]
+
+
 def _run_filter_only(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, Any],
                      info: dict[str, Any], out_dir: Path) -> Path:
     """Tek ffmpeg gecisi: gecici kare dosyasi yok."""
@@ -396,7 +425,7 @@ def _run_filter_only(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[
         cmd += ["-ss", f"{start:.3f}"]
     cmd += ["-t", f"{dur:.3f}", "-i", str(path)]
     cmd += ["-vf", ",".join(vf) if vf else "null"]
-    cmd += ["-c:v", "libx264", "-crf", "17", "-preset", "medium", "-pix_fmt", "yuv420p"]
+    cmd += _vcodec_args(ffmpeg, bool(opts.get("gpu", True)))
     cmd += ["-c:a", "copy"] if acodec == "copy" else ["-c:a", "aac", "-b:a", "192k"]
     cmd += ["-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(dst)]
     rc = _exec_progress(job, cmd, dur)
@@ -484,8 +513,8 @@ def _segment(job: dict, ffmpeg: str, preset: str, path: str, opts: dict[str, Any
         else:
             cmd += ["-ss", f"{max(0.0, start):.3f}", "-t", f"{max(0.001, dur):.3f}", "-i", str(path),
                     "-map", "0:v", "-map", "1:a?", "-c:a", "aac", "-b:a", "192k", "-shortest"]
-    cmd += ["-c:v", "libx264", "-crf", "17", "-preset", "medium", "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart", str(dst)]
+    cmd += _vcodec_args(ffmpeg, bool(opts.get("gpu", True)))
+    cmd += ["-movflags", "+faststart", str(dst)]
     r = subprocess.run(cmd, capture_output=True, timeout=7200, creationflags=NO_WINDOW)
     if r.returncode != 0:
         raise RuntimeError("birlestirme hatasi: " + r.stderr.decode("utf-8", "replace")[-200:])
@@ -773,4 +802,84 @@ def install_start(tool: str) -> dict[str, Any]:
             jb.update(state="error", error=str(exc)[:200], line="Hata")
     threading.Thread(target=run, name=f"video-enhance-install-{tool}", daemon=True).start()
     return {"ok": True, "job": jid}
+
+
+def preview_split(preset: str, path: str, ffmpeg: str, start_sec: float = 0.0,
+                  opts: dict[str, Any] | None = None) -> dict[str, Any]:
+    """2 saniyelik Once/Sonra karsilastirma videosu (yan yana / split) uretir."""
+    import base64
+    p_in = Path(str(path or ""))
+    if not p_in.is_file():
+        return {"ok": False, "error": "dosya_yok"}
+    if str(preset) not in PRESETS:
+        return {"ok": False, "error": "bad_preset"}
+    if not ffmpeg:
+        return {"ok": False, "error": "no_ffmpeg"}
+
+    info = probe(str(p_in), ffmpeg)
+    o = dict(opts or {})
+    vf = filters(preset, info, o)
+    work = _workdir() / f"split_{uuid.uuid4().hex[:8]}"
+    work.mkdir(parents=True, exist_ok=True)
+    before_p = work / "before.mp4"
+    after_p = work / "after.mp4"
+    try:
+        ss = max(0.0, float(start_sec or 0.0))
+        c1 = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-ss", f"{ss:.2f}", "-t", "2.0", "-i", str(p_in),
+              "-an", *_vcodec_args(ffmpeg, True), str(before_p)]
+        c2 = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-ss", f"{ss:.2f}", "-t", "2.0", "-i", str(p_in)]
+        if vf:
+            c2 += ["-vf", ",".join(vf)]
+        c2 += ["-an", *_vcodec_args(ffmpeg, True), str(after_p)]
+        r1 = subprocess.run(c1, capture_output=True, timeout=45, creationflags=NO_WINDOW)
+        r2 = subprocess.run(c2, capture_output=True, timeout=60, creationflags=NO_WINDOW)
+        if r1.returncode != 0 or r2.returncode != 0:
+            return {"ok": False, "error": "preview_render_failed"}
+        b64_before = "data:video/mp4;base64," + base64.b64encode(before_p.read_bytes()).decode("ascii")
+        b64_after = "data:video/mp4;base64," + base64.b64encode(after_p.read_bytes()).decode("ascii")
+        return {"ok": True, "before_url": b64_before, "after_url": b64_after, "duration": 2.0}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:140]}
+    finally:
+        _rm_dir(work)
+
+
+def batch_start(preset: str, paths: list[str], ffmpeg: str, opts: dict[str, Any] | None = None,
+                out_dir: Path | None = None) -> dict[str, Any]:
+    """Birden fazla videoyu sirayla iyilestiren arka plan kuyrugu."""
+    valid = [str(p) for p in (paths or []) if p and Path(str(p)).is_file()]
+    if not valid:
+        return {"ok": False, "error": "empty_batch"}
+    if str(preset) not in PRESETS:
+        return {"ok": False, "error": "bad_preset"}
+    jid = _new_job(f"Toplu kuyruk (0/{len(valid)})")
+    jb = _JOBS[jid]
+    dest = Path(out_dir) if out_dir else Path.home() / "Videos" / "Kami Studio" / OUT_SUBDIR
+
+    def run_batch() -> None:
+        done_files: list[str] = []
+        errors: list[str] = []
+        for idx, vp in enumerate(valid):
+            if jb["cancel"].is_set():
+                jb.update(state="cancelled", line="İptal edildi")
+                return
+            jb.update(p=idx / len(valid), line=f"({idx + 1}/{len(valid)}) {Path(vp).name}")
+            sub_job = _new_job("")
+            sub_jb = _JOBS[sub_job]
+            sub_jb["cancel"] = jb["cancel"]
+            _worker(sub_jb, ffmpeg, preset, vp, dict(opts or {}), dest)
+            if sub_jb["state"] == "done" and sub_jb.get("result"):
+                done_files.append(str(sub_jb["result"].get("out") or ""))
+            else:
+                errors.append(f"{Path(vp).name}: {sub_jb.get('error') or 'hata'}")
+            _JOBS.pop(sub_job, None)
+        jb.update(
+            state="done", p=1.0,
+            line=f"Toplu kuyruk tamamlandı ({len(done_files)}/{len(valid)})",
+            result={"done": done_files, "errors": errors, "total": len(valid)},
+        )
+
+    threading.Thread(target=run_batch, name=f"video-enhance-batch-{jid}", daemon=True).start()
+    return {"ok": True, "job": jid, "total": len(valid)}
+
 

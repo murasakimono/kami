@@ -8,7 +8,7 @@
   const ST = {
     mode: "obsidian", transitions: true, speed: 0,
     gl: null, canvas: null, raf: 0, t0: performance.now(), last: 0, phase: 0,
-    pulse: 0, focused: true, altarX: 0.24, altarY: 0.72,
+    pulse: 0, focused: true, lowPower: false, altarX: 0.24, altarY: 0.72,
     tint: [0.0, 0.0, 0.0],
   };
 
@@ -169,14 +169,14 @@
   const isGlMode = (m) => m === "obsidian" || m === "spirit_fire" || m === "fluid_neon";
 
   function startLoop() {
-    if (!ST.raf && isGlMode(ST.mode) && ST.gl && !document.hidden && ST.focused && !REDUCED) {
+    if (!ST.raf && !ST.lowPower && isGlMode(ST.mode) && ST.gl && !document.hidden && ST.focused && !REDUCED) {
       ST.raf = requestAnimationFrame(frame);
     }
   }
 
   function frame(now) {
     ST.raf = 0;
-    if (!isGlMode(ST.mode) || document.hidden || !ST.focused || !ST.gl) return;
+    if (ST.lowPower || !isGlMode(ST.mode) || document.hidden || !ST.focused || !ST.gl) return;
     if (now - ST.last < 33) { ST.raf = requestAnimationFrame(frame); return; } // 30 fps siniri
     const dt = ST.last ? Math.min(0.1, (now - ST.last) / 1000) : 0.033;
     ST.last = now;
@@ -262,6 +262,14 @@
       if (typeof window.fxApplyMode === "function") window.fxApplyMode(ST.mode);
     },
     setMode,
+    setLowPower(on) {
+      ST.lowPower = !!on;
+      if (ST.lowPower) {
+        if (ST.raf) { cancelAnimationFrame(ST.raf); ST.raf = 0; }
+      } else {
+        startLoop();
+      }
+    },
     setSpeed(v) { ST.speed = Math.max(0, Math.min(1, Number(v) || 0)); },
     setTint(r, g, b) { ST.tint = [r / 255, g / 255, b / 255]; },
     pulse() { ST.pulse = 1.0; },

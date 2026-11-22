@@ -59,7 +59,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .tk small svg { width: 14px; height: 14px; color: var(--err); }
 .tk input[type=range] { width: 110px; accent-color: var(--violet); opacity: 0; transition: opacity .2s; }
 .tk:hover input[type=range] { opacity: 1; }
-.rm-stage.hasvid .rm-circle { inset: auto 10px 10px 10px; height: auto; display: flex; gap: 8px; justify-content: center; place-items: initial; z-index: 3; pointer-events: none; }
+.rm-stage.hasvid .rm-circle { inset: 48px auto auto 12px; height: auto; display: flex; gap: 6px; justify-content: flex-start; place-items: initial; z-index: 3; pointer-events: none; }
 .rm-stage.hasvid .rm-circle::before { display: none; }
 .rm-stage.hasvid .tk { position: static; transform: none; flex-direction: row; gap: 6px; padding: 4px 10px 4px 4px; background: rgba(11, 8, 17, .82); pointer-events: auto; clip-path: var(--cut); }
 .rm-stage.hasvid .tk-face { width: 30px; height: 30px; font-size: 14px; }
@@ -240,7 +240,19 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .msg.file .fdl { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: #140F20; border: 1px solid #2E2346; border-radius: 8px; text-decoration: none; transition: border-color .15s; }
 .msg.file .fdl:hover { border-color: #2EE6A6; }
 #spSyncBar { position: relative; z-index: 6; }
-.rm-rxbar { position: absolute; left: 12px; bottom: 12px; z-index: 5; display: flex; gap: 5px; background: rgba(11,8,17,.82); border: 1px solid rgba(157,107,255,.28); border-radius: 999px; padding: 4px 8px; backdrop-filter: blur(8px); }
+.rm-rxbar { position: absolute; left: 12px; bottom: 12px; z-index: 5; display: flex; gap: 5px; background: rgba(11,8,17,.82); border: 1px solid rgba(157,107,255,.28); border-radius: 999px; padding: 4px 8px; backdrop-filter: blur(8px); transition: opacity .2s; }
+.rm-stage.hasvid .rm-rxbar { top: 48px; right: 12px; left: auto; bottom: auto; opacity: .72; }
+.rm-stage.hasvid .rm-rxbar:hover { opacity: 1; }
+.rm-share-dlg { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(7,6,11,.76); backdrop-filter: blur(8px); }
+.rm-share-dlg[hidden] { display: none; }
+.rm-share-card { width: min(400px, 92vw); background: #14101D; border: 1px solid rgba(157,107,255,.45); border-radius: 14px; padding: 18px; display: grid; gap: 12px; color: #EDE9F6; box-shadow: 0 22px 60px rgba(0,0,0,.7); }
+.rm-share-card h3 { margin: 0; font-size: 16px; color: #C4B5FD; }
+.rm-share-card label { display: grid; gap: 5px; font-size: 12px; color: #B6AECB; }
+.rm-share-card label.chk { display: flex; align-items: center; gap: 8px; color: #EDE9F6; cursor: pointer; }
+.rm-share-card select { background: #0D0A14; color: #EDE9F6; border: 1px solid rgba(157,107,255,.3); border-radius: 8px; padding: 8px 10px; font: inherit; }
+.rm-share-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.rm-share-acts button { border: 1px solid rgba(157,107,255,.35); background: #1E1730; color: #EDE9F6; border-radius: 9px; padding: 8px 14px; font: 600 13px inherit; cursor: pointer; }
+.rm-share-acts button.pri { background: #7C3AED; border-color: #9D6BFF; color: #fff; }
 .rm-rxbar button { border: 0; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; padding: 3px 5px; border-radius: 50%; transition: transform .14s; }
 .rm-rxbar button:hover { transform: scale(1.28); background: rgba(157,107,255,.18); }
 .rm-float-rx { position: absolute; bottom: 52px; z-index: 15; pointer-events: none; font-size: 26px; display: flex; align-items: center; gap: 5px; animation: rmFloatUp 1.9s cubic-bezier(.22,1,.36,1) forwards; }

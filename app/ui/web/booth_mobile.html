@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Kami Booth — iPhone 48 kHz</title>
+  <style>
+    :root { --bg:#0D0A12; --card:#161121; --tx:#EDE9F6; --mut:#9E95B3; --ac:#9D6BFF; --ok:#2EE6A6; --bad:#FF4D6A; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--tx); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; display:flex; flex-direction:column; height:100dvh; }
+    header { padding:14px 16px; background:var(--card); border-bottom:1px solid rgba(157,107,255,.25); display:flex; justify-content:space-between; align-items:center; }
+    header b { color:var(--ac); font-size:16px; }
+    .tp { flex:1; overflow-y:auto; padding:18px 16px; font-size:21px; line-height:1.65; white-space:pre-wrap; }
+    .bar { padding:14px 16px; background:var(--card); border-top:1px solid rgba(157,107,255,.25); display:flex; gap:10px; align-items:center; }
+    button { border:0; border-radius:12px; padding:14px 18px; font:600 15px inherit; cursor:pointer; }
+    #recBtn { flex:1; background:var(--ac); color:#fff; }
+    #recBtn.live { background:var(--bad); }
+    #scrollBtn { background:#241B35; color:var(--tx); }
+    .st { font-size:12px; color:var(--mut); padding:6px 16px; background:#120D1B; }
+  </style>
+</head>
+<body>
+  <header><b id="projName">Kami Booth</b><span id="timer" style="font-variant-numeric:tabular-nums">00:00</span></header>
+  <div class="st" id="st">Hazır · 48 kHz WAV kablosuz kayıt</div>
+  <div class="tp" id="tp">Söz Defteri yükleniyor…</div>
+  <div class="bar">
+    <button id="scrollBtn">Akış: Kapalı</button>
+    <button id="recBtn">🎙 Kayda Başla</button>
+  </div>
+<script>
+let ctx = null, stream = null, node = null, chunks = [], recording = false, recStart = 0, tInt = 0, scrollInt = 0, scrolling = false;
+const tp = document.getElementById("tp"), st = document.getElementById("st"), recBtn = document.getElementById("recBtn"), scrollBtn = document.getElementById("scrollBtn");
+
+async function loadLyrics() {
+  try {
+    const r = await (await fetch("/api/teleprompter")).json();
+    if (r.ok) {
+      document.getElementById("projName").textContent = r.project_name || "Kami Booth";
+      tp.textContent = r.lyrics || "PC'deki Söz Defteri boş. Yazdığın sözler burada canlı görünür.";
+    }
+  } catch {}
+}
+loadLyrics();
+setInterval(loadLyrics, 3500);
+
+scrollBtn.onclick = () => {
+  scrolling = !scrolling;
+  scrollBtn.textContent = scrolling ? "Akış: Açık" : "Akış: Kapalı";
+  clearInterval(scrollInt);
+  if (scrolling) scrollInt = setInterval(() => { tp.scrollTop += 1; }, 45);
+};
+
+function encodeWav(samples, sampleRate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buf);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); ws(8, "WAVE"); ws(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); ws(36, "data"); v.setUint32(40, samples.length * 2, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++, off += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+recBtn.onclick = async () => {
+  if (!recording) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 48000, channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      const src = ctx.createMediaStreamSource(stream);
+      node = ctx.createScriptProcessor(4096, 1, 1);
+      chunks = [];
+      node.onaudioprocess = (e) => { if (recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+      src.connect(node); node.connect(ctx.destination);
+      recording = true; recStart = Date.now();
+      recBtn.classList.add("live"); recBtn.textContent = "⏹ Durdur & PC'ye Gönder";
+      st.textContent = "Kayıt alınıyor (" + ctx.sampleRate + " Hz)…";
+      tInt = setInterval(() => {
+        const s = Math.floor((Date.now() - recStart) / 1000);
+        document.getElementById("timer").textContent = String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0");
+      }, 300);
+    } catch (e) { st.textContent = "Mikrofon hatası: " + e.message; }
+  } else {
+    recording = false; clearInterval(tInt);
+    recBtn.classList.remove("live"); recBtn.disabled = true; recBtn.textContent = "Gönderiliyor…";
+    try {
+      node.disconnect(); stream.getTracks().forEach(t => t.stop());
+      const len = chunks.reduce((a, b) => a + b.length, 0);
+      const merged = new Float32Array(len);
+      let off = 0; for (const c of chunks) { merged.set(c, off); off += c.length; }
+      const blob = encodeWav(merged, ctx.sampleRate);
+      await ctx.close();
+      const resp = await fetch("/api/upload_wav", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: blob });
+      const j = await resp.json();
+      st.textContent = j.ok ? "✓ PC'deki aktif Vokal kanalına eklendi!" : ("Hata: " + (j.error || "?"));
+    } catch (e) { st.textContent = "Gönderim hatası: " + e.message; }
+    recBtn.disabled = false; recBtn.textContent = "🎙 Yeni Take Başlat";
+  }
+};
+</script>
+</body>
+</html>

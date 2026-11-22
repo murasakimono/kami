@@ -60,7 +60,15 @@ window.plPickTracks = (r) => {
   }
   $("#plSub").value = String(si); plLoadSub(si);
   if (pref.s2 && pref.s2 !== "off") { const s2 = PL.subList.findIndex((x, i) => x.lang === pref.s2 && i !== si); if (s2 >= 0) plLoadSub(s2, 2); }
-  if (pref.rate) { $("#plVideo").playbackRate = pref.rate; $("#plRate").value = String(pref.rate); }
+  if (pref.rate) {
+    const sel = $("#plRate");
+    if (sel) {
+      if (![...sel.options].some((o) => +o.value === +pref.rate)) sel.insertAdjacentHTML("beforeend", `<option value="${pref.rate}">${pref.rate}×</option>`);
+      sel.value = String(pref.rate);
+    }
+    if (typeof window.plApplyRate === "function") window.plApplyRate(pref.rate);
+    else { const pv = $("#plVideo"); if (pv) { pv.defaultPlaybackRate = pref.rate; pv.playbackRate = pref.rate; } }
+  }
   PX.applying = false;
   if (r.kind === "video") pxOfferTranslate();
 };
@@ -329,7 +337,8 @@ window.plSettings = () => {
     <div class="px-seg" data-g="audio">${[["off", plL("Kapalı", "Off")], ["norm", plL("Normalleştir", "Normalize")], ["night", plL("Gece modu", "Night mode")]].map(([v, l]) => `<button data-v="${v}" class="${c.audio === v ? "on" : ""}">${l}</button>`).join("")}</div>
     <p class="px-hint">${plL("Gece modu patlamaları kısar, fısıltıları yükseltir. Ses kaydırıcısı %200'e kadar çıkar.", "Night mode tames explosions and lifts whispers. Volume goes up to 200%.")}</p>
     <div class="px-shift"><span>${plL("5.1 → kulaklık (diyalog öne)", "5.1 → headphones (dialogue first)")}</span><div class="px-seg" data-g="dialog" style="margin:0">${[["0", plL("Kapalı", "Off")], ["1", plL("Açık", "On")]].map(([v, l]) => `<button data-v="${v}" class="${(c.dialog ? "1" : "0") === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
-    <label class="px-rng"><span>${plL("Sesi geciktir", "Delay audio")}</span><input type="range" data-ak="delay" min="0" max="1000" step="10" value="${c.delay}"><b>${c.delay} ms</b></label>
+    <div class="px-shift"><span>${plL("Ses Dengeleyici (-14 LUFS)", "Loudness Normalizer (-14 LUFS)")}</span><div class="px-seg" data-g="lufs" style="margin:0"><button data-v="0" class="${!window.KamiPlayerPro?.state?.replayGain ? "on" : ""}">${plL("Kapalı", "Off")}</button><button data-v="1" class="${window.KamiPlayerPro?.state?.replayGain ? "on" : ""}">${plL("Açık", "On")}</button></div></div>
+    <label class="px-rng"><span>${plL("Ses senkronu", "Audio sync")}</span><input type="range" data-ak="delay" min="-1500" max="1500" step="25" value="${c.delay}"><b>${c.delay} ms</b><button class="pl-b" data-act="delay0" style="min-width:44px;margin-left:4px">0 ms</button></label>
     ${window.pxExtraAudioHtml?.() || ""}
     <h4>${plL("Müzik", "Music")}</h4>
     ${pxBool("lyrics", plL("Şarkı sözü paneli", "Lyrics panel"))}
@@ -344,16 +353,33 @@ window.plSettings = () => {
     <button class="pl-b" data-act="keyreset">${plL("Varsayılana dön", "Reset to defaults")}</button>
     <h4>${plL("Genel", "General")}</h4>
     ${pxBool("capsuleBar", plL("Yüzen kapsül kontrol çubuğu (tema)", "Floating capsule control bar (theme)"))}
+    <div class="px-shift"><span>${plL("Oynatıcı Motoru", "Player Engine")}</span><div class="px-seg" data-g="engine" style="margin:0"><button data-v="html5" class="on">HTML5</button><button data-v="libmpv">libmpv</button></div></div>
+    <div id="pxMpvBox" style="margin:2px 0 8px"></div>
+    <button class="pl-b" data-act="notes">${plL("📝 Not Ekranı (Alt+N)", "📝 Player Notes (Alt+N)")}</button>
     <button class="pl-b" data-act="default">${plL("Varsayılan oynatıcı yap (Windows ayarları)", "Make default player (Windows settings)")}</button>
     ${window.pxExtraToolsHtml?.() || ""}`;
   pxTabify(p);
   p.hidden = false;
+  pxSyncBackendSettings(p);
   p.onclick = async (e) => {
     const b = e.target.closest("button"); if (!b) return;
     const segEl = b.closest(".px-seg");
     if (segEl) {
       const g = segEl.dataset.g, v = b.dataset.v;
       if (segEl.dataset.b) { c[segEl.dataset.b] = v === "1"; pxSave(); pxBoolApply(segEl.dataset.b); segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); return; }
+      if (g === "lufs") {
+        const on = v === "1";
+        api.set_setting?.("player_loudness_norm", on);
+        window.KamiPlayerPro?.setLoudnessNorm?.(on);
+        segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        return;
+      }
+      if (g === "engine") {
+        await api.set_setting?.("player_engine", v);
+        segEl.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        pxSyncBackendSettings(p);
+        return;
+      }
       if (g === "audio") c.audio = v; else if (g === "tr") c.trEngine = v; else if (g === "ocr") c.ocrLang = v; else if (g === "xfade") c.xfade = +v;
       else if (g === "ass") { c.assStyle = v; pxSave(); if (PL.open && PL.subIdx >= 0) plLoadSub(PL.subIdx); }
       else if (g === "dialog") { c.dialog = v === "1"; pxSave(); if (PL.open) { if (PL.mode === "direct" && plDialogMix()) PL.mode = "remux"; plModeUi(); plSeek(plNow(), !$("#plVideo").paused); } } else c[g][segEl.dataset.k] = segEl.dataset.k === "pos" ? +v : v;
@@ -367,7 +393,15 @@ window.plSettings = () => {
     if (b.dataset.act === "sh-") plShift(-0.5);
     if (b.dataset.act === "sh+") plShift(0.5);
     if (b.dataset.act === "sh0") plShift(0);
+    if (b.dataset.act === "delay0") {
+      c.delay = 0; pxSave();
+      const rng = p.querySelector('input[data-ak="delay"]');
+      if (rng) { rng.value = "0"; rng.nextElementSibling.textContent = "0 ms"; }
+      window.plApplyAudio();
+      if (PL.open && PL.mode !== "direct") plSeek(plNow(), !$("#plVideo").paused);
+    }
     if (b.dataset.act === "vreset") { Object.assign(c.vid, { aspect: "auto", zoom: 100, bright: 100, contrast: 100, sat: 100, rot: 0, flip: false }); pxSave(); pxApplyAll(); p.hidden = true; plSettings(); }
+    if (b.dataset.act === "notes") { p.hidden = true; window.plToggleNotes?.(true); }
     if (b.dataset.act === "default") { const ok = await api.player_default_apps(); if (!ok) toast(plL("Windows ayarları açılamadı", "Couldn't open Windows settings"), true); }
   };
   p.onchange = (e) => {
@@ -376,7 +410,14 @@ window.plSettings = () => {
   };
   p.oninput = (e) => {
     if (e.target.dataset.ak === "delay") {
-      c.delay = +e.target.value; e.target.nextElementSibling.textContent = c.delay + " ms"; pxSave(); window.plApplyAudio(); return;
+      const prev = c.delay || 0;
+      c.delay = +e.target.value; e.target.nextElementSibling.textContent = c.delay + " ms"; pxSave();
+      window.plApplyAudio();
+      if (PL.open && PL.mode !== "direct" && (c.delay < 0 || prev < 0)) {
+        clearTimeout(PX._delaySeekT);
+        PX._delaySeekT = setTimeout(() => plSeek(plNow(), !$("#plVideo").paused), 220);
+      }
+      return;
     }
     const k = e.target.dataset.vk; if (!k) return;
     c.vid[k] = +e.target.value; e.target.nextElementSibling.textContent = c.vid[k] + "%";
@@ -470,7 +511,7 @@ function pxCaptureKey(btn) {
   document.addEventListener("keydown", on, true);
 }
 window.plApplyAudio = () => {
-  if (PL.delay) PL.delay.delayTime.setTargetAtTime((PX.cfg.delay || 0) / 1000, PL.ctx.currentTime, 0.02);
+  if (PL.delay) PL.delay.delayTime.setTargetAtTime(Math.max(0, PX.cfg.delay || 0) / 1000, PL.ctx.currentTime, 0.02);
   if (!PL.comp) return;
   const m = PX.cfg.audio, C = PL.comp, t = PL.ctx.currentTime;
   const set = (th, knee, ratio, att, rel, g) => {
@@ -488,3 +529,105 @@ if (typeof SK !== "undefined") {
   dock?.insertAdjacentHTML("afterbegin", `<button data-sk="library" title="${plL("Kütüphane (Kami Player)", "Library (Kami Player)")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l4 1-3 14-4-1z"/></svg></button>`);
   dock?.addEventListener("click", (e) => { if (e.target.closest('[data-sk="library"]')) { e.stopImmediatePropagation(); if (!$("#player")) plBuild(); plDrawer("lib"); } }, true);
 }
+
+async function pxSyncBackendSettings(p) {
+  try {
+    const s = await api.get_settings?.();
+    const lufs = s?.player_loudness_norm ? "1" : "0";
+    p.querySelectorAll('.px-seg[data-g="lufs"] button').forEach((b) => b.classList.toggle("on", b.dataset.v === lufs));
+    const eng = s?.player_engine === "libmpv" ? "libmpv" : "html5";
+    p.querySelectorAll('.px-seg[data-g="engine"] button').forEach((b) => b.classList.toggle("on", b.dataset.v === eng));
+    const box = p.querySelector("#pxMpvBox");
+    if (box && api.mpv_status) {
+      const st = await api.mpv_status();
+      if (st?.available) {
+        box.innerHTML = `<p class="px-hint" style="color:#2EE6A6">${plL("libmpv hazır", "libmpv ready")}</p>`;
+      } else {
+        box.innerHTML = `<p class="px-hint">${plL("libmpv kurulu değil (HTML5 yedeği aktif).", "libmpv not installed (HTML5 fallback active).")}</p><button class="pl-b" id="pxMpvInstall">${plL("1-Tıkla libmpv Kur", "1-Click Install libmpv")}</button>`;
+        box.querySelector("#pxMpvInstall")?.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const btn = ev.currentTarget; btn.disabled = true; btn.textContent = plL("Kuruluyor…", "Installing…");
+          const r = typeof slow === "function" ? await slow("mpv_install").catch(() => null) : await api.mpv_install?.().catch(() => null);
+          if (r?.ok) { toast(plL("libmpv kuruldu", "libmpv installed")); pxSyncBackendSettings(p); }
+          else { toast(plL("libmpv kurulamadı: ", "libmpv install failed: ") + (r?.error || "?"), true); btn.disabled = false; btn.textContent = plL("1-Tıkla libmpv Kur", "1-Click Install libmpv"); }
+        });
+      }
+    }
+  } catch { /* sessiz */ }
+}
+
+function pxFmtStamp(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(s / 60), r = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+function pxParseStamp(st) {
+  const m = String(st || "").match(/^(\d+):(\d{2})$/);
+  return m ? (+m[1] * 60 + +m[2]) : null;
+}
+
+window.plToggleNotes = async function (forceOpen) {
+  const host = $("#player"); if (!host) return;
+  let d = $("#plNotesDrawer");
+  if (!d) {
+    d = document.createElement("aside");
+    d.id = "plNotesDrawer";
+    d.hidden = true;
+    d.innerHTML = `
+      <div class="pn-head"><b>${plL("Not Ekranı", "Player Notes")}</b><button type="button" id="pnClose">✕</button></div>
+      <div class="pn-form">
+        <textarea id="pnInput" placeholder="${plL("Zaman damgalı not ekle…", "Add timestamped note…")}"></textarea>
+        <div class="pn-form-row">
+          <span class="pn-stamp" id="pnStamp">00:00</span>
+          <button type="button" class="pl-b" id="pnAdd">${plL("Ekle", "Add")}</button>
+        </div>
+      </div>
+      <div class="pn-list" id="pnList"></div>`;
+    host.appendChild(d);
+    d.querySelector("#pnClose").onclick = () => { d.hidden = true; };
+    d.querySelector("#pnAdd").onclick = async () => {
+      const inp = d.querySelector("#pnInput");
+      const txt = inp.value.trim(); if (!txt) return;
+      const stamp = typeof plNow === "function" ? pxFmtStamp(plNow()) : "00:00";
+      await api.scratchpad_add?.(txt, "player", PL.info?.path || "", stamp);
+      inp.value = "";
+      await renderNotes();
+    };
+  }
+  const open = typeof forceOpen === "boolean" ? forceOpen : d.hidden;
+  d.hidden = !open;
+  if (!open) return;
+  const stEl = d.querySelector("#pnStamp");
+  if (stEl && typeof plNow === "function") stEl.textContent = pxFmtStamp(plNow());
+  await renderNotes();
+
+  async function renderNotes() {
+    const listEl = d.querySelector("#pnList");
+    const r = await api.scratchpad_load?.().catch(() => null);
+    const curPath = PL.info?.path || "";
+    const notes = (r?.notes || []).filter((n) => n.context === "player" && (!curPath || !n.target_path || n.target_path === curPath));
+    if (!notes.length) {
+      listEl.innerHTML = `<div class="px-empty">${plL("Henüz not yok.", "No notes yet.")}</div>`;
+      return;
+    }
+    listEl.innerHTML = notes.map((n) => {
+      const sec = pxParseStamp(n.stamp);
+      return `<div class="pn-item" data-id="${escapeHtml(n.id || "")}">
+        <div class="pn-item-top">
+          ${sec !== null ? `<button type="button" class="pn-jump" data-sec="${sec}">⏱ ${escapeHtml(n.stamp)}</button>` : `<span>${escapeHtml(n.stamp || "")}</span>`}
+          <button type="button" class="pn-del" title="${plL("Sil", "Delete")}">✕</button>
+        </div>
+        <div class="pn-txt">${escapeHtml(n.text || "")}</div>
+      </div>`;
+    }).join("");
+    listEl.querySelectorAll(".pn-jump").forEach((btn) => {
+      btn.onclick = () => { if (typeof plSeek === "function") plSeek(+btn.dataset.sec); };
+    });
+    listEl.querySelectorAll(".pn-del").forEach((btn) => {
+      btn.onclick = async () => {
+        const id = btn.closest(".pn-item")?.dataset.id;
+        if (id) { await api.scratchpad_delete?.(id); await renderNotes(); }
+      };
+    });
+  }
+};

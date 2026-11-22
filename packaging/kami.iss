@@ -106,7 +106,21 @@ var
 begin
   { calisan Kami'yi duzgun kapat (aria2 + dosyalar serbest kalsin); en fazla ~10 sn bekler }
   if FileExists(Dir + '\Kami.exe') then
+  begin
     Exec(Dir + '\Kami.exe', '--quit', Dir, SW_HIDE, ewWaitUntilTerminated, RC);
+    Sleep(400);
+    { Yalnizca hala cikmamis Kami.exe surecini hedefle (Restart Manager penceresi acilmasin) }
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Kami.exe', '', SW_HIDE, ewWaitUntilTerminated, RC);
+    Sleep(250);
+  end;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  { Restart Manager dosya kilidi kontrolunu wpReady->wpPreparing gecisinde yapar; onceden kapat }
+  if CurPageID = wpReady then
+    QuitKami(ExpandConstant('{app}'));
+  Result := True;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

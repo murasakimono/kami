@@ -65,6 +65,7 @@
     <label>Mikrofon <select id="sMic"></select></label>
     <label>Gürültü engelleme
       <select id="sNs"><option value="rnnoise">Güçlü (RNNoise, yerel)</option><option value="browser">Tarayıcınınki</option><option value="off">Kapalı</option></select></label>
+    <label>Gürültü kapısı <select id="sGate"><option value="med">Orta (önerilen)</option><option value="high">Güçlü (klavye/fan)</option><option value="low">Düşük</option><option value="off">Kapalı</option></select></label>
     <label>Konuşma <select id="sMode"><option value="vad">Ses algılama</option><option value="ptt">Bas-konuş</option></select></label>
     <label id="sPttRow">Bas-konuş tuşu <button id="sPtt" type="button">Bir tuşa bas…</button></label>
     <label>Mikrofon seviyesi <span class="meter"><i id="sMeter"></i></span></label>
@@ -79,6 +80,23 @@
 <div class="sb-panel" id="sbPanel" hidden><div class="sb-head"><b>Ses panosu</b><input id="sbFind" placeholder="Ara…"><label class="sb-off"><input type="checkbox" id="sbOff"> Gelenleri sustur</label></div><div class="sb-list" id="sbList"></div></div>
 <div class="pip-box" id="pipBox" hidden><video id="pipV" playsinline autoplay autopictureinpicture></video>
   <button id="pipGo" title="Küçük pencereye al">⧉</button><button id="pipX" title="Kapat">✕</button></div>
+<div class="rm-share-dlg" id="shareDlg" hidden>
+  <div class="rm-share-card">
+    <h3>Ekran / Oyun Paylaşımı</h3>
+    <label>Kalite &amp; Akıcılık
+      <select id="shQual">
+        <option value="">Dengeli (1080p 30 fps — donmasız)</option>
+        <option value="smooth">Akıcı (1080p 60 fps — oyun/video)</option>
+        <option value="sharp">Net (1440p 30 fps — yazı/kod)</option>
+      </select>
+    </label>
+    <label class="chk"><input type="checkbox" id="shAudio" checked> Sistem sesini paylaş</label>
+    <div class="rm-share-acts">
+      <button type="button" id="shCancel">İptal</button>
+      <button type="button" class="pri" id="shStart">Ekran / Pencere Seç →</button>
+    </div>
+  </div>
+</div>
 <div class="rm-toast" id="toast" hidden></div>
 <script src="s/kami-embed.js"></script>
 <script src="s/kami-guard.js"></script>

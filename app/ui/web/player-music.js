@@ -51,17 +51,32 @@ function pmClean(s) {
     .replace(/[|｜].*$/, "")
     .replace(/\s{2,}/g, " ").replace(/^[\s\-–—]+|[\s\-–—]+$/g, "").trim();
 }
+function pmStem(path) {
+  return String(path || "").split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
+}
+function pmSplitPair(s) {
+  const m = String(s || "").match(/^(.+?)\s+[-–—~]\s+(.+)$/);
+  return m ? [m[1].trim(), m[2].trim()] : null;
+}
 function pmMeta(r) {
-  const tg = r.tags || {};
+  const tg = r?.tags || {};
   let artist = String(tg.artist || tg.album_artist || "").replace(/\s*(VEVO|- Topic|Official)\s*$/i, "").trim();
-  const raw = tg.title || r.title || "";
-  let title = pmClean(raw);
-  const m = title.match(/^(.+?)\s+[-–—~]\s+(.+)$/);
-  if (m) {   // "Sanatci - Sarki": kanal adi sanatci etiketine yazilmis olabilir, basliktaki sanatci daha guvenilir
-    const a = m[1].trim(), t = m[2].trim();
-    if (!artist || !t.toLowerCase().includes(artist.toLowerCase())) { artist = a; title = t; }
+  const rawTag = String(tg.title || "").trim();
+  const rawFile = pmStem(r?.path) || String(r?.title || "").trim();
+  let title = pmClean(rawTag || rawFile);
+  const badOrSame = !title || (artist && title.toLowerCase() === artist.toLowerCase());
+  const pair = pmSplitPair(title) || (badOrSame ? pmSplitPair(pmClean(rawFile)) : null);
+  if (pair) {   // "Sanatci - Sarki": kanal/sanatci basliktan ayristirilir
+    const [a, t] = pair;
+    if (!artist || a.toLowerCase() === artist.toLowerCase() || !t.toLowerCase().includes(artist.toLowerCase())) {
+      artist = a;
+      title = t;
+    }
+  } else if (badOrSame && rawFile) {
+    const cleanFile = pmClean(rawFile);
+    if (cleanFile && cleanFile.toLowerCase() !== artist.toLowerCase()) title = cleanFile;
   }
-  return { artist, title, album: tg.album || "" };
+  return { artist, title: title || rawFile, album: tg.album || "" };
 }
 
 window.plReloadLyrics = async (changedPath = "") => {
@@ -77,13 +92,39 @@ window.plReloadLyrics = async (changedPath = "") => {
   pmShow(res);
 };
 
-// Mini oynatıcı (B) başlık/kapak: şarkı geçince plMusicStart burayı tazeler; açılışta plMini() ayrıca doldurur.
+function plMiniLabels(r) {
+  const isVid = r?.kind === "video";
+  if (isVid) return { top: r?.title || "", sub: "" };
+  const meta = PM.meta || pmMeta(r || {});
+  const artist = String(meta.artist || "").trim();
+  const song = String(meta.title || r?.title || pmStem(r?.path) || "").trim();
+  const hasSynced = Boolean(PM.lines.length);
+  const activeLyric = hasSynced && PM.idx >= 0 ? (PM.lines[PM.idx]?.text || "") : "";
+  const fullTop = artist && song && song.toLowerCase() !== artist.toLowerCase()
+    ? (song.toLowerCase().startsWith(artist.toLowerCase()) ? song : `${artist} — ${song}`)
+    : (song || artist);
+  if (hasSynced) {
+    return { top: fullTop, sub: activeLyric || song || [artist, meta.album].filter(Boolean).join(" · ") };
+  }
+  // Zaman damgali soz yoksa: ustte sanatci/album, altta beyaz belirgin sarki adi (bos kalmaz)
+  const subTitle = song || r?.title || "";
+  const topArtist = artist ? [artist, meta.album].filter(Boolean).join(" · ") : subTitle;
+  return {
+    top: topArtist === subTitle ? "" : topArtist,
+    sub: subTitle || topArtist,
+  };
+}
+
+// Mini oynatıcı (B) başlık/kapak/soz: şarkı geçince, açılışta ve söz yüklenince tek yardımcıyla tazelenir.
 function plMiniSync(r) {
   if (!PL.mini) return;
-  const isVid = r.kind === "video";
-  const t = $("#pmiTitle"), c = $("#pmiCover"), pb = $("#pmiPlay");
-  if (t) t.textContent = (!isVid && PM.meta && PM.meta.title && (PM.meta.artist ? PM.meta.artist + " — " : "") + PM.meta.title) || r.title || "";
-  if (c) { c.style.backgroundImage = r.cover ? `url("${r.cover}")` : ""; c.hidden = !r.cover || isVid; }
+  const info = r || PL.info || {};
+  const isVid = info.kind === "video";
+  const lbl = plMiniLabels(info);
+  const t = $("#pmiTitle"), ml = $("#pmMiniLine"), c = $("#pmiCover"), pb = $("#pmiPlay");
+  if (t) t.textContent = lbl.top;
+  if (ml) ml.textContent = lbl.sub;
+  if (c) { c.style.backgroundImage = info.cover ? `url("${info.cover}")` : ""; c.hidden = !info.cover || isVid; }
   if (pb) pb.textContent = ($("#plVideo").paused) ? "▶" : "⏸";
 }
 
@@ -144,6 +185,7 @@ function pmShow(res) {
     empty.querySelector("[data-a=reload]").onclick = () => window.plReloadLyrics?.();
     empty.querySelectorAll("[data-u]").forEach((b) => b.onclick = () => api.open_link(b.dataset.u));
   }
+  plMiniSync(PL.info);
 }
 function pmSrcName(s) {
   return { lrc: plL("yan .lrc dosyası", "sidecar .lrc"), txt: plL("yan .txt dosyası", "sidecar .txt"), tag: plL("dosyanın içindeki sözler", "embedded lyrics"), lrclib: "LRCLIB" }[s] || "";
@@ -214,7 +256,7 @@ function pmLoop() {
       }
     }
     const cur = i >= 0 && list.querySelector(`.pm-l[data-i="${i}"]`);
-    if (i !== PM.miniI) { PM.miniI = i; const ml = $("#pmMiniLine"); if (ml) ml.textContent = i >= 0 ? PM.lines[i].text : ""; }
+    if (i !== PM.miniI) { PM.miniI = i; const ml = $("#pmMiniLine"); if (ml) ml.textContent = i >= 0 ? PM.lines[i].text : plMiniLabels(PL.info).sub; }
     if (cur) cur.classList.toggle("nok", pmCfg().karaoke === false);
     if (cur && pmCfg().karaoke !== false) {
       const a = PM.lines[i].t, b = PM.lines[i + 1] ? PM.lines[i + 1].t : a + 5;
@@ -306,13 +348,8 @@ window.plMini = async (on) => {
     ["play", "pause"].forEach((ev) => v.addEventListener(ev, () => { const b = $("#pmiPlay"); if (b) b.textContent = v.paused ? "▶" : "⏸"; }));
     pmMiniDrag();
   }
-  const r = PL.info || {};
-  $("#pmiTitle").textContent = (!isVid && PM.meta && PM.meta.title && (PM.meta.artist ? PM.meta.artist + " — " : "") + PM.meta.title) || r.title || "";
-  $("#pmiCover").style.backgroundImage = r.cover ? `url("${r.cover}")` : "";
-  $("#pmiCover").hidden = !r.cover || isVid;
-  $("#pmiPlay").textContent = v.paused ? "▶" : "⏸";
   PM.miniI = PM.idx;
-  $("#pmMiniLine").textContent = PM.lines.length && PM.idx >= 0 ? PM.lines[PM.idx].text : (isVid ? "" : [PM.meta?.artist, PM.meta?.album].filter(Boolean).join(" · "));
+  plMiniSync(PL.info || {});
   window.plPanelClose?.();
   if ($("#plDict")) $("#plDict").hidden = true;
   $("#player").classList.toggle("mini", on);

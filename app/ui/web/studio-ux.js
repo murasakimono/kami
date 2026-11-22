@@ -430,3 +430,38 @@ document.addEventListener("click", e => {
 for (const [a, tip] of [["split", "Böl (S / B)"], ["del", "Sil (Del)"], ["undo", "Geri al (Ctrl+Z)"], ["redo", "Yinele (Ctrl+Y)"], ["marker", "İşaret koy (M) · sağ tık: menü"], ["dup", "Çoğalt (Ctrl+D)"]]) {
   const b = document.querySelector(`[data-a="${a}"]`); if (b) b.title = tip;
 }
+
+// Dalga 4: Gercek GPU Kodlayici Testi & Arka Plan Render Kuyrugu
+window.studioProbeEncoders = async function () {
+  const r = await pywebview.api.studio_probe_encoders().catch(() => null);
+  if (!r?.ok) { toast("Kodlayıcı testi yapılamadı"); return; }
+  const rows = (r.encoders || []).map((e) => `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${e.label}</span><b style="color:${e.ok ? "#2EE6A6" : "#FF4D6A"}">${e.ok ? "✓ Hazır" : "✗ Yok"}</b></div>`).join("");
+  await modal(`<h3>GPU / Donanım Kodlayıcı Testi</h3><div class="hint">Önerilen: <b>${r.recommended}</b></div><div style="margin:8px 0">${rows}</div><div class="row"><button class="tb pri" data-v="ok">Tamam</button></div>`);
+};
+
+window.studioEnqueueRender = async function (outPath, opts) {
+  const proj = typeof rootProjectClone === "function" ? rootProjectClone() : (ST.p || {});
+  if (proj.assets) for (const a of Object.values(proj.assets)) delete a.url;
+  const r = await pywebview.api.studio_render_queue_add(proj, outPath || "", opts || {}).catch(() => null);
+  if (r?.ok) toast("Render kuyruğuna eklendi");
+  return r;
+};
+
+window.studioRenderQueue = async function () {
+  const r = await pywebview.api.studio_render_queue_list().catch(() => null);
+  const items = r?.items || [];
+  const rows = items.length ? items.map((it) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${it.name} (${it.state} ${Math.round((it.p || 0) * 100)}%)</span><button class="tb" data-qcancel="${it.id}">İptal</button></div>`).join("") : '<div class="hint">Kuyruk boş</div>';
+  const v = await modal(`<h3>Arka Plan Render Kuyruğu</h3><div id="stRqBox">${rows}</div><div class="row"><button class="tb" data-v="add">+ Aktif Projeyi Ekle</button><button class="tb" data-v="clear">Tamamlananları Temizle</button><button class="tb pri" data-v="ok">Kapat</button></div>`);
+  if (v === "add") {
+    const out = await pywebview.api.studio_pick_save?.(ST.p?.name || "video", ".mp4").catch(() => "");
+    if (out) await window.studioEnqueueRender(out, {});
+  }
+  if (v === "clear") await pywebview.api.studio_render_queue_clear().catch(() => {});
+};
+
+document.addEventListener("click", (e) => {
+  const c = e.target.closest("[data-qcancel]");
+  if (c) pywebview.api.studio_render_queue_cancel(c.dataset.qcancel).then(() => toast("İptal istendi"));
+  if (e.target.closest('[data-a="gpuprobe"]')) window.studioProbeEncoders();
+  if (e.target.closest('[data-a="rqueue"]')) window.studioRenderQueue();
+});

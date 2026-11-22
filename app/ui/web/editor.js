@@ -527,7 +527,29 @@ function edFlatten() {
 // v1.30: katman maskesi (l.mask: beyaz=gorunur, siyah=gizli; l.c ile ayni boyut) ve ayar katmani (l.adj: altindakilere
 // egriler/seviyeler/renk tahribatsiz uygulanir). live=true: ekrandaki onizleme (firca/ayar onizlemesi dahil).
 ED.ver = 0;
-function edBump() { ED.ver++; }
+let _edDraftTimer = 0;
+function _edScheduleDraft() {
+  clearTimeout(_edDraftTimer);
+  if (!ED.on || !ED.dirty || !ED.layers?.length) return;
+  _edDraftTimer = setTimeout(_edSaveDraft, 1200);
+}
+function _edSaveDraft() {
+  clearTimeout(_edDraftTimer);
+  if (!ED.layers?.length || !ED.dirty) return;
+  try {
+    const meta = { mode: "edit", name: ED.name || "Adsız", path: ED.path || "", projPath: ED.projPath || "", ts: Date.now() };
+    localStorage.setItem("kami.picDraft", JSON.stringify(meta));
+    const payload = JSON.stringify({ meta, doc: edSerialize(false) });
+    window.pywebview?.api?.picture_draft_save?.(payload)?.catch?.(() => {});
+  } catch { /* taslak yazma hatasi sessiz */ }
+}
+function _edClearDraft() {
+  clearTimeout(_edDraftTimer);
+  try { localStorage.removeItem("kami.picDraft"); } catch {}
+  try { window.pywebview?.api?.picture_draft_clear?.()?.catch?.(() => {}); } catch {}
+}
+window.addEventListener("pagehide", () => { if (ED.on && ED.dirty) _edSaveDraft(); });
+function edBump() { ED.ver++; _edScheduleDraft(); }
 function edMaskAlpha(l) {   // gri maske -> alfa maske (onbellekli)
   if (l._mA && l._mAv === l._maskV) return l._mA;
   const w = l.mask.width, h = l.mask.height, src = l.mask.getContext("2d").getImageData(0, 0, w, h), d = src.data;
@@ -749,13 +771,13 @@ function edDeserialize(s) {
 }
 async function edSaveProject() {
   const r = await api.editor_project_save(ED.projPath || "", ED.name, JSON.stringify(edSerialize(false)));
-  if (r?.ok) { ED.projPath = r.path; ED.dirty = false; toast(edL("Proje kaydedildi: ", "Project saved: ") + r.path.split(/[\\/]/).pop()); }
+  if (r?.ok) { ED.projPath = r.path; ED.dirty = false; _edClearDraft(); toast(edL("Proje kaydedildi: ", "Project saved: ") + r.path.split(/[\\/]/).pop()); }
 }
 async function edExport(fmt) {
   const c = edFlatten(), mime = { png: "image/png", jpg: "image/jpeg", webp: "image/webp" }[fmt];
   if (fmt === "jpg") { const b = document.createElement("canvas"); b.width = c.width; b.height = c.height; const g = b.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, b.width, b.height); g.drawImage(c, 0, 0); c.getContext("2d").drawImage(b, 0, 0); }
   const r = await api.editor_export(ED.path || "", ED.name, fmt, c.toDataURL(mime, 0.94));
-  if (r?.ok) { ED.dirty = false; toast(edL("Kaydedildi: ", "Saved: ") + r.path.split(/[\\/]/).pop()); }
+  if (r?.ok) { ED.dirty = false; _edClearDraft(); toast(edL("Kaydedildi: ", "Saved: ") + r.path.split(/[\\/]/).pop()); }
 }
 
 // ---------------------------------------------------------------- sablonlar
@@ -976,8 +998,23 @@ window.addEventListener("paste", (e) => {
     }
   }
 });
+async function edOpenDraft(payload) {
+  if (!payload?.doc?.layers?.length) return false;
+  edMount();
+  $("#ed").classList.add("on"); ED.on = true;
+  await edDeserialize(payload.doc);
+  ED.path = payload.meta?.path || "";
+  ED.projPath = payload.meta?.projPath || "";
+  ED.dirty = true;
+  ED.tool = "brush"; edOpt(); edLayersUi(); edFit(); edRender();
+  edCurveHook();
+  toast(edL("Otomatik taslak yüklendi", "Auto-saved draft restored"));
+  return true;
+}
 async function edClose() {
   if (ED.dirty && !await kAsk(edL("Kaydedilmemiş değişiklikler var. Kapatılsın mı?", "Unsaved changes. Close anyway?"), edL("Kapat", "Close"), edL("Vazgeç", "Cancel"), true)) return;
+  ED.dirty = false;
+  _edClearDraft();
   ED.on = false; $("#ed").classList.remove("on");
 }
-window.kamiEditor = { open: edOpen, openImage: edOpenImage };
+window.kamiEditor = { open: edOpen, openImage: edOpenImage, openDraft: edOpenDraft };

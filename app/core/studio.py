@@ -663,6 +663,87 @@ class Studio:
             log.info("Studio kodlayici: %s", self._enc)
         return self._enc
 
+    def probe_encoders(self) -> dict[str, Any]:
+        """Gercek 2-karelik ffmpeg testiyle sistemdeki GPU/CPU kodlayicilari sinar."""
+        specs = [
+            ("h264_nvenc", True, "NVIDIA H.264 (NVENC)"),
+            ("hevc_nvenc", True, "NVIDIA HEVC/H.265 (NVENC)"),
+            ("av1_nvenc", True, "NVIDIA AV1 (NVENC)"),
+            ("h264_qsv", True, "Intel QuickSync H.264"),
+            ("h264_amf", True, "AMD AMF H.264"),
+            ("libx264", False, "CPU H.264 (x264)"),
+        ]
+        results = []
+        rec = "libx264"
+        for cid, hw, label in specs:
+            try:
+                r = self._run(["-loglevel", "error", "-f", "lavfi", "-i", "color=s=256x256:d=0.05",
+                               "-frames:v", "2", "-c:v", cid, "-f", "null", "-"], timeout=8)
+                ok = r.returncode == 0
+            except Exception:
+                ok = False
+            results.append({"id": cid, "hw": hw, "label": label, "ok": ok})
+            if ok and rec == "libx264" and hw:
+                rec = cid
+        self._enc = rec
+        return {"ok": True, "encoders": results, "recommended": rec}
+
+    def queue_add(self, project: dict[str, Any], out: str, opts: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Render isini arka plan kuyruguna ekler ve sirayla isler."""
+        qid = "q" + str(int(time.time() * 1000)) + "_" + str(len(getattr(self, "_render_q", [])) + 1)
+        item = {"id": qid, "name": project.get("name") or Path(str(out)).stem, "out": out,
+                "state": "queued", "p": 0.0, "error": "", "project": project, "opts": dict(opts or {}),
+                "cancel": threading.Event()}
+        with self._lock:
+            q = getattr(self, "_render_q", None)
+            if q is None:
+                q = []
+                self._render_q = q
+            q.append(item)
+            running = getattr(self, "_render_q_running", False)
+            if not running:
+                self._render_q_running = True
+                threading.Thread(target=self._run_render_queue, daemon=True, name="studio-render-queue").start()
+        return {"ok": True, "id": qid}
+
+    def _run_render_queue(self) -> None:
+        while True:
+            nxt = None
+            with self._lock:
+                for it in getattr(self, "_render_q", []):
+                    if it["state"] == "queued":
+                        nxt = it
+                        break
+                if nxt is None:
+                    self._render_q_running = False
+                    return
+                if nxt["cancel"].is_set():
+                    nxt["state"] = "cancelled"
+                    continue
+                nxt["state"] = "running"
+            self._export(nxt, nxt["project"], nxt["out"], nxt["opts"])
+
+    def queue_list(self) -> dict[str, Any]:
+        with self._lock:
+            items = [{k: v for k, v in it.items() if k not in ("cancel", "project", "opts")}
+                     for it in getattr(self, "_render_q", [])]
+        return {"ok": True, "items": items}
+
+    def queue_cancel(self, qid: str) -> dict[str, Any]:
+        with self._lock:
+            for it in getattr(self, "_render_q", []):
+                if it["id"] == qid:
+                    it["cancel"].set()
+                    if it["state"] == "queued":
+                        it["state"] = "cancelled"
+                    return {"ok": True}
+        return {"ok": False, "error": "not_found"}
+
+    def queue_clear(self) -> dict[str, Any]:
+        with self._lock:
+            self._render_q = [it for it in getattr(self, "_render_q", []) if it["state"] in ("queued", "running")]
+        return {"ok": True}
+
     def export(self, project: dict[str, Any], out: str, opts: dict[str, Any] | None = None) -> str:
         """Arka planda disa aktarir; is kimligi doner. Durum: job(jid)."""
         jid = "e" + str(int(time.time() * 1000))

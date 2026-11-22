@@ -59,7 +59,7 @@ DEFAULTS: dict[str, Any] = {
     "speed_profiles": {"full": 0, "game": 12288, "room": 8192, "night": 4096},
     "pano_shelf_record": True,     # v1.31.2: kopyalanan metin/linkler Pano rafina (parola yoneticisi kopyalari haric)
     "pano_exclude_apps": ["keepass", "bitwarden", "1password", "enpass", "lastpass", "dashlane"],
-    "prewarm_player": True,        # v1.35.2: Player arka planda gizli hazirlanir; ilk acilis aninda (~100 MB RAM)
+    "prewarm_player": False,       # v2.5: acilista ~100 MB bos Player WebView2 acmaz; ayardan acilabilir
     "integrity_check": True,       # v1.29: bitince dosya saglam mi (arsiv test, video bas+son cozum, boyut)
     "integrity_redownload": True,  # bozuksa bir kez otomatik yeniden indir
     "schedule_enabled": False,     # zamanlayici: baslangicta tumunu surdur, bitiste duraklat
@@ -173,10 +173,25 @@ DEFAULTS: dict[str, Any] = {
     "studio_safe_zone": False,       # B7: Kami Studio'da TikTok/Reels/Shorts guvenli alan maskesi (acilip kapanabilir)
     "media_dearrow": False,          # C10: DeArrow clickbait baslik & kapak duzeltici (acilip kapanabilir)
     "janitor_enabled": False,        # C9: Hazel 6 tarzi otomatik klasor bekcisi (aktif indirmelere dokunmaz)
+    "oracle_relay_url": "",          # Dalga 5: Oracle Cloud (Frankfurt) sifreli Kami Relay adresi
+    "oracle_relay_secret": "",       # Dalga 5: Oracle Relay HMAC-SHA256 paylasimli gizli anahtar
     "scrobbler_enabled": False,      # B8: Arka plan sistem sesi sarki gunlugu
     "scrobbler_hotkey": "ctrl+shift+g",  # B8: 10 sn'lik Ctrl+Shift+S'ten farkli kisayol (main.py:1020 okur)
     "whisper_strong_song": True,     # MP3 Whisper Guclu Sarki Modu (UVR5 vokal + condition_on_previous_text=False + esnek VAD)
     "cleaner_weekly_notify": True,   # Cleaner haftalik guvenli onbellek esik bildirimi
+    # Dalga 1 (v2.5+): RAM Optimizasyonu & Oyun Kalkani
+    "ram_instant_unload": True,      # kapatilan alt modullerin WebView2 bellegini aninda bosalt
+    "game_shield_enabled": True,     # oyun acilinca bos pencereleri + Sunak GPU animasyonunu uyut (aktif ise dokunmaz)
+    "game_shield_profiles": {
+        "cs2.exe": "competitive",
+        "league of legends.exe": "competitive",
+        "valorant-win64-shipping.exe": "competitive",
+    },
+    # Dalga 2 (v2.5+): Oynatici, Ses Dengeleme & Discord Rich Presence
+    "player_engine": "html5",        # html5 | libmpv (opsiyonel harici/gomulu mpv motoru)
+    "player_loudness_norm": False,   # acilip kapanabilir -14 LUFS ses seviyesi dengeleyici
+    "player_target_lufs": -14.0,     # hedef ses siddeti (LUFS)
+    "discord_rp_enabled": False,     # opsiyonel Discord Rich Presence (oynatilan medya)
 }
 
 
@@ -278,6 +293,17 @@ def _coerce(key: str, value: Any) -> Any:
             for pk, pv in value.items():
                 merged[str(pk)] = max(0, int(pv))
             return merged
+        if key == "game_shield_profiles":
+            merged = dict(default)
+            for gk, gv in value.items():
+                k_clean = str(gk or "").strip().lower()
+                if not k_clean:
+                    continue
+                v_clean = str(gv or "story").strip().lower()
+                if v_clean not in ("competitive", "story", "off"):
+                    v_clean = "story"
+                merged[k_clean] = v_clean
+            return merged
         return dict(value)
     if key == "reader_page_anim":
         if isinstance(value, bool):
@@ -302,6 +328,10 @@ def _coerce(key: str, value: Any) -> Any:
         raise ValueError("uvr_format")
     if key == "watch_player" and str(value) not in ("kami", "screenbox", "default"):
         raise ValueError("watch_player")
+    if key == "player_engine" and str(value) not in ("html5", "libmpv"):
+        raise ValueError("player_engine")
+    if key == "player_target_lufs":
+        return max(-30.0, min(-5.0, float(value)))
     if key == "ntfy_server" and not str(value).startswith(("https://", "http://")):
         raise ValueError("ntfy_server")
     if key in ("schedule_start", "schedule_stop"):

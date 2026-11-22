@@ -87,6 +87,7 @@
     <button class="btn" id="fFav">★ Favori</button>
     <button class="btn" id="rndBtn" title="Rastgele oyun seç"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1" fill="currentColor"/></svg></button>
     <button class="btn pri" id="bigPicBtn" title="Tam Ekran Steam Big Picture Konsol Modu">🎮 Big Picture</button>
+    <button class="btn" id="compBtn" title="Tek Tuş Oyun Companion Overlay (Alt+G)">🎮 Companion</button>
     <button class="btn" id="cfgBtn" title="Araçlar, Filtreler &amp; API Ayarları"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.02 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Araçlar</button>
     <span id="cnt" style="color:var(--mut);font-size:12px"></span>
   </div>
@@ -661,6 +662,148 @@
       requestAnimationFrame(pollGamepad);
     }
     requestAnimationFrame(pollGamepad);
+
+    // Dalga 5: Tek Tus Games Companion Overlay (Alt+G) & F9 Time-Machine
+    async function openCompanionOverlay(gameObj) {
+      const g = gameObj || GAMES[0] || { key: "default", title: "Oyun Companion" };
+      detBody.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0">🎮 ${esc(g.title)} — Companion Overlay</h3>
+          <button class="btn" onclick="detMdl.hidden=true">✕</button>
+        </div>
+        <div style="display:grid;gap:10px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn pri" id="cmpHltb">⏱ HLTB &amp; PCGamingWiki</button>
+            <button class="btn" id="cmpOcr">🔤 Bölge Kilitli OCR Çeviri</button>
+            <button class="btn" id="cmpNote">📝 Hızlı Notlar</button>
+          </div>
+          <div id="cmpInfo" style="font-size:12px;color:var(--mut)"></div>
+          <div style="border-top:1px solid var(--line);padding-top:8px;display:grid;gap:6px">
+            <b>Hızlı Oyun Notları &amp; Save Editörü / .ini Düzeltici</b>
+            <div style="display:flex;gap:6px">
+              <input id="cmpNoteIn" placeholder="Bu oyun için hızlı not ekle…" style="flex:1">
+              <button class="btn" id="cmpNoteAdd">+ Not</button>
+            </div>
+            <div style="display:flex;gap:6px">
+              <input id="cmpSavePath" placeholder="Save / Config (.json, .ini) yolu…" style="flex:1">
+              <button class="btn" id="cmpSavePick">📂</button>
+              <button class="btn" id="cmpSaveLoad">Oku</button>
+              <button class="btn" id="cmpFixIni">1-Tık .ini Düzelt</button>
+            </div>
+            <textarea id="cmpSaveTxt" rows="4" placeholder="Save içeriği burada görünür…" style="width:100%;font-family:monospace;font-size:12px"></textarea>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn pri" id="cmpSaveWrite">Kaydet (.bak yedekli)</button>
+              <button class="btn" id="cmpSnap">⏱ Time-Machine Yedek (F9)</button>
+              <button class="btn" id="cmpSnapList">Yedekleri Gör</button>
+            </div>
+            <div id="cmpSnapBox" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          </div>
+          <div style="border-top:1px solid var(--line);padding-top:8px;display:grid;gap:6px">
+            <b>Kami Mod (1-Tık Rollback) &amp; Harici Offline Araç</b>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <input id="cmpGameDir" placeholder="Oyun klasörü…" style="flex:1">
+              <input id="cmpModZip" placeholder="Mod / Yama .zip yolu…" style="flex:1">
+              <button class="btn" id="cmpModPick">📂</button>
+              <button class="btn pri" id="cmpModInst">Kur</button>
+              <button class="btn" id="cmpModRoll" disabled>Rollback</button>
+            </div>
+            <div style="display:flex;gap:6px">
+              <input id="cmpToolExe" placeholder="Harici offline araç / trainer .exe yolu…" style="flex:1">
+              <button class="btn" id="cmpToolPick">📂</button>
+              <button class="btn" id="cmpToolGo">Başlat</button>
+            </div>
+          </div>
+        </div>`;
+      detMdl.hidden = false;
+
+      let lastBackupDir = "";
+      detBody.querySelector("#cmpHltb").onclick = async () => {
+        const info = detBody.querySelector("#cmpInfo");
+        info.textContent = "HLTB ve PCGamingWiki sorgulanıyor…";
+        const [h, w] = await Promise.all([
+          api()?.games_hltb_real?.(g.title).catch(() => null),
+          api()?.games_pcgamingwiki?.(g.title).catch(() => null),
+        ]);
+        const hTxt = h?.main_hours ? `HLTB Ana Hikaye: ${h.main_hours} sa · %100: ${h.completionist_hours || "—"} sa` : `HLTB: <a href="${esc(h?.url || "#")}" target="_blank">Ara</a>`;
+        const wTxt = w?.url ? `<a href="${esc(w.url)}" target="_blank">PCGamingWiki</a> · <a href="${esc(w.map_url || "#")}" target="_blank">Harita</a> · <a href="${esc(w.youtube_url || "#")}" target="_blank">YouTube Rehber</a>` : "";
+        info.innerHTML = `${hTxt}<br>${wTxt}`;
+      };
+      detBody.querySelector("#cmpOcr").onclick = async () => {
+        const info = detBody.querySelector("#cmpInfo");
+        info.textContent = "Alt yazı bölgesi okunuyor…";
+        const r = await api()?.games_ocr_translate?.([0.15, 0.74, 0.70, 0.22], "en").catch(() => null);
+        info.textContent = r?.skipped ? "HUD/plaka elendi, altyazı bulunamadı." : (r?.translated ? `TR: ${r.translated}` : "OCR sonucu yok.");
+      };
+      detBody.querySelector("#cmpSaveLoad").onclick = async () => {
+        const p = detBody.querySelector("#cmpSavePath").value.trim();
+        const r = await api()?.games_save_inspect?.(p).catch(() => null);
+        if (r?.ok) detBody.querySelector("#cmpSaveTxt").value = r.text || r.hex_preview || "";
+      };
+      detBody.querySelector("#cmpSaveWrite").onclick = async () => {
+        const p = detBody.querySelector("#cmpSavePath").value.trim();
+        const r = await api()?.games_save_write?.(p, detBody.querySelector("#cmpSaveTxt").value).catch(() => null);
+        detBody.querySelector("#cmpInfo").textContent = r?.ok ? "✓ Save kaydedildi (.bak yedekli)" : ("Hata: " + (r?.error || "?"));
+      };
+      detBody.querySelector("#cmpFixIni").onclick = async () => {
+        const p = detBody.querySelector("#cmpSavePath").value.trim();
+        const r = await api()?.games_fix_ini?.(p).catch(() => null);
+        detBody.querySelector("#cmpInfo").textContent = r?.ok ? "✓ .ini düzeltildi: " + (r.applied || []).join(", ") : ("Hata: " + (r?.error || "?"));
+      };
+      detBody.querySelector("#cmpSnap").onclick = async () => {
+        const p = detBody.querySelector("#cmpSavePath").value.trim();
+        const r = await api()?.games_snapshot_save?.(g.key || g.title, p).catch(() => null);
+        detBody.querySelector("#cmpInfo").textContent = r?.ok ? "✓ Time-Machine yedeği alındı: " + r.id : ("Hata: " + (r?.error || "?"));
+      };
+      detBody.querySelector("#cmpSavePick").onclick = async () => { const f = await api()?.choose_files?.([".json", ".ini", ".cfg", ".txt", ".sav"]); if (f?.[0]) detBody.querySelector("#cmpSavePath").value = f[0]; };
+      detBody.querySelector("#cmpModPick").onclick = async () => { const f = await api()?.choose_files?.([".zip"]); if (f?.[0]) detBody.querySelector("#cmpModZip").value = f[0]; };
+      detBody.querySelector("#cmpToolPick").onclick = async () => { const f = await api()?.choose_files?.([".exe"]); if (f?.[0]) detBody.querySelector("#cmpToolExe").value = f[0]; };
+      detBody.querySelector("#cmpNoteAdd").onclick = async () => {
+        const inp = detBody.querySelector("#cmpNoteIn");
+        const txt = inp.value.trim(); if (!txt) return;
+        await api()?.scratchpad_add?.(txt, "games", g.title, "");
+        inp.value = "";
+        detBody.querySelector("#cmpNote").click();
+      };
+      detBody.querySelector("#cmpSnapList").onclick = async () => {
+        const r = await api()?.games_tm_list?.(g.key || g.title).catch(() => null);
+        const box = detBody.querySelector("#cmpSnapBox");
+        const snaps = r?.snapshots || [];
+        if (!snaps.length) { detBody.querySelector("#cmpInfo").textContent = "Yedek yok"; box.innerHTML = ""; return; }
+        box.innerHTML = snaps.slice(0, 6).map((s) => `<button class="btn" data-rsnap="${esc(s.path)}">↺ ${esc(s.id)}</button>`).join("");
+        box.querySelectorAll("[data-rsnap]").forEach((btn) => {
+          btn.onclick = async () => {
+            const dst = detBody.querySelector("#cmpSavePath").value.trim();
+            if (!dst) { detBody.querySelector("#cmpInfo").textContent = "Geri yüklemek için hedef save yolunu gir."; return; }
+            const rr = await api()?.games_tm_restore?.(btn.dataset.rsnap, dst).catch(() => null);
+            detBody.querySelector("#cmpInfo").textContent = rr?.ok ? `✓ Geri yüklendi → ${rr.restored_to}` : ("Hata: " + (rr?.error || "?"));
+          };
+        });
+      };
+      detBody.querySelector("#cmpModInst").onclick = async () => {
+        const r = await api()?.games_mod_install?.(g.key || g.title, detBody.querySelector("#cmpGameDir").value.trim(), detBody.querySelector("#cmpModZip").value.trim()).catch(() => null);
+        if (r?.ok) { lastBackupDir = r.backup_dir; detBody.querySelector("#cmpModRoll").disabled = false; detBody.querySelector("#cmpInfo").textContent = `✓ Mod kuruldu (${r.overwritten} üzerine yazılan yedeklendi)`; }
+      };
+      detBody.querySelector("#cmpModRoll").onclick = async () => {
+        if (!lastBackupDir) return;
+        const r = await api()?.games_mod_rollback?.(lastBackupDir).catch(() => null);
+        detBody.querySelector("#cmpInfo").textContent = r?.ok ? `✓ Rollback tamamlandı (${r.restored} geri yüklendi)` : "Rollback hatası";
+      };
+      detBody.querySelector("#cmpToolGo").onclick = async () => {
+        const r = await api()?.games_launch_tool?.(detBody.querySelector("#cmpToolExe").value.trim()).catch(() => null);
+        detBody.querySelector("#cmpInfo").textContent = r?.ok ? "✓ Harici araç başlatıldı" : ("Hata: " + (r?.error || "?"));
+      };
+      detBody.querySelector("#cmpNote").onclick = async () => {
+        const r = await api()?.scratchpad_load?.().catch(() => null);
+        const notes = (r?.notes || []).filter((n) => n.context === "games");
+        detBody.querySelector("#cmpInfo").textContent = notes.map((n) => "• " + n.text).join(" | ") || "Oyun notu yok";
+      };
+    }
+
+    document.getElementById("compBtn")?.addEventListener("click", () => openCompanionOverlay(GAMES[0]));
+    document.addEventListener("keydown", (e) => {
+      if (e.altKey && e.key.toLowerCase() === "g") { e.preventDefault(); openCompanionOverlay(GAMES[0]); }
+      if (e.key === "F9" && !detMdl.hidden) { detBody.querySelector("#cmpSnap")?.click(); }
+    });
   </script>
 </body>
 </html>

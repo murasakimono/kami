@@ -3,51 +3,52 @@
 <head>
 <meta charset="utf-8">
 <title>Kami İyileştirici</title>
+<link rel="stylesheet" href="scroll.css">
 <style>
-  :root{color-scheme:dark;accent-color:#A3E635;--bg:#08070C;--card:#12101A;--line:#2A2A36;--tx:#EDEFE6;--mut:#9AA08F;--ac:#A3E635;--ac2:#65A30D;--em:#2EE6A6;--warn:#FBBF24;--bad:#FB7185}
+  :root{color-scheme:dark;accent-color:#8B5CF6;--bg:#0D0A12;--card:#15111C;--raised:#1D1727;--line:#2A2236;--tx:#E7E2EF;--mut:#9A91AB;--ac:#9D6BFF;--ac2:#7C4DFF;--em:#2EE6A6;--warn:#E8B86A;--bad:#F0626F}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px "Chakra Petch","Segoe UI",sans-serif;padding:16px 20px 96px}
   .top{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
-  .top h1{margin:0;font-size:18px;color:#D9F99D;display:inline-flex;align-items:center;gap:8px}
+  .top h1{margin:0;font-size:18px;color:var(--tx);display:inline-flex;align-items:center;gap:8px;letter-spacing:.3px}
   .top h1 svg{width:20px;height:20px;color:var(--ac)}
   .hint{color:var(--mut);font-size:12px}
   .spacer{flex:1}
-  .btn{border:1px solid var(--line);background:#191722;color:var(--tx);border-radius:9px;padding:8px 13px;cursor:pointer;font:600 12.5px inherit}
+  .btn{border:1px solid var(--line);background:var(--raised);color:var(--tx);border-radius:8px;padding:8px 13px;cursor:pointer;font:600 12.5px inherit}
   .btn:hover{border-color:var(--ac)}
-  .btn.pri{background:var(--ac2);border-color:var(--ac);color:#0A0A0A}
+  .btn.pri{background:var(--ac2);border-color:var(--ac);color:#FFFFFF}
   .btn.pri:disabled{opacity:.45;cursor:not-allowed}
-  .btn.danger{border-color:#5B2233;color:#FFB3C4}
-  .drop{border:1.6px dashed #3A3A48;border-radius:13px;padding:22px;text-align:center;background:var(--card);transition:.15s}
-  .drop.drag{border-color:var(--ac);background:#161C10}
+  .btn.danger{border-color:rgba(240,98,111,.45);color:var(--bad)}
+  .drop{border:1.5px dashed var(--line);border-radius:10px;padding:22px;text-align:center;background:var(--card);transition:.15s}
+  .drop.drag{border-color:var(--em);background:rgba(46,230,166,.08)}
   .drop b{display:block;font-size:14px;margin-bottom:4px}
   .grid{display:grid;grid-template-columns:1fr 340px;gap:14px}
   @media(max-width:900px){.grid{grid-template-columns:1fr}}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
-  .panel h3{margin:0 0 9px;font-size:12px;color:var(--ac);text-transform:uppercase;letter-spacing:.7px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .panel h3{margin:0 0 9px;font-size:12px;color:#C9B3FF;text-transform:uppercase;letter-spacing:.7px}
   .chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
-  .chip{background:#1D1B26;border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:11.5px;color:#CFD6C3}
-  .chip b{color:var(--ac)}
+  .chip{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:3px 10px;font-size:11.5px;color:#C9B3FF}
+  .chip b{color:var(--em)}
   .pre{display:grid;gap:7px}
-  .pcard{display:flex;gap:9px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 11px;cursor:pointer;background:#171521;transition:.12s}
-  .pcard:hover{border-color:#4A5568}
-  .pcard.on{border-color:var(--ac);background:#1B2113}
-  .pcard .dot{width:9px;height:9px;border-radius:50%;border:2px solid #4B5563;margin-top:4px;flex:none}
-  .pcard.on .dot{border-color:var(--ac);background:var(--ac)}
+  .pcard{display:flex;gap:9px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:9px 11px;cursor:pointer;background:var(--raised);transition:.12s}
+  .pcard:hover{border-color:rgba(157,107,255,.55)}
+  .pcard.on{border-color:var(--ac);background:rgba(124,77,255,.14)}
+  .pcard .dot{width:9px;height:9px;border-radius:50%;border:2px solid #5B5072;margin-top:4px;flex:none}
+  .pcard.on .dot{border-color:var(--em);background:var(--em)}
   .pcard .t{font-weight:600;font-size:13px}
   .pcard .d{color:var(--mut);font-size:11.5px;line-height:1.45;margin-top:2px}
   .pcard .need{color:var(--warn);font-size:11px;margin-top:3px}
-  label.row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;font-size:12.5px;color:#C7CEBD}
-  select{background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:5px 8px;font:inherit;font-size:12px}
+  label.row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;font-size:12.5px;color:var(--tx)}
+  select{background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:5px 8px;font:inherit;font-size:12px}
   details{margin-top:6px}
   summary{cursor:pointer;color:var(--mut);font-size:12px;padding:4px 0}
-  .runbar{position:fixed;left:0;right:0;bottom:0;background:#0C0B12;border-top:1px solid var(--line);padding:11px 20px;display:flex;gap:11px;align-items:center}
-  .bar{flex:1;height:8px;background:#232130;border-radius:4px;overflow:hidden;min-width:120px}
-  .bar i{display:block;height:100%;background:linear-gradient(90deg,#65A30D,#A3E635);transition:width .3s}
-  .res{display:none;margin-bottom:10px;border:1px solid #3F6212;background:#141B0E;border-radius:10px;padding:10px 12px}
+  .runbar{position:fixed;left:0;right:0;bottom:0;background:#110D18;border-top:1px solid var(--line);padding:11px 20px;display:flex;gap:11px;align-items:center}
+  .bar{flex:1;height:8px;background:#231B30;border-radius:4px;overflow:hidden;min-width:120px}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--ac2),var(--em));transition:width .3s}
+  .res{display:none;margin-bottom:10px;border:1px solid rgba(46,230,166,.38);background:rgba(46,230,166,.08);border-radius:8px;padding:10px 12px}
   .res.on{display:block}
-  .res .p{font-size:12px;color:#D9F99D;word-break:break-all;margin:4px 0 8px}
-  .bad{border-color:#5B2233;color:#FFB3C4}
-  .warnbox{display:none;border:1px solid #5A4A16;background:#1B1708;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;color:#FDE68A}
+  .res .p{font-size:12px;color:var(--em);word-break:break-all;margin:4px 0 8px}
+  .bad{border-color:rgba(240,98,111,.45);color:var(--bad)}
+  .warnbox{display:none;border:1px solid rgba(232,184,106,.38);background:rgba(232,184,106,.08);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;color:var(--warn)}
   .warnbox.on{display:block}
 </style>
 <script src="kami-embed.js"></script>
@@ -81,10 +82,10 @@
         <details>
           <summary>İnce ayar</summary>
           <label class="row">Başlangıç (sn)
-            <input id="oStart" type="number" min="0" step="1" value="0" style="width:92px;background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:5px 8px;font:inherit">
+            <input id="oStart" type="number" min="0" step="1" value="0" style="width:92px;background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:5px 8px;font:inherit">
           </label>
           <label class="row">Süre (sn) · 0 = sonuna kadar
-            <input id="oDur" type="number" min="0" step="1" value="0" style="width:92px;background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:5px 8px;font:inherit">
+            <input id="oDur" type="number" min="0" step="1" value="0" style="width:92px;background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:5px 8px;font:inherit">
           </label>
           <label class="row">Çıktı fps
             <select id="oFps"><option value="0">Kaynak</option><option value="30">30</option><option value="24">24</option></select>
@@ -132,8 +133,21 @@
   <div class="runbar">
     <div class="bar"><i id="barFill" style="width:0"></i></div>
     <span class="hint" id="stat" style="min-width:190px;text-align:right">Hazır</span>
+    <button class="btn" id="splitBtn" disabled>Önizle (2 sn Split)</button>
+    <button class="btn" id="qAddBtn" disabled>+ Kuyruğa Ekle</button>
+    <button class="btn" id="qRunBtn" style="display:none">Kuyruğu Başlat (<span id="qCnt">0</span>)</button>
     <button class="btn pri" id="go" disabled>İyileştir</button>
     <button class="btn danger" id="cancel" style="display:none">İptal</button>
+  </div>
+  <div id="splitBox" class="panel" style="max-width:960px;margin:0 auto 14px;display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <b>2 Saniyelik Önce / Sonra Split Önizleme</b>
+      <label class="hint">Bölüm: <input id="splitRange" type="range" min="0" max="100" value="50"> <button class="btn" id="splitClose">✕</button></label>
+    </div>
+    <div style="position:relative;width:100%;max-height:320px;overflow:hidden;border-radius:8px;background:#000">
+      <video id="spBefore" muted loop autoplay playsinline style="width:100%;max-height:320px;display:block;object-fit:contain"></video>
+      <video id="spAfter" muted loop autoplay playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;clip-path:inset(0 0 0 50%)"></video>
+    </div>
   </div>
 
 <script>
@@ -147,7 +161,7 @@
     return m ? `${m} dk ${r} sn` : `${(s).toFixed(1)} sn`;
   };
 
-  const S = { src: "", info: null, presets: [], preset: "sinema", tools: { esrgan: false, rife: false }, job: "", timer: null, busy: false };
+  const S = { src: "", info: null, presets: [], preset: "sinema", tools: { esrgan: false, rife: false }, job: "", timer: null, busy: false, queue: [] };
 
   // ---------------------------------------------------------------- render
   function toolLabel(t) {
@@ -188,8 +202,8 @@
       `<span class="chip">${i.frames || "?"} kare</span>`,
       `<span class="chip">${fmtDur(i.duration)}</span>`,
       `<span class="chip">${esc((i.vcodec || "?").toUpperCase())}</span>`,
-      i.interlaced ? `<span class="chip" style="border-color:#5A4A16;color:#FDE68A">interlaced</span>` : "",
-      i.audio ? `<span class="chip">ses: ${esc(i.acodec || "var")}</span>` : `<span class="chip" style="color:#FB7185">ses yok</span>`,
+      i.interlaced ? `<span class="chip" style="border-color:rgba(232,184,106,.45);color:var(--warn)">interlaced</span>` : "",
+      i.audio ? `<span class="chip">ses: ${esc(i.acodec || "var")}</span>` : `<span class="chip" style="color:var(--bad)">ses yok</span>`,
     ];
     $("#chips").innerHTML = out.join("");
   }
@@ -203,9 +217,9 @@
     const i = await api()?.enhance_probe?.(path).catch(() => null);
     S.info = i && i.width ? i : null;
     $("#srcInfo").innerHTML = S.info
-      ? `<div style="word-break:break-all;color:#CFD6C3;margin-bottom:6px">${esc(path.split(/[\\/]/).pop())}</div>
+      ? `<div style="word-break:break-all;color:var(--tx);margin-bottom:6px">${esc(path.split(/[\\/]/).pop())}</div>
          <div class="hint">${esc(path)}</div>`
-      : `<span style="color:#FB7185">Video okunamadı: ${esc(path)}</span>`;
+      : `<span style="color:var(--bad)">Video okunamadı: ${esc(path)}</span>`;
     renderChips();
     const est = S.info && S.info.frames ? `${S.info.frames} kare` : "";
     $("#stat").textContent = est ? `Hazır · ${est}` : "Hazır";
@@ -237,10 +251,18 @@
 
   function showResult(r) {
     const box = $("#res");
+    if (Array.isArray(r?.done)) {
+      const errs = (r.errors || []).length;
+      box.className = "res on";
+      box.innerHTML = `<b style="color:var(--em)">Toplu kuyruk bitti ✓ (${r.done.length}/${r.total || r.done.length})</b>` +
+        (errs ? `<div class="hint" style="color:var(--bad)">${esc(r.errors.join(" · "))}</div>` : "") +
+        (r.done[0] ? `<div class="p">${esc(r.done[0])}</div><button class="btn" data-open="${esc(r.done[0])}">Klasörü aç</button>` : "");
+      return;
+    }
     if (!r || !r.path) { box.classList.remove("on"); return; }
     const inf = r.info || {};
     box.className = "res on";
-    box.innerHTML = `<b style="color:#D9F99D">Bitti ✓</b>
+    box.innerHTML = `<b style="color:var(--em)">Bitti ✓</b>
       ${inf.width ? `<span class="hint"> · ${inf.width}×${inf.height} · ${(+inf.fps || 0).toFixed(0)} fps</span>` : ""}
       <div class="p">${esc(r.path)}</div>
       <button class="btn" data-open="${esc(r.path)}">Klasörü aç</button>
@@ -400,6 +422,59 @@ $("#history").onclick = async () => {
     }
     renderPresets();
   });
+
+  // Dalga 4: 2 sn Split Onizleme & Toplu Kuyruk
+  const _origGoWatch = new MutationObserver(() => {
+    const dis = $("#go").disabled;
+    $("#splitBtn").disabled = dis;
+    $("#qAddBtn").disabled = dis;
+  });
+  _origGoWatch.observe($("#go"), { attributes: true, attributeFilter: ["disabled"] });
+
+  $("#splitRange").oninput = (e) => {
+    $("#spAfter").style.clipPath = `inset(0 0 0 ${e.target.value}%)`;
+  };
+  $("#splitClose").onclick = () => { $("#splitBox").style.display = "none"; $("#spBefore").src = ""; $("#spAfter").src = ""; };
+  $("#splitBtn").onclick = async () => {
+    if (!S.src) return;
+    $("#stat").textContent = "2 sn önizleme hazırlanıyor…";
+    $("#splitBtn").disabled = true;
+    const r = await api()?.enhance_preview_split?.(S.preset, S.src, +$("#oStart").value || 0, {
+      scale: +$("#oScale").value, model: $("#oModel").value, denoise: +$("#oDn").value,
+      deint: $("#oDeint").value, factor: +$("#oFactor").value, fps: +$("#oFps").value,
+    }).catch(() => null);
+    $("#splitBtn").disabled = false;
+    if (r?.ok) {
+      $("#spBefore").src = r.before_url;
+      $("#spAfter").src = r.after_url;
+      $("#splitBox").style.display = "block";
+      $("#stat").textContent = "Split önizleme hazır";
+    } else {
+      $("#stat").textContent = "Önizleme hatası: " + (r?.error || "?");
+    }
+  };
+  $("#qAddBtn").onclick = () => {
+    if (!S.src || S.queue.includes(S.src)) return;
+    S.queue.push(S.src);
+    $("#qCnt").textContent = String(S.queue.length);
+    $("#qRunBtn").style.display = "";
+    $("#stat").textContent = `Kuyruğa eklendi (${S.queue.length})`;
+  };
+  $("#qRunBtn").onclick = async () => {
+    if (!S.queue.length) return;
+    const opts = {
+      scale: +$("#oScale").value, model: $("#oModel").value, denoise: +$("#oDn").value,
+      deint: $("#oDeint").value, factor: +$("#oFactor").value, fps: +$("#oFps").value,
+    };
+    const r = await api()?.enhance_batch_start?.(S.preset, S.queue, opts).catch(() => null);
+    if (r?.ok) {
+      S.job = r.job; S.queue = []; $("#qCnt").textContent = "0"; $("#qRunBtn").style.display = "none";
+      setBusy(true);
+      $("#barFill").style.width = "0";
+      $("#stat").textContent = `Toplu kuyruk başladı (${r.total} video)…`;
+      poll();
+    }
+  };
 </script>
 </body>
 </html>

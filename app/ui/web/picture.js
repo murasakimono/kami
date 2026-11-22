@@ -34,6 +34,7 @@ async function load() {
   $("#pcInfo").textContent = `${r.w}×${r.h} · ${fmtB(r.size)} · ${PC.i + 1}/${PC.list.length}${ex ? " · " + ex : ""}`;
   document.title = "Kami Picture · " + p.split(/[\\/]/).pop();
   api.pic_set_current?.(p);
+  try { localStorage.setItem("kami.picDraft", JSON.stringify({ mode: "view", path: p, name: p.split(/[\\/]/).pop(), ts: Date.now() })); } catch {}
   apply();
 }
 function apply() { $("#pcImg").style.transform = `translate(${PC.x}px, ${PC.y}px) scale(${PC.z}) rotate(${PC.rot}deg)`; }
@@ -141,6 +142,7 @@ document.addEventListener("click", async (e) => {
   else if ((a === "beautify" || a === "pin") && p) window.kamiPicV138?.action?.(a, p);
   else if (a === "lens") { if (!$("#pcLens").hidden) { $("#pcLens").hidden = true; b.classList.remove("on"); } else runLens(); }
   else if (a === "mockup") mockRun();
+  else if (a === "tarif") openTarifModal();
   else if (a === "bridge") bridgeStatus();
 });
 const stage = $("#pcStage");
@@ -183,14 +185,38 @@ window.addEventListener("pywebviewready", async () => {
   setInterval(() => { if (!document.hidden) poll(); }, 1000);
 });
 
-// v1.32.1 bos ekran: ac / yeni tuval / son acilanlar (eskiden tek satir yazi)
+// v1.32.1 bos ekran + Dalga 1 otomatik taslak geri yukleme seridi
 async function pcEmptyRender() {
   const box = $("#pcEmpty"); if (!box || box.hidden) return;
   let rc = []; try { rc = JSON.parse(localStorage.getItem("kami.picRecent") || "[]"); } catch { /* yok */ }
-  box.innerHTML = `<span class="pce-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></span>
+  let draftMeta = null; try { draftMeta = JSON.parse(localStorage.getItem("kami.picDraft") || "null"); } catch {}
+  let draftPayload = null;
+  try {
+    const dr = await api?.picture_draft_load?.();
+    if (dr?.ok && dr.data) draftPayload = JSON.parse(dr.data);
+  } catch {}
+  if (box.hidden) return;
+  const hasEditDraft = Boolean(draftPayload?.doc?.layers?.length);
+  const resumeLabel = hasEditDraft
+    ? (draftPayload.meta?.name || draftMeta?.name || L("Adsız Tuval", "Untitled Canvas"))
+    : (draftMeta?.mode === "view" && draftMeta.path ? (draftMeta.name || draftMeta.path.split(/[\\/]/).pop()) : "");
+  const draftBanner = resumeLabel ? `<div class="pce-draft" id="pceDraft">
+    <span>${hasEditDraft ? L("Kaldığın yerden devam et (Tuval):", "Continue where you left off (Canvas):") : L("Son açık görsele dön:", "Resume last image:")} <b>${esc(resumeLabel)}</b></span>
+    <span class="pce-draft-btns"><button type="button" class="btn primary" data-pce="resume">${L("Devam Et", "Resume")}</button><button type="button" class="btn" data-pce="dropdraft">${L("Kapat", "Dismiss")}</button></span>
+  </div>` : "";
+  box.innerHTML = `${draftBanner}<span class="pce-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></span>
     <b>${L("Bir görseli buraya bırak", "Drop an image here")}</b><small>${L("JPG, PNG, WebP, HEIC, GIF, AVIF…", "JPG, PNG, WebP, HEIC, GIF, AVIF…")}</small>
     <span class="pce-acts"><button type="button" class="btn primary" data-pce="open">${L("Görsel aç", "Open image")}</button><button type="button" class="btn" data-pce="new">${L("Yeni tuval", "New canvas")}</button></span>
     ${rc.length ? `<span class="pce-rc-h">${L("Son açılanlar", "Recent")}</span><span class="pce-rc">${rc.map((p, i) => `<button type="button" data-pr="${i}" title="${esc(p)}"><img alt=""><i>${esc(p.split(/[\\/]/).pop())}</i></button>`).join("")}</span>` : ""}`;
+  box.querySelector('[data-pce="resume"]')?.addEventListener("click", async () => {
+    if (hasEditDraft && window.kamiEditor?.openDraft) await window.kamiEditor.openDraft(draftPayload);
+    else if (draftMeta?.path) open(draftMeta.path);
+  });
+  box.querySelector('[data-pce="dropdraft"]')?.addEventListener("click", () => {
+    try { localStorage.removeItem("kami.picDraft"); } catch {}
+    api?.picture_draft_clear?.()?.catch?.(() => {});
+    $("#pceDraft")?.remove();
+  });
   box.querySelector('[data-pce="open"]').onclick = async () => { const f = (await api.pic_batch_pick()) || []; if (f[0]) open(f[0]); };
   box.querySelector('[data-pce="new"]').onclick = () => window.kamiEditor?.open("");
   box.querySelectorAll("[data-pr]").forEach(async (b) => {
@@ -200,3 +226,46 @@ async function pcEmptyRender() {
   });
 }
 (function pceBoot() { if (api) pcEmptyRender(); else setTimeout(pceBoot, 300); })();
+
+function openTarifModal() {
+  let m = $("#pcTarifModal");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "pcTarifModal";
+    m.style.cssText = "position:fixed;inset:0;z-index:95;display:grid;place-items:center;background:rgba(7,5,11,.74);backdrop-filter:blur(6px)";
+    m.innerHTML = `<div style="width:min(440px,92vw);background:#14101D;border:1px solid rgba(157,107,255,.45);border-radius:14px;padding:16px;color:#EDE9F6;display:grid;gap:10px;font:13px 'Chakra Petch',sans-serif">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b>⚡ Toplu "Tarif" (Batch Pipeline)</b><button type="button" id="ptClose" style="background:none;border:0;color:#9E95B3;cursor:pointer;font-size:16px">✕</button></div>
+      <div style="display:flex;gap:6px"><input id="ptFolder" placeholder="Görsel klasörü yolu…" style="flex:1;background:#0E0B15;border:1px solid rgba(157,107,255,.3);color:#EDE9F6;padding:6px 8px;border-radius:7px"><button type="button" id="ptPick" class="btn">Seç</button></div>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ptSq" checked> Kare Sığdır (1080×1080)</label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ptSharp" checked> Netleştir (Unsharp)</label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ptContrast"> Kontrast (+%15)</label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ptGray"> Siyah-Beyaz</label>
+      <label style="display:flex;gap:8px;align-items:center">Çıktı Formatı <select id="ptFmt" style="background:#0E0B15;border:1px solid rgba(157,107,255,.3);color:#EDE9F6;padding:4px 8px;border-radius:6px"><option value="webp">WebP</option><option value="png">PNG</option><option value="jpg">JPG</option></select></label>
+      <div id="ptStatus" style="font-size:12px;color:#9E95B3"></div>
+      <button type="button" id="ptRun" class="btn primary">Tarifi Çalıştır</button>
+    </div>`;
+    document.body.appendChild(m);
+    m.querySelector("#ptClose").onclick = () => { m.style.display = "none"; };
+    m.querySelector("#ptPick").onclick = async () => {
+      const f = await api?.choose_folder?.();
+      if (f) m.querySelector("#ptFolder").value = f;
+    };
+    m.querySelector("#ptRun").onclick = async () => {
+      const folder = m.querySelector("#ptFolder").value.trim() || (PC.list[PC.i] ? PC.list[PC.i].replace(/[\\/][^\\/]+$/, "") : "");
+      if (!folder) { m.querySelector("#ptStatus").textContent = "Önce klasör seç."; return; }
+      const steps = [];
+      if (m.querySelector("#ptSq").checked) steps.push({ op: "fit_square", size: 1080 });
+      if (m.querySelector("#ptContrast").checked) steps.push({ op: "contrast", factor: 1.15 });
+      if (m.querySelector("#ptSharp").checked) steps.push({ op: "sharpen", amount: 120 });
+      if (m.querySelector("#ptGray").checked) steps.push({ op: "grayscale" });
+      steps.push({ op: "format", ext: m.querySelector("#ptFmt").value });
+      const btn = m.querySelector("#ptRun");
+      btn.disabled = true;
+      m.querySelector("#ptStatus").textContent = "İşleniyor…";
+      const r = await api?.pic_tarif_run?.(folder, steps).catch(() => null);
+      btn.disabled = false;
+      m.querySelector("#ptStatus").textContent = r?.ok ? `✓ ${r.count}/${r.total} görsel işlendi → ${r.out_dir}` : ("Hata: " + (r?.error || "?"));
+    };
+  }
+  m.style.display = "grid";
+}

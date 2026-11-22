@@ -46,9 +46,10 @@ function skBuild() {
         <button type="button" class="sk-tab" data-mod="reader" title="Reader (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/></svg><span>Reader</span></button>
         <button type="button" class="sk-tab" data-mod="games" title="Games (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="5"/><path d="M7 10v4M5 12h4M15.5 11h.01M18 13h.01"/></svg><span>Games</span></button>
         <button type="button" class="sk-tab" data-mod="music" title="Kamify (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span>Kamify</span></button>
+        <button type="button" class="sk-tab" data-mod="beat" title="Kami Beat (Kayıt, Miks & Mashup)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v3M8 21h8"/></svg><span>Beat</span></button>
         <button type="button" class="sk-tab" data-mod="cleaner" title="Cleaner (ayrı pencerede açılır)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg><span>Cleaner</span></button>
       </nav>
-      <div class="sk-status"><button type="button" class="sk-docdot" id="skDocDot" hidden title="Kami Doktor: Sorun tespit edildi (tıkla)" aria-label="Kami Doktor uyarısı"></button><button type="button" class="sk-room sk-roompill" data-mod="room" id="skRoomPill" title="Kami Oda: sesli oda, ekran paylaşımı, birlikte izleme"><i class="sk-dot"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg><span>${skL("Oda", "Room")}</span><i class="sk-tab-badge" id="skRoomN"></i></button><span class="sk-chip">${skL("motor", "engine")} <b id="skEngine">…</b></span><span class="sk-chip">${skL("köprü", "bridge")} <b id="skBridge">…</b></span></div></div>
+      <div class="sk-status"><button type="button" class="sk-docdot" id="skDocDot" hidden title="Kami Doktor: Sorun tespit edildi (tıkla)" aria-label="Kami Doktor uyarısı"></button><button type="button" class="sk-room sk-roompill" data-mod="room" id="skRoomPill" title="Kami Oda: sesli oda, ekran paylaşımı, birlikte izleme"><i class="sk-dot"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg><span>${skL("Oda", "Room")}</span><i class="sk-tab-badge" id="skRoomN"></i></button><span class="sk-chip">${skL("motor", "engine")} <b id="skEngine">…</b></span><span class="sk-chip">${skL("köprü", "bridge")} <b id="skBridge">…</b></span><button type="button" class="sk-chip sk-ram" id="skRamPill" title="${skL("Anlık Kami RAM — tıklayınca boş belleği temizle", "Live Kami RAM — click to purge idle memory")}">RAM <b id="skRam">—</b></button></div></div>
     <div class="sk-top">
       <div class="sk-altar" id="skAltar">
         <svg class="sk-ring" viewBox="0 0 300 300">
@@ -242,9 +243,10 @@ function skBind() {
     room: () => api?.room_open?.(true),
     games: () => api?.games_open?.(),
     music: () => api?.music_open?.(),
+    beat: () => api?.beat_open?.(),
     cleaner: () => api?.cleaner_open?.(),
   };
-  const MOD_COSTUMES = { player: "player", studio: "studio", reader: "reader", music: "player", games: "speed", picture: "done", cleaner: "" };
+  const MOD_COSTUMES = { player: "player", studio: "studio", reader: "reader", music: "player", beat: "studio", games: "speed", picture: "done", cleaner: "" };
   $("#skTabs")?.addEventListener("click", (e) => {
     const b = e.target.closest(".sk-tab[data-mod], #skRoomPill");
     if (!b) return;
@@ -736,14 +738,16 @@ function skSpark() {
 }
 
 // hiz halkasi yorungesi: hiz arttikca hizlanir
-let skLast = 0;
+let skLast = 0, skFrameRaf = 0;
 function skFrame(t) {
+  skFrameRaf = 0;
+  if (window._kamiLowPower) return;
   const dt = Math.min(0.1, (t - skLast) / 1000 || 0); skLast = t;
   if (!window.KamiSunakGPU?.altarReady) {
     SK.orbit = (SK.orbit + dt * (8 + SK.speedFrac * 260)) % 360;
     const o = $("#skOrbit"); if (o) o.setAttribute("transform", `rotate(${SK.orbit} 150 150)`);
   }
-  requestAnimationFrame(skFrame);
+  skFrameRaf = requestAnimationFrame(skFrame);
 }
 
 // ---------- arka plan: suzulen muskalar, yukselen kivilcimlar, yerde sis, ruh isiklari (hepsi dusuk opaklik) ----------
@@ -788,6 +792,7 @@ function fxInit2D() {
   const tal = (layer, y) => { const [n, sc, a] = layer; return { kind: "t", spr: n, sc: sc * rnd(0.85, 1.15), a, x: rnd(0, W), y: y ?? rnd(0, H), vy: -rnd(6, 14) * sc, sway: rnd(10, 26) * sc, ph: rnd(0, 6.28), rot: rnd(-0.4, 0.4), spin: rnd(0.4, 1.1) }; };
   for (const L of LAYERS) for (let i = 0; i < L[3]; i++) FX.parts.push(tal(L));
   const loop = (now) => {
+    if (window._kamiLowPower) { if (FX.drawn) { ctx.clearRect(0, 0, W, H); FX.drawn = false; } window._kamiRestart2DFx = () => requestAnimationFrame(loop); return; }
     requestAnimationFrame(loop);
     if (!FX.on || document.hidden) { if (FX.drawn) { ctx.clearRect(0, 0, W, H); FX.drawn = false; } FX.last = now; return; }
     if (now - FX.last < 30) return;   // ~33 fps
@@ -1065,4 +1070,139 @@ STATE_HOOKS.push(skState);
   const syncVis = () => document.body.classList.toggle("kami-hidden", !!document.hidden);
   document.addEventListener("visibilitychange", syncVis);
   syncVis();
+
+  // Dalga 1: Canli RAM gostergesi + Oyun Kalkani low-power kancasi
+  function applyRamUi(r) {
+    const pill = $("#skRamPill"), val = $("#skRam");
+    if (!pill || !val || !r) return;
+    const mb = Math.round(Number(r.total_mb || r.after_mb || 0));
+    if (mb > 0) val.textContent = `${mb} MB`;
+    pill.classList.toggle("warn", mb > 650);
+    const wins = (r.open_windows || []).length;
+    const sh = r.game_shield?.active ? ` · Oyun Kalkanı: ${r.game_shield.exe} (${r.game_shield.profile})` : "";
+    pill.title = skL(
+      `Toplam: ${mb} MB (Python ${r.python_mb ?? "?"} MB · WebView2×${r.webview_procs ?? 0}: ${r.webview_mb ?? "?"} MB · Açık modül: ${wins})${sh} — Tıkla: Belleği Temizle`,
+      `Total: ${mb} MB (Python ${r.python_mb ?? "?"} MB · WebView2×${r.webview_procs ?? 0}: ${r.webview_mb ?? "?"} MB · Open: ${wins})${sh} — Click to purge memory`
+    );
+  }
+  async function updRam() {
+    if (document.hidden || window._kamiLowPower || !api?.ram_status) return;
+    try { const r = await api.ram_status(); if (r?.ok) applyRamUi(r); } catch {}
+  }
+  document.addEventListener("click", async (e) => {
+    const pill = e.target.closest?.("#skRamPill");
+    if (!pill || !api?.ram_purge) return;
+    try {
+      const r = await api.ram_purge();
+      if (r?.stats) applyRamUi({ ...r.stats, game_shield: r.game_shield });
+      if (typeof toast === "function") {
+        toast(r?.freed_mb > 0
+          ? skL(`Bellek temizlendi: -${r.freed_mb} MB (${r.after_mb} MB)`, `Memory purged: -${r.freed_mb} MB (${r.after_mb} MB)`)
+          : skL(`Bellek optimize: ${r?.after_mb || "—"} MB`, `Memory optimal: ${r?.after_mb || "—"} MB`));
+      }
+    } catch {}
+  });
+  setTimeout(updRam, 2200);
+  setInterval(updRam, 15000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) updRam(); });
+
+  window.kamiSetLowPower = (on, _profile) => {
+    const active = !!on;
+    window._kamiLowPower = active;
+    document.documentElement.classList.toggle("kami-low-power", active);
+    window.KamiFX?.setLowPower?.(active);
+    window.KamiSunakGPU?.setLowPower?.(active);
+    if (active) {
+      SK.eye?.stop?.();
+    } else {
+      if (SK.eye && !window.KamiSunakGPU?.altarReady) SK.eye.start?.();
+      if (!skFrameRaf) skFrameRaf = requestAnimationFrame(skFrame);
+      window._kamiRestart2DFx?.();
+      updRam();
+    }
+  };
+
+  // Dalga 5: Sunak Ctrl+K v2 (Raycast Tarzi Eylem Cubugu) & Modul Hover Onizleme Kartlari
+  const MOD_META = {
+    player: ["Kami Player", "4K HDR, libmpv, Anime4K, -14 LUFS & Alt+N notlar"],
+    studio: ["Kami Studio", "Zaman çizelgesi, GPU NVENC & arka plan render kuyruğu"],
+    picture: ["Kami Picture", "Katmanlar, AI temizleme & Toplu Tarif pipeline"],
+    reader: ["Kami Reader", "PDF / CBZ / EPUB okuyucu ve çeviri"],
+    games: ["Kami Games", "HLTB, PCGamingWiki, Save Editörü & F9 Time-Machine"],
+    music: ["Kamify", "Spotify köprüsü, Auto-DJ (BPM/Ton) & yerel müzik"],
+    beat: ["Kami Beat", "Çok kanallı vokal kayıt, 51 VST3 & Booth"],
+    cleaner: ["Kami Cleaner", "Tek tık sistem & önbellek temizliği"],
+    room: ["Kami Oda", "Düşük gecikmeli yayın, kişi bazlı ses & izleme senkronu"],
+  };
+
+  let modPeek = null;
+  $("#skTabs")?.addEventListener("mouseover", (e) => {
+    const b = e.target.closest(".sk-tab[data-mod]");
+    if (!b || !MOD_META[b.dataset.mod]) return;
+    if (!modPeek) {
+      modPeek = document.createElement("div");
+      modPeek.id = "skModPeek";
+      modPeek.hidden = true;
+      document.body.appendChild(modPeek);
+    }
+    const [ttl, desc] = MOD_META[b.dataset.mod];
+    const r = b.getBoundingClientRect();
+    modPeek.innerHTML = `<b>${ttl}</b><span>${desc}</span>`;
+    modPeek.style.left = `${Math.max(8, Math.min(innerWidth - 242, r.left))}px`;
+    modPeek.style.top = `${r.bottom + 8}px`;
+    modPeek.hidden = false;
+  });
+  $("#skTabs")?.addEventListener("mouseout", (e) => {
+    if (modPeek && !e.relatedTarget?.closest?.(".sk-tab[data-mod]")) modPeek.hidden = true;
+  });
+
+  window.skOpenCmdPalette = () => {
+    let pal = $("#skCmdPal");
+    if (!pal) {
+      pal = document.createElement("div");
+      pal.id = "skCmdPal";
+      pal.hidden = true;
+      pal.innerHTML = `<div class="sk-cmd-box"><input id="skCmdIn" placeholder="Modül, araç veya eylem ara… (Esc kapat)"><div class="sk-cmd-list" id="skCmdList"></div></div>`;
+      document.body.appendChild(pal);
+      pal.addEventListener("click", (ev) => { if (ev.target === pal) pal.hidden = true; });
+    }
+    const items = [
+      ...Object.entries(MOD_META).map(([k, [t, d]]) => ({ label: t, hint: d, run: () => $(`.sk-tab[data-mod="${k}"], #skRoomPill[data-mod="${k}"]`)?.click() })),
+      { label: "Kami İyileştirici", hint: "RTX 4050 GPU video büyütme & 2 sn split önizleme", run: () => api?.enhance_open?.() },
+      { label: "Kami Müzik Etiket", hint: "1-tık Hi-Res kapak & toplu ID3", run: () => api?.music_tag_open?.() },
+      { label: "Belleği Temizle (RAM)", hint: "Boşta WebView2 belleğini anında düşür", run: () => $("#skRamPill")?.click() },
+      { label: "Oracle Relay Senkron", hint: "iPhone mobil veri kuyruğunu çek", run: () => api?.oracle_relay_pull?.() },
+    ];
+    const inp = pal.querySelector("#skCmdIn"), listEl = pal.querySelector("#skCmdList");
+    let selIdx = 0;
+    const draw = () => {
+      const qv = inp.value.trim().toLowerCase();
+      const filt = items.filter((x) => !qv || x.label.toLowerCase().includes(qv) || x.hint.toLowerCase().includes(qv));
+      selIdx = Math.max(0, Math.min(filt.length - 1, selIdx));
+      listEl.innerHTML = filt.map((x, i) => `<button class="sk-cmd-it ${i === selIdx ? "on" : ""}" data-ci="${i}"><span>${x.label}</span><small>${x.hint}</small></button>`).join("");
+      listEl.querySelectorAll(".sk-cmd-it").forEach((btn, i) => {
+        btn.onclick = () => { pal.hidden = true; filt[i]?.run?.(); };
+      });
+      return filt;
+    };
+    inp.value = "";
+    pal.hidden = false;
+    draw();
+    inp.focus();
+    inp.oninput = () => { selIdx = 0; draw(); };
+    inp.onkeydown = (ev) => {
+      const filt = draw();
+      if (ev.key === "Escape") { pal.hidden = true; }
+      else if (ev.key === "ArrowDown") { ev.preventDefault(); selIdx = Math.min(filt.length - 1, selIdx + 1); draw(); }
+      else if (ev.key === "ArrowUp") { ev.preventDefault(); selIdx = Math.max(0, selIdx - 1); draw(); }
+      else if (ev.key === "Enter" && filt[selIdx]) { ev.preventDefault(); pal.hidden = true; filt[selIdx].run(); }
+    };
+  };
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      window.skOpenCmdPalette();
+    }
+  });
 })();

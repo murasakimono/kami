@@ -3,39 +3,40 @@
 <head>
 <meta charset="utf-8">
 <title>Kami Müzik Etiket</title>
+<link rel="stylesheet" href="scroll.css">
 <style>
-  :root{color-scheme:dark;accent-color:#2DD4BF;--bg:#08070C;--card:#12101A;--line:#2A2A36;--tx:#EDEFE6;--mut:#9AA08F;--ac:#2DD4BF;--ac2:#0D9488;--em:#2EE6A6;--warn:#FBBF24;--bad:#FB7185}
+  :root{color-scheme:dark;accent-color:#8B5CF6;--bg:#0D0A12;--card:#15111C;--raised:#1D1727;--line:#2A2236;--tx:#E7E2EF;--mut:#9A91AB;--ac:#9D6BFF;--ac2:#7C4DFF;--em:#2EE6A6;--warn:#E8B86A;--bad:#F0626F}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px "Chakra Petch","Segoe UI",sans-serif;padding:16px 20px 96px}
-  h1{margin:0;font-size:18px;color:#99F6E4;display:inline-flex;align-items:center;gap:8px}
+  h1{margin:0;font-size:18px;color:var(--tx);display:inline-flex;align-items:center;gap:8px;letter-spacing:.3px}
   h1 svg{width:20px;height:20px;color:var(--ac)}
   .hint{color:var(--mut);font-size:12px}
   .top{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
   .spacer{flex:1}
-  .btn{border:1px solid var(--line);background:#191722;color:var(--tx);border-radius:9px;padding:8px 13px;cursor:pointer;font:600 12.5px inherit}
+  .btn{border:1px solid var(--line);background:var(--raised);color:var(--tx);border-radius:8px;padding:8px 13px;cursor:pointer;font:600 12.5px inherit}
   .btn:hover{border-color:var(--ac)}
-  .btn.pri{background:var(--ac2);border-color:var(--ac);color:#04110F}
+  .btn.pri{background:var(--ac2);border-color:var(--ac);color:#FFFFFF}
   .btn.pri:disabled{opacity:.45;cursor:not-allowed}
   .tabs{display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--line)}
   .tabs button{background:none;border:none;color:var(--mut);padding:9px 14px;cursor:pointer;font:600 13px inherit;border-bottom:2px solid transparent}
-  .tabs button.on{color:var(--ac);border-bottom-color:var(--ac)}
+  .tabs button.on{color:var(--tx);border-bottom-color:var(--em)}
   .tab{display:none}.tab.on{display:block}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
-  .panel h3{margin:0 0 10px;font-size:12px;color:var(--ac);text-transform:uppercase;letter-spacing:.7px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .panel h3{margin:0 0 10px;font-size:12px;color:#C9B3FF;text-transform:uppercase;letter-spacing:.7px}
   .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-  .row input[type=text]{flex:1;min-width:220px;background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:8px 10px;font:inherit}
-  label.chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#C7CEBD}
-  select{background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:7px 8px;font:inherit;font-size:12.5px}
+  .row input[type=text]{flex:1;min-width:220px;background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:8px 10px;font:inherit}
+  label.chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--tx)}
+  select{background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:7px 8px;font:inherit;font-size:12.5px}
   .cover-pick{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
-  .cover-prev{width:120px;height:120px;border-radius:10px;border:1px solid var(--line);background:#1A1328;display:grid;place-items:center;overflow:hidden;color:var(--mut);font-size:11px}
+  .cover-prev{width:120px;height:120px;border-radius:8px;border:1px solid var(--line);background:var(--raised);display:grid;place-items:center;overflow:hidden;color:var(--mut);font-size:11px}
   .cover-prev img{width:100%;height:100%;object-fit:cover}
-  .res{display:none;margin-top:12px;border:1px solid #134E4A;background:#0B1B19;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#99F6E4}
-  .res.on{display:block}.res.bad{border-color:#5B2233;color:#FFB3C4}
+  .res{display:none;margin-top:12px;border:1px solid rgba(46,230,166,.38);background:rgba(46,230,166,.08);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--em)}
+  .res.on{display:block}.res.bad{border-color:rgba(240,98,111,.45);background:rgba(240,98,111,.08);color:var(--bad)}
   .list{display:grid;gap:6px;margin-top:10px;max-height:52vh;overflow:auto}
-  .it{display:flex;gap:9px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:#171521;font-size:12.5px}
+  .it{display:flex;gap:9px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--raised);font-size:12.5px}
   .it .old{color:var(--mut);text-decoration:line-through;flex:1;word-break:break-all}
   .it .arr{color:var(--ac);flex:none}
-  .it .new{color:#D9F99D;flex:1;word-break:break-all}
+  .it .new{color:var(--em);flex:1;word-break:break-all}
   .it.skip{opacity:.5}
   .count{color:var(--mut);font-size:12px;margin:8px 0}
 </style>
@@ -51,6 +52,7 @@
   <div class="tabs">
     <button data-tab="cover" class="on">Kapak</button>
     <button data-tab="rename">İsimlendir</button>
+    <button data-tab="autotag">Otomatik ID3</button>
     <button data-tab="m3u">.m3u</button>
   </div>
 
@@ -65,6 +67,7 @@
         <div class="cover-prev" id="cPrev">görsel yok</div>
         <div>
           <div class="row"><input type="file" id="cFile" accept="image/*" style="color:var(--mut)"></div>
+          <div class="row"><input type="text" id="cQuery" placeholder="Sanatçı - Şarkı veya albüm (boşsa klasör adı)"><button class="btn" id="cFetch">1-Tık Hi-Res Kapak Getir</button></div>
           <div class="hint">PNG / JPG. Aynı görsel klasördeki tüm şarkılara gömülür (MP3 APIC · FLAC PICTURE · M4A covr).</div>
         </div>
       </div>
@@ -91,6 +94,22 @@
       <div class="list" id="rList"></div>
       <div class="row" style="margin-top:12px"><button class="btn pri" id="rApply" disabled>Değişiklikleri uygula</button></div>
       <div class="res" id="rRes"></div>
+    </div>
+  </div>
+
+  <!-- Otomatik ID3 -->
+  <div class="tab" id="tab-autotag">
+    <div class="panel">
+      <h3>Klasör</h3>
+      <div class="row"><input type="text" id="aFolder" placeholder="Klasör yolu…"><button class="btn" id="aPick">Seç</button></div>
+      <label class="chk"><input type="checkbox" id="aRec"> Alt klasörler dahil</label>
+      <label class="chk"><input type="checkbox" id="aOverwrite"> Mevcut etiketlerin üstüne yaz (kapalıysa sadece eksikleri doldurur)</label>
+      <label class="chk"><input type="checkbox" id="aCovers"> Hi-Res kapakları da indir & göm</label>
+      <div class="row" style="margin-top:10px"><button class="btn pri" id="aGo">Önizle</button></div>
+      <div class="count" id="aCount"></div>
+      <div class="list" id="aList"></div>
+      <div class="row" style="margin-top:12px"><button class="btn pri" id="aApply" disabled>Uygula</button></div>
+      <div class="res" id="aRes"></div>
     </div>
   </div>
 
@@ -192,6 +211,64 @@ $("#mGo").onclick = async () => {
   if (res?.ok) {
     el.classList.remove("bad");
     el.textContent = `${res.count} şarkı → ${res.path}`;
+  } else {
+    el.classList.add("bad");
+    el.textContent = "Hata: " + (res?.error || "bilinmiyor");
+  }
+};
+
+// ---- 1-Tik Hi-Res Kapak ----
+$("#cFetch").onclick = async () => {
+  const raw = ($("#cQuery").value.trim() || $("#cFolder").value.trim().split(/[\\/]/).pop() || "").trim();
+  if (!raw) return;
+  const parts = raw.includes(" - ") ? raw.split(" - ") : [raw, ""];
+  const artist = parts[0].trim();
+  const title = parts.slice(1).join(" - ").trim();
+  const btn = $("#cFetch"), old = btn.textContent;
+  btn.disabled = true; btn.textContent = "Aranıyor…";
+  const res = await api()?.music_tag_fetch_cover?.(artist, title).catch((e) => ({ ok: false, error: String(e) }));
+  btn.disabled = false; btn.textContent = old;
+  const el = $("#cRes"); el.classList.add("on");
+  if (res?.ok && res.data_url) {
+    coverDataUrl = res.data_url;
+    $("#cPrev").innerHTML = `<img src="${coverDataUrl}" alt="kapak">`;
+    $("#cGo").disabled = false;
+    el.classList.remove("bad");
+    el.textContent = `Hi-Res kapak bulundu (${res.source || "online"}) — şimdi "Klasördeki şarkılara göm"e basabilirsin.`;
+  } else {
+    el.classList.add("bad");
+    el.textContent = "Kapak bulunamadı: " + (res?.error || "sonuç yok");
+  }
+};
+
+// ---- Otomatik ID3 ----
+let autoItems = [];
+$("#aPick").onclick = async () => { const p = await api()?.choose_folder?.(); if (p) $("#aFolder").value = p; };
+$("#aGo").onclick = async () => {
+  const folder = $("#aFolder").value.trim();
+  if (!folder) return;
+  $("#aCount").textContent = "Taranıyor…";
+  const res = await api()?.music_tag_auto_plan?.(folder, $("#aRec").checked).catch((e) => ({ ok: false, error: String(e) }));
+  if (!res?.ok) { $("#aCount").textContent = "Hata: " + (res?.error || "?"); return; }
+  autoItems = res.items || [];
+  $("#aCount").textContent = `${autoItems.length} dosya bulundu.`;
+  $("#aList").innerHTML = autoItems.slice(0, 120).map((it) => {
+    return `<div class="item">
+      <div class="old">${esc(it.file || "")} · Mevcut: ${esc(it.cur_artist || "—")} - ${esc(it.cur_title || "—")}</div>
+      <div class="new">→ ${esc(it.artist || "")} - ${esc(it.title || "")}${it.album ? " (" + esc(it.album) + ")" : ""}</div>
+    </div>`;
+  }).join("");
+  $("#aApply").disabled = !autoItems.length;
+};
+$("#aApply").onclick = async () => {
+  if (!autoItems.length) return;
+  const btn = $("#aApply"); btn.disabled = true;
+  const res = await api()?.music_tag_auto_apply?.(autoItems, $("#aCovers").checked, $("#aOverwrite").checked).catch((e) => ({ ok: false, error: String(e) }));
+  btn.disabled = false;
+  const el = $("#aRes"); el.classList.add("on");
+  if (res?.ok) {
+    el.classList.remove("bad");
+    el.textContent = `${res.done} dosya güncellendi${res.covers ? `, ${res.covers} kapak gömüldü` : ""}.`;
   } else {
     el.classList.add("bad");
     el.textContent = "Hata: " + (res?.error || "bilinmiyor");

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>Kami Beat — Kayıt, Miks &amp; Mashup</title>
+  <link rel="stylesheet" href="beat.css">
+</head>
+<body>
+  <header class="kb-top">
+    <span class="kb-brand">KAMI BEAT</span>
+    <div class="kb-tabs">
+      <button class="kb-tab on" data-mode="studio">Stüdyo &amp; Kayıt</button>
+      <button class="kb-tab" data-mode="mashup">BPM / Ton Mashup</button>
+    </div>
+    <select id="projSelect" title="Proje seç"></select>
+    <button class="btn" id="projNew">+ Yeni</button>
+    <span class="kb-pill" id="metaPill">120 BPM · Am</span>
+    <div class="kb-spacer"></div>
+    <button class="btn" id="refPick">Referans Seç</button>
+    <button class="btn" id="abToggle" disabled>A/B: Miks (A)</button>
+    <button class="btn ok" id="mixdownBtn">Mixdown (-14 LUFS)</button>
+    <button class="btn pri" id="toStudioBtn">🎬 Lirik Video</button>
+  </header>
+
+  <main class="kb-body" id="kbBody">
+    <section class="kb-main" id="studioPane">
+      <div class="kb-ai-bar">
+        <span style="color:var(--ok);font-weight:700">AI Miks</span>
+        <input type="text" id="aiPrompt" placeholder="Örn: Vokali öne çıkar, ATK N9 gürültüsünü temizle ve reverb azalt…">
+        <button class="btn ok" id="aiApplyBtn">Uygula</button>
+      </div>
+      <div id="tracksWrap" style="display:flex;flex-direction:column;gap:10px"></div>
+      <audio id="audPreview" controls style="width:100%;margin-top:4px" hidden></audio>
+    </section>
+
+    <section class="kb-main" id="mashupPane" hidden>
+      <div class="kb-card">
+        <b style="font-size:15px">2-Kanallı BPM &amp; Camelot Ton Mashup</b>
+        <div class="kb-ctrls">
+          <input type="text" id="mVocal" placeholder="Vokal / Acapella dosyası…" style="flex:1">
+          <button class="btn" id="mVocalPick">Seç</button>
+        </div>
+        <div class="kb-ctrls">
+          <input type="text" id="mBeat" placeholder="Beat / Enstrümantal dosyası…" style="flex:1">
+          <button class="btn" id="mBeatPick">Seç</button>
+        </div>
+        <div class="kb-ctrls">
+          <label>Vokal dB <input type="number" id="mVDb" value="1.0" step="0.5" style="width:70px"></label>
+          <label>Beat dB <input type="number" id="mBDb" value="-2.0" step="0.5" style="width:70px"></label>
+          <button class="btn pri" id="mGo">Mashup Oluştur</button>
+        </div>
+        <div id="mRes" style="font-size:12px;color:var(--mut)"></div>
+      </div>
+    </section>
+
+    <aside class="kb-side" id="kbSide">
+      <nav class="kb-side-tabs">
+        <button class="on" data-side="booth">🎙 Kami Booth</button>
+        <button data-side="lyrics">📝 Söz Defteri</button>
+        <button data-side="vst">🔌 VST3 (<span id="vstCount">0</span>)</button>
+      </nav>
+
+      <div class="kb-side-pane" id="pane-booth">
+        <div class="kb-card">
+          <b>PC Mikrofonu (ATK N9 / USB)</b>
+          <select id="micSel"></select>
+          <label style="font-size:12px;color:var(--mut)"><input type="checkbox" id="micClean" checked> Kayıt sonrası AI gürültü temizle</label>
+          <div style="display:flex;gap:8px">
+            <button class="btn pri" id="pcRecBtn" style="flex:1">🎙 Kayda Başla</button>
+          </div>
+          <small id="pcRecSt" style="color:var(--mut)">Hazır (48 kHz WAV)</small>
+        </div>
+        <div class="kb-card">
+          <b>iPhone 15 Pro Max Kablosuz Booth</b>
+          <small style="color:var(--mut)">Aynı Wi-Fi üzerinden 48 kHz WAV kayıt + canlı Teleprompter</small>
+          <button class="btn ok" id="boothSrvBtn">Kablosuz Booth'u Başlat</button>
+          <div id="boothUrl" style="font-size:12px;color:var(--ok);word-break:break-all"></div>
+        </div>
+      </div>
+
+      <div class="kb-side-pane" id="pane-lyrics" hidden>
+        <div class="kb-card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <b>Söz Defteri (Hece &amp; Kafiye)</b>
+            <span id="lyrStats" style="font-size:11px;color:var(--ok)">0 satır · 0 hece</span>
+          </div>
+          <textarea class="kb-lyr-edit" id="lyrInput" placeholder="Satırlarını yaz — heceler ve kafiye grupları otomatik analiz edilir, Kami Booth teleprompter'a canlı akar…"></textarea>
+          <div class="kb-lyr-bars" id="lyrBars"></div>
+        </div>
+      </div>
+
+      <div class="kb-side-pane" id="pane-vst" hidden>
+        <div class="kb-card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <b>Sistemdeki VST3 Eklentileri</b>
+            <button class="btn" id="vstScanBtn">↻ Tara</button>
+          </div>
+          <div id="vstList" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="kb-status">
+    <span id="stMsg">Kami Beat hazır.</span>
+    <span id="lufsMsg">LUFS: —</span>
+  </footer>
+  <script src="beat.js"></script>
+</body>
+</html>

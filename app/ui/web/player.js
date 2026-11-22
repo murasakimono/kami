@@ -4,10 +4,17 @@
 "use strict";
 
 const PL = {
-  open: false, info: null, mode: "direct", offset: 0, audio: 0, failed: 0, dur: 0,
+  open: false, info: null, mode: "direct", offset: 0, audio: 0, failed: 0, dur: 0, rate: 1,
   ctx: null, src: null, an: null, bins: null, eye: null, big: null,
   cues: [], subIdx: -1, subShift: 0, hideT: 0, seeking: false, volume: 1,
 };
+function plApplyRate(rate) {
+  const v = $("#plVideo");
+  const r = Number.isFinite(+rate) && +rate > 0 ? +rate : (PL.rate || 1);
+  PL.rate = r;
+  if (v) { v.defaultPlaybackRate = r; v.playbackRate = r; }
+}
+window.plApplyRate = plApplyRate;
 const plL = (tr, en) => (state.lang !== "en" ? tr : en);
 const fmtT = (s) => {
   s = Math.max(0, Math.floor(s || 0));
@@ -60,11 +67,12 @@ function plBuild() {
   v.addEventListener("progress", plBufDraw);
   v.addEventListener("waiting", () => $("#plSpin").classList.add("on"));
   v.addEventListener("playing", () => { $("#plSpin").classList.remove("on"); plEyeState(); });
-  v.addEventListener("pause", plEyeState);
+  v.addEventListener("pause", () => { plEyeState(); plDiscordSync(true); });
   v.addEventListener("ended", () => { plEyeState(); window.plOnEnded?.(); });
   v.addEventListener("loadedmetadata", () => {
     if (PL.mode === "direct" && isFinite(v.duration)) PL.dur = v.duration;
     $("#plDur").textContent = fmtT(PL.dur);
+    plApplyRate(PL.rate || +$("#plRate")?.value || 1);
     if (PL.info.kind === "video" && PL.mode === "direct") setTimeout(() => { if (PL.open && !v.videoWidth) plFallback("novideo"); }, 1500);
   });
   v.addEventListener("error", () => plFallback("error"));
@@ -91,7 +99,8 @@ function plBuild() {
     toast(plL("Ses ", "Volume ") + Math.round(PL.vol * 100) + "%");
   }, { passive: false });
   el.addEventListener("auxclick", (e) => { if (e.button === 1 && !e.target.closest("button, select, input")) { e.preventDefault(); plFull(); } });
-  v.addEventListener("play", () => { if (PL.ctx) plAudioGraph(); });
+  v.addEventListener("play", () => { if (PL.ctx) plAudioGraph(); plDiscordSync(false); });
+  window.addEventListener("pagehide", () => { try { api.discord_rp_clear?.(); } catch {} });
   v.addEventListener("loadeddata", () => {   // kare suresi (kare kare ilerleme icin)
     if (v.requestVideoFrameCallback) {
       let last = null;
@@ -107,7 +116,7 @@ function plBuild() {
        prev: () => window.plQueueStep?.(-1), next: () => window.plQueueStep?.(1), queue: () => window.plDrawer?.(), settings: () => window.plSettings?.(), ocr: () => plOcrStart(), mini: () => window.plMini?.(), abA: () => plAbMark("A"), abB: () => plAbMark("B"), shot: plShot })[b.dataset.pl]?.();
   });
   $("#plVol").addEventListener("input", (e) => { v.muted = false; plSetVol(+e.target.value); });
-  $("#plRate").addEventListener("change", (e) => { v.playbackRate = +e.target.value; });
+  $("#plRate").addEventListener("change", (e) => { plApplyRate(+e.target.value || 1); });
   $("#plSub").addEventListener("change", (e) => plLoadSub(+e.target.value));
   $("#plAud").addEventListener("change", (e) => plAudio(+e.target.value));
   // seek cubugu: tikla / surukle, uzerinde zaman ipucu
@@ -151,9 +160,35 @@ async function playerOpen(id) {
   if (!r || !r.ok) { toast(plL("Oynatılamadı: ", "Can't play: ") + (r?.error || "?"), true); return; }
   plStart(r);
 }
+let _plLastDrp = 0, _plLastDrpKey = "";
+function plDiscordSync(paused) {
+  try {
+    if (!PL.open || !PL.info || !api.discord_rp_update) return;
+    const key = `${PL.info.path}|${paused ? 1 : 0}`;
+    const now = Date.now();
+    if (key === _plLastDrpKey && now - _plLastDrp < 3000) return;
+    _plLastDrp = now; _plLastDrpKey = key;
+    const raw = String(PL.info.title || "");
+    const parts = raw.includes(" - ") ? raw.split(" - ") : ["", raw];
+    const artist = parts.length > 1 ? parts[0].trim() : "";
+    const title = (parts.length > 1 ? parts.slice(1).join(" - ") : raw).trim();
+    api.discord_rp_update(title, artist, PL.info.kind === "audio" ? "Kami Music" : "Kami Player", PL.dur || 0, plNow() || 0, !!paused).catch(() => {});
+  } catch { /* sessiz */ }
+}
+
 async function playerOpenPath(path, queue) {
   if (!$("#player")) plBuild();
   if (queue && queue.length && typeof PX !== "undefined") PX.pending = queue;
+  try {
+    const s = await api.get_settings?.();
+    if (s?.player_engine === "libmpv" && api.mpv_status && api.mpv_play) {
+      const st = await api.mpv_status();
+      if (st?.available) {
+        const mr = await api.mpv_play(path, plPos(path));
+        if (mr?.ok) { toast(plL("libmpv motoruyla açıldı", "Opened with libmpv")); return; }
+      }
+    }
+  } catch { /* HTML5 yedegine dus */ }
   let r;
   try { r = await api.player_open_path(path); } catch (e) { r = { ok: false, error: String(e) }; }
   if (!r || !r.ok) { toast(plL("Oynatılamadı: ", "Can't play: ") + (r?.error || "?"), true); return; }
@@ -207,6 +242,8 @@ function plStart(r) {
   window.plOnStart?.(r);
   window.plMusicStart?.(r);
   window.plExtraStart?.(r);
+  window.KamiPlayerPro?.syncLoudnessSetting?.().then((on) => { if (on) window.KamiPlayerPro?.applyReplayGain?.(r.path); });
+  plDiscordSync(false);
   plMediaSession();
   plWake();
 }
@@ -221,6 +258,9 @@ function plPos(path, t) {
   } catch { /* depolama yoksa devam ozelligi sessizce kapali */ }
   return 0;
 }
+window.addEventListener("pagehide", () => {
+  if (PL.open && PL.info?.path) { const t = plNow(); plPos(PL.info.path, PL.dur && t > PL.dur - 30 ? null : t); }
+});
 async function plSetSrcResume(t) {
   if (PL.mode === "direct") plSetSrc(t); else await plSeek(t, true);
   const chip = document.createElement("button");
@@ -250,6 +290,7 @@ function plClose() {
 
   v.pause(); v.removeAttribute("src"); v.load();   // akis baglantisi kapanir -> sunucu ffmpeg'i oldurur
   PL.open = false;
+  try { api.discord_rp_clear?.(); } catch {}
   $("#plSpin").classList.remove("on");
   if (window.KAMI_PLAYER_WINDOW) { window.plIdle?.(true); PL.big?.stop(); clearTimeout(PL.blinkT); return; }
   $("#player").hidden = true;
@@ -264,6 +305,8 @@ function plUrl(t) {
   if (PL.mode === "direct") return r.direct_url;
   const q = new URLSearchParams({ t: t.toFixed(3), a: PL.audio, m: PL.mode });
   if (window.plDialogMix?.()) q.set("dm", "1");
+  const as = window.PX?.cfg?.delay || 0;
+  if (as < 0) q.set("as", String(as));
   return `${r.stream_url}?${q}`;
 }
 function plSetSrc(t, autoplay = true) {
@@ -271,6 +314,7 @@ function plSetSrc(t, autoplay = true) {
   PL.offset = PL.mode === "direct" ? 0 : t;
   plAssSync();
   v.src = plUrl(t);
+  plApplyRate(PL.rate || +$("#plRate")?.value || 1);
   if (PL.mode === "direct" && t) v.currentTime = t;
   $("#plSpin").classList.add("on");
   if (autoplay) v.play().then(plAudioGraph).catch(() => {});
@@ -822,6 +866,9 @@ const PL_KEYS_DEFAULT = { " ": "toggle", k: "toggle", f: "full", m: "mute", arro
 function plKeymap() { try { return { ...PL_KEYS_DEFAULT, ...JSON.parse(localStorage.getItem("kami.keys") || "{}") }; } catch { return { ...PL_KEYS_DEFAULT }; } }
 function plKey(e) {
   const altGr = e.getModifierState && e.getModifierState("AltGraph");
+  if (PL.open && !PL.capture && !e.target.matches?.("input:not([type=range]), textarea") && e.altKey && !altGr && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "n") {
+    e.preventDefault(); e.stopPropagation(); window.plToggleNotes?.(); return;
+  }
   if ((!PL.open && e.key !== "Escape") || PL.capture || e.target.matches?.("input:not([type=range]), textarea") || ((e.ctrlKey || e.altKey) && !altGr) || e.metaKey) return;
   const act = plKeymap()[e.key.toLowerCase()];
   if (act && PL_ACTIONS[act]) { e.preventDefault(); e.stopPropagation(); PL_ACTIONS[act][2](); plWake(); }
@@ -834,8 +881,9 @@ function plFrame(d) {
 }
 function plRate(d) {
   const v = $("#plVideo");
-  const r = d === 0 ? 1 : Math.max(0.25, Math.min(4, Math.round((v.playbackRate + d) * 100) / 100));
-  v.playbackRate = r;
+  const cur = PL.rate || v.playbackRate || 1;
+  const r = d === 0 ? 1 : Math.max(0.25, Math.min(4, Math.round((cur + d) * 100) / 100));
+  plApplyRate(r);
   const sel = $("#plRate");
   if (![...sel.options].some((o) => +o.value === r)) sel.insertAdjacentHTML("beforeend", `<option value="${r}">${r}×</option>`);
   sel.value = String(r);

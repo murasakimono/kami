@@ -469,7 +469,7 @@ def main() -> int:
     # motoru kurmak 2-5 sn surdugu icin "bin saatte aciliyor"du; ikinci ve sonraki acilislar artik aninda.
     # closing isleyicisinde arayuz is parcacigina Invoke eden HICBIR cagri yapilmaz (bkz. keep_warm).
     # Uygulama gercekten kapanirken (quit_app -> quitting) normal kapanir.
-    def keep_warm(w, on_hide_js: str = "") -> None:
+    def keep_warm(w, on_hide_js: str = "", allow_unload: bool = True, keep_if: Any = None) -> None:
         # v1.35.3: pywebview closing isleyicisini AYRI is parcaciginda calistirir ve arayuz is parcacigi
         # onun bitmesini bekler (Event.set -> join). w.hide()/run_js arayuz is parcacigina Invoke eder ->
         # birbirini bekleyip kilitlenir ("Yanit Vermiyor"). Bu yuzden burada yalniz kapatmayi iptal edip
@@ -485,6 +485,9 @@ def main() -> int:
 
         def closing():
             if quitting["v"] or getattr(w, "_kami_allow_destroy", False):
+                return None
+            # Dalga 1 RAM diyeti: kapatilan alt pencereler aninda WebView2 bellegini iade eder (muzik calarken Kamify haric)
+            if allow_unload and settings.get("ram_instant_unload", True) and not (callable(keep_if) and keep_if()):
                 return None
             threading.Thread(target=_hide_later, name="kami-keepwarm-hide", daemon=True).start()
             return False   # kapatmayi iptal et; pencere hemen ardindan gizlenir
@@ -517,9 +520,9 @@ def main() -> int:
         return w
     api._make_player_window = make_player_window
 
-    def _prewarm_player() -> None:   # v1.35.2: ilk Player acilisi da aninda olsun (ayar: prewarm_player)
+    def _prewarm_player() -> None:   # v2.5: varsayilan kapali; ayardan acilirsa hazir bekler
         try:
-            if settings.get("prewarm_player", True) and api._player_win is None:
+            if settings.get("prewarm_player", False) and api._player_win is None:
                 api._player_win = make_player_window(prewarm=True)
         except Exception:
             log.debug("Player on isitma", exc_info=True)
@@ -567,13 +570,14 @@ def main() -> int:
 
     # ---- Kami Oyun / Muzik / Suzgec / Iyilestirici (her biri kendi ayri penceresinde) ----
     _MOD_ICON_COLORS = {"games": (129, 140, 248), "music": (192, 132, 252), "cleaner": (244, 114, 182),
-                        "enhance": (163, 230, 53), "musictag": (45, 212, 191)}
+                        "enhance": (163, 230, 53), "musictag": (45, 212, 191), "beat": (251, 146, 60)}
     for _mkey, _mtitle, _mfile, _mw, _mh in (
         ("games", "Kami Games", "games.html", 1320, 840),
         ("music", "Kamify", "music.html", 1240, 800),
         ("cleaner", "Kami Cleaner", "cleaner.html", 1220, 780),
         ("enhance", "Kami İyileştirici", "enhance.html", 1180, 820),
         ("musictag", "Kami Müzik Etiket", "music_tag.html", 1000, 720),
+        ("beat", "Kami Beat", "beat.html", 1320, 860),
     ):
         def _bind_mod(k=_mkey, t=_mtitle, f=_mfile, ww=_mw, hh=_mh, col=_MOD_ICON_COLORS[_mkey]):
             fr = WindowFront(t)
@@ -585,7 +589,7 @@ def main() -> int:
                     if getattr(api, f"_{k}_win", None) is w:
                         setattr(api, f"_{k}_win", None)
                 w.events.closed += _on_closed
-                keep_warm(w)
+                keep_warm(w, keep_if=(lambda: bool(getattr(api, "_thumb_playing", False))) if k == "music" else None)
                 if not selftest:
                     def _on_mod_loaded(win_t=t, win_k=k, win_col=col, mod_fr=fr) -> None:
                         _set_hwnd_app_id(win_t, f"Murasakimono.Kami.{win_k.title()}")
@@ -865,6 +869,9 @@ def main() -> int:
         except Exception:
             pass
         for fn in (
+            lambda: getattr(api, "_game_shield", None) and api._game_shield.stop(),
+            lambda: __import__("app.core.mpv_engine", fromlist=["CONTROLLER"]).CONTROLLER.stop(),
+            lambda: __import__("app.core.discord_rp", fromlist=["PRESENCE"]).PRESENCE.close(),
             lambda: __import__("app.core.librespot_host", fromlist=["stop"]).stop(),
             lambda: __import__("app.core.room", fromlist=["SERVER"]).SERVER.stop(),
             lambda: getattr(api, "_media", None) and api._media.stop(),
@@ -1386,6 +1393,37 @@ def main() -> int:
     # kopuyordu (Oyun 0 oyun, Ekosistem sekmeleri takili; 17.11 logunda 3083 kez). Donma yalniz loglanir.
     api._watchdog = UiWatchdog(lambda: winwin.is_visible(front._hwnd()))
     api._watchdog.start()
+    from app.core.ram_guard import GameShield, purge_idle_windows
+
+    def _on_shield_enter(exe: str, profile: str) -> None:
+        import json as _json
+        api._shield_state = {"active": True, "exe": exe, "profile": profile}
+        try:
+            purge_idle_windows(api, include_visible=False)
+        except Exception:
+            pass
+        mw = main_win.get("w")
+        if mw is not None:
+            try:
+                mw.evaluate_js(f"try{{window.kamiSetLowPower?.(true,{_json.dumps(profile)})}}catch(e){{}}")
+            except Exception:
+                pass
+        api._on_game_active_change(exe, exe)
+
+    def _on_shield_leave() -> None:
+        api._shield_state = {"active": False, "exe": "", "profile": ""}
+        mw = main_win.get("w")
+        if mw is not None:
+            try:
+                mw.evaluate_js("try{window.kamiSetLowPower?.(false,'')}catch(e){}")
+            except Exception:
+                pass
+        if getattr(api, "_auto_speed_reason", "") == "game":
+            api._on_game_active_change("", "")
+
+    shield = GameShield(settings, on_enter=_on_shield_enter, on_leave=_on_shield_leave)
+    api._game_shield = shield
+    shield.start()
     manager.start()
     debrid.start()
     bridge.start()
@@ -1400,12 +1438,20 @@ def main() -> int:
                       storage_path=str(paths.DATA_DIR / "webview"))
     finally:
         log.info("Kami kapaniyor")
+        shield.stop()
         song_hotkey.stop()
         lens_hotkey.stop()
         rec_replay_key.stop(); rec_record_key.stop()
         try:
             from app.core import room as _room
             _room.SERVER.stop()
+        except Exception:
+            pass
+        try:
+            from app.core import mpv_engine as _mpv, discord_rp as _drp, kami_booth as _booth
+            _mpv.CONTROLLER.stop()
+            _drp.PRESENCE.close()
+            _booth.BOOTH.stop()
         except Exception:
             pass
         try:
