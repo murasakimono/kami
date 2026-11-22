@@ -36,8 +36,12 @@
       const go = async () => {
         const u = inp.value.trim(); ov.remove();
         if (!u) return;
+        if (typeof playerOpenUrl === "function") {
+          await playerOpenUrl(u);
+          return;
+        }
         const r = await callApi()?.player_open_url?.(u).catch(() => null);
-        if (r?.ok && typeof plShow === "function") plShow(r);
+        if (r?.ok && typeof plStart === "function") plStart(r);
         else if (typeof toast === "function") toast(r?.error || "URL açılamadı", true);
       };
       ov.querySelector("#plUNo").onclick = () => ov.remove();

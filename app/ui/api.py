@@ -2687,6 +2687,25 @@ class Api(StudioMixin, EnhanceMixin):
         q, self._room_island_q = getattr(self, "_room_island_q", []), []
         return q
 
+    def room_mini_mode(self, on: bool = True, has_video: bool = True) -> dict[str, Any]:
+        """Kami Oda penceresini gercek cercevesiz, her zaman ustte yuzen Mini-Ada PiP penceresine cevirir/geri alir."""
+        from app.core import winwin
+        mw = getattr(self, "_room_mini", None)
+        if mw is None:
+            mw = winwin.MiniWindow("Kami Oda")
+            self._room_mini = mw
+        if on:
+            w, h = (380, 224) if has_video else (330, 86)
+            ok = mw.enter(w, h)
+        else:
+            ok = mw.leave()
+        return {"ok": bool(ok), "mini": bool(on)}
+
+    def room_mini_move(self, dx: int, dy: int) -> None:
+        mw = getattr(self, "_room_mini", None)
+        if mw is not None:
+            mw.move(int(dx), int(dy))
+
     # ---- Kami Kapsul: sureli / sifreli paylasim linki (Oda tuneli + sabit adres)
     def _kapsul_url(self, cid: str) -> str:
         from app.core import room
@@ -5286,6 +5305,80 @@ class Api(StudioMixin, EnhanceMixin):
     def games_open(self) -> dict[str, Any]:
         return self._open_mod_window("games")
 
+    def _detect_active_game(self, game_key: str = "", title: str = "") -> dict[str, str]:
+        if title:
+            return {"key": str(game_key or title), "title": str(title)}
+        st = getattr(self, "_shield_state", None) or {}
+        if st.get("active") and st.get("profile"):
+            return {"key": str(st.get("exe") or st["profile"]), "title": str(st["profile"])}
+        try:
+            from app.core import winwin
+            fg = winwin.foreground_process_name()
+            if fg and fg not in ("kami.exe", "python.exe", "pythonw.exe", "explorer.exe"):
+                stem = os.path.splitext(fg)[0]
+                return {"key": stem.lower(), "title": stem}
+        except Exception:
+            pass
+        return {"key": str(game_key or "default"), "title": "Oyun Companion"}
+
+    def games_companion_toggle(self, game_key: str = "", title: str = "") -> dict[str, Any]:
+        """Gerçek Alt+G Topmost Frameless Companion Overlay penceresini oyunun üstünde açar/gizler."""
+        g_info = self._detect_active_game(game_key, title)
+        win = getattr(self, "_companion_win", None)
+        shown = bool(getattr(self, "_companion_shown", False))
+        # Explicit game passed from Games page while closed -> open; if already open without explicit args -> hide
+        if win is not None and shown and not title:
+            try:
+                win.hide()
+            except Exception:
+                pass
+            self._companion_shown = False
+            return {"ok": True, "visible": False, "game": g_info}
+
+        created = False
+        factory = getattr(self, "_companion_factory", None)
+        if win is None and factory is not None:
+            win = factory()
+            self._companion_win = win
+            created = True
+        if win is not None:
+            try:
+                win.show()
+            except Exception:
+                pass
+            try:
+                from app.core import winwin
+                winwin.round_pill("Kami Companion")
+                hwnd = winwin.find_window("Kami Companion")
+                if hwnd:
+                    winwin.bring_to_front(hwnd)
+            except Exception:
+                pass
+            self._companion_shown = True
+            js_call = f"window.kamiCompanionSetGame && window.kamiCompanionSetGame({json.dumps(g_info, ensure_ascii=False)})"
+            try:
+                win.evaluate_js(js_call)
+            except Exception:
+                pass
+            if created:
+                def _late_sync() -> None:
+                    try:
+                        win.evaluate_js(js_call)
+                    except Exception:
+                        pass
+                threading.Timer(0.35, _late_sync).start()
+        return {"ok": win is not None, "visible": bool(self._companion_win), "game": g_info}
+
+    def games_companion_hide(self) -> dict[str, Any]:
+        win = getattr(self, "_companion_win", None)
+        if win is not None:
+            try:
+                win.hide()
+            except Exception:
+                pass
+        self._companion_shown = False
+        return {"ok": True, "visible": False}
+
     def music_open(self) -> dict[str, Any]:
         return self._open_mod_window("music")
 
@@ -6454,6 +6547,22 @@ class Api(StudioMixin, EnhanceMixin):
     def beat_waveform(self, audio_path: str, buckets: int = 160) -> dict[str, Any]:
         from app.core import beat_studio
         return beat_studio.waveform_peaks(audio_path, buckets=buckets)
+
+    def beat_media_url(self, audio_path: str) -> dict[str, Any]:
+        if not self._media:
+            return {"ok": False, "error": "media_unavailable"}
+        return self._media.register(str(audio_path or ""))
+
+    def beat_qr_svg(self, text: str) -> dict[str, Any]:
+        import base64
+        try:
+            import zxingcpp
+            bc = zxingcpp.create_barcode(str(text or ""), zxingcpp.BarcodeFormat.QRCode)
+            svg = zxingcpp.write_barcode_to_svg(bc, scale=5, quiet_zones=True)
+            b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+            return {"ok": True, "data_url": f"data:image/svg+xml;base64,{b64}"}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
 
     def beat_measure_lufs(self, audio_path: str) -> dict[str, Any]:
         from app.core import beat_studio

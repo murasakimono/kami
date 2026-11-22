@@ -43,10 +43,14 @@ function pmEnsureDom() {
 }
 
 // YouTube/indirme basliklarini temizle: [Official Music Video], (Lyrics), ft. ..., "Sanatci - Sarki"
-function pmClean(s) {
+function pmStripNoise(s) {
   return String(s || "")
     .replace(/\s*[\[(【「][^\])】」]*[\])】」]/g, " ")
     .replace(/\b(official\s+(music\s+|lyric\s+)?(video|audio|visualizer)|music\s+video|lyric\s+video|lyrics?|audio|hd|hq|4k|mv|m\/v)\b/gi, " ")
+    .replace(/\s{2,}/g, " ").replace(/^[\s\-–—|~｜]+|[\s\-–—|~｜]+$/g, "").trim();
+}
+function pmClean(s) {
+  return pmStripNoise(s)
     .replace(/\s+(ft\.?|feat\.?|featuring)\s+.*$/i, "")
     .replace(/[|｜].*$/, "")
     .replace(/\s{2,}/g, " ").replace(/^[\s\-–—]+|[\s\-–—]+$/g, "").trim();
@@ -55,28 +59,41 @@ function pmStem(path) {
   return String(path || "").split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
 }
 function pmSplitPair(s) {
-  const m = String(s || "").match(/^(.+?)\s+[-–—~]\s+(.+)$/);
-  return m ? [m[1].trim(), m[2].trim()] : null;
+  const txt = String(s || "").trim();
+  const dash = txt.match(/^(.+?)\s+[-–—~]\s+(.+)$/);
+  if (dash) return [dash[1].trim(), dash[2].trim()];
+  const pipe = txt.match(/^(.+?)\s+[|｜]\s+(.+)$/);
+  return pipe ? [pipe[1].trim(), pipe[2].trim()] : null;
 }
 function pmMeta(r) {
   const tg = r?.tags || {};
   let artist = String(tg.artist || tg.album_artist || "").replace(/\s*(VEVO|- Topic|Official)\s*$/i, "").trim();
-  const rawTag = String(tg.title || "").trim();
-  const rawFile = pmStem(r?.path) || String(r?.title || "").trim();
-  let title = pmClean(rawTag || rawFile);
-  const badOrSame = !title || (artist && title.toLowerCase() === artist.toLowerCase());
-  const pair = pmSplitPair(title) || (badOrSame ? pmSplitPair(pmClean(rawFile)) : null);
-  if (pair) {   // "Sanatci - Sarki": kanal/sanatci basliktan ayristirilir
-    const [a, t] = pair;
-    if (!artist || a.toLowerCase() === artist.toLowerCase() || !t.toLowerCase().includes(artist.toLowerCase())) {
-      artist = a;
-      title = t;
+  const cands = [tg.title, r?.title, pmStem(r?.path)].map((x) => String(x || "").trim()).filter(Boolean);
+  let title = "";
+  for (const raw of cands) {
+    const pre = pmStripNoise(raw);
+    const pair = pmSplitPair(pre);
+    if (pair) {   // "Sanatci - Sarki" veya "Sanatci | Sarki": once ayir, sonra ft./kanal temizle
+      const a = pmClean(pair[0]), t = pmClean(pair[1]);
+      if (t && (!artist || t.toLowerCase() !== artist.toLowerCase())) {
+        if (!artist || a.toLowerCase() === artist.toLowerCase() || !t.toLowerCase().includes(artist.toLowerCase())) {
+          if (a) artist = a;
+          title = t;
+          break;
+        }
+      } else if (artist && t && t.toLowerCase() === artist.toLowerCase() && a && a.toLowerCase() !== artist.toLowerCase()) {
+        title = a;
+        break;
+      }
     }
-  } else if (badOrSame && rawFile) {
-    const cleanFile = pmClean(rawFile);
-    if (cleanFile && cleanFile.toLowerCase() !== artist.toLowerCase()) title = cleanFile;
+    const c = pmClean(pre);
+    if (c && (!artist || c.toLowerCase() !== artist.toLowerCase())) {
+      title = c;
+      break;
+    }
   }
-  return { artist, title: title || rawFile, album: tg.album || "" };
+  const fallback = cands[cands.length - 1] || "";
+  return { artist, title: title || pmStripNoise(fallback) || fallback, album: tg.album || "" };
 }
 
 window.plReloadLyrics = async (changedPath = "") => {

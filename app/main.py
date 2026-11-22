@@ -738,6 +738,7 @@ def main() -> int:
 
         def closed() -> None:
             api._room_win = None
+            api._room_mini = None
             def _bg() -> None:
                 try:
                     room_keys_on(False)   # HotKey.stop() is parcacigi basina 2 sn'ye kadar join eder: arayuzde olmasin
@@ -869,7 +870,7 @@ def main() -> int:
                 return
             shutdown_done["v"] = True
         log.info("Kami kapaniyor")
-        for key in ("shield", "song_hotkey", "lens_hotkey", "rec_replay_key", "rec_record_key", "scrobbler_hotkey", "hotkey"):
+        for key in ("shield", "song_hotkey", "lens_hotkey", "rec_replay_key", "rec_record_key", "scrobbler_hotkey", "companion_hotkey", "hotkey"):
             obj = cleanup_refs.get(key)
             if obj is not None:
                 _safe_stop(key, obj.stop)
@@ -1060,6 +1061,52 @@ def main() -> int:
     cleanup_refs["scrobbler_hotkey"] = scrobbler_hotkey
     try:
         scrobbler_hotkey.start(settings.get("scrobbler_hotkey") or "ctrl+shift+g")
+    except Exception:
+        pass
+
+    # ---- Dalga 5 / v2.5.2: Gercek Oyun Ici Alt+G Companion Overlay HUD penceresi (her zaman ustte, cercevesiz)
+    def _make_companion_window():
+        sc = webview.screens[0] if webview.screens else None
+        cw, ch = 520, 620
+        cx, cy = ((sc.x + sc.width - cw - 28), (sc.y + 68)) if sc else (None, None)
+        cwin = webview.create_window(
+            "Kami Companion",
+            url=str(paths.WEB_DIR / "companion.html"),
+            js_api=api,
+            width=cw,
+            height=ch,
+            min_size=(400, 420),
+            x=cx,
+            y=cy,
+            frameless=True,
+            shadow=True,
+            easy_drag=False,
+            on_top=True,
+            resizable=True,
+            background_color="#09070E",
+            text_select=True,
+        )
+
+        def _clip_cmp() -> None:
+            try:
+                winwin.round_pill("Kami Companion")
+            except Exception:
+                pass
+
+        def _on_cmp_closed() -> None:
+            api._companion_win = None
+            api._companion_shown = False
+
+        cwin.events.closed += _on_cmp_closed
+        cwin.events.loaded += lambda: (_clip_cmp(), threading.Timer(0.18, _clip_cmp).start())
+        cwin.events.shown += lambda: (_clip_cmp(), threading.Timer(0.18, _clip_cmp).start())
+        return cwin
+
+    api._companion_factory = _make_companion_window
+    companion_hotkey = desktop.HotKey(lambda: threading.Thread(target=api.games_companion_toggle, name="kami-companion-hk", daemon=True).start())
+    cleanup_refs["companion_hotkey"] = companion_hotkey
+    try:
+        companion_hotkey.start(settings.get("companion_hotkey") or "alt+g")
     except Exception:
         pass
 

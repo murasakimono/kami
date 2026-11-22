@@ -80,7 +80,7 @@ async function join() {
   applyMicState(); setupSettings(); layout(); setInterval(statsLoop, 3000);
   if (!navigator.mediaDevices?.getDisplayMedia || /iPhone|iPad|Android/i.test(navigator.userAgent)) $("bShare").hidden = true;
   const pv = $("pipV");
-  if (!(document.pictureInPictureEnabled || pv.webkitSupportsPresentationMode)) $("bPip").hidden = true;
+  if (!(document.pictureInPictureEnabled || pv.webkitSupportsPresentationMode || window.pywebview?.api?.room_mini_mode)) $("bPip").hidden = true;
   kamiInvite();
 }
 
@@ -491,7 +491,7 @@ function onRoster(list) {
   layout();
 }
 function layout() {
-  const st = $("stage"), vids = S.tiles.size;
+  const st = $("stage"), vids = S.tiles.size + ($("ytTile") ? 1 : 0);
   st.classList.toggle("hasvid", vids > 0);
   $("videos").style.setProperty("--cols", vids <= 1 ? 1 : vids <= 4 ? 2 : 3);
   if (vids) return;
@@ -523,7 +523,8 @@ function applyVoiceDuck(speaking) {
     } catch {}
   });
   try {
-    if (YT?.p?.setVolume) YT.p.setVolume(want ? 38 : 100);
+    if (YT?.native) YT.native.volume = want ? 0.38 : 1.0;
+    else if (YT?.p?.setVolume) YT.p.setVolume(want ? 38 : 100);
   } catch {}
 }
 function talkLoop() {
@@ -979,12 +980,76 @@ function pipStop() {
   $("pipBox").hidden = true; $("bPip").classList.remove("act");
   applyMicState();
 }
+function ensureMiniBar() {
+  let bar = $("rmMiniBar");
+  if (bar) return bar;
+  bar = document.createElement("div");
+  bar.id = "rmMiniBar";
+  bar.className = "rm-minibar";
+  bar.innerHTML = `<div class="rm-mdrag" title="Sürükleyerek taşı"><span class="rm-mdot"></span><b id="rmMiniTxt">Kami Oda · Mini-Ada</b></div>
+    <button type="button" id="rmMiniMic" title="Mikrofon">🎙</button>
+    <button type="button" id="rmMiniDeaf" title="Sağırlaştır">🎧</button>
+    <button type="button" id="rmMiniExp" title="Büyüt">⤢</button>`;
+  document.body.appendChild(bar);
+  let drag = null;
+  bar.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button")) return;
+    drag = { x: e.screenX, y: e.screenY };
+    bar.setPointerCapture?.(e.pointerId);
+  });
+  bar.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dx = Math.round(e.screenX - drag.x), dy = Math.round(e.screenY - drag.y);
+    if (!dx && !dy) return;
+    drag = { x: e.screenX, y: e.screenY };
+    window.pywebview?.api?.room_mini_move?.(dx, dy);
+  });
+  bar.addEventListener("pointerup", () => { drag = null; });
+  bar.addEventListener("pointercancel", () => { drag = null; });
+  $("rmMiniMic").onclick = () => $("bMic")?.click();
+  $("rmMiniDeaf").onclick = () => $("bDeaf")?.click();
+  $("rmMiniExp").onclick = () => roomToggleMini(false);
+  return bar;
+}
+function syncMiniBar() {
+  const bar = $("rmMiniBar");
+  if (!bar) return;
+  const users = S.roster.filter((p) => p.kind === "user");
+  $("rmMiniTxt").textContent = `Kami Oda · ${users.length || 1} kişi`;
+  $("rmMiniMic")?.classList.toggle("x", !!S.muted);
+  $("rmMiniDeaf")?.classList.toggle("x", !!S.deaf);
+}
+async function roomToggleMini(force) {
+  const next = typeof force === "boolean" ? force : !S._roomMini;
+  const api = window.pywebview?.api;
+  if (!api?.room_mini_mode) return false;
+  const hasVid = S.tiles.size > 0 || !!$("ytTile");
+  ensureMiniBar();
+  try {
+    await api.room_mini_mode(next, hasVid);
+    S._roomMini = next;
+    document.body.classList.toggle("rm-mini", next);
+    $("bPip")?.classList.toggle("act", next);
+    syncMiniBar();
+    setTimeout(() => layout?.(), 60);
+    return true;
+  } catch {
+    toast("Mini-Ada değiştirilemedi");
+    return false;
+  }
+}
+setInterval(() => { if (S._roomMini) syncMiniBar(); }, 600);
 $("bPip").onclick = async () => {
-  if (window.pywebview?.api?.set_setting) {
+  const api = window.pywebview?.api;
+  if (api?.room_mini_mode) {
+    await roomToggleMini(!S._roomMini);
+    return;
+  }
+  if (api?.set_setting) {
     S._deskIsland = !S._deskIsland;
     try {
-      await window.pywebview.api.set_setting("room_island", true);
-      await window.pywebview.api.set_setting("mini_island", S._deskIsland);
+      await api.set_setting("room_island", true);
+      await api.set_setting("mini_island", S._deskIsland);
       $("bPip").classList.toggle("act", S._deskIsland);
       toast(S._deskIsland ? "Masaüstü Mini-Ada açıldı" : "Masaüstü Mini-Ada kapatıldı");
     } catch { toast("Mini-Ada değiştirilemedi"); }
@@ -1113,47 +1178,134 @@ if (window.pywebview?.api) init(); else { let done = false; window.addEventListe
 
 
 // ---------------------------------------------------------------- birlikte YouTube (herkes ayni anda; ekran paylasimi gerekmez)
-const YT = { p: null, id: "", apply: 0, ready: null, lead: false, beat: null };
+const YT = { p: null, native: null, id: "", apply: 0, ready: null, lead: false, beat: null };
 function ytId(u) {
   const m = String(u || "").match(/(?:youtu\.be\/|v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/) || String(u || "").match(/^([\w-]{11})$/);
   return m ? m[1] : "";
 }
 function ytApi() {
+  if (window.YT?.Player) return Promise.resolve(true);
   if (YT.ready) return YT.ready;
   YT.ready = new Promise((ok) => {
-    window.onYouTubeIframeAPIReady = ok;
-    const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(sc);
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; ok(v); } };
+    window.onYouTubeIframeAPIReady = () => finish(true);
+    const sc = document.createElement("script");
+    sc.src = "https://www.youtube.com/iframe_api";
+    sc.onerror = () => { YT.ready = null; finish(false); };
+    document.head.appendChild(sc);
+    setTimeout(() => { if (!window.YT?.Player) finish(false); }, 4500);
   });
   return YT.ready;
 }
+function ytCurTime() {
+  try {
+    if (YT.native) return Number(YT.native.currentTime) || 0;
+    if (YT.p?.getCurrentTime) return Number(YT.p.getCurrentTime()) || 0;
+  } catch {}
+  return 0;
+}
+function ytIsPlaying() {
+  try {
+    if (YT.native) return !YT.native.paused && !YT.native.ended;
+    if (YT.p?.getPlayerState) return YT.p.getPlayerState() === 1;
+  } catch {}
+  return false;
+}
+function ytStartBeat() {
+  clearInterval(YT.beat);
+  YT.beat = setInterval(() => {
+    if (YT.lead && ytIsPlaying()) ytSend({ act: "beat", id: YT.id, t: ytCurTime(), playing: true });
+  }, 2000);
+}
+async function ytFallbackDirect(id, t = 0, playing = true) {
+  const fr = $("ytFrame");
+  if (!fr || !id) return;
+  try { YT.p?.destroy(); } catch {}
+  YT.p = null; YT.native = null;
+  const openApi = window.pywebview?.api?.player_open_url;
+  if (!openApi) {
+    fr.innerHTML = `<div style="height:100%;display:grid;place-items:center;padding:18px;text-align:center;color:#C9C0DC;font-size:13px"><div>Bu video embed kısıtlamalı görünüyor.<br><br><a href="https://www.youtube.com/watch?v=${esc(id)}" target="_blank" style="color:#2EE6A6">YouTube'da Aç ↗</a></div></div>`;
+    return;
+  }
+  fr.innerHTML = `<div style="height:100%;display:grid;place-items:center;color:#C4B5FD;font-size:13px">⚡ Doğrudan akış hazırlanıyor…</div>`;
+  const r = await openApi("https://www.youtube.com/watch?v=" + id).catch(() => null);
+  const src = r?.stream_url || r?.url || r?.direct_url;
+  if (!r?.ok || !src || !$("ytTile")) {
+    fr.innerHTML = `<div style="height:100%;display:grid;place-items:center;padding:18px;text-align:center;color:#FF8095;font-size:13px">Akış başlatılamadı (${esc(r?.error || "embed/yt-dlp")}).</div>`;
+    return;
+  }
+  fr.innerHTML = `<video id="ytNativeVid" controls playsinline preload="metadata" src="${esc(src)}"></video>`;
+  const v = $("ytNativeVid");
+  YT.native = v;
+  const seekAndPlay = () => {
+    YT.apply = Date.now();
+    if (t > 0.3) try { v.currentTime = t; } catch {}
+    if (playing) v.play().catch(() => {});
+  };
+  if (v.readyState >= 1) seekAndPlay();
+  else v.addEventListener("loadedmetadata", seekAndPlay, { once: true });
+  const pushState = (pl) => {
+    if (Date.now() - YT.apply < 900) return;
+    YT.lead = true;
+    ytSend({ act: "state", id: YT.id, t: ytCurTime(), playing: pl });
+    ytStartBeat();
+  };
+  v.addEventListener("play", () => pushState(true));
+  v.addEventListener("pause", () => pushState(false));
+  v.addEventListener("seeked", () => pushState(ytIsPlaying()));
+}
 async function ytOpen(id, t = 0, playing = true) {
-  await ytApi();
   let tile = $("ytTile");
   if (!tile) {
     tile = document.createElement("div"); tile.id = "ytTile"; tile.className = "tile yt";
-    tile.innerHTML = `<div id="ytFrame"></div><div class="yt-bar"><span>▶ Birlikte YouTube</span><button id="ytClose" title="Herkes için kapat">✕</button></div>`;
+    tile.innerHTML = `<div id="ytFrame"></div><div class="yt-bar"><span>▶ Birlikte YouTube</span><div class="yt-acts"><button id="ytDirect" title="Embed açılmazsa yerel yt-dlp akışına geç">⚡ Doğrudan Akış</button><button id="ytClose" title="Herkes için kapat">✕</button></div></div>`;
     $("videos").prepend(tile);
     $("ytClose").onclick = () => { ytSend({ act: "close" }); ytClose(); };
+    $("ytDirect").onclick = () => ytFallbackDirect(YT.id || id, ytCurTime(), true);
     layout?.();
+    if (S._roomMini) window.pywebview?.api?.room_mini_mode?.(true, true);
   }
-  if (YT.p && YT.id === id) { ytSet(t, playing); return; }
+  if ((YT.p || YT.native) && YT.id === id) { ytSet(t, playing); return; }
   YT.id = id;
-  if (YT.p) { YT.apply = Date.now(); YT.p.loadVideoById({ videoId: id, startSeconds: t }); if (!playing) setTimeout(() => YT.p.pauseVideo(), 600); return; }
-  YT.p = new window.YT.Player("ytFrame", { videoId: id, playerVars: { autoplay: playing ? 1 : 0, start: Math.floor(t), playsinline: 1, rel: 0 },
-    events: { onStateChange: ytState, onReady: () => { YT.apply = Date.now(); if (t) YT.p.seekTo(t, true); if (playing) YT.p.playVideo(); } } });
+  if (YT.native) { return ytFallbackDirect(id, t, playing); }
+  const okApi = await ytApi();
+  if (!okApi || !window.YT?.Player) { return ytFallbackDirect(id, t, playing); }
+  if (YT.p) { YT.apply = Date.now(); YT.p.loadVideoById({ videoId: id, startSeconds: t }); if (!playing) setTimeout(() => YT.p?.pauseVideo?.(), 600); return; }
+  YT.p = new window.YT.Player("ytFrame", {
+    videoId: id,
+    playerVars: { autoplay: playing ? 1 : 0, start: Math.floor(t), playsinline: 1, rel: 0, enablejsapi: 1, origin: location.origin },
+    events: {
+      onStateChange: ytState,
+      onError: () => ytFallbackDirect(YT.id || id, t, playing),
+      onReady: () => { YT.apply = Date.now(); if (t) YT.p.seekTo(t, true); if (playing) YT.p.playVideo(); },
+    },
+  });
 }
-function ytClose() { try { YT.p?.destroy(); } catch { /* yok */ } YT.p = null; YT.id = ""; clearInterval(YT.beat); $("ytTile")?.remove(); layout?.(); }
+function ytClose() {
+  try { YT.p?.destroy(); } catch { /* yok */ }
+  try { YT.native?.pause(); if (YT.native) YT.native.src = ""; } catch { /* yok */ }
+  YT.p = null; YT.native = null; YT.id = ""; clearInterval(YT.beat);
+  $("ytTile")?.remove(); layout?.();
+  if (S._roomMini) window.pywebview?.api?.room_mini_mode?.(true, S.tiles.size > 0);
+}
 function ytSend(m) { S.core?.broadcast({ k: "yt", ...m, at: Date.now() }); }
 function ytState(ev) {
   if (Date.now() - YT.apply < 900) return;   // uzaktan gelen komutun yankisi
   const st = ev.data;   // 1 oynuyor, 2 durdu, 3 tamponda
   if (st !== 1 && st !== 2) return;
   YT.lead = true;
-  ytSend({ act: "state", id: YT.id, t: YT.p.getCurrentTime(), playing: st === 1 });
-  clearInterval(YT.beat);
-  YT.beat = setInterval(() => { if (YT.p && YT.lead && YT.p.getPlayerState?.() === 1) ytSend({ act: "beat", id: YT.id, t: YT.p.getCurrentTime(), playing: true }); }, 2000);
+  ytSend({ act: "state", id: YT.id, t: ytCurTime(), playing: st === 1 });
+  ytStartBeat();
 }
 function ytSet(t, playing) {
+  if (YT.native) {
+    YT.apply = Date.now();
+    if (Math.abs((YT.native.currentTime || 0) - t) > 0.7) YT.native.currentTime = t;
+    if (playing && YT.native.paused) YT.native.play().catch(() => {});
+    if (!playing && !YT.native.paused) YT.native.pause();
+    return;
+  }
   if (!YT.p?.getCurrentTime) return;
   YT.apply = Date.now();
   if (Math.abs(YT.p.getCurrentTime() - t) > 0.6) YT.p.seekTo(t, true);
@@ -1162,10 +1314,10 @@ function ytSet(t, playing) {
 }
 function ytIn(from, m) {
   if (m.act === "close") return ytClose();
-  if (m.act === "req") { if (YT.p && YT.id) S.core.send(from, { k: "yt", act: "state", id: YT.id, t: YT.p.getCurrentTime(), playing: YT.p.getPlayerState() === 1, at: Date.now() }); return; }
+  if (m.act === "req") { if ((YT.p || YT.native) && YT.id) S.core.send(from, { k: "yt", act: "state", id: YT.id, t: ytCurTime(), playing: ytIsPlaying(), at: Date.now() }); return; }
   const lag = Math.max(0, (Date.now() - (m.at || Date.now())) / 1000);
   const t = (m.t || 0) + (m.playing ? lag : 0);
-  if (m.act === "beat" && YT.id === m.id) { YT.lead = false; if (YT.p && Math.abs(YT.p.getCurrentTime() - t) > 1.5) ytSet(t, true); return; }
+  if (m.act === "beat" && YT.id === m.id) { YT.lead = false; if ((YT.p || YT.native) && Math.abs(ytCurTime() - t) > 1.5) ytSet(t, true); return; }
   YT.lead = false;
   ytOpen(m.id, t, !!m.playing);
 }

@@ -5,9 +5,14 @@
 <title>Kami Müzik Etiket</title>
 <link rel="stylesheet" href="scroll.css">
 <style>
+  @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-Regular.ttf");font-weight:400}
+  @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-Medium.ttf");font-weight:500}
+  @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-SemiBold.ttf");font-weight:600}
+  @font-face{font-family:"Chakra Petch";src:url("fonts/ChakraPetch-Bold.ttf");font-weight:700}
   :root{color-scheme:dark;accent-color:#8B5CF6;--bg:#0D0A12;--card:#15111C;--raised:#1D1727;--line:#2A2236;--tx:#E7E2EF;--mut:#9A91AB;--ac:#9D6BFF;--ac2:#7C4DFF;--em:#2EE6A6;--warn:#E8B86A;--bad:#F0626F}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--tx);font:14px "Chakra Petch","Segoe UI",sans-serif;padding:16px 20px 96px}
+  body{margin:0;background:var(--bg);color:var(--tx);font:500 14px "Chakra Petch",system-ui,sans-serif;padding:16px 20px 96px}
+  input,select,textarea,button{font-family:inherit}
   h1{margin:0;font-size:18px;color:var(--tx);display:inline-flex;align-items:center;gap:8px;letter-spacing:.3px}
   h1 svg{width:20px;height:20px;color:var(--ac)}
   .hint{color:var(--mut);font-size:12px}

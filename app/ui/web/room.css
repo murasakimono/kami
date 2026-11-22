@@ -1,4 +1,6 @@
+@font-face { font-family: "Chakra Petch"; src: url("../font/ChakraPetch-Regular.ttf"); font-weight: 400; }
 @font-face { font-family: "Chakra Petch"; src: url("../font/ChakraPetch-Medium.ttf"); font-weight: 500; }
+@font-face { font-family: "Chakra Petch"; src: url("../font/ChakraPetch-SemiBold.ttf"); font-weight: 600; }
 @font-face { font-family: "Chakra Petch"; src: url("../font/ChakraPetch-Bold.ttf"); font-weight: 700; }
 @font-face { font-family: "Damnation"; src: url("../font/Damnation.ttf"); }
 :root { --bg: #07060B; --panel: #100C17; --line: #2A2140; --text: #EDE9F6; --mute: #8E86A3; --violet: #8B5CF6; --royal: #6D28D9; --em: #2EE6A6; --err: #FF4D6A;
@@ -232,9 +234,11 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .rm-reply { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 6px 10px; font-size: 12px; color: #C4B5FD; background: rgba(157, 107, 255, .09); border-top: 1px solid #2A2236; }
 .rm-reply button { background: none; border: 0; color: var(--mute); cursor: pointer; padding: 2px 6px; border-radius: 4px; }
 .rm-reply button:hover { color: #fff; background: rgba(255,255,255,.08); }
-.tile.yt { position: relative; background: #000; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; } .tile.yt #ytFrame, .tile.yt iframe { width: 100%; height: 100%; display: block; }
-.yt-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; font-size: 11px; background: linear-gradient(rgba(0,0,0,.85), transparent); color: #fff; opacity: .0; transition: opacity .2s; }
+.tile.yt { position: relative; background: #000; width: 100%; height: 100%; border-radius: 10px; overflow: hidden; }
+.tile.yt #ytFrame, .tile.yt iframe, .tile.yt video { width: 100%; height: 100%; display: block; object-fit: contain; background: #000; }
+.yt-bar { position: absolute; left: 0; right: 0; top: 0; z-index: 4; display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 6px 10px; font-size: 11px; background: linear-gradient(rgba(0,0,0,.85), transparent); color: #fff; opacity: .0; transition: opacity .2s; }
 .tile.yt:hover .yt-bar { opacity: 1; }
+.yt-bar .yt-acts { display: flex; align-items: center; gap: 6px; }
 .yt-bar button { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); border-radius: 6px; padding: 2px 8px; color: #fff; cursor: pointer; }
 .yt-bar button:hover { background: #6D28D9; border-color: #9D6BFF; }
 .msg.file .fdl { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: #140F20; border: 1px solid #2E2346; border-radius: 8px; text-decoration: none; transition: border-color .15s; }
@@ -264,3 +268,24 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .rm-qrow b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rm-qrow button { border: 0; background: none; color: var(--mute); cursor: pointer; font-size: 13px; }
 .rm-qrow button:hover { color: #fff; }
+
+/* gercek Masaustu Mini-Ada (PiP) modu */
+.rm-minibar { position: fixed; inset: 0 auto auto 0; right: 0; z-index: 60; display: none; align-items: center; gap: 6px; padding: 6px 8px;
+  background: linear-gradient(180deg, rgba(11,8,17,.94), rgba(11,8,17,.65)); border-bottom: 1px solid rgba(157,107,255,.28); backdrop-filter: blur(8px); cursor: grab; user-select: none; }
+.rm-minibar:active { cursor: grabbing; }
+.rm-minibar .rm-mdrag { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #EDE9F6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rm-minibar .rm-mdot { width: 7px; height: 7px; border-radius: 50%; background: var(--em); box-shadow: 0 0 8px var(--em); flex: none; }
+.rm-minibar button { width: 28px; height: 26px; border: 1px solid rgba(157,107,255,.32); border-radius: 6px; background: #171126; color: #EDE9F6; display: grid; place-items: center; cursor: pointer; font-size: 12px; padding: 0; flex: none; }
+.rm-minibar button:hover { border-color: var(--violet); background: #261B40; }
+.rm-minibar button.x { border-color: rgba(255,77,106,.55); background: #3A1020; color: #FF8095; }
+.rm-minibar button svg { width: 14px; height: 14px; }
+body.rm-mini .rm-top, body.rm-mini .rm-chat, body.rm-mini .rm-dock, body.rm-mini .rm-rxbar, body.rm-mini #spSyncBar, body.rm-mini .rm-qbox { display: none !important; }
+body.rm-mini .rm { grid-template-rows: minmax(0, 1fr); }
+body.rm-mini .rm-main { grid-template-columns: minmax(0, 1fr); }
+body.rm-mini .rm-minibar { display: flex; }
+body.rm-mini .rm-stage:not(.hasvid) .rm-circle { padding-top: 34px; }
+body.rm-mini .rm-stage:not(.hasvid) .rm-circle::before { display: none; }
+body.rm-mini .rm-stage:not(.hasvid) .tk { position: static !important; transform: none !important; flex-direction: row; gap: 6px; }
+body.rm-mini .rm-stage:not(.hasvid) .tk-face { width: 32px; height: 32px; font-size: 14px; }
+body.rm-mini .rm-stage:not(.hasvid) .tk small, body.rm-mini .rm-stage:not(.hasvid) .tk input { display: none; }
+body.rm-mini .rm-stage:not(.hasvid) .rm-circle { display: flex; gap: 8px; padding: 38px 10px 6px; justify-content: flex-start; overflow-x: auto; }
