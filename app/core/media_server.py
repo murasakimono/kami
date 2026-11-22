@@ -229,6 +229,14 @@ class MediaServer:
             for i, s in enumerate(subs):
                 self._files[f"{key}-s{i}"] = {"path": s["path"], "kind": "sub"}
         a_ok = mode == "direct"
+        # Kapak: gömülü (attached_pic/APIC) yoksa ses dosyalarında yanındaki folder.jpg/cover.jpg'ye düş (MP3tag mantığı).
+        cover_url = f"{self.base}/c/{key}" if info["cover"] else ""
+        if not cover_url and kind == "audio":
+            for cname in ("folder.jpg", "cover.jpg", "folder.png", "cover.png"):
+                sib = p.parent / cname
+                if sib.is_file():
+                    cover_url = self.asset_url(str(sib), "f")
+                    break
         res = {
             "ok": True, "key": key, "path": str(p), "kind": kind, "vcodec": info["vcodec"], "size": p.stat().st_size, "mode": mode, "title": title or p.stem,
             "duration": info["duration"], "width": info["width"], "height": info["height"],
@@ -238,7 +246,7 @@ class MediaServer:
             "url": f"{self.base}/f/{key}" if a_ok else f"{self.base}/x/{key}",
             "direct_url": f"{self.base}/f/{key}",
             "stream_url": f"{self.base}/x/{key}",
-            "cover": f"{self.base}/c/{key}" if info["cover"] else "",
+            "cover": cover_url,
             "thumb_url": f"{self.base}/p/{key}" if kind == "video" else "",
             "subs": [{"label": s["label"], "url": f"{self.base}/s/{key}-s{i}", "ass": s["path"].lower().endswith((".ass", ".ssa")),
                       "raw_url": f"{self.base}/r/{key}-s{i}"} for i, s in enumerate(subs)],

@@ -3522,6 +3522,33 @@ class Api(StudioMixin, EnhanceMixin):
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:120]}
 
+    # ---------- Muzik Etiket / Kapak / Isimlendir (MP3tag mantigi) ----------
+    def music_tag_open(self) -> dict[str, Any]:
+        return self._open_mod_window("musictag")
+
+    def music_tag_pick_folder(self) -> dict[str, Any]:
+        import webview
+        try:
+            res = self._window.create_file_dialog(webview.FileDialog.FOLDER)
+            return {"ok": True, "path": (res[0] if isinstance(res, (list, tuple)) else res) or ""}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:120]}
+
+    def music_tag_rename_plan(self, folder: str, style: str = "feat_after", recursive: bool = False) -> dict[str, Any]:
+        from app.core import music_tag
+        return music_tag.rename_plan(str(folder or ""), style or "feat_after", bool(recursive))
+
+    def music_tag_rename_apply(self, pairs: list) -> dict[str, Any]:
+        return self.batch_rename(pairs or [])
+
+    def music_tag_cover_batch(self, folder: str, data_url: str, recursive: bool = False) -> dict[str, Any]:
+        from app.core import music_tag
+        return music_tag.cover_batch(str(folder or ""), data_url or "", bool(recursive))
+
+    def music_tag_export_m3u(self, folder: str, recursive: bool = False) -> dict[str, Any]:
+        from app.core import music_tag
+        return music_tag.m3u_export(str(folder or ""), bool(recursive))
+
     def library_organize(self, paths: list | None = None, apply: bool = False) -> dict[str, Any]:
         """Dizi bolumlerini 'Dizi / Sezon 01 / bolum' duzenine tasi (once onizleme, apply=True ile tasir; yan altyazilar da gider)."""
         import re as _re

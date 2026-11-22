@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kami Müzik Etiket</title>
+<style>
+  :root{color-scheme:dark;accent-color:#2DD4BF;--bg:#08070C;--card:#12101A;--line:#2A2A36;--tx:#EDEFE6;--mut:#9AA08F;--ac:#2DD4BF;--ac2:#0D9488;--em:#2EE6A6;--warn:#FBBF24;--bad:#FB7185}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px "Chakra Petch","Segoe UI",sans-serif;padding:16px 20px 96px}
+  h1{margin:0;font-size:18px;color:#99F6E4;display:inline-flex;align-items:center;gap:8px}
+  h1 svg{width:20px;height:20px;color:var(--ac)}
+  .hint{color:var(--mut);font-size:12px}
+  .top{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--line);background:#191722;color:var(--tx);border-radius:9px;padding:8px 13px;cursor:pointer;font:600 12.5px inherit}
+  .btn:hover{border-color:var(--ac)}
+  .btn.pri{background:var(--ac2);border-color:var(--ac);color:#04110F}
+  .btn.pri:disabled{opacity:.45;cursor:not-allowed}
+  .tabs{display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--line)}
+  .tabs button{background:none;border:none;color:var(--mut);padding:9px 14px;cursor:pointer;font:600 13px inherit;border-bottom:2px solid transparent}
+  .tabs button.on{color:var(--ac);border-bottom-color:var(--ac)}
+  .tab{display:none}.tab.on{display:block}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .panel h3{margin:0 0 10px;font-size:12px;color:var(--ac);text-transform:uppercase;letter-spacing:.7px}
+  .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .row input[type=text]{flex:1;min-width:220px;background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:8px 10px;font:inherit}
+  label.chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#C7CEBD}
+  select{background:#12101A;border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:7px 8px;font:inherit;font-size:12.5px}
+  .cover-pick{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+  .cover-prev{width:120px;height:120px;border-radius:10px;border:1px solid var(--line);background:#1A1328;display:grid;place-items:center;overflow:hidden;color:var(--mut);font-size:11px}
+  .cover-prev img{width:100%;height:100%;object-fit:cover}
+  .res{display:none;margin-top:12px;border:1px solid #134E4A;background:#0B1B19;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#99F6E4}
+  .res.on{display:block}.res.bad{border-color:#5B2233;color:#FFB3C4}
+  .list{display:grid;gap:6px;margin-top:10px;max-height:52vh;overflow:auto}
+  .it{display:flex;gap:9px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:#171521;font-size:12.5px}
+  .it .old{color:var(--mut);text-decoration:line-through;flex:1;word-break:break-all}
+  .it .arr{color:var(--ac);flex:none}
+  .it .new{color:#D9F99D;flex:1;word-break:break-all}
+  .it.skip{opacity:.5}
+  .count{color:var(--mut);font-size:12px;margin:8px 0}
+</style>
+<script src="kami-embed.js"></script>
+</head>
+<body>
+  <div class="top">
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 16V8l6-1v9"/><circle cx="7.5" cy="16" r="1.5"/><circle cx="13.5" cy="15" r="1.5"/></svg>KAMİ MÜZİK ETİKET</h1>
+    <span class="hint">Kapak göm · isim düzenle · .m3u</span>
+    <span class="spacer"></span>
+  </div>
+
+  <div class="tabs">
+    <button data-tab="cover" class="on">Kapak</button>
+    <button data-tab="rename">İsimlendir</button>
+    <button data-tab="m3u">.m3u</button>
+  </div>
+
+  <!-- Kapak -->
+  <div class="tab on" id="tab-cover">
+    <div class="panel">
+      <h3>Klasör</h3>
+      <div class="row"><input type="text" id="cFolder" placeholder="Klasör yolu…"><button class="btn" id="cPick">Seç</button></div>
+      <label class="chk"><input type="checkbox" id="cRec"> Alt klasörler dahil</label>
+      <h3 style="margin-top:14px">Kapak görseli</h3>
+      <div class="cover-pick">
+        <div class="cover-prev" id="cPrev">görsel yok</div>
+        <div>
+          <div class="row"><input type="file" id="cFile" accept="image/*" style="color:var(--mut)"></div>
+          <div class="hint">PNG / JPG. Aynı görsel klasördeki tüm şarkılara gömülür (MP3 APIC · FLAC PICTURE · M4A covr).</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px"><button class="btn pri" id="cGo" disabled>Klasördeki şarkılara göm</button></div>
+      <div class="res" id="cRes"></div>
+    </div>
+  </div>
+
+  <!-- İsimlendir -->
+  <div class="tab" id="tab-rename">
+    <div class="panel">
+      <h3>Klasör</h3>
+      <div class="row"><input type="text" id="rFolder" placeholder="Klasör yolu…"><button class="btn" id="rPick">Seç</button></div>
+      <label class="chk"><input type="checkbox" id="rRec"> Alt klasörler dahil</label>
+      <h3 style="margin-top:14px">Format</h3>
+      <div class="row">
+        <select id="rStyle">
+          <option value="feat_after">Sanatçı ft. X, Y - Şarkı</option>
+          <option value="feat_parens">Sanatçı - Şarkı (ft. X, Y)</option>
+        </select>
+      </div>
+      <div class="row"><button class="btn pri" id="rGo">Önizle</button></div>
+      <div class="count" id="rCount"></div>
+      <div class="list" id="rList"></div>
+      <div class="row" style="margin-top:12px"><button class="btn pri" id="rApply" disabled>Değişiklikleri uygula</button></div>
+      <div class="res" id="rRes"></div>
+    </div>
+  </div>
+
+  <!-- .m3u -->
+  <div class="tab" id="tab-m3u">
+    <div class="panel">
+      <h3>Klasör</h3>
+      <div class="row"><input type="text" id="mFolder" placeholder="Klasör yolu…"><button class="btn" id="mPick">Seç</button></div>
+      <label class="chk"><input type="checkbox" id="mRec"> Alt klasörler dahil</label>
+      <div class="row" style="margin-top:12px"><button class="btn pri" id="mGo">.m3u oluştur</button></div>
+      <div class="res" id="mRes"></div>
+    </div>
+  </div>
+
+<script>
+const api = () => window.pywebview?.api;
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// tab geçişi
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.id === "tab-" + b.dataset.tab));
+});
+
+// klasör seç (3 sekmeyi ortak tek yardımcıyla)
+async function pickFolder(input) {
+  const r = await api()?.music_tag_pick_folder?.().catch(() => null);
+  if (r?.ok && r.path) input.value = r.path;
+}
+
+$("#cPick").onclick = () => pickFolder($("#cFolder"));
+$("#rPick").onclick = () => pickFolder($("#rFolder"));
+$("#mPick").onclick = () => pickFolder($("#mFolder"));
+
+// ---- Kapak ----
+let coverDataUrl = "";
+$("#cFile").addEventListener("change", () => {
+  const f = $("#cFile").files?.[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { coverDataUrl = rd.result; $("#cPrev").innerHTML = `<img src="${rd.result}" alt="">`; $("#cGo").disabled = false; };
+  rd.readAsDataURL(f);
+});
+$("#cGo").onclick = async () => {
+  const folder = $("#cFolder").value.trim();
+  if (!folder || !coverDataUrl) return;
+  $("#cGo").disabled = true;
+  const res = await api()?.music_tag_cover_batch?.(folder, coverDataUrl, $("#cRec").checked).catch((e) => ({ ok: false, error: String(e) }));
+  const el = $("#cRes");
+  el.classList.add("on");
+  if (res?.ok) {
+    el.classList.remove("bad");
+    el.textContent = `Gömüldü: ${res.done.length} · Atlanan (format desteklenmiyor): ${res.skipped.length}`;
+  } else {
+    el.classList.add("bad");
+    el.textContent = "Hata: " + (res?.error || "bilinmiyor");
+  }
+  $("#cGo").disabled = false;
+};
+
+// ---- İsimlendir ----
+let renamePlan = [];
+$("#rGo").onclick = async () => {
+  const folder = $("#rFolder").value.trim();
+  if (!folder) return;
+  const res = await api()?.music_tag_rename_plan?.(folder, $("#rStyle").value, $("#rRec").checked).catch((e) => ({ ok: false, error: String(e) }));
+  renamePlan = res?.items || [];
+  const changed = renamePlan.filter((i) => i.changed);
+  $("#rCount").textContent = `${renamePlan.length} şarkı · ${changed.length} değişecek`;
+  $("#rList").innerHTML = renamePlan.map((i) => `<div class="it ${i.changed ? "" : "skip"}"><span class="old">${esc(i.old_name)}</span><span class="arr">→</span><span class="new">${esc(i.new_name)}</span></div>`).join("") || '<div class="hint">Bu klasörde şarkı bulunamadı.</div>';
+  $("#rApply").disabled = !changed.length;
+};
+$("#rApply").onclick = async () => {
+  const pairs = renamePlan.filter((i) => i.changed).map((i) => ({ path: i.path, new_name: i.new_name }));
+  if (!pairs.length) return;
+  $("#rApply").disabled = true;
+  const res = await api()?.music_tag_rename_apply?.(pairs).catch((e) => ({ ok: false, error: String(e) }));
+  const el = $("#rRes");
+  el.classList.add("on");
+  if (res?.ok) {
+    el.classList.remove("bad");
+    el.textContent = `Uygulandı: ${res.done.length}${res.errors?.length ? ` · Hata: ${res.errors.length}` : ""} (Echo panelinden geri alabilirsin)`;
+    $("#rGo").onclick?.();
+  } else {
+    el.classList.add("bad");
+    el.textContent = "Hata: " + (res?.error || "bilinmiyor");
+  }
+  $("#rApply").disabled = false;
+};
+
+// ---- .m3u ----
+$("#mGo").onclick = async () => {
+  const folder = $("#mFolder").value.trim();
+  if (!folder) return;
+  const res = await api()?.music_tag_export_m3u?.(folder, $("#mRec").checked).catch((e) => ({ ok: false, error: String(e) }));
+  const el = $("#mRes");
+  el.classList.add("on");
+  if (res?.ok) {
+    el.classList.remove("bad");
+    el.textContent = `${res.count} şarkı → ${res.path}`;
+  } else {
+    el.classList.add("bad");
+    el.textContent = "Hata: " + (res?.error || "bilinmiyor");
+  }
+};
+</script>
+</body>
+</html>

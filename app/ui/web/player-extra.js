@@ -237,7 +237,9 @@ window.pxExtraAudioHtml = () => {
     ${peSeg("mono", [[0, "Stereo"], [1, "Mono"]], c.mono ? 1 : 0)}
     <div class="px-shift"><span>${plL("İntro / kapanış", "Intro / outro")}</span></div>
     ${peSeg("autoSkip", [[0, plL("Düğme göster", "Show button")], [1, plL("Otomatik atla", "Auto skip")]], c.autoSkip ? 1 : 0)}
-    ${peSeg("sbAuto", [[1, plL("Sponsorları atla", "Skip sponsors")], [0, plL("Atlama", "Don't skip")]], c.sbAuto === false ? 0 : 1)}`;
+    ${peSeg("sbAuto", [[1, plL("Sponsorları atla", "Skip sponsors")], [0, plL("Atlama", "Don't skip")]], c.sbAuto === false ? 0 : 1)}
+    <div class="px-shift"><span>${plL("Kaldığım yerden devam (müzik)", "Resume position (music)")}</span></div>
+    <div class="px-xseg" id="plResumeAudioSeg"><button type="button" class="${!window._plResumeAudio ? "on" : ""}" data-ra="0">${plL("Kapalı", "Off")}</button><button type="button" class="${window._plResumeAudio ? "on" : ""}" data-ra="1">${plL("Açık", "On")}</button></div>`;
 };
 window.pxExtraToolsHtml = () => `<h4>${plL("Araçlar", "Tools")}</h4>
     <div class="px-shift"><span>${plL("Klip", "Clip")} <b id="peClipLbl">${peClipLbl()}</b></span><button class="pl-b" data-xa="ca">[ ${plL("baş", "in")}</button><button class="pl-b" data-xa="cb">${plL("son", "out")} ]</button></div>
@@ -921,4 +923,12 @@ document.addEventListener("click", (e) => {
   const sb = e.target.closest?.("#plSkipSilSeg [data-sil]");
   if (sb) { e.stopPropagation(); plToggleSilenceSkip(sb.dataset.sil === "1"); return; }
   if (e.target.id === "plSkipSilBtn") plToggleSilenceSkip();
+});
+document.addEventListener("click", (e) => {
+  const rb = e.target.closest?.("#plResumeAudioSeg [data-ra]");
+  if (!rb) return;
+  e.stopPropagation();
+  window._plResumeAudio = rb.dataset.ra === "1";
+  try { window.pywebview?.api?.set_setting?.("player_resume_audio", window._plResumeAudio); } catch { /* yok */ }
+  document.querySelectorAll("#plResumeAudioSeg [data-ra]").forEach((x) => x.classList.toggle("on", (x.dataset.ra === "1") === window._plResumeAudio));
 });

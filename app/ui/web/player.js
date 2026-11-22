@@ -201,7 +201,7 @@ function plStart(r) {
   plBlinkLoop();
   if (r.kind === "audio") PL.big?.ready.then(() => PL.big.start());
   const saved = plPos(r.path);
-  const resume = saved && saved > 15 && (!PL.dur || saved < PL.dur - 30) ? saved : 0;
+  const resume = saved && saved > 15 && (!PL.dur || saved < PL.dur - 30) && (r.kind === "video" || window._plResumeAudio) ? saved : 0;
   if (PL.mode === "direct" && window.plDialogMix?.()) PL.mode = "remux";   // 5.1 diyalog karisimi ffmpeg ister
   if (resume) plSetSrcResume(resume); else plSetSrc(0);
   window.plOnStart?.(r);

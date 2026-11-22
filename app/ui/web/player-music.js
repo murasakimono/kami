@@ -77,6 +77,16 @@ window.plReloadLyrics = async (changedPath = "") => {
   pmShow(res);
 };
 
+// Mini oynatıcı (B) başlık/kapak: şarkı geçince plMusicStart burayı tazeler; açılışta plMini() ayrıca doldurur.
+function plMiniSync(r) {
+  if (!PL.mini) return;
+  const isVid = r.kind === "video";
+  const t = $("#pmiTitle"), c = $("#pmiCover"), pb = $("#pmiPlay");
+  if (t) t.textContent = (!isVid && PM.meta && PM.meta.title && (PM.meta.artist ? PM.meta.artist + " — " : "") + PM.meta.title) || r.title || "";
+  if (c) { c.style.backgroundImage = r.cover ? `url("${r.cover}")` : ""; c.hidden = !r.cover || isVid; }
+  if (pb) pb.textContent = ($("#plVideo").paused) ? "▶" : "⏸";
+}
+
 window.plMusicStart = async (r) => {
   pmEnsureDom();
   cancelAnimationFrame(PM.raf);
@@ -85,10 +95,10 @@ window.plMusicStart = async (r) => {
   const lyr = $("#plLyr"), au = $("#plAudio");
   pmGlow(r.kind === "audio" ? r.cover : "");
   if (r.kind === "video") pmVideoLyrics(r, tok);
-  if (r.kind !== "audio") PM.meta = null;
-  if (r.kind !== "audio" || pmCfg().lyrics === false) { lyr.hidden = true; au.classList.remove("has-lyr"); return; }
-  const meta = pmMeta(r);
+  const meta = r.kind === "audio" ? pmMeta(r) : null;   // sözler kapalıyken de mini başlık için gerekli
   PM.meta = meta;
+  plMiniSync(r);   // şarkı geçişinde mini oynatıcı başlık/kapak takılı kalma bug'ı
+  if (r.kind !== "audio" || pmCfg().lyrics === false) { lyr.hidden = true; au.classList.remove("has-lyr"); return; }
   $("#pmTitle").textContent = meta.title || r.title;
   $("#pmArtist").textContent = [meta.artist, meta.album].filter(Boolean).join(" · ");
   $("#pmCover").style.backgroundImage = r.cover ? `url("${r.cover}")` : "";

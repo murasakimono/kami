@@ -88,6 +88,7 @@ function skBuild() {
     <button data-sk="history" title="${skL("Geçmiş", "History")}">${skIcon.hist}</button>
     <button data-sk="batch" title="${skL("Toplu", "Batch")}">${skIcon.batch}</button>
     <button data-sk="convert" title="${skL("Dönüştürücü", "Converter")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></button>
+    <button data-sk="musictag" title="${skL("Kapak / İsimlendir (toplu)", "Cover / Rename (batch)")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 16V8l6-1v9"/><circle cx="7.5" cy="16" r="1.4"/><circle cx="13.5" cy="15" r="1.4"/></svg></button>
     <button data-sk="ai" class="ai" title="${skL("AI altyazı / vokal", "AI subtitle / vocals")}">${skIcon.sub}</button>
     <button data-sk="fx" title="${skL("Arka plan efektleri aç / kapat", "Background effects on / off")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg></button>
     <button data-sk="settings" title="${skL("Ayarlar", "Settings")}">${skIcon.gear}</button>
@@ -601,6 +602,7 @@ function skDock(k) {
     }
     return;
   }
+  if (k === "musictag") { api?.music_tag_open?.(); return; }
   const go = () => {
     document.body.classList.add("sk-drawer");
     document.body.classList.toggle("sk-list", k === "list");
@@ -891,7 +893,7 @@ STATE_HOOKS.push(skState);
   const CORE = ["library", "list", "notifs", "history", "pano"];
   const isTool = (b) => b.id !== "skToolsBtn" && !CORE.includes(b.dataset.sk) && b.dataset.sk !== "settings";
   let pop = null;
-  const SHORT = { fx: ["Efektler", "Effects"], ai: ["AI altyazı · vokal", "AI subs · vocals"], kfDockBtn: ["Akış & Copilot", "Flow & Copilot"] };
+  const SHORT = { fx: ["Efektler", "Effects"], ai: ["AI altyazı · vokal", "AI subs · vocals"], kfDockBtn: ["Akış & Copilot", "Flow & Copilot"], musictag: ["Kapak", "Cover"] };
   const label = (b) => { const s = SHORT[b.dataset.sk] || SHORT[b.id]; return s ? skL(s[0], s[1]) : (b.dataset.tip || b.title || b.getAttribute("aria-label") || ""); };
   let arranging = false;
   function arrange() {

@@ -65,6 +65,7 @@ window.addEventListener("pywebviewready", async () => {
   api = window.pywebview.api;
   try { state.settings = await api.get_settings(); state.lang = state.settings.language || "tr"; } catch { /* varsayilan */ }
   window._plSkipSil = !!state.settings.player_skip_silence;   // sessizlik atlayici ayari (player-extra.js)
+  window._plResumeAudio = !!state.settings.player_resume_audio;   // muzik icin "kaldigi yerden devam" ayari (player.js + player-extra.js)
   plBuild();
   plIdle(true);
   shellPoll();

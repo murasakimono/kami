@@ -23,6 +23,7 @@ MODULES: dict[str, tuple[str, tuple[int, int, int]]] = {
     "cleaner": ("Kami Cleaner", (251, 113, 133)), # Mercan Pembe (#FB7185)
     "room": ("Kami Oda", (168, 85, 247)),         # O1 Mor/Zumrut Canli Sinyal (#A855F7)
     "enhance": ("Kami İyileştirici", (163, 230, 53)), # Misket Limonu (#A3E635) — parlaklik/yukseltme
+    "musictag": ("Kami Müzik Etiket", (45, 212, 191)), # Turkuaz — kapak/etiket/isimlendir
 }
 
 
@@ -206,6 +207,13 @@ def render_icon_image(key: str, size: int = 256, use_cache: bool = False):
         sx, sy, S, s = 17.6 * k, 8.4 * k, 2.5 * k, 0.7 * k
         d.polygon([(sx, sy - S), (sx + s, sy - s), (sx + S, sy), (sx + s, sy + s),
                    (sx, sy + S), (sx - s, sy + s), (sx - S, sy), (sx - s, sy - s)], fill=lime)
+    elif key == "musictag":
+        # Kapak karesi + nota (etiket/kapak/isimlendir)
+        teal = (45, 212, 191, 255)
+        d.rounded_rectangle([5.6 * k, 8.0 * k, 18.4 * k, 19.8 * k], radius=int(1.7 * k), outline=teal, width=int(round(1.6 * k)))
+        d.line([(14.8 * k, 10.0 * k), (14.8 * k, 16.2 * k)], fill=teal, width=int(round(1.5 * k)))
+        d.line([(14.8 * k, 10.0 * k), (10.6 * k, 11.4 * k)], fill=teal, width=int(round(1.5 * k)))
+        d.ellipse([12.8 * k - 1.8 * k, 15.6 * k - 1.2 * k, 12.8 * k + 1.8 * k, 15.6 * k + 1.2 * k], fill=teal)
 
     out = im.resize((size, size), Image.Resampling.LANCZOS)
     if size <= 48:

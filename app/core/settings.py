@@ -164,6 +164,7 @@ DEFAULTS: dict[str, Any] = {
     "grab_follow_profiles": [],      # Grab-All takip edilen profiller
     "player_skip_silence": False,    # Player sessizlik atlayici (2x) — player-extra.js plToggleSilenceSkip ile bagli
     "player_rtx_vsr": False,         # Player donanim RTX VSR modu (Sinema HD > RTX VSR secenegi; WebGL kapatir)
+    "player_resume_audio": False,    # Player: muzik/ses icin "kaldigi yerden devam" (varsayilan kapali; video hep devam eder)
     # Faz 7: Profil izolasyonu ve Masaustu Mini-Ada
     "active_profile": "kisisel",     # kisisel | icerik | magaza | ozel profil id
     "mini_island": False,            # masaustu mini-ada seridi
