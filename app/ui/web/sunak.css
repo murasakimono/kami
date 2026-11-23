@@ -467,3 +467,8 @@ html.kami-low-power * { animation-play-state: paused !important; transition-dura
 #skModPeek[hidden] { display: none; }
 #skModPeek b { display: block; color: #C4B5FD; font-size: 13px; margin-bottom: 3px; }
 #skModPeek span { color: #9E95B3; }
+/* 23.11: biten/bekleyen bilet kartlari cok parliyordu (kullanici). Inen kart canli kalir; digerleri sakin tonda,
+   uzerine gelince ya da secilince canlanir - D4 + 'imza hareketi' karari (yalniz inen kart parildar). */
+#sunak .sk-strip.calm .sk-liquid { filter: saturate(.7) brightness(.78); transition: filter .2s ease-out, height .8s cubic-bezier(.3, .9, .3, 1); }
+#sunak .sk-strip.calm:hover .sk-liquid, #sunak .sk-strip.calm.sel .sk-liquid { filter: saturate(.9) brightness(.92); }
+#sunak .sk-strip:not(.sel):not(.msel):hover { transform: translateY(-2px); }

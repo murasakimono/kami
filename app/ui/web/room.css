@@ -289,3 +289,9 @@ body.rm-mini .rm-stage:not(.hasvid) .tk { position: static !important; transform
 body.rm-mini .rm-stage:not(.hasvid) .tk-face { width: 32px; height: 32px; font-size: 14px; }
 body.rm-mini .rm-stage:not(.hasvid) .tk small, body.rm-mini .rm-stage:not(.hasvid) .tk input { display: none; }
 body.rm-mini .rm-stage:not(.hasvid) .rm-circle { display: flex; gap: 8px; padding: 38px 10px 6px; justify-content: flex-start; overflow-x: auto; }
+.msg.file button.fdl { color: inherit; font: inherit; cursor: pointer; }
+/* 23.11 Oda PiP: Ayril dugmesi + serit kipinde konusan halka gorunur kalsin */
+.rm-minibar button.lv { border-color: rgba(255,77,106,.45); color: #FF8095; }
+.rm-minibar button.lv:hover { background: #3A1020; border-color: #FF4D6A; }
+body.rm-mini .rm-stage:not(.hasvid) .tk.talk .tk-face { box-shadow: 0 0 0 2px #0B0811, 0 0 0 4px var(--em), 0 0 12px var(--em); }
+body.rm-mini .rm-stage:not(.hasvid) .tk b { font-size: 11px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
