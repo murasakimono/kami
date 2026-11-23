@@ -68,6 +68,7 @@ class PcRecorder:
         self._project_id = ""
         self._track_id = "vocal1"
         self._started_at = 0.0
+        self._timeline_start: float | None = None
 
     def status(self) -> dict[str, Any]:
         return {
@@ -78,7 +79,8 @@ class PcRecorder:
             "track_id": self._track_id,
         }
 
-    def start(self, project_id: str = "", track_id: str = "vocal1", device_id: int | None = None, sr: int = 48000) -> dict[str, Any]:
+    def start(self, project_id: str = "", track_id: str = "vocal1", device_id: int | None = None, sr: int = 48000,
+              timeline_start: float | None = None) -> dict[str, Any]:
         with self._lock:
             if self._recording:
                 return {"ok": False, "error": "already_recording"}
@@ -88,6 +90,7 @@ class PcRecorder:
                 self._sr = int(sr or 48000)
                 self._project_id = project_id
                 self._track_id = track_id or "vocal1"
+                self._timeline_start = timeline_start   # Kami Beat 1a: kayit zaman cizelgesinde nereden basladi
 
                 def _cb(indata, frames, time_info, status):
                     self._chunks.append(indata.copy())
@@ -143,7 +146,8 @@ class PcRecorder:
 
             take = None
             if self._project_id:
-                tr_res = beat_studio.add_take_to_track(self._project_id, self._track_id, out_path, label="PC Mic Take")
+                tr_res = beat_studio.add_take_to_track(self._project_id, self._track_id, out_path, label="PC Mic Take",
+                                                       start=self._timeline_start, from_recording=self._timeline_start is not None)
                 take = tr_res.get("take")
             return {"ok": True, "path": out_path, "take": take, "duration": round(len(stereo) / self._sr, 2)}
 

@@ -127,7 +127,7 @@ class Api(StudioMixin, EnhanceMixin):
         "subtitle_batch", "clip_factory_highlights", "hardsub_extract", "kamipack_export", "kamipack_import",
         "kasa_index_media", "lyrics_word_sync",
         "mpv_install", "mix_autodj", "music_tag_fetch_cover", "music_tag_auto_apply", "player_replaygain",
-        "beat_render_mixdown", "beat_apply_fx", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
+        "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_apply_fx", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
         "enhance_preview_split", "enhance_batch_start", "pic_tarif_run",
         "games_hltb_real", "games_pcgamingwiki", "games_mod_install", "games_ocr_translate",
         "oracle_relay_ping", "oracle_relay_pull",
@@ -6665,9 +6665,10 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core import beat_studio
         return beat_studio.save_project(proj)
 
-    def beat_add_take(self, pid: str, track_id: str, audio_path: str, label: str = "") -> dict[str, Any]:
+    def beat_add_take(self, pid: str, track_id: str, audio_path: str, label: str = "", start: float = -1.0) -> dict[str, Any]:
         from app.core import beat_studio
-        return beat_studio.add_take_to_track(pid, track_id, audio_path, label=label)
+        st = None if start is None or float(start) < 0 else float(start)
+        return beat_studio.add_take_to_track(pid, track_id, audio_path, label=label, start=st)
 
     def beat_waveform(self, audio_path: str, buckets: int = 160) -> dict[str, Any]:
         from app.core import beat_studio
@@ -6705,6 +6706,14 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core import beat_studio
         return beat_studio.render_mixdown(pid, out_path=out_path, target_lufs=float(target_lufs))
 
+    def beat_bounce(self, pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.bounce(pid, out_path=out_path, target_lufs=float(target_lufs))
+
+    def beat_measure_latency(self, device_id: int = -1) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.measure_latency(int(device_id if device_id is not None else -1))
+
     def beat_ai_mix(self, pid: str, instruction: str, track_id: str = "vocal1") -> dict[str, Any]:
         from app.core import beat_mcp
         return beat_mcp.apply_ai_mix_instruction(pid, instruction, track_id=track_id)
@@ -6740,9 +6749,10 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core import kami_booth
         return kami_booth.list_input_devices()
 
-    def booth_rec_start(self, pid: str = "", track_id: str = "vocal1", device_id: int = -1) -> dict[str, Any]:
+    def booth_rec_start(self, pid: str = "", track_id: str = "vocal1", device_id: int = -1, start_sec: float = -1.0) -> dict[str, Any]:
         from app.core import kami_booth
-        return kami_booth.RECORDER.start(pid, track_id, None if device_id < 0 else int(device_id))
+        return kami_booth.RECORDER.start(pid, track_id, None if device_id < 0 else int(device_id),
+                                         timeline_start=None if start_sec is None or float(start_sec) < 0 else float(start_sec))
 
     def booth_rec_stop(self, ai_clean: bool = True) -> dict[str, Any]:
         from app.core import kami_booth

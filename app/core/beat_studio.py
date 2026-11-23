@@ -13,11 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from app import paths
-from app.core import kami_beat
+from app.core import beat_clips, kami_beat
 
 log = logging.getLogger(__name__)
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
+SCHEMA_VERSION = 2
 _TR_VOWELS = set("aeıioöuüAEIİOÖUÜ")
 
 VOCAL_PRESETS: dict[str, dict[str, Any]] = {
@@ -424,6 +425,8 @@ def _default_project(name: str = "Yeni Parça") -> dict[str, Any]:
         "reference_path": "",
         "last_mixdown": "",
         "updated_at": time.time(),
+        "schema": SCHEMA_VERSION,
+        "latency_ms": 0.0,
         "tracks": [
             {
                 "id": "beat",
@@ -437,6 +440,8 @@ def _default_project(name: str = "Yeni Parça") -> dict[str, Any]:
                 "mute": False,
                 "solo": False,
                 "offset_ms": 0.0,
+                "latency_ms": 0.0,
+                "clips": [],
                 "denoise": False,
                 "preset": "",
                 "fx": [],
@@ -453,6 +458,8 @@ def _default_project(name: str = "Yeni Parça") -> dict[str, Any]:
                 "mute": False,
                 "solo": False,
                 "offset_ms": 0.0,
+                "latency_ms": 0.0,
+                "clips": [],
                 "denoise": False,
                 "preset": "clean_rap",
                 "fx": list(VOCAL_PRESETS["clean_rap"]["fx"]),
@@ -469,6 +476,8 @@ def _default_project(name: str = "Yeni Parça") -> dict[str, Any]:
                 "mute": False,
                 "solo": False,
                 "offset_ms": 0.0,
+                "latency_ms": 0.0,
+                "clips": [],
                 "denoise": False,
                 "preset": "melodic_trap",
                 "fx": list(VOCAL_PRESETS["melodic_trap"]["fx"]),
@@ -488,26 +497,150 @@ def create_project(name: str = "Yeni Parça") -> dict[str, Any]:
     return {"ok": True, "project": p}
 
 
+HISTORY_KEEP = 10
+
+
+def _history_dir(pid: str) -> Path:
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "", str(pid or ""))
+    return projects_dir() / f"{safe}.history"
+
+
+def _atomic_write(fp: Path, text: str) -> None:
+    tmp = fp.with_name(fp.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+        fh.flush()
+        try:
+            os.fsync(fh.fileno())
+        except OSError:
+            pass
+    os.replace(tmp, fp)
+
+
 def save_project(proj: dict[str, Any]) -> dict[str, Any]:
+    """Atomik kayit (.tmp + os.replace) + son HISTORY_KEEP kaydin doner tamponu (<id>.history/)."""
     pid = str(proj.get("id") or "")
     if not pid:
         return {"ok": False, "error": "missing_id"}
     proj["updated_at"] = time.time()
     fp = _proj_file(pid)
     fp.parent.mkdir(parents=True, exist_ok=True)
-    fp.write_text(json.dumps(proj, ensure_ascii=False, indent=2), encoding="utf-8")
+    text = json.dumps(proj, ensure_ascii=False, indent=2)
+    _atomic_write(fp, text)
+    try:
+        hd = _history_dir(pid)
+        hd.mkdir(parents=True, exist_ok=True)
+        _atomic_write(hd / f"{time.time_ns():020d}.json", text)
+        snaps = sorted(hd.glob("*.json"))
+        for old in snaps[:-HISTORY_KEEP]:
+            old.unlink(missing_ok=True)
+    except OSError:
+        log.debug("Beat: history yazilamadi", exc_info=True)
     return {"ok": True, "path": str(fp)}
 
 
+def audio_duration(path: str) -> float:
+    """Ses dosyasinin suresi (sn). Bulunamazsa/okunamazsa 0."""
+    if not path or not os.path.isfile(path):
+        return 0.0
+    try:
+        import soundfile as sf
+        info = sf.info(path)
+        if info.frames and info.samplerate:
+            return float(info.frames) / float(info.samplerate)
+    except Exception:
+        pass
+    try:
+        data, sr = _read_audio_np(path, 8000)
+        return len(data) / float(sr)
+    except Exception:
+        return 0.0
+
+
+def _new_clip_for(path: str, take_id: str, start: float, duration: float) -> dict[str, Any] | None:
+    """start negatifse (gecikme telafisi / v1 negatif offset) basi kirpilir: src_in = -start, start = 0."""
+    if duration <= 0:
+        return None
+    src_in = 0.0
+    if start < 0:
+        src_in = -start
+        start = 0.0
+    if duration - src_in < beat_clips.MIN_LEN:
+        return None
+    return beat_clips.normalize({
+        "id": "c_" + uuid.uuid4().hex[:8], "take_id": take_id, "path": path,
+        "src_in": src_in, "src_out": duration, "start": start, "src_len": duration,
+        "gain_db": 0.0, "fade_in": 0.0, "fade_out": 0.0, "muted": False,
+    })
+
+
+def migrate_project(proj: dict[str, Any]) -> bool:
+    """v1 -> v2 (klip tabanli). Yerinde degistirir; bir sey degistiyse True. Idempotent."""
+    changed = False
+    for tr in proj.get("tracks", []) or []:
+        if "latency_ms" not in tr:
+            tr["latency_ms"] = 0.0
+            changed = True
+        if isinstance(tr.get("clips"), list):
+            continue
+        clips: list[dict[str, Any]] = []
+        path = str(tr.get("path") or "")
+        take_id = str(tr.get("active_take") or "")
+        if not path and take_id:
+            tk = next((t for t in tr.get("takes", []) or [] if t.get("id") == take_id), None)
+            path = str((tk or {}).get("path") or "")
+        if path:
+            if not take_id or not any(t.get("id") == take_id and t.get("path") == path for t in tr.get("takes", []) or []):
+                take_id = next((str(t.get("id")) for t in tr.get("takes", []) or [] if t.get("path") == path), take_id)
+            start = float(tr.get("offset_ms") or 0.0) / 1000.0
+            c = _new_clip_for(path, take_id, start, audio_duration(path))
+            if c:
+                clips.append(c)
+        tr["clips"] = clips
+        tr["offset_ms"] = 0.0
+        changed = True
+    if proj.get("schema") != SCHEMA_VERSION:
+        proj["schema"] = SCHEMA_VERSION
+        changed = True
+    if "latency_ms" not in proj:
+        proj["latency_ms"] = 0.0
+        changed = True
+    return changed
+
+
+def _read_project_file(fp: Path) -> dict[str, Any]:
+    data = json.loads(fp.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("tracks"), list):
+        raise ValueError("bad_project")
+    return data
+
+
 def load_project(pid: str) -> dict[str, Any]:
+    """Yukler + v2'ye goc eder. Ana dosya bozuksa en yeni saglam history kaydi (recovered=True)."""
     fp = _proj_file(pid)
     if not fp.is_file():
         return {"ok": False, "error": "not_found"}
+    recovered = False
     try:
-        data = json.loads(fp.read_text(encoding="utf-8"))
-        return {"ok": True, "project": data}
+        data = _read_project_file(fp)
     except Exception as exc:
-        return {"ok": False, "error": str(exc)[:120]}
+        data = None
+        for snap in sorted(_history_dir(pid).glob("*.json"), reverse=True):
+            try:
+                data = _read_project_file(snap)
+                recovered = True
+                log.warning("Beat: %s bozuk, history'den kurtarildi (%s)", fp.name, snap.name)
+                break
+            except Exception:
+                continue
+        if data is None:
+            return {"ok": False, "error": str(exc)[:120]}
+    if migrate_project(data) or recovered:
+        save_project(data)
+    res: dict[str, Any] = {"ok": True, "project": data}
+    if recovered:
+        res["recovered"] = True
+    return res
 
 
 def list_projects() -> dict[str, Any]:
@@ -527,7 +660,10 @@ def list_projects() -> dict[str, Any]:
     return {"ok": True, "projects": out}
 
 
-def add_take_to_track(pid: str, track_id: str, audio_path: str, label: str = "") -> dict[str, Any]:
+def add_take_to_track(pid: str, track_id: str, audio_path: str, label: str = "",
+                      start: float | None = None, from_recording: bool = False) -> dict[str, Any]:
+    """Take ekler + onu kapsayan yeni klip (start verilmezse: kanal bossa 0, degilse son klibin bitisi).
+    from_recording=True ise proje + kanal latency_ms kadar sola kaydirilir."""
     loaded = load_project(pid)
     if not loaded.get("ok"):
         return loaded
@@ -543,7 +679,14 @@ def add_take_to_track(pid: str, track_id: str, audio_path: str, label: str = "")
             }
             tr.setdefault("takes", []).append(take)
             tr["active_take"] = tid
-            tr["path"] = audio_path
+            tr["path"] = audio_path   # geriye uyum (v1 okuyuculari, beat_mcp)
+            clips = tr.setdefault("clips", [])
+            pos = beat_clips.track_end(clips) if start is None or float(start) < 0 else float(start)
+            if from_recording:
+                pos -= (float(proj.get("latency_ms") or 0.0) + float(tr.get("latency_ms") or 0.0)) / 1000.0
+            clip = _new_clip_for(audio_path, tid, pos, audio_duration(audio_path))
+            if clip:
+                clips.append(clip)
             if tr.get("role") == "beat" and os.path.isfile(audio_path):
                 bpm = kami_beat.analyze_bpm(audio_path)
                 kinfo = kami_beat.detect_key(audio_path)
@@ -552,8 +695,53 @@ def add_take_to_track(pid: str, track_id: str, audio_path: str, label: str = "")
                 if kinfo.get("key"):
                     proj["key"] = kinfo["key"]
             save_project(proj)
-            return {"ok": True, "project": proj, "take": take}
+            return {"ok": True, "project": proj, "take": take, "clip": clip}
     return {"ok": False, "error": "track_not_found"}
+
+
+def render_track_clips(clips: list[dict[str, Any]], sr: int = 48000, cache: dict[str, Any] | None = None):
+    """Klipleri kaynaktan kesip (src_in..src_out) gain + dogrusal fade uygular ve start konumuna yerlestirir.
+    Ham dosyalar yalniz okunur. Dondurur: (N,2) float32 dizi (bos kanal -> 0 uzunluk)."""
+    import numpy as np
+    cache = {} if cache is None else cache
+    parts = []
+    total = 0
+    for raw in clips or []:
+        c = beat_clips.normalize(raw)
+        if c.get("muted") or not c["path"]:
+            continue
+        src = cache.get(c["path"])
+        if src is None:
+            if not os.path.isfile(c["path"]):
+                continue
+            try:
+                src, _ = _read_audio_np(c["path"], sr)
+            except Exception:
+                log.warning("Beat: klip kaynagi okunamadi: %s", c["path"], exc_info=True)
+                continue
+            cache[c["path"]] = src
+        a = int(round(c["src_in"] * sr))
+        b = min(int(round(c["src_out"] * sr)), len(src))
+        if b <= a:
+            continue
+        seg = src[a:b].astype("float32", copy=True)
+        n = len(seg)
+        g = 10.0 ** (float(c.get("gain_db") or 0.0) / 20.0)
+        env = np.full(n, g, dtype="float32")
+        fi = min(n, int(round(c["fade_in"] * sr)))
+        fo = min(n - fi, int(round(c["fade_out"] * sr)))
+        if fi > 0:
+            env[:fi] *= np.linspace(0.0, 1.0, fi, endpoint=False, dtype="float32")
+        if fo > 0:
+            env[n - fo:] *= np.linspace(1.0, 0.0, fo, endpoint=True, dtype="float32")
+        seg *= env[:, None]
+        off = int(round(c["start"] * sr))
+        parts.append((off, seg))
+        total = max(total, off + n)
+    out = np.zeros((total, 2), dtype="float32")
+    for off, seg in parts:
+        out[off:off + len(seg)] += seg
+    return out
 
 
 def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:
@@ -573,15 +761,31 @@ def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> 
 
     tmp_dir = recordings_dir() / "_mix_tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
+    src_cache: dict[str, Any] = {}
 
     for tr in tracks:
         if tr.get("mute") or (has_solo and not tr.get("solo")):
             continue
+        fx = tr.get("fx") or []
+        denoise = bool(tr.get("denoise"))
+        if isinstance(tr.get("clips"), list):
+            # v2: klip tabanli - once klipler birlestirilir, FX zinciri kanal basina BIR kez calisir
+            data = render_track_clips(tr["clips"], sr, src_cache)
+            if not len(data):
+                continue
+            if fx or denoise:
+                raw_p = str(tmp_dir / f"{pid}_{tr['id']}_clips.wav")
+                proc_p = str(tmp_dir / f"{pid}_{tr['id']}.wav")
+                _write_wav_np(raw_p, data, sr)
+                res = apply_fx_chain(raw_p, proc_p, fx, use_denoise=denoise)
+                if res.get("ok"):
+                    data, _ = _read_audio_np(proc_p, sr)
+            max_len = max(max_len, len(data))
+            rendered_tracks.append((data, {"offset": 0, "tr": tr}))
+            continue
         p = str(tr.get("path") or "")
         if not p or not os.path.isfile(p):
             continue
-        fx = tr.get("fx") or []
-        denoise = bool(tr.get("denoise"))
         if fx or denoise:
             proc_p = str(tmp_dir / f"{pid}_{tr['id']}.wav")
             res = apply_fx_chain(p, proc_p, fx, use_denoise=denoise)
@@ -648,6 +852,99 @@ def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> 
     save_project(proj)
     lufs_info = measure_lufs(out_path)
     return {"ok": True, "path": out_path, "lufs": lufs_info.get("lufs"), "peak_db": lufs_info.get("peak_db"), "duration": lufs_info.get("duration")}
+
+
+def bounce(pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:
+    """Klip tabanli bounce (render_mixdown'in ince sarmalayicisi)."""
+    return render_mixdown(pid, out_path=out_path, target_lufs=target_lufs)
+
+
+# ---------- Alkis (tik) gecikme testi ----------
+LAT_SR = 48000
+
+
+def latency_probe_signal(sr: int = LAT_SR, total_s: float = 0.8, at_s: float = 0.05):
+    """Gecikme olcumu icin calinacak sinyal: Hann pencereli 20 ms dogrusal chirp (600 Hz -> 6 kHz)."""
+    import numpy as np
+    n = int(round(0.02 * sr))
+    t = np.arange(n, dtype="float64") / sr
+    f0, f1 = 600.0, 6000.0
+    k = (f1 - f0) / 0.02
+    chirp = np.sin(2 * np.pi * (f0 * t + 0.5 * k * t * t)) * np.hanning(n)
+    out = np.zeros(int(round(total_s * sr)), dtype="float32")
+    a = int(round(at_s * sr))
+    out[a:a + n] = (0.6 * chirp).astype("float32")
+    return out
+
+
+def estimate_latency(played, recorded, sr: int) -> dict[str, Any]:
+    """Saf hesap: calinan ve kaydedilen sinyal arasindaki gidis-donus gecikmesi (capraz korelasyon, FFT).
+    Dondurur {"ok", "latency_ms", "confidence"(0..1)} veya {"ok": False, "error": "no_signal"}."""
+    import numpy as np
+    x = np.asarray(played, dtype="float64").reshape(-1)
+    y = np.asarray(recorded, dtype="float64")
+    if y.ndim > 1:
+        y = y.mean(axis=1)
+    y = y.reshape(-1)
+    if len(x) == 0 or len(y) == 0 or sr <= 0:
+        return {"ok": False, "error": "no_signal"}
+    y = y - float(np.mean(y))
+    ex = float(np.sqrt(np.sum(x * x)))
+    ey = float(np.sqrt(np.sum(y * y)))
+    if ex < 1e-9 or ey < 1e-6 or float(np.max(np.abs(y))) < 1e-3:
+        return {"ok": False, "error": "no_signal"}
+    n = len(x) + len(y)
+    nfft = 1 << (n - 1).bit_length()
+    corr = np.fft.irfft(np.fft.rfft(y, nfft) * np.conj(np.fft.rfft(x, nfft)), nfft)[: len(y)]   # gecikme >= 0
+    lag = int(np.argmax(corr))
+    peak = float(corr[lag])
+    frac = 0.0
+    if 0 < lag < len(corr) - 1:   # parabolik ara degerleme (alt-ornek)
+        a, b, c = float(corr[lag - 1]), peak, float(corr[lag + 1])
+        den = a - 2 * b + c
+        if abs(den) > 1e-12:
+            frac = max(-0.5, min(0.5, 0.5 * (a - c) / den))
+    # guven: tepedeki normalize korelasyon (kaydin tepe cevresindeki enerjisine gore)
+    seg = y[lag: lag + len(x)]
+    eseg = float(np.sqrt(np.sum(seg * seg))) if len(seg) else 0.0
+    conf = peak / (ex * eseg) if eseg > 1e-9 else 0.0
+    conf = max(0.0, min(1.0, conf))
+    if conf < 0.3:
+        return {"ok": False, "error": "no_signal", "confidence": round(conf, 3)}
+    return {"ok": True, "latency_ms": round((lag + frac) * 1000.0 / sr, 2), "confidence": round(conf, 3)}
+
+
+def measure_latency(device_id: int = -1, trials: int = 3) -> dict[str, Any]:
+    """Kulaklik/hoparlorden tik calip ayni anda mikrofondan kaydeder; 3 deneme ortalamasi (ms)."""
+    try:
+        import numpy as np
+        import sounddevice as sd
+    except Exception:
+        return {"ok": False, "error": "sounddevice_missing"}
+    sig = latency_probe_signal(LAT_SR)
+    results: list[dict[str, Any]] = []
+    try:
+        dev_in = None if device_id is None or int(device_id) < 0 else int(device_id)
+        for _ in range(max(1, int(trials))):
+            rec = sd.playrec(sig.reshape(-1, 1), samplerate=LAT_SR, channels=1, dtype="float32",
+                             device=(dev_in, None))
+            sd.wait()
+            results.append(estimate_latency(sig, np.asarray(rec).reshape(-1), LAT_SR))
+            time.sleep(0.15)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:140]}
+    good = [r for r in results if r.get("ok")]
+    if not good:
+        return {"ok": False, "error": "no_signal", "trials": results}
+    vals = [float(r["latency_ms"]) for r in good]
+    mean = sum(vals) / len(vals)
+    spread = max(vals) - min(vals)
+    conf = sum(float(r["confidence"]) for r in good) / len(good)
+    conf *= len(good) / len(results)
+    if spread > 5.0:   # denemeler tutarsizsa guveni dusur
+        conf *= 0.5
+    return {"ok": True, "latency_ms": round(mean, 1), "confidence": round(conf, 2),
+            "trials": vals, "spread_ms": round(spread, 2)}
 
 
 def export_to_lyric_video(pid: str, title: str = "") -> dict[str, Any]:
