@@ -57,7 +57,7 @@ DEFAULTS: dict[str, Any] = {
     "speed_limit_preset_kib": 2048,# arac cubugundaki "hiz siniri" dugmesinin degeri
     "speed_profile": "full",       # baglam hiz profili: full | game | room | night (o an etkin olan)
     "speed_profile_manual": "full",# kullanicinin ELLE sectigi profil; Oda/oyun otomatik profili bunu kalici bozmaz
-    "speed_profiles": {"full": 0, "game": 12288, "room": 8192, "night": 4096},
+    "speed_profiles": {"full": 0, "game": 12288, "room": 40960, "night": 4096},
     "pano_shelf_record": True,     # v1.31.2: kopyalanan metin/linkler Pano rafina (parola yoneticisi kopyalari haric)
     "pano_exclude_apps": ["keepass", "bitwarden", "1password", "enpass", "lastpass", "dashlane"],
     "prewarm_player": False,       # v2.5: acilista ~100 MB bos Player WebView2 acmaz; ayardan acilabilir
@@ -221,6 +221,8 @@ class Settings:
                                             merged[str(pk)] = max(0, int(pv))
                                         except Exception:
                                             pass
+                                    if merged.get("room") == 8192:   # 2.5.7: eski varsayilan 8 MB/s -> 40 MB/s (1 Gbit hatta gereksiz kisiyordu)
+                                        merged["room"] = 40960
                                     v = merged
                                 try:
                                     self._data[k] = _coerce(k, v)

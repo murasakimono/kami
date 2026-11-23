@@ -39,13 +39,22 @@ def _room_api():
     return a
 
 
-def test_room_alone_no_limit_no_strip():
+def test_room_alone_no_limit_no_strip(monkeypatch):
+    monkeypatch.setattr(Api, "_room_window_visible", staticmethod(lambda: False))   # gizli 'hep acik' oda
     a = _room_api()
     a.room_island_push({"people": [{"name": "Metehan", "me": True}]})
     assert a._room_island is None and "room" not in a.speed and not a._island_shown
 
 
-def test_room_with_guest_limits_and_strip():
+def test_room_with_guest_limits_and_strip(monkeypatch):
+    monkeypatch.setattr(Api, "_room_window_visible", staticmethod(lambda: False))
     a = _room_api()
     a.room_island_push({"people": [{"name": "Metehan", "me": True}, {"name": "Ilayda"}]})
     assert a._room_island is not None and "room" in a.speed and a._island_shown
+
+
+def test_room_alone_visible_strip_but_no_limit(monkeypatch):
+    monkeypatch.setattr(Api, "_room_window_visible", staticmethod(lambda: True))    # kullanici Oda'yi acti, tek basina
+    a = _room_api()
+    a.room_island_push({"people": [{"name": "Metehan", "me": True}]})
+    assert a._island_shown and "room" not in a.speed

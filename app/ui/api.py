@@ -2658,9 +2658,11 @@ class Api(StudioMixin, EnhanceMixin):
             return True
         people = [{"name": str(p.get("name", ""))[:24], "talk": bool(p.get("talk")), "muted": bool(p.get("muted")),
                    "me": bool(p.get("me"))} for p in (st.get("people") or [])[:8] if isinstance(p, dict)]
-        # 23.11: 'Oda hep acik' (room_always) ev sahibini gizli pencerede odaya sokuyor; odada yalniz sen varken
-        # hiz siniri (room profili, 8 MB/s) ve oda seridi DEVREYE GIRMEZ - yalniz baska biri gelince.
-        if not any(not p["me"] for p in people):
+        # 23.11: 'Oda hep acik' (room_always) ev sahibini GIZLI pencerede odaya sokuyor. Kural:
+        #  - hiz siniri (room profili) yalniz baska biri varken;
+        #  - oda seridi baska biri varken YA DA Oda penceresi gorunurken (kullanici bilerek odada, tek basina da olsa).
+        others = sum(1 for p in people if not p["me"])
+        if not others and not self._room_window_visible():
             people = []
         if not people:
             self._room_island = None
@@ -2671,16 +2673,26 @@ class Api(StudioMixin, EnhanceMixin):
                 self.mini_island_toggle(False, persist=False)
             return True
         self._room_island = {"t": _t.time(), "people": people, "muted": bool(st.get("muted")), "deaf": bool(st.get("deaf"))}
-        if getattr(self, "_auto_speed_reason", "") != "game":
+        if others and getattr(self, "_auto_speed_reason", "") != "game":
             self.speed_profile_set("room", auto=True, reason="room")
-        others = sum(1 for p in people if not p["me"])
-        if self._manager.settings.get("room_island") and (others or len(people) >= 1) and not self._island_shown:
+        elif not others and getattr(self, "_auto_speed_reason", "") == "room":
+            self.speed_profile_set(getattr(self, "_manual_speed_profile", "full"), auto=True, reason="")
+        if self._manager.settings.get("room_island") and not self._island_shown:
             self.mini_island_toggle(True, persist=False)   # odaya girildi: seridi kendiligimizden ac
             self._island_auto = True
         elif not people and getattr(self, "_island_auto", False) and self._island_shown:
             self._island_auto = False
             self.mini_island_toggle(False, persist=False)
         return True
+
+    @staticmethod
+    def _room_window_visible() -> bool:
+        try:
+            from app.core import winwin
+            h = winwin.find_window("Kami Oda")
+            return bool(h and winwin.is_visible(h))
+        except Exception:
+            return False
 
     def room_island_cmd(self, cmd: str) -> bool:
         c = "mute" if cmd == "mic" else str(cmd or "")

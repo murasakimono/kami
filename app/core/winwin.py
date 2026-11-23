@@ -434,7 +434,16 @@ class MiniWindow:
             ctypes.windll.dwmapi.DwmSetWindowAttribute(wintypes.HWND(hwnd), 33, ctypes.byref(pref), ctypes.sizeof(pref))
         except Exception:
             pass
+        self._refit()
         return True
+
+    def _refit(self) -> None:
+        """Pencere istenenden farkli boyuta oturabiliyor (DPI / en kucuk boyut siniri) -> gercek boyutla koseye yeniden sigdir."""
+        import threading
+        for d in (0.3, 0.9):
+            t = threading.Timer(d, self.snap)
+            t.daemon = True
+            t.start()
 
     def resize(self, width: int, height: int) -> None:
         hwnd = self._hwnd()
@@ -446,6 +455,7 @@ class MiniWindow:
         w, h = int(width * k), int(height * k)
         x, y = self._clamp(hwnd, r.right - w, r.bottom - h, w, h)
         u.SetWindowPos(hwnd, -1, x, y, w, h, self.SWP_ASYNC)
+        self._refit()
 
     def _clamp(self, hwnd: int, x: int, y: int, w: int, h: int) -> tuple[int, int]:
         """23.11: mini pencere ekran disina tasmasin (kullanici ss: PiP yarim kaliyordu)."""

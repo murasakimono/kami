@@ -750,7 +750,7 @@ def main() -> int:
                 k.stop()
 
     def make_room_window(url: str):
-        w = webview.create_window("Kami Oda", url=url, js_api=api, width=_fit_win(1280, 820)[0], height=_fit_win(1280, 820)[1], min_size=(420, 520),
+        w = webview.create_window("Kami Oda", url=url, js_api=api, width=_fit_win(1280, 820)[0], height=_fit_win(1280, 820)[1], min_size=(320, 80),
                                   background_color="#07060B", text_select=True)
 
         # v1.35.2: closing/closed arayuz is parcaciginda calisir. Burada evaluate_js (JS yanitini bekler) ya da

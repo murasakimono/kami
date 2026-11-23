@@ -698,7 +698,12 @@ def _handler(srv: RoomServer):
             q = parse_qs(urlsplit(self.path).query)
             try:
                 if not rest or rest == [""]:
-                    self._send((paths.WEB_DIR / "room.html").read_bytes(), MIME[".html"])
+                    # 23.11: s/*.js|css 5 dk onbellekleniyordu; guncellemeden hemen sonra Oda ESKI room.js ile acildi.
+                    # Surum etiketi ekle -> her surumde adres degisir, onbellek kendiliginden gecersiz olur.
+                    from app.core.extras import APP_VERSION
+                    html = (paths.WEB_DIR / "room.html").read_bytes()
+                    html = re.sub(rb'((?:src|href)="s/[\w.-]+\.(?:js|css))"', rb'\1?v=' + APP_VERSION.encode() + rb'"', html)
+                    self._send(html, MIME[".html"])
                 elif rest[0] == "manifest.webmanifest":
                     m = {"name": "Kami Oda", "short_name": "Kami Oda", "start_url": "./", "scope": "./", "display": "standalone",
                          "background_color": "#07060B", "theme_color": "#07060B", "orientation": "any",
