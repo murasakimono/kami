@@ -390,6 +390,7 @@ def _spotify_now_fetch(token: str) -> dict[str, Any]:
                 "repeat": str(d.get("repeat_state") or "off"),
                 "device_id": dev.get("id", ""),
                 "device_name": dev.get("name", ""),
+                "device_type": dev.get("type", ""),
                 "volume": int(dev.get("volume_percent") if dev.get("volume_percent") is not None else 100),
             }
             if not res["playing"]:

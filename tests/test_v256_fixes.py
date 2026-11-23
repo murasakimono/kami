@@ -58,3 +58,15 @@ def test_room_alone_visible_strip_but_no_limit(monkeypatch):
     a = _room_api()
     a.room_island_push({"people": [{"name": "Metehan", "me": True}]})
     assert a._island_shown and "room" not in a.speed
+
+
+def test_music_here_by_device_type_and_stable():
+    assert Api._music_where({"device_name": "METEHAN-PC", "device_type": "Computer"}) is True
+    assert Api._music_where({"device_name": "iPhone", "device_type": "Smartphone"}) is False
+    assert Api._music_where({"device_name": "Kami"}) is True
+    a = object.__new__(Api)
+    here, phone = {"local_librespot": True}, {"device_name": "iPhone", "device_type": "Smartphone"}
+    assert a._music_here_stable(here)
+    assert a._music_here_stable(phone) and a._music_here_stable(phone)   # tek tuk sapma adayi kapatmaz
+    assert not a._music_here_stable(phone)                              # 3. ardisik okumada duser
+    assert a._music_here_stable(here)

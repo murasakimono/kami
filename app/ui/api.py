@@ -4955,16 +4955,42 @@ class Api(StudioMixin, EnhanceMixin):
             log.debug("ana pencere one getirilemedi", exc_info=True)
         return {"ok": True}
 
-    @staticmethod
-    def _music_here(m: dict[str, Any] | None) -> bool:
+    _AWAY_TYPES = {"smartphone", "tablet", "speaker", "tv", "castvideo", "castaudio", "automobile", "avr", "stb", "gameconsole"}
+
+    @classmethod
+    def _music_where(cls, m: dict[str, Any] | None) -> bool | None:
+        """True = bu PC'de caliyor, False = baska cihazda (telefon/hoparlor...), None = bilinmiyor (kararini degistirme)."""
         if not m:
-            return False
+            return None
         if m.get("local_librespot"):
             return True
         import platform
         dev = str(m.get("device_name") or "").strip().casefold()
-        host = platform.node().strip().casefold()
-        return bool(dev) and (dev == host or dev == "kami")
+        typ = str(m.get("device_type") or "").strip().casefold()
+        if dev and (dev == platform.node().strip().casefold() or dev.startswith("kami")):
+            return True
+        if typ in cls._AWAY_TYPES:
+            return False
+        if typ == "computer":
+            return True
+        return False if dev else None
+
+    @classmethod
+    def _music_here(cls, m: dict[str, Any] | None) -> bool:
+        return bool(cls._music_where(m))
+
+    def _music_here_stable(self, m: dict[str, Any] | None) -> bool:
+        """23.11: kaynak (librespot <-> Web API) tick tick degisince ada acilip kapaniyordu. 'Burada' karari ancak
+        3 ardisik 'baska cihazda' okumasindan sonra duser; bilinmeyen okuma onceki karari korur."""
+        w = self._music_where(m)
+        last = bool(getattr(self, "_here_last", False))
+        if w is True:
+            self._here_last, self._here_miss = True, 0
+        elif w is False:
+            self._here_miss = int(getattr(self, "_here_miss", 0)) + 1
+            if not last or self._here_miss >= 3:
+                self._here_last = False
+        return bool(getattr(self, "_here_last", False))
 
     def music_island_tick(self) -> None:
         """v1.38.0: Kamify gizliyken arka planda Spotify/librespot durumunu tazeler, Mini-Ada'yi ve gorev cubugu ThumbButtons'u senkronlar."""
@@ -4994,7 +5020,7 @@ class Api(StudioMixin, EnhanceMixin):
         self._update_music_thumbbar(playing)
         # 23.11: ada yalniz muzik BU bilgisayarda calarken (Kami'nin librespot'u ya da bu PC'deki Spotify) acilir;
         # telefonda/baska cihazda calan Spotify (Web API her cihazi bildirir) adayi kendi kendine acmasin.
-        playing = playing and self._music_here(m)
+        playing = playing and self._music_here_stable(m)
         if self._island_shown and not getattr(self, "_island_auto", False):
             return
         h = winwin.find_window("Kamify")
