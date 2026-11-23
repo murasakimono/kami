@@ -1860,6 +1860,19 @@ class Api(StudioMixin, EnhanceMixin):
         res["base"] = str(self._manager.base_dir())
         return res
 
+    def library_thumbs(self, paths: list | None = None) -> dict[str, Any]:
+        """v2.5.5: Player kutuphanesi icin kucuk resim adresleri (video: temsili kare, ses: gomulu kapak).
+        Resim tembel uretilir (media_server 't' rotasi, diskte onbellek, en fazla 3 ffmpeg); yalniz medya dosyalari."""
+        from app.core.media_server import AUDIO_EXT, VIDEO_EXT
+        if not self._media:
+            return {"ok": False, "thumbs": {}}
+        out: dict[str, str] = {}
+        for p in (paths or [])[:120]:
+            p = str(p or "")
+            if os.path.splitext(p)[1].lower() in (VIDEO_EXT | AUDIO_EXT) and os.path.isfile(p):
+                out[p] = self._media.asset_url(p, "t")
+        return {"ok": True, "thumbs": out}
+
     def mix_build(self, n: int = 20) -> dict[str, Any]:
         """Kami 'For You' Radyo: scrobble geçmişinden kişisel, tekrar etmeyen kuyruk."""
         from app.core import library, mix

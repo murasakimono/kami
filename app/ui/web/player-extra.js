@@ -126,7 +126,7 @@ window.pxDrawerRender = async (...a) => {
       if (sh && h?.tagName === "H4" && body.firstElementChild !== h) { body.prepend(sh); body.prepend(h); }
     };
     setTimeout(peTop, 0); setTimeout(peTop, 300);
-    body.insertAdjacentHTML("afterbegin", `<h4>${plL("İzlemeye devam", "Continue watching")}</h4><div class="pe-shelf">${rec.map((x, i) => `<button class="pe-cont" data-cont="${i}"><span class="pe-cont-x" data-contdel="${i}" title="${plL("Listeden kaldır", "Remove")}">×</span><b>${escapeHtml(pxBase(x.p))}</b><small>${fmtT(x.t)} / ${fmtT(x.d)}</small><i style="width:${Math.min(100, x.t / x.d * 100).toFixed(1)}%"></i></button>`).join("")}</div>`);
+    body.insertAdjacentHTML("afterbegin", `<h4>${plL("İzlemeye devam", "Continue watching")}</h4><div class="pe-shelf">${rec.map((x, i) => `<button class="pe-cont" data-cont="${i}" data-thp="${escapeHtml(x.p)}"><span class="pe-cont-x" data-contdel="${i}" title="${plL("Listeden kaldır", "Remove")}">×</span><b>${escapeHtml(pxBase(x.p))}</b><small>${fmtT(x.t)} / ${fmtT(x.d)}</small><i style="width:${Math.min(100, x.t / x.d * 100).toFixed(1)}%"></i></button>`).join("")}</div>`);
     body.querySelectorAll("[data-cont]").forEach((b) => b.onclick = (ev) => {
       const del = ev.target.closest("[data-contdel]");
       if (del) {
@@ -932,3 +932,54 @@ document.addEventListener("click", (e) => {
   try { window.pywebview?.api?.set_setting?.("player_resume_audio", window._plResumeAudio); } catch { /* yok */ }
   document.querySelectorAll("#plResumeAudioSeg [data-ra]").forEach((x) => x.classList.toggle("on", (x.dataset.ra === "1") === window._plResumeAudio));
 });
+
+// ---------- v2.5.5: kutuphane/siradakiler kucuk resimleri (yalniz metin listesi yerine kare + kapak) ----------
+(() => {
+  const TH = {};          // path -> url | "" (yok)
+  let busy = false, again = false;
+  const pathOf = (el) => el.dataset.thp || (el.dataset.play != null ? PX.view?.[+el.dataset.play] : "");
+  async function paintThumbs() {
+    const body = document.getElementById("pxBody");
+    if (!body || !["lib", "queue"].includes(PX.libTab)) return;
+    if (busy) { again = true; return; }
+    const els = [...body.querySelectorAll(".px-row[data-play], .pe-cont[data-thp]")];
+    const need = [...new Set(els.map(pathOf).filter((p) => p && !(p in TH)))];
+    if (need.length) {
+      busy = true;
+      try {
+        const r = await (window.pywebview?.api?.library_thumbs?.(need.slice(0, 120)));
+        need.forEach((p) => { TH[p] = r?.thumbs?.[p] || ""; });
+      } catch { need.forEach((p) => { TH[p] = ""; }); }
+      busy = false;
+    }
+    els.forEach((el) => {
+      if (!el.isConnected || el.dataset.thDone) return;
+      const u = TH[pathOf(el)];
+      if (u === undefined) return;
+      el.dataset.thDone = "1";
+      if (!u) return;
+      const img = new Image();
+      img.decoding = "async"; img.loading = "lazy"; img.alt = ""; img.className = "px-th";
+      img.onerror = () => { img.remove(); el.classList.remove("has-th"); };
+      img.src = u;
+      el.classList.add("has-th");
+      if (el.classList.contains("pe-cont")) el.prepend(img);
+      else el.insertBefore(img, el.querySelector("span") || null);
+    });
+    if (again) { again = false; paintThumbs(); }
+  }
+  let t = 0;
+  const kick = () => { clearTimeout(t); t = setTimeout(paintThumbs, 60); };
+  const hook = () => {
+    const body = document.getElementById("pxBody");
+    if (!body || body._thObs) return !!body;
+    body._thObs = new MutationObserver(kick);
+    body._thObs.observe(body, { childList: true });
+    kick();
+    return true;
+  };
+  if (!hook()) {
+    const mo = new MutationObserver(() => { if (hook()) mo.disconnect(); });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+})();

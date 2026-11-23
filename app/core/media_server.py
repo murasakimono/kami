@@ -28,6 +28,7 @@ import subprocess
 import threading
 
 _COVER_SEM = threading.BoundedSemaphore(3)
+VIDEO_EXT = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".wmv", ".flv", ".ts", ".m2ts", ".mpg", ".mpeg", ".3gp"}
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -562,6 +563,8 @@ def _make_handler(server: MediaServer):
                         self._err(404)
                 elif route == "c":
                     self._cover(e["path"], head)
+                elif route == "t":   # v2.5.5: kutuphane kucuk resmi (video: temsili kare, ses: gomulu kapak)
+                    self._cover(e["path"], head, thumb=True)
                 else:
                     self._err(404)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
@@ -664,7 +667,7 @@ def _make_handler(server: MediaServer):
                 return self._err(404)
             self._bytes(f.read_bytes(), ok[name], head)
 
-        def _cover(self, path: str, head: bool) -> None:
+        def _cover(self, path: str, head: bool, thumb: bool = False) -> None:
             # v2.5.3: kapak bir kez cikarilir ve diskte onbelleklenir; ayni anda en fazla 3 ffmpeg (300 albumluk
             # kutuphane her acilista 300 es zamanli ffmpeg baslatiyordu) + tarayici onbellegi.
             import hashlib
@@ -672,7 +675,7 @@ def _make_handler(server: MediaServer):
                 st = os.stat(path)
             except OSError:
                 return self._err(404)
-            key = hashlib.sha1(f"{path}|{st.st_mtime_ns}|{st.st_size}".encode("utf-8", "replace")).hexdigest()
+            key = hashlib.sha1(f"{path}|{st.st_mtime_ns}|{st.st_size}{'|t320' if thumb else ''}".encode("utf-8", "replace")).hexdigest()
             cdir = server.cache_dir / "covers"
             cf = cdir / f"{key}.jpg"
             miss = cdir / f"{key}.none"
@@ -686,8 +689,26 @@ def _make_handler(server: MediaServer):
             with _COVER_SEM:
                 if cf.is_file():
                     return self._bytes(cf.read_bytes(), "image/jpeg", head, cache=True)
-                r = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-i", path, "-map", "0:v:0", "-frames:v", "1",
-                                    "-c:v", "mjpeg", "-f", "image2", "pipe:1"], capture_output=True, timeout=20, creationflags=NO_WINDOW)
+                tail = ["-map", "0:v:0", "-frames:v", "1", "-c:v", "mjpeg", "-f", "image2", "pipe:1"]
+                r = None
+                if thumb and Path(path).suffix.lower() in VIDEO_EXT:
+                    # temsili kare: 20. saniyeden sonraki 40 karenin en "tipik"i (siyah acilis karesi yerine), 320 px
+                    try:
+                        r = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-ss", "20", "-i", path,
+                                            "-vf", "thumbnail=40,scale=320:-2", "-q:v", "4"] + tail,
+                                           capture_output=True, timeout=25, creationflags=NO_WINDOW)
+                    except subprocess.TimeoutExpired:
+                        r = None
+                    if r is not None and (r.returncode or not r.stdout):
+                        r = None   # 20 sn'den kisa klip: bastan dene
+                if r is None:
+                    vf = (["-vf", "thumbnail=20,scale=320:-2", "-q:v", "4"] if Path(path).suffix.lower() in VIDEO_EXT
+                          else ["-vf", "scale='min(320,iw)':-2", "-q:v", "4"]) if thumb else []
+                    try:
+                        r = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-i", path] + vf + tail,
+                                           capture_output=True, timeout=20, creationflags=NO_WINDOW)
+                    except subprocess.TimeoutExpired:
+                        return self._err(404)
             cdir.mkdir(parents=True, exist_ok=True)
             if r.returncode or not r.stdout:
                 try:

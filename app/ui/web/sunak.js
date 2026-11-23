@@ -1033,7 +1033,11 @@ STATE_HOOKS.push(skState);
     if (!notifDlg) {
       notifDlg = document.createElement("dialog");
       notifDlg.id = "skNotifDlg";
-      notifDlg.style.cssText = "background:#110E17;color:#EDE9F6;border:1px solid rgba(157,107,255,.35);border-radius:12px;width:min(520px,92vw);padding:16px;";
+      notifDlg.style.cssText = "background:#110E17;color:#EDE9F6;border:1px solid rgba(157,107,255,.35);border-radius:0;width:min(440px,92vw);max-height:min(560px,80vh);overflow:auto;padding:16px;position:fixed;margin:0;";
+      // v2.5.5: ekran ortasi yerine zilin yaninda acilir (dok hangi kenardaysa ona gore)
+      const st = document.createElement("style");
+      st.textContent = "#skNotifDlg::backdrop{background:rgba(5,3,9,.25)}";
+      document.head.appendChild(st);
       document.body.appendChild(notifDlg);
       notifDlg.addEventListener("click", (e) => { if (e.target === notifDlg) notifDlg.close(); });
     }
@@ -1049,6 +1053,27 @@ STATE_HOOKS.push(skState);
     notifDlg.querySelector("#skNMark").onclick = async () => { await api?.notifications_mark_read?.(); const b = $("#skNotifN"); if (b) b.hidden = true; notifDlg.close(); };
     notifDlg.querySelector("#skNClr").onclick = async () => { await api?.notifications_clear?.(); const b = $("#skNotifN"); if (b) b.hidden = true; notifDlg.close(); };
     if (!notifDlg.open) notifDlg.showModal();
+    const placeNotif = () => {
+      const bell = document.querySelector('#skDock button[data-sk="notifs"]');
+      const br = bell?.getBoundingClientRect();
+      const dr = notifDlg.getBoundingClientRect();
+      const vw = innerWidth, vh = innerHeight, gap = 10, pad = 8;
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+      if (!br || !br.width) { notifDlg.style.left = `${(vw - dr.width) / 2}px`; notifDlg.style.top = `${(vh - dr.height) / 2}px`; return; }
+      const dk = document.getElementById("skDock")?.getBoundingClientRect();
+      const vertical = dk ? dk.height > dk.width : br.left > vw * 0.6;
+      let x, y;
+      if (vertical) {
+        x = br.left > vw / 2 ? br.left - gap - dr.width : br.right + gap;
+        y = br.top + br.height / 2 - 28;
+      } else {
+        x = br.left + br.width / 2 - dr.width / 2;
+        y = br.top > vh / 2 ? br.top - gap - dr.height : br.bottom + gap;
+      }
+      notifDlg.style.left = `${clamp(x, pad, vw - dr.width - pad)}px`;
+      notifDlg.style.top = `${clamp(y, pad, vh - dr.height - pad)}px`;
+    };
+    placeNotif();
     await api?.notifications_mark_read?.();
     const b = $("#skNotifN");
     if (b) b.hidden = true;

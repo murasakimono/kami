@@ -548,3 +548,13 @@ body:has(#plDrawer:not([hidden])) #player .pl-empty { right: min(420px, 92vw); p
 .pn-del { background: none; border: 0; color: #7E7593; cursor: pointer; font-size: 12px; }
 .pn-del:hover { color: #FF4D6A; }
 .pn-txt { white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+
+/* v2.5.5: kutuphane kucuk resimleri (keskin kose, DESIGN.md) */
+.px-row > img.px-th { flex: none; width: 64px; height: 36px; object-fit: cover; background: #120D19; border: 1px solid rgba(157, 107, 255, .14); opacity: 0; transition: opacity .25s; }
+.px-row > img.px-th[src] { opacity: 1; }
+.px-row.has-th { min-height: 48px; }
+.px-row.has-th > i { display: none; }
+.px-row.cur > img.px-th { border-color: #2EE6A6; }
+.pe-cont { border-radius: 0; }
+.pe-cont-x { border-radius: 0; z-index: 1; background: rgba(11, 9, 16, .7); }
+.pe-cont > img.px-th { display: block; width: calc(100% + 20px); margin: -10px -10px 6px; aspect-ratio: 16 / 9; object-fit: cover; background: #120D19; }
