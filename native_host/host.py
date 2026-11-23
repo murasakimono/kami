@@ -23,7 +23,7 @@ else:
 BRIDGE_INFO = Path(os.environ.get("KAMI_BRIDGE_INFO") or _DATA / "bridge.json")  # e2e testleri icin
 MAX_IN = 8 * 1024 * 1024        # tarayicidan gelen tek mesaj icin makul ust sinir
 ROUTES = {"ping": "/v1/ping", "add": "/v1/add", "show": "/v1/show", "set_capture": "/v1/capture",
-          "media": "/v1/media", "cookies": "/v1/cookies", "rd": "/v1/rd"}
+          "media": "/v1/media", "cookies": "/v1/cookies", "rd": "/v1/rd", "bypass": "/v1/bypass"}
 
 
 def _binary_stdio() -> None:
@@ -110,7 +110,7 @@ def _load_info(info_path: Path) -> dict:
 def forward(msg: dict, info_path: Path | None = None, timeout: float | None = None) -> dict:
     route = ROUTES.get(str(msg.get("type", "")))
     if timeout is None:   # RD istegi RD'nin cevabini bekler (kopru en fazla 20 sn)
-        timeout = 25.0 if msg.get("type") == "rd" else 8.0
+        timeout = 25.0 if msg.get("type") in ("rd", "bypass") else 8.0   # v2.5.3: bypass coklu yonlendirme cozer
     if not route:
         return {"ok": False, "error": "unknown_type"}
     info_path = info_path or BRIDGE_INFO
@@ -135,7 +135,11 @@ def forward(msg: dict, info_path: Path | None = None, timeout: float | None = No
             return json.loads(exc.read())
         except ValueError:
             return {"ok": False, "error": f"http_{exc.code}"}
+    except TimeoutError:   # v2.5.3: Kami acik ama yavas -> "offline" degil; uzanti tekrar gondermez (cift indirme olmasin)
+        return {"ok": False, "error": "timeout"}
     except (OSError, ValueError) as exc:
+        if "timed out" in str(exc).lower():
+            return {"ok": False, "error": "timeout"}
         return {"ok": False, "error": "offline",
                 "detail": f"Kami'ye baglanilamadi (127.0.0.1:{port}, pid {info.get('pid')}): {type(exc).__name__}: {str(exc)[:120]}"}
 

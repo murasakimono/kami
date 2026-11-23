@@ -34,6 +34,32 @@ def sync_extension_version(v: str) -> None:
         mf.write_text(t2, encoding="utf-8")
 
 
+def sync_pyproject_version(v: str) -> None:
+    """v2.5.3: pyproject.toml surumu da APP_VERSION ile ayni olsun; ardindan uv.lock tazelenir (surum kaymasi)."""
+    pp = ROOT / "pyproject.toml"
+    t = pp.read_text(encoding="utf-8")
+    t2 = re.sub(r'(?m)^version = "[\d.]+"', f'version = "{v}"', t, count=1)
+    if t2 != t:
+        pp.write_text(t2, encoding="utf-8")
+    uv = shutil.which("uv")
+    if uv:
+        subprocess.run([uv, "lock", "--quiet"], cwd=ROOT)
+
+
+def check_frozen_deps() -> None:
+    """v2.5.3: Paketlenmis Kami.exe'de ucuncu taraf modulleri gercekten yukleniyor mu (testler .venv'de gecse bile)."""
+    import json
+    out = OUT / "deps_check.json"
+    out.unlink(missing_ok=True)
+    r = subprocess.run([str(DIST / "Kami.exe"), "--selfcheck-deps", str(out)], timeout=180)
+    res = json.loads(out.read_text(encoding="utf-8")) if out.is_file() else {"ok": False, "missing": [{"module": "?", "error": "rapor yok"}]}
+    for m in res.get("missing", []):
+        print(f"  EKSIK: {m['module']} ({m.get('feature', '')}) -> {m.get('error', '')}")
+    if r.returncode != 0 or not res.get("ok"):
+        raise SystemExit("Paketlenmis exe'de zorunlu bagimlilik eksik; kurulum paketi uretilmedi (kami.spec / pyproject'i duzelt).")
+    print(f"bagimliliklar: {len(res.get('loaded', []))} modul yuklendi, eksik yok")
+
+
 def write_version_info(v: str) -> None:
     n = (tuple(int(x) for x in v.split(".")) + (0, 0, 0))[:4]
     (ROOT / "packaging/version_info.txt").write_text(f"""VSVersionInfo(
@@ -92,6 +118,7 @@ def main(argv: list[str]) -> int:
     print(f"== Kami {v}")
     write_version_info(v)
     sync_extension_version(v)
+    sync_pyproject_version(v)
     r = subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--distpath", str(OUT / "dist"),
                         "--workpath", str(OUT / "work"), str(ROOT / "packaging/kami.spec")], cwd=ROOT)
     if r.returncode:
@@ -103,6 +130,7 @@ def main(argv: list[str]) -> int:
     sys.path.insert(0, str(ROOT))
     from app.core import icons as _icons
     _icons.export_all(DIST / "icons")
+    check_frozen_deps()
     assert not list((DIST / "extension").glob("*.pem")), "ozel anahtar pakete girmemeli"
     size = sum(f.stat().st_size for f in DIST.rglob("*") if f.is_file()) / 1e6
     print(f"dist: {DIST} ({size:.0f} MB)")

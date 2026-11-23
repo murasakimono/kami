@@ -203,7 +203,9 @@ def to_trash(paths: list[str]) -> bool:
         return True
     if os.name != "nt":
         return False
-    op = _SHFILEOPSTRUCTW(None, 3, "\0".join(paths) + "\0\0", None, 0x0040 | 0x0010 | 0x0004 | 0x0400, 0, None, None)   # DELETE; ALLOWUNDO|NOCONFIRMATION|SILENT|NOERRORUI
+    # v2.5.3: pFrom cift NUL sonlu liste; c_wchar_p'ye gomulu NUL'lu str verilemez (ValueError) -> unicode tampon + cast
+    buf = ctypes.create_unicode_buffer("\0".join(paths) + "\0\0")
+    op = _SHFILEOPSTRUCTW(None, 3, ctypes.cast(buf, ctypes.c_wchar_p), None, 0x0040 | 0x0010 | 0x0004 | 0x0400, 0, None, None)   # DELETE; ALLOWUNDO|NOCONFIRMATION|SILENT|NOERRORUI
     try:
         return ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) == 0 and not op.fAnyOperationsAborted
     except Exception:

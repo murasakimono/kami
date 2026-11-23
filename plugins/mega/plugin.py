@@ -230,6 +230,9 @@ class MegaDecrypt(PostProcessor):
 
     def process(self, download) -> None:
         path, key = download.path, download.options["mega_key"]
+        from app.core import plugin_api as _pa
+        if hasattr(_pa, "mark_busy"):
+            _pa.mark_busy(path)   # v2.5.3: PostComplete cozme bitene kadar dosyaya dokunmasin
 
         def run() -> None:
             try:
@@ -240,6 +243,9 @@ class MegaDecrypt(PostProcessor):
                     log.warning("MEGA MAC dogrulamasi tutmadi (dosya bozuk olabilir): %s", path)
             except Exception:
                 log.exception("MEGA dosyasi cozulemedi: %s", path)
+            finally:
+                if hasattr(_pa, "mark_done"):
+                    _pa.mark_done(path)
 
         # buyuk dosyada durum dongusunu bekletmesin
         threading.Thread(target=run, name="mega-decrypt", daemon=True).start()

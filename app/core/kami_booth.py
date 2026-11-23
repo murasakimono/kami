@@ -226,10 +226,19 @@ class BoothServer:
 
                 def do_GET(self):
                     parsed = urllib.parse.urlsplit(self.path)
-                    ok, _ = self._check_auth()
+                    ok, via_query = self._check_auth()
+                    if ok and via_query and parsed.path.startswith("/api/"):
+                        ok = False   # v2.5.3: URL anahtari yalniz QR eslesmesinde (sayfa) gecerli; API cerez/baslik ister
                     if not ok:
                         code = 401 if parsed.path.startswith("/api/") else 403
                         return self._send_json(code, {"ok": False, "error": "unauthorized"})
+                    if via_query:   # v2.5.3: cerezi kur, anahtarsiz temiz adrese yonlendir (gecmiste/ekranda token kalmasin)
+                        self.send_response(303)
+                        self.send_header("Set-Cookie", f"kami_booth_tok={owner._token}; HttpOnly; SameSite=Strict; Path=/")
+                        self.send_header("Location", "/")
+                        self.send_header("Content-Length", "0")
+                        self.end_headers()
+                        return
                     if parsed.path.startswith("/api/teleprompter"):
                         lyrics = ""
                         bpm = 120.0
@@ -256,8 +265,8 @@ class BoothServer:
 
                 def do_POST(self):
                     parsed = urllib.parse.urlsplit(self.path)
-                    ok, _ = self._check_auth()
-                    if not ok:
+                    ok, via_query = self._check_auth()
+                    if not ok or via_query:
                         return self._send_json(401, {"ok": False, "error": "unauthorized"})
                     if not parsed.path.startswith("/api/upload_wav"):
                         return self._send_json(404, {"ok": False})

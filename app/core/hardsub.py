@@ -235,7 +235,9 @@ def extract_and_translate(
             if ctx:
                 ctx.set(78, "Türkçe altyazı videoya gömülüyor...")
             out_p = converter.out_path(str(p), "mp4", tag="hardsub-tr")
-            safe_srt = srt_path.name.replace("'", "\\'")
+            # v2.5.3: "Ali'nin.mp4" gibi kesme isaretli adlar ffmpeg subtitles filtresinde bozuluyordu -> sabit ad
+            safe_srt = "kami_burn_sub.srt"
+            shutil.copyfile(srt_path, srt_path.parent / safe_srt)
             use_nvenc = converter.has_nvenc(ffmpeg)
             vcodec = (["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "19", "-b:v", "0"]
                       if use_nvenc else ["-c:v", "libx264", "-preset", "medium", "-crf", "19"])

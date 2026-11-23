@@ -426,7 +426,9 @@ class MediaServer:
                                 "-read_intervals", f"{max(0.0, t - 30):.3f}%{t + 0.5:.3f}",
                                 "-show_entries", "frame=pts_time,best_effort_timestamp_time", "-of", "csv=p=0", e["path"]],
                                capture_output=True, text=True, timeout=15, creationflags=NO_WINDOW)
-            best = 0.0
+            if r.returncode != 0:   # v2.5.3: ffprobe hatasi -> dosya basina atlamak yerine istenen zaman
+                return max(0.0, t)
+            best = -1.0
             for line in r.stdout.split():
                 for v in line.split(","):
                     try:
@@ -435,7 +437,7 @@ class MediaServer:
                         continue
                     if x <= t + 0.01:
                         best = max(best, x)
-            return best
+            return best if best >= 0 else max(0.0, t)   # anahtar kare bulunamadi (uzun GOP) -> 0:00'a atlama
         except Exception:
             return max(0.0, t)
 

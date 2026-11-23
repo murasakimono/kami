@@ -114,6 +114,11 @@ class PostComplete:
         d = self.manager.store.get(did)
         if not d:
             return
+        try:   # v2.5.3: MEGA gibi arka plan sifre cozmesi suruyorsa bitmesini bekle
+            from app.core.plugin_api import wait_not_busy
+            wait_not_busy(d.path or "")
+        except Exception:
+            log.debug("mesgul dosya beklemesi", exc_info=True)
         if not self._integrity(d):
             return
         d = self.manager.store.get(did) or d

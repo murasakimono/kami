@@ -1,6 +1,6 @@
 [project]
 name = "kami"
-version = "2.5.2"
+version = "2.5.3"
 description = "Kami Download Manager (KDM) - kisisel, eklentilerle buyuyen indirme yoneticisi"
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -19,6 +19,10 @@ dependencies = [
     "rawpy>=0.28.0",
     "nvidia-ml-py>=13.615.71",
     "psutil>=7.2.2",
+    "numpy>=2.0",
+    "pedalboard>=0.9.26",
+    "soundfile>=0.13",
+    "sounddevice>=0.5",
 ]
 
 [dependency-groups]

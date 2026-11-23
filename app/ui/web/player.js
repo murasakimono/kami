@@ -325,9 +325,14 @@ async function plSeek(t, play) {
   const v = $("#plVideo");
   if (PL.mode === "direct") { v.currentTime = t; plTick(); return; }
   const paused = v.paused;
-  if (PL.mode === "remux" && PL.info.kind === "video") {   // kopya akis anahtar kareden baslar: gercek baslangici sor
-    try { t = (await (await fetch(`${PL.info.stream_url.replace("/x/", "/k/")}?t=${t}`)).json()).t; } catch { /* yaklasik */ }
-  }
+  const tok = (PL.seekTok = (PL.seekTok || 0) + 1);   // v2.5.3: ust uste gelen aramalarda yalniz sonuncusu uygulanir
+  PL.seekBusy = true;
+  try {
+    if (PL.mode === "remux" && PL.info.kind === "video") {   // kopya akis anahtar kareden baslar: gercek baslangici sor
+      try { t = (await (await fetch(`${PL.info.stream_url.replace("/x/", "/k/")}?t=${t}`)).json()).t; } catch { /* yaklasik */ }
+    }
+  } finally { if (tok === PL.seekTok) PL.seekBusy = false; }
+  if (tok !== PL.seekTok) return;
   plSetSrc(t, play ?? !paused);
   plDrawPos(t);
 }
@@ -368,7 +373,7 @@ function plTick() {
   const ring = $("#plRing"); if (ring) ring.style.strokeDashoffset = String(100 - (PL.dur ? Math.min(1, t / PL.dur) : 0) * 100);
   if (!PL.seeking) plDrawPos(t);
   plSubDraw(t);
-  if (PL.abA != null && PL.abB != null && PL.abB > PL.abA && t > PL.abB) plSeek(PL.abA);
+  if (!PL.seekBusy && PL.abA != null && PL.abB != null && PL.abB > PL.abA && t > PL.abB) plSeek(PL.abA);
 }
 function plAbMark(which) {
   const now = plNow();

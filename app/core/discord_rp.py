@@ -16,7 +16,7 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 # Varsayilan Kami RPC istemci kimligi (kullanici isterse ayar/env ile degistirebilir)
-DEFAULT_CLIENT_ID = os.environ.get("KAMI_DISCORD_CLIENT_ID", "1312041260000000000")
+DEFAULT_CLIENT_ID = os.environ.get("KAMI_DISCORD_CLIENT_ID", "1574263173723324570")   # v2.5.3: Discord Developer Portal "Kami" uygulamasi
 
 
 class DiscordPresence:
@@ -40,7 +40,11 @@ class DiscordPresence:
                 f = open(path, "r+b", buffering=0)
                 self._pipe = f
                 self._write_frame(0, {"v": 1, "client_id": self._client_id})
-                self._read_frame()
+                op, resp = self._read_frame()
+                if op == 2 or (isinstance(resp, dict) and resp.get("evt") == "ERROR"):   # v2.5.3: gecersiz kimlik vb.
+                    log.warning("Discord RP el sikismasi reddedildi: %s", str(resp)[:160])
+                    self._close_pipe()
+                    return False
                 return True
             except OSError:
                 self._close_pipe()
@@ -103,7 +107,9 @@ class DiscordPresence:
             state_txt = f"{a} · {m}" if a else m
             if paused:
                 state_txt = f"⏸ {state_txt}"
+            low = m.lower()
             activity: dict[str, Any] = {
+                "type": 2 if ("kamify" in low or "müzik" in low or "muzik" in low or "music" in low) else 3,   # 2=Dinliyor, 3=Izliyor
                 "details": t,
                 "state": state_txt[:120],
                 "assets": {"large_text": "Kami"},
@@ -119,6 +125,7 @@ class DiscordPresence:
             }
             try:
                 self._write_frame(1, payload)
+                self._read_frame()   # v2.5.3: Discord her komuta yanit yazar; okunmazsa boru tamponu dolup yazma kilitlenir
                 self._last_sent = now
                 self._last_sig = sig
                 return {"ok": True}
@@ -133,6 +140,7 @@ class DiscordPresence:
                 return {"ok": True}
             try:
                 self._write_frame(1, {"cmd": "SET_ACTIVITY", "args": {"pid": os.getpid(), "activity": None}, "nonce": "clear"})
+                self._read_frame()
                 return {"ok": True}
             except Exception:
                 self._close_pipe()

@@ -134,22 +134,23 @@ def clipboard_copy_frame(project: dict[str, Any], t: float, studio_obj: Any,
 def _win_copy_image(png_path: Path) -> bool:
     if os.name != "nt":
         return False
-    ps_path = str(png_path).replace("'", "''")
+    # v2.5.3 GUVENLIK: yol betige metin olarak gomulmez (tirnak kacisi atlatilabiliyordu); ortam degiskeniyle gecer.
     ps = (
         "Add-Type -AssemblyName System.Windows.Forms; "
         "Add-Type -AssemblyName System.Drawing; "
-        f"$img = [System.Drawing.Image]::FromFile('{ps_path}'); "
+        "$img = [System.Drawing.Image]::FromFile($env:KAMI_PS_PATH); "
         "$do = New-Object System.Windows.Forms.DataObject; "
         "$do.SetImage($img); "
         "$fl = New-Object System.Collections.Specialized.StringCollection; "
-        f"$fl.Add('{ps_path}'); "
+        "[void]$fl.Add($env:KAMI_PS_PATH); "
         "$do.SetFileDropList($fl); "
         "[System.Windows.Forms.Clipboard]::SetDataObject($do, $true); "
         "$img.Dispose()"
     )
     try:
         r = subprocess.run(["powershell", "-STA", "-NoProfile", "-Command", ps],
-                           capture_output=True, text=True, timeout=12, creationflags=NO_WINDOW)
+                           capture_output=True, text=True, timeout=12, creationflags=NO_WINDOW,
+                           env={**os.environ, "KAMI_PS_PATH": str(png_path)})
         return r.returncode == 0
     except Exception:
         return False

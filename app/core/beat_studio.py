@@ -208,10 +208,8 @@ def _read_audio_np(path: str, target_sr: int = 48000):
     try:
         import soundfile as sf
         data, sr = sf.read(path, dtype="float32", always_2d=True)
-        if sr != target_sr:
-            from scipy import signal
-            n_out = max(1, int(round(data.shape[0] * target_sr / sr)))
-            data = signal.resample(data, n_out, axis=0).astype("float32")
+        if sr != target_sr:   # v2.5.3: scipy pakette yok (kami.spec EXCLUDES) -> ornekleme donusumu ffmpeg ile
+            raise ValueError("resample_via_ffmpeg")
         if data.shape[1] == 1:
             data = np.repeat(data, 2, axis=1)
         elif data.shape[1] > 2:
@@ -252,11 +250,63 @@ def _write_wav_np(path: str, audio, sr: int = 48000) -> None:
             raise RuntimeError("audio_encode_failed")
 
 
+def _ebur128(path: str) -> dict[str, Any] | None:
+    """v2.5.3: Gercek EBU R128 olcumu (K-agirlikli, kapili Integrated LUFS + True Peak) - ffmpeg ebur128 filtresi."""
+    ff = kami_beat._find_ffmpeg()
+    if not ff:
+        return None
+    try:
+        r = subprocess.run([ff, "-hide_banner", "-nostats", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"],
+                           capture_output=True, timeout=180, creationflags=NO_WINDOW)
+        from app.core.studio_finish import parse_ebur128
+        res = parse_ebur128(r.stderr.decode("utf-8", errors="replace"))
+        return res if res.get("i") is not None else None
+    except Exception:
+        log.debug("ebur128 olcumu basarisiz", exc_info=True)
+        return None
+
+
+def _ffmpeg_denoise(data, sr: int):
+    import numpy as np
+    ff = kami_beat._find_ffmpeg()
+    if not ff:
+        log.warning("Beat: ffmpeg yok, gurultu temizleme atlandi")
+        return data
+    arr = np.ascontiguousarray(data, dtype="<f4")
+    try:
+        r = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-f", "f32le", "-ar", str(sr), "-ac", "2", "-i", "pipe:0",
+                            "-af", "highpass=f=70,afftdn=nr=14:nf=-40:tn=1", "-f", "f32le", "-ar", str(sr), "-ac", "2", "pipe:1"],
+                           input=arr.tobytes(), capture_output=True, timeout=300, creationflags=NO_WINDOW)
+        if r.returncode != 0 or not r.stdout:
+            raise RuntimeError(r.stderr.decode("utf-8", errors="replace")[:200])
+        out = np.frombuffer(r.stdout, dtype="<f4")
+        return out[: (len(out) // 2) * 2].reshape(-1, 2).copy()
+    except Exception:
+        log.warning("Beat: gurultu temizleme basarisiz, atlandi", exc_info=True)
+        return data
+
+
 def measure_lufs(path: str) -> dict[str, Any]:
-    """Ses dosyasinin yaklasik LUFS ve True Peak dB olcumunu dondurur."""
+    """Integrated LUFS + True Peak (dBTP). ffmpeg yoksa RMS tabanli kaba tahmine duser (approx=True)."""
     import numpy as np
     if not path or not os.path.isfile(path):
         return {"ok": False, "error": "file_not_found"}
+    eb = _ebur128(path)
+    if eb:
+        dur = 0.0
+        try:
+            dur = float(eb["mom"][-1][0]) if eb.get("mom") else 0.0
+        except Exception:
+            dur = 0.0
+        if dur <= 0:
+            try:
+                data, _ = _read_audio_np(path, 48000)
+                dur = len(data) / 48000.0
+            except Exception:
+                dur = 0.0
+        return {"ok": True, "lufs": round(float(eb["i"]), 2), "lra": eb.get("lra"),
+                "peak_db": round(float(eb["tp"]), 2) if eb.get("tp") is not None else None,
+                "duration": round(dur, 2), "approx": False}
     try:
         data, _ = _read_audio_np(path, 48000)
         if data.size == 0:
@@ -265,7 +315,7 @@ def measure_lufs(path: str) -> dict[str, Any]:
         peak = float(np.max(np.abs(data)))
         lufs = 20.0 * math.log10(max(rms, 1e-7)) - 0.691
         peak_db = 20.0 * math.log10(max(peak, 1e-7))
-        return {"ok": True, "lufs": round(lufs, 2), "peak_db": round(peak_db, 2), "duration": round(len(data) / 48000.0, 2)}
+        return {"ok": True, "lufs": round(lufs, 2), "peak_db": round(peak_db, 2), "duration": round(len(data) / 48000.0, 2), "approx": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:120]}
 
@@ -296,15 +346,8 @@ def apply_fx_chain(in_path: str, out_path: str, fx_list: list[dict[str, Any]], u
         return {"ok": False, "error": "input_not_found"}
     try:
         data, sr = _read_audio_np(in_path, 48000)
-        if use_denoise:
-            try:
-                import noisereduce as nr
-                import numpy as np
-                ch0 = nr.reduce_noise(y=data[:, 0], sr=sr, prop_decrease=0.8)
-                ch1 = nr.reduce_noise(y=data[:, 1], sr=sr, prop_decrease=0.8)
-                data = np.stack([ch0, ch1], axis=1).astype("float32")
-            except Exception:
-                log.debug("noisereduce uygulanamadi, atlaniyor", exc_info=True)
+        if use_denoise:   # v2.5.3: noisereduce scipy ister (pakette yok) -> ffmpeg afftdn (spektral gurultu azaltma)
+            data = _ffmpeg_denoise(data, sr)
 
         import pedalboard as pb
         plugins: list[Any] = []
@@ -572,19 +615,34 @@ def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> 
         mix[off:end, 0] += data[:, 0] * l_gain
         mix[off:end, 1] += data[:, 1] * r_gain
 
-    # Hedef LUFS dengeleme + soft clip korumasi
-    rms = float(np.sqrt(np.mean(mix ** 2)))
-    if rms > 1e-6 and target_lufs < 0:
-        cur_lufs = 20.0 * math.log10(rms) - 0.691
-        diff_db = max(-12.0, min(12.0, target_lufs - cur_lufs))
-        mix *= (10.0 ** (diff_db / 20.0))
-    peak = float(np.max(np.abs(mix)))
-    if peak > 0.98:
-        mix *= (0.98 / peak)
-
     if not out_path:
         safe_name = re.sub(r'[<>:"/\\|?*]', "_", str(proj.get("name") or pid)).strip() or pid
         out_path = str(recordings_dir() / f"{safe_name}_mixdown.wav")
+
+    # v2.5.3: Hedef LUFS dengeleme gercek EBU R128 olcumuyle (eskiden RMS-0.691 tahmini birkac dB sapiyordu),
+    # ardindan -1 dBTP tepe sinirlayici (pedalboard Limiter; yoksa dogrusal tepe korumasi).
+    if target_lufs < 0 and float(np.max(np.abs(mix))) > 1e-6:
+        _write_wav_np(out_path, mix, sr)
+        eb = _ebur128(out_path)
+        if eb and eb.get("i") is not None:
+            cur_lufs = float(eb["i"])
+        else:
+            cur_lufs = 20.0 * math.log10(max(float(np.sqrt(np.mean(mix ** 2))), 1e-7)) - 0.691
+        mix *= (10.0 ** (max(-18.0, min(18.0, target_lufs - cur_lufs)) / 20.0))
+    if float(np.max(np.abs(mix))) > 0.891:   # yalniz tepe -1 dBFS'i asarsa sinirlayici
+        try:
+            import pedalboard as pb
+            mix = pb.Pedalboard([pb.Limiter(threshold_db=-1.0, release_ms=120.0)])(mix.T.astype("float32"), sr).T
+            # JUCE Limiter cikisi esik kadar yukseltir; hedefe geri ayarla
+            _write_wav_np(out_path, mix, sr)
+            eb2 = _ebur128(out_path)
+            if eb2 and eb2.get("i") is not None and target_lufs < 0:
+                mix *= (10.0 ** (max(-12.0, min(0.0, target_lufs - float(eb2["i"]))) / 20.0))
+        except Exception:
+            log.debug("Limiter yok, dogrusal tepe korumasi", exc_info=True)
+    peak = float(np.max(np.abs(mix)))
+    if peak > 0.891:   # -1 dBFS
+        mix *= (0.891 / peak)
     _write_wav_np(out_path, mix, sr)
     proj["last_mixdown"] = out_path
     save_project(proj)

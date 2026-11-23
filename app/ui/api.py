@@ -925,6 +925,9 @@ class Api(StudioMixin, EnhanceMixin):
     def dash_stats(self) -> dict[str, Any]:
         """v1.32.1 Sunak gosterge paneli: disk, bugun inenler, RD (5 dk onbellekli), haftalik."""
         import shutil as _sh
+        c = getattr(self, "_dash_cache", None)   # v2.5.3: 3 sn onbellek (birden cok pencere ayni anda soruyordu)
+        if c and time.monotonic() - c[0] < 3.0:
+            return dict(c[1])
         out: dict[str, Any] = {}
         try:
             u = _sh.disk_usage(self._manager.base_dir())
@@ -951,6 +954,7 @@ class Api(StudioMixin, EnhanceMixin):
                 out["rd_days"] = rd.get("premium_days", 0)
         except Exception:
             pass
+        self._dash_cache = (time.monotonic(), dict(out))
         return out
 
     def rd_status(self) -> dict[str, Any]:
@@ -5591,12 +5595,20 @@ class Api(StudioMixin, EnhanceMixin):
         return local_scan_folder(folder=folder, query=query, limit=limit)
 
     def music_local_play(self, path: str, folder: str = "") -> dict[str, Any]:
-        if folder and hasattr(self, "playlist_add_folder"):
+        """v2.5.3: Klasordeki tum parcalar sira olur (eskiden playlist_add_folder(folder) TypeError verip yutuluyordu
+        -> yalniz tek parca calip duruyordu). Sira tiklanan parcadan baslar, sona gelince basa sarar."""
+        from app.core.music_hub import local_scan_folder
+        req: dict[str, Any] = {"path": path}
+        if folder:
             try:
-                self.playlist_add_folder(folder)
+                paths_ = [it["path"] for it in (local_scan_folder(folder=folder, limit=2000).get("items") or [])]
+                if paths_:
+                    i = paths_.index(path) if path in paths_ else 0
+                    order = paths_[i:] + paths_[:i]
+                    req = {"path": path or order[0], "queue": order}
             except Exception:
-                pass
-        return self.player_show({"path": path})
+                log.debug("yerel klasor sirasi", exc_info=True)
+        return self.player_show(req)
 
     def music_ytm_saved(self) -> list[dict[str, str]]:
         from app.core.music_hub import ytm_saved_playlists
@@ -5688,9 +5700,12 @@ class Api(StudioMixin, EnhanceMixin):
                 return
             fname = str(getattr(download, "filename", "") or (download.get("filename", "") if isinstance(download, dict) else "") or getattr(download, "url", ""))
             did = getattr(download, "id", None) if not isinstance(download, dict) else download.get("id")
-            notifs.push(kind, title, fname, {"id": did} if did is not None else None)
+            # v2.5.3: push() download_id'yi yalniz anahtar sozcukle alir; eskiden her cagri TypeError verip yutuluyordu
+            # (bildirim zili hep bostu).
+            path_ = str(getattr(download, "path", "") or (download.get("path", "") if isinstance(download, dict) else "") or "")
+            notifs.push(kind, title, fname, path=path_, download_id=int(did or 0))
         except Exception:
-            pass
+            log.exception("Bildirim merkezi kaydi")
 
     def notifications_list(self, limit: int = 60) -> dict[str, Any]:
         notifs = getattr(getattr(self._manager, "events", None), "notifications", None)
@@ -6131,7 +6146,7 @@ class Api(StudioMixin, EnhanceMixin):
             else:
                 fail_n += 1
                 errors.append(r.get("error", "fail"))
-        return {"ok": fail_n == 0 or ok_n > 0, "trashed": ok_n, "failed": fail_n, "errors": errors[:5]}
+        return {"ok": fail_n == 0, "partial": bool(ok_n and fail_n), "trashed": ok_n, "failed": fail_n, "errors": errors[:5]}
 
     def cleaner_open_folder(self, path: str) -> bool:
         p = Path(str(path or ""))

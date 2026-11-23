@@ -1,0 +1,11 @@
+name = "kami-relay"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+# KV ad alani: `npx wrangler kv namespace create RELAY` ciktisindaki id buraya yazilir.
+[[kv_namespaces]]
+binding = "RELAY"
+id = "a61043d664d641f0848a29023bbc6b9d"
+
+# Gizli anahtar: `npx wrangler secret put RELAY_SECRET`
+# Istege bagli anlik bildirim: `npx wrangler secret put NTFY_TOPIC` (telefona ntfy uygulamasi, ayni konu adi)

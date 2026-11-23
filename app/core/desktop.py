@@ -261,7 +261,18 @@ class KeyHold:
     """Bas-konus icin genel tus dinleyici (WH_KEYBOARD_LL): tus basili / birakildi. Tusu yutmaz."""
 
     def __init__(self, callback: Callable[[bool], None]) -> None:
+        import queue as _queue
         self.callback = callback
+        self._evq: "_queue.Queue[bool]" = _queue.Queue()
+
+        def _worker() -> None:
+            while True:
+                down = self._evq.get()
+                try:
+                    self.callback(down)
+                except Exception:
+                    log.exception("bas-konus")
+        threading.Thread(target=_worker, name="kami-ptt-cb", daemon=True).start()
         self.vk = 0
         self._thread: threading.Thread | None = None
         self._tid = 0
@@ -307,10 +318,9 @@ class KeyHold:
                         down = wp in (0x100, 0x104)
                         if down != self._down:
                             self._down = down
-                            try:
-                                self.callback(down)
-                            except Exception:
-                                log.exception("bas-konus")
+                            # v2.5.3: geri cagri (evaluate_js) kanca icinde calismaz: sistemdeki tum tuslari bekletir ve
+                            # LowLevelHooksTimeout asilinca Windows kancayi sessizce kaldirir. Kuyruga birak, hemen don.
+                            self._evq.put(down)
                 return user32.CallNextHookEx(None, n, wp, lp)
             self._proc = HOOKPROC(proc)
             hook = user32.SetWindowsHookExW(13, self._proc, None, 0)

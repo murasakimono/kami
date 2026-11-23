@@ -205,11 +205,12 @@ class RssService:
         _, items = parse_feed(self.fetch(f["url"]))
         return [{"title": it["title"], "size": it["size"], "match": matches(f, it), "seen": it["id"] in f.get("seen", [])} for it in items[:50]]
 
-    def _take(self, f: dict[str, Any], it: dict[str, Any]) -> bool:
+    def _take(self, f: dict[str, Any], it: dict[str, Any]) -> bool | None:
+        """True = eklendi, None = ayni bolum zaten alinmis (atla), False = ekleme basarisiz (sonra tekrar dene)."""
         with self._lock:
             ek = episode_key(it["title"]) if f.get("smart_ep", True) else ""
             if ek and ek in f.get("eps", []):
-                return False
+                return None
         ok = False
         try:
             ok = bool(self.add(it, f))
@@ -222,6 +223,17 @@ class RssService:
         return ok
 
     def check(self, fid: str | None = None, force: bool = False) -> int:
+        # v2.5.3: 60 sn dongusu ile elle "kontrol et" ayni anda calisip ayni bolumu iki kez ekleyebiliyordu
+        if not hasattr(self, "_check_busy"):
+            self._check_busy = threading.Lock()
+        if not self._check_busy.acquire(blocking=False):
+            return 0
+        try:
+            return self._check(fid, force)
+        finally:
+            self._check_busy.release()
+
+    def _check(self, fid: str | None = None, force: bool = False) -> int:
         new = 0
         with self._lock:
             feeds_copy = list(self.feeds)
@@ -248,10 +260,13 @@ class RssService:
                 if it["id"] in seen:
                     continue
                 with self._lock:
-                    f.setdefault("seen", []).append(it["id"])
                     should_take = matches(f, it)
-                if should_take and self._take(f, it):
+                ok_ = self._take(f, it) if should_take else None
+                if ok_:
                     got.append(it["title"])
+                if ok_ is not False:   # v2.5.3: ekleme gecici olarak basarisizsa "gorulmedi" kalir, sonra tekrar denenir
+                    with self._lock:
+                        f.setdefault("seen", []).append(it["id"])
             with self._lock:
                 del f["seen"][:-SEEN_KEEP]
                 f["last"] = time.time()

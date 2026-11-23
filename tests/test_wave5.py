@@ -14,9 +14,16 @@ def test_hltb_and_pcgamingwiki_mocked():
 
     m_hltb = MagicMock(status_code=200)
     m_hltb.json.return_value = {"data": [{"game_name": "Elden Ring", "game_id": 68151, "comp_main": 216000, "comp_plus": 360000, "comp_100": 486000}]}
-    with patch("requests.post", return_value=m_hltb):
+    m_init = MagicMock(status_code=200)
+    m_init.json.return_value = {"token": "t"}
+    sess = MagicMock()
+    sess.get.return_value = m_init
+    sess.post.return_value = m_hltb
+    gc._HLTB_TOKEN.update(tok="", t=0.0)
+    with patch("requests.Session", return_value=sess):   # v2.5.3: init token + x-auth-token akisi
         h = gc.fetch_hltb_real("Elden Ring")
-    assert h["ok"] is True and h["main_hours"] == 60.0
+    assert h["ok"] is True and h["found"] is True and h["main_hours"] == 60.0
+    assert sess.post.call_args.kwargs["headers"]["x-auth-token"] == "t"
 
     m_pcg = MagicMock(status_code=200)
     m_pcg.json.return_value = ["Elden Ring", ["Elden Ring"], [""], ["https://www.pcgamingwiki.com/wiki/Elden_Ring"]]

@@ -671,11 +671,32 @@ class DownloadManager:
             return str(info.get("bitfield") or ""), int(info.get("num_pieces") or 0)
 
     def _loop(self) -> None:
+        last_err, next_restart = 0.0, 0.0
         while not self._stop.is_set():
+            # v2.5.3: aria2 coktuyse (antivirus, bellek) yeniden baslat ve aktif isleri kuyruga geri al; eskiden Kami
+            # yeniden acilana kadar tum indirmeler duruyor, log her 0.5 sn'de traceback ile doluyordu.
+            eng = self.engine
+            if getattr(eng, "_proc", "x") is not None and hasattr(eng, "start_service") and not getattr(eng, "running", True):
+                now = time.monotonic()
+                if now >= next_restart:
+                    next_restart = now + 15.0
+                    log.warning("aria2 calismiyor, yeniden baslatiliyor")
+                    try:
+                        eng.start_service()
+                        with self._state:
+                            self._recover()
+                        log.info("aria2 yeniden baslatildi, yarim kalan indirmeler kuyruga alindi")
+                    except Exception:
+                        log.exception("aria2 yeniden baslatilamadi")
+                self._stop.wait(self.poll_interval)
+                continue
             try:
                 self.poll_once()
             except Exception:
-                log.exception("Durum dongusu hatasi")
+                now = time.monotonic()
+                if now - last_err > 30:   # ayni hata saniyede 2 kez log'u doldurmasin
+                    last_err = now
+                    log.exception("Durum dongusu hatasi")
             self._stop.wait(self.poll_interval)
 
     def poll_once(self) -> None:
@@ -795,28 +816,50 @@ class DownloadManager:
         msg = str(s.get("error") or "")
         if code not in ("1", "3", "22", "24") and "404" not in msg:
             return False
-        try:
-            alt = self.resume_router.find_alternates(d.url, filename=d.filename, size=d.size,
-                                                     headers=d.headers, use_hunter=False)
-        except Exception:
-            log.debug("Ghost-Resume arama hatasi: %s", d.url)
+        if not d.size:   # boyut bilinmeden baska kaynaktan ayni .aria2'ye devam etmek dosyayi sessizce bozabilir
             return False
-        cands = (alt or {}).get("alternates") or []
-        if not cands:
-            return False
-        nu = cands[0].get("url", "")
-        if not nu or nu == d.url:
-            return False
-        try:
-            self.engine.remove(d.gid)
-        except Exception:
-            log.debug("Motor kaldirma basarisiz (ghost-resume): %s", d.gid)
-        nd = self.store.update(d.id, gid="", status=Status.QUEUED, url=nu,
-                               downloaded=s.get("completed", d.downloaded))
-        self.events.emit("download.updated", download=nd)
-        log.info("Ghost-Resume: alternatif kaynaktan devam: %s", d.filename)
-        self._start_engine(nd)
-        return True
+        # v2.5.3: ayna aramasi (HEAD + .meta4, ~9 sn) artik durum kilidi altinda DEGIL; arka planda yapilir. Kayit once
+        # hata olarak gorunur, uygun ve AYNI BOYUTLU ayna bulunursa oradan devam edilir.
+        snap_url, done = d.url, int(s.get("completed", d.downloaded) or 0)
+
+        def work() -> None:
+            try:
+                alt = self.resume_router.find_alternates(snap_url, filename=d.filename, size=d.size,
+                                                         headers=d.headers, use_hunter=False)
+            except Exception:
+                log.debug("Ghost-Resume arama hatasi: %s", snap_url)
+                return
+            nu = ""
+            for c in ((alt or {}).get("alternates") or [])[:4]:
+                u = str(c.get("url") or "")
+                if not u or u == snap_url:
+                    continue
+                try:
+                    import requests
+                    r = requests.head(u, allow_redirects=True, timeout=5, headers=d.headers or None)
+                    if int(r.headers.get("Content-Length") or -1) == int(d.size):
+                        nu = u
+                        break
+                except Exception:
+                    continue
+            if not nu:
+                return
+            with self._state:
+                cur = self.store.get(d.id)
+                if not cur or cur.status != Status.ERROR or cur.url != snap_url:
+                    return   # kullanici bu arada silmis/yeniden baslatmis
+                if cur.gid:
+                    try:
+                        self.engine.remove(cur.gid)
+                    except Exception:
+                        log.debug("Motor kaldirma basarisiz (ghost-resume): %s", cur.gid)
+                nd = self.store.update(d.id, gid="", status=Status.QUEUED, url=nu, downloaded=done, error="")
+                self.events.emit("download.updated", download=nd)
+                log.info("Ghost-Resume: ayni boyutlu alternatif kaynaktan devam: %s", d.filename)
+                self._start_engine(nd)
+
+        threading.Thread(target=work, name="kami-ghost-resume", daemon=True).start()
+        return False
 
     # ---------- link yenileme (Asama 6c) ----------
     # Suresi dolan gecici link (RD / bulut paylasimi): kaynaktan yeni link alinip AYNI dosyaya devam edilir

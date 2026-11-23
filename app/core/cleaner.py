@@ -129,16 +129,12 @@ def trash_path(path: str) -> dict[str, Any]:
         return {"ok": False, "error": "not_found"}
     if _protected(p):
         return {"ok": False, "error": "protected"}
+    # v2.5.3 GUVENLIK: eskiden yol PowerShell betigine metin olarak gomuluyordu; ’ (U+2019) gibi tirnaklar kacisi
+    # atlatip komut calistirabiliyordu (or. "a’;Start-Process calc;’.mp4"). Artik dogrudan SHFileOperationW (betik yok).
     try:
-        ps = (
-            "Add-Type -AssemblyName Microsoft.VisualBasic; "
-            f"$p = '{p.replace(chr(39), chr(39)*2)}'; "
-            "if (Test-Path -LiteralPath $p -PathType Container) { "
-            "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p,'OnlyErrorDialogs','SendToRecycleBin') } "
-            "else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p,'OnlyErrorDialogs','SendToRecycleBin') }"
-        )
-        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        return {"ok": r.returncode == 0}
+        from app.core.mediatools import to_trash
+        ok = to_trash([p])
+        return {"ok": bool(ok and not os.path.exists(p))} if ok else {"ok": False, "error": "trash_failed"}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:120]}
 

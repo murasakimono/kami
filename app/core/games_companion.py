@@ -34,63 +34,73 @@ def _mod_backups_dir() -> Path:
     return d
 
 
+_HLTB_UA = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
+    "Referer": "https://howlongtobeat.com/",
+    "Origin": "https://howlongtobeat.com",
+}
+_HLTB_TOKEN: dict[str, Any] = {"tok": "", "t": 0.0}
+
+
+def _hltb_token(sess: Any, force: bool = False) -> str:
+    """v2.5.3: HLTB 2026 akisi - once /api/search/site/init ile kisa omurlu token, sonra x-auth-token basligiyla arama."""
+    import time as _t
+    if not force and _HLTB_TOKEN["tok"] and _t.time() - _HLTB_TOKEN["t"] < 600:
+        return _HLTB_TOKEN["tok"]
+    r = sess.get(f"https://howlongtobeat.com/api/search/site/init?t={int(_t.time() * 1000)}", headers=_HLTB_UA, timeout=8)
+    r.raise_for_status()
+    _HLTB_TOKEN.update(tok=str((r.json() or {}).get("token") or ""), t=_t.time())
+    return _HLTB_TOKEN["tok"]
+
+
 def fetch_hltb_real(title: str) -> dict[str, Any]:
-    """HowLongToBeat gercek arama API'sinden ana hikaye / %100 surelerini ceker; ulasilamazsa link doner."""
+    """HowLongToBeat arama API'sinden ana hikaye / ekstra / %100 surelerini ceker; bulunamazsa found=False + arama linki."""
     import requests
     t = str(title or "").strip()
     if not t:
         return {"ok": False, "error": "empty_title"}
     search_url = f"https://howlongtobeat.com/?q={urllib.parse.quote(t)}"
+    body = {
+        "searchType": "games", "searchTerms": t.split(), "searchPage": 1, "size": 8,
+        "searchOptions": {"games": {"userId": 0, "platform": "", "sortCategory": "popular", "rangeCategory": "main",
+                                    "rangeTime": {"min": None, "max": None},
+                                    "gameplay": {"perspective": "", "flow": "", "genre": "", "difficulty": ""},
+                                    "rangeYear": {"min": "", "max": ""}, "modifier": ""},
+                          "users": {"sortCategory": "postcount"}, "lists": {"sortCategory": "follows"},
+                          "filter": "", "sort": 0, "randomizer": 0},
+        "useCache": True,
+    }
+    err = ""
     try:
-        r = requests.post(
-            "https://howlongtobeat.com/api/search",
-            json={
-                "searchType": "games",
-                "searchTerms": t.split(),
-                "searchPage": 1,
-                "size": 5,
-                "searchOptions": {"games": {"userId": 0, "platform": "", "sortCategory": "popular",
-                                            "rangeCategory": "main", "rangeTime": {"min": None, "max": None},
-                                            "gameplay": {"perspective": "", "flow": "", "genre": ""},
-                                            "rangeYear": {"min": "", "max": ""}, "modifier": ""},
-                                  "users": {"sortCategory": "postcount"},
-                                  "lists": {"sortCategory": "follows"},
-                                  "filter": "", "sort": 0, "randomizer": 0},
-            },
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0",
-                "Referer": "https://howlongtobeat.com/",
-                "Origin": "https://howlongtobeat.com",
-            },
-            timeout=8,
-        )
-        if r.status_code == 200:
+        sess = requests.Session()
+        for attempt in (0, 1):
+            tok = _hltb_token(sess, force=bool(attempt))
+            r = sess.post("https://howlongtobeat.com/api/search/site", json=body, timeout=8,
+                          headers={**_HLTB_UA, "x-auth-token": tok})
+            if r.status_code == 403 and not attempt:
+                continue   # token suresi dolmus
+            r.raise_for_status()
             data = (r.json() or {}).get("data") or []
             if data:
-                hit = data[0]
-                main_h = round(float(hit.get("comp_main") or 0) / 3600.0, 1) or None
-                plus_h = round(float(hit.get("comp_plus") or 0) / 3600.0, 1) or None
-                comp_h = round(float(hit.get("comp_100") or 0) / 3600.0, 1) or None
+                norm = re.sub(r"[^a-z0-9]+", "", t.lower())
+                hit = next((g for g in data if re.sub(r"[^a-z0-9]+", "", str(g.get("game_name") or "").lower()) == norm), data[0])
+
+                def _h(v: Any) -> float | None:
+                    return round(float(v or 0) / 3600.0, 1) or None
                 return {
-                    "ok": True,
-                    "source": "hltb",
+                    "ok": True, "found": True, "source": "hltb",
                     "title": hit.get("game_name") or t,
-                    "main_hours": main_h,
-                    "plus_hours": plus_h,
-                    "completionist_hours": comp_h,
+                    "main_hours": _h(hit.get("comp_main")),
+                    "plus_hours": _h(hit.get("comp_plus")),
+                    "completionist_hours": _h(hit.get("comp_100")),
                     "url": f"https://howlongtobeat.com/game/{hit.get('game_id')}" if hit.get("game_id") else search_url,
                 }
-    except Exception:
-        log.debug("HLTB sorgusu basarisiz", exc_info=True)
-    return {
-        "ok": True,
-        "source": "fallback_link",
-        "title": t,
-        "main_hours": None,
-        "plus_hours": None,
-        "completionist_hours": None,
-        "url": search_url,
-    }
+            break
+    except Exception as exc:
+        err = str(exc)[:120]
+        log.warning("HLTB sorgusu basarisiz: %s", err)
+    return {"ok": True, "found": False, "source": "fallback_link", "error": err, "title": t,
+            "main_hours": None, "plus_hours": None, "completionist_hours": None, "url": search_url}
 
 
 def fetch_pcgamingwiki(title: str) -> dict[str, Any]:

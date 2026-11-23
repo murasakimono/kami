@@ -324,6 +324,9 @@ def hash_pw(password: str) -> str:
     return f"scrypt${salt.hex()}${dk.hex()}"
 
 
+_PW_SEM = threading.BoundedSemaphore(2)
+
+
 def _verify_pw(stored: str, given: str) -> bool:
     if not stored:
         return True
@@ -342,7 +345,7 @@ def _verify_pw(stored: str, given: str) -> bool:
         return hmac.compare_digest(got, want)
     # Eski SHA-256 kayitlari icin: ham parola veya dogrudan SHA-256 ozeti
     raw_hash = hashlib.sha256(given.encode("utf-8")).hexdigest()
-    return hmac.compare_digest(raw_hash.encode(), stored.lower().encode()) or hmac.compare_digest(given.lower().encode(), stored.lower().encode())
+    return hmac.compare_digest(raw_hash.encode(), stored.lower().encode())   # v2.5.3: ozetin kendisi parola yerine gecmez
 
 
 _ROOM_ORIGIN_RE = re.compile(
@@ -403,15 +406,21 @@ class RoomServer:
             return True
         if given and hmac.compare_digest(given.encode(), self.host_token.encode()):
             return True
+        # v2.5.3: dogru parola HER ZAMAN gecer (eskiden 10 yanlistan sonra dogru parola da reddediliyordu; sabit Worker
+        # adresinden gelen herkes ayni IP gorundugu icin linki bilen biri esini odadan kilitleyebiliyordu).
+        # Kaba kuvvet: scrypt ayni anda en fazla 2 deneme + cok yanlis yapan adrese artan bekleme.
+        if not given:
+            return False
+        with _PW_SEM:
+            ok = _verify_pw(want, given)
+        if ok:
+            return True
         now = time.time()
         hits = [t for t in self._bad.get(ip, []) if now - t < 60]
-        if len(hits) >= 10:            # dakikada 10 yanlis: o adres 1 dk bekler
-            self._bad[ip] = hits
-            return False
-        if _verify_pw(want, given):
-            return True
         hits.append(now)
         self._bad[ip] = hits[-20:]
+        if len(hits) > 5:
+            time.sleep(min(4.0, 0.5 * (len(hits) - 5)))
         return False
 
     def start(self, host_name: str, tunnel: bool = True, room_id: str = "") -> dict[str, Any]:
@@ -831,8 +840,19 @@ def _handler(srv: RoomServer):
                     b = json.loads(raw or "{}")
                 except ValueError:
                     b = {}
+                b = b if isinstance(b, dict) else {}
+                # v2.5.3 GUVENLIK: tunel (internet) uzerinden PC'de keyfi program/klavye calistirma ve dosya silme kapali.
+                # Bunlar yalniz ayni agdaki telefondan (phone.py, LAN) kullanilabilir.
+                act = str(b.get("a") or b.get("action") or "")
+                if rest == ["deck", "save"] or act in ("sys:hotkey", "sys:text") or (
+                        act == "sys:open" and not re.match(r"^https?://", str(b.get("arg") or ""), re.I)):
+                    return self._json({"ok": False, "error": "lan_only"}, 403)
+                if rest[0] == "dl":
+                    for k_ in ("delete_file", "delete_files", "files"):
+                        if k_ in b:
+                            b[k_] = False
                 try:
-                    code, obj = ph.on_deck("/" + "/".join(rest), b if isinstance(b, dict) else {})
+                    code, obj = ph.on_deck("/" + "/".join(rest), b)
                 except Exception as exc:
                     log.exception("Deck (tunel)")
                     code, obj = 500, {"ok": False, "error": str(exc)[:120]}

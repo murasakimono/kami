@@ -72,6 +72,7 @@ class DownloadStore:
 
     def close(self) -> None:
         with self._lock:
+            self._closed = True
             self._conn.close()
 
     # --- yazma ---
@@ -127,6 +128,8 @@ class DownloadStore:
             args = tuple(st)
         q += " ORDER BY CASE WHEN position = 0 THEN id ELSE position END DESC, id DESC"
         with self._lock:
+            if getattr(self, "_closed", False):   # v2.5.3: kapanistan sonra gec gelen UI yoklamasi (card_state) cokmesin
+                return []
             rows = self._conn.execute(q, args).fetchall()
         return [_from_row(r) for r in rows]
 

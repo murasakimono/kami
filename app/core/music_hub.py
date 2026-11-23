@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.request
 from typing import Any
@@ -292,7 +293,58 @@ def cached_now(allow_paused: bool = False) -> dict[str, Any] | None:
     return None
 
 
+# v2.5.3: "Simdi calan" onbellegi. Arayuz (Kamify, mini ada, Sunak) saniyede birkac kez soruyordu ve her soru
+# Spotify'a 6 sn zaman asimli senkron istek atiyordu (kami.log: 5401 "yavas api cagrisi"). Artik:
+#  - 1.5 sn icinde tekrar soran onbellekten alir,
+#  - 20 sn'ye kadar bayat sonuc aninda doner (calan parcanin ilerlemesi tahminle ilerletilir), tazeleme arka planda,
+#  - ayni anda yalniz tek ag istegi.
+_NOW_LOCK = threading.Lock()
+_NOW_META: dict[str, Any] = {"t": 0.0, "res": None}
+_NOW_TTL = 1.5
+_NOW_STALE_MAX = 20.0
+
+
+def invalidate_now() -> None:
+    _NOW_META["t"] = 0.0
+
+
+def _now_extrapolate(res: dict[str, Any], age: float) -> dict[str, Any]:
+    out = dict(res)
+    if out.get("playing") and out.get("duration_ms"):
+        out["progress_ms"] = min(int(out.get("progress_ms") or 0) + int(age * 1000), int(out["duration_ms"]))
+    return out
+
+
+def _now_store(res: dict[str, Any]) -> dict[str, Any]:
+    _NOW_META["res"], _NOW_META["t"] = dict(res), time.monotonic()
+    return res
+
+
+def _now_bg(token: str) -> None:
+    try:
+        _now_store(_spotify_now_fetch(token))
+    except Exception:
+        pass
+    finally:
+        _NOW_LOCK.release()
+
+
 def spotify_now(token: str) -> dict[str, Any]:
+    res, age = _NOW_META["res"], time.monotonic() - float(_NOW_META["t"])
+    if res is not None and age < _NOW_TTL:
+        return _now_extrapolate(res, age)
+    if res is not None and age < _NOW_STALE_MAX:
+        if _NOW_LOCK.acquire(blocking=False):
+            threading.Thread(target=_now_bg, args=(token,), name="kami-sp-now", daemon=True).start()
+        return _now_extrapolate(res, age)
+    with _NOW_LOCK:
+        res, age = _NOW_META["res"], time.monotonic() - float(_NOW_META["t"])
+        if res is not None and age < _NOW_TTL:   # beklerken baska is parcacigi tazeledi
+            return _now_extrapolate(res, age)
+        return _now_store(_spotify_now_fetch(token))
+
+
+def _spotify_now_fetch(token: str) -> dict[str, Any]:
     tok = get_spotify_token(token)
     if not tok:
         lib = _librespot_now()
@@ -368,6 +420,8 @@ def _sp_api(method: str, path: str, body: dict[str, Any] | None = None, token: s
     if body is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    if method != "GET":
+        invalidate_now()   # v2.5.3: oynat/duraklat/atla sonrasi bir sonraki "simdi calan" tazelensin
     try:
         with urllib.request.urlopen(req, timeout=8) as resp:
             if resp.status == 204:
@@ -969,6 +1023,7 @@ def spotify_control(token: str, action: str) -> dict[str, Any]:
               "next": ("POST", "/me/player/next"), "previous": ("POST", "/me/player/previous")}
     if act not in routes:
         return {"ok": False, "error": "bad_action"}
+    invalidate_now()
     from app.core import librespot_host
     if librespot_host.is_running() and librespot_host.status().get("active"):
         r = librespot_host.control(act)

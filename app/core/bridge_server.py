@@ -199,7 +199,7 @@ class BridgeServer:
             res = resolve_url(url)
             if res.get("ok") and res.get("url") and body.get("add", True):
                 try:
-                    req = DownloadRequest(url=res["url"], source="browser", page_url=url)
+                    req = DownloadRequest(url=res["url"], source="context_menu", page_url=url)   # v2.5.3: kullanici eylemi; yakalama kurallarina takilmasin
                     added = self.manager.add(req)
                     res["accepted"] = True
                     res["ids"] = [d.id for d in added]

@@ -132,7 +132,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendPage(msg.url || (sender.tab && sender.tab.url) || "").then(sendResponse);
     return true;
   } else if (msg && msg.type === "bypass-add") {    // Kami Bypass: kisaltma/reklamli linki coz ve indir
-    native({ path: "/v1/bypass", body: { url: msg.url || "", add: true } }).then(sendResponse);
+    native({ type: "bypass", url: msg.url || "", add: true }).then(sendResponse);   // v2.5.3: host ROUTES'ta "bypass" yoktu
     return true;
   } else if (msg && msg.type === "video-button") {   // video ustu buton
     onVideoButton(msg, sender).then(sendResponse);

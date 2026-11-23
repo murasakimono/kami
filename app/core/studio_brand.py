@@ -326,7 +326,7 @@ def apply_viral_recipe(project: dict[str, Any], recipe_id: str, brand_kit: dict[
     rec = VIRAL_RECIPES[recipe_id]
     pr = copy.deepcopy(project)
     pr["recipe"] = recipe_id
-    pr["shutterAngle"] = rec["shutter_angle"]
+    pr["shutterAngle"] = rec.get("shutter_angle", 180)   # v2.5.3: 4 recetede alan yoktu -> KeyError
     pr["targetLufs"] = rec.get("lufs", -14.0)
     pr["recipeSubStyle"] = rec.get("sub_style", "none")
     if brand_kit:
@@ -335,7 +335,7 @@ def apply_viral_recipe(project: dict[str, Any], recipe_id: str, brand_kit: dict[
     from app.core.studio_packs import ZOOM3
     from app.core.studio_pro_pack import ZOOM_PRO
     zoom_map = {z["id"]: copy.deepcopy(z["kf"]) for z in (ZOOM_PRESETS + ZOOM3 + ZOOM_PRO) if "id" in z and "kf" in z}
-    zoom_kf = zoom_map.get(rec["zoom_preset"], [])
+    zoom_kf = zoom_map.get(rec.get("zoom_preset", ""), [])
     target_set = set(str(cid) for cid in clip_ids) if clip_ids else None
     applied_clips = 0
     sub_map = {"word_pop": "hormozi", "clean_box": "boxed", "cinematic": "cinema", "classic": "plain", "none": None}

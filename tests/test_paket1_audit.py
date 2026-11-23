@@ -77,7 +77,7 @@ def test_kami_booth_lan_bind_and_token_auth(tmp_path: Path, monkeypatch):
         c.request("GET", f"/?token={tok}")
         r = c.getresponse()
         r.read()
-        assert r.status == 200
+        assert r.status == 303 and r.getheader("Location") == "/"   # v2.5.3: cerez kurulur, tokensiz adrese yonlendirilir
         sc = r.getheader("Set-Cookie") or ""
         assert f"kami_booth_tok={tok}" in sc and "HttpOnly" in sc and "SameSite=Strict" in sc
         c.close()

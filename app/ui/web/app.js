@@ -705,7 +705,7 @@ function bindSettings() {
   });
   $("#orRelayPing")?.addEventListener("click", async () => {
     const r = await slow("oracle_relay_ping");
-    toast(r?.ok ? "✓ Oracle Relay bağlantısı aktif" : ("Oracle Relay yanıt vermedi: " + (r?.error || "?")), !r?.ok);
+    toast(r?.ok ? "✓ Kami Relay bağlantısı aktif" : ("Kami Relay yanıt vermedi: " + (r?.error || "?")), !r?.ok);
   });
   $("#orRelayPull")?.addEventListener("click", async () => {
     const r = await slow("oracle_relay_pull");

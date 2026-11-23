@@ -281,11 +281,13 @@ wheels = [
 
 [[package]]
 name = "kami"
-version = "0.8.0"
+version = "2.5.3"
 source = { virtual = "." }
 dependencies = [
+    { name = "numpy" },
     { name = "nvidia-ml-py" },
     { name = "openpyxl" },
+    { name = "pedalboard" },
     { name = "pillow" },
     { name = "psutil" },
     { name = "pyaudiowpatch", marker = "sys_platform == 'win32'" },
@@ -296,6 +298,8 @@ dependencies = [
     { name = "pywebview" },
     { name = "rawpy" },
     { name = "rlottie-python" },
+    { name = "sounddevice" },
+    { name = "soundfile" },
     { name = "vtracer" },
     { name = "yt-dlp", extra = ["curl-cffi", "default"] },
     { name = "zxing-cpp" },
@@ -309,8 +313,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "numpy", specifier = ">=2.0" },
     { name = "nvidia-ml-py", specifier = ">=13.615.71" },
     { name = "openpyxl", specifier = ">=3.1" },
+    { name = "pedalboard", specifier = ">=0.9.26" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "pyaudiowpatch", marker = "sys_platform == 'win32'", specifier = ">=0.2.12" },
@@ -321,6 +327,8 @@ requires-dist = [
     { name = "pywebview", specifier = ">=5.3" },
     { name = "rawpy", specifier = ">=0.28.0" },
     { name = "rlottie-python", specifier = ">=1.3" },
+    { name = "sounddevice", specifier = ">=0.5" },
+    { name = "soundfile", specifier = ">=0.13" },
     { name = "vtracer", specifier = ">=0.6.15" },
     { name = "yt-dlp", extras = ["curl-cffi", "default"], specifier = ">=2026.10.26" },
     { name = "zxing-cpp", specifier = ">=2.2" },
@@ -445,6 +453,29 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
+]
+
+[[package]]
+name = "pedalboard"
+version = "0.9.26"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/35/58ca25220e3c9756e74e28ce376a4dc9a145adb16f018857be05264a7ff0/pedalboard-0.9.26-cp312-cp312-macosx_10_14_universal2.whl", hash = "sha256:d26b98f527fa1ebc30ffd15d58a356a3e04128376928543969056b29a4b0f2d1", size = 4795871, upload-time = "2026-10-07T21:21:10.125Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/a0/79dbf16b4082d06429e4663b6694bd432797108689bba4619e5b73653bdc/pedalboard-0.9.26-cp312-cp312-macosx_10_14_x86_64.whl", hash = "sha256:4aa0a60de75f38d00701625470f649d77e0e39700d841ce9ea2507a7d14f68c9", size = 2669166, upload-time = "2026-10-07T21:21:11.558Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/59/182a5cc87f8203a33dfbf820c602bbcb3cb84c8cef2cac3ffca8852f2459/pedalboard-0.9.26-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:63092f900a0836d4816031701caaeaed882ff9aa528147fc143b6f9c48e90284", size = 2469379, upload-time = "2026-10-07T21:21:12.739Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/7a/cbb59071db016956dcd73c9f96545d24a3bbe08bd04b9a897db9116dcb72/pedalboard-0.9.26-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fe646d2e343b7c3e48935d031c3feb56e3f1b85b329259fbe903acf60f0676a3", size = 4908660, upload-time = "2026-10-07T21:21:14.207Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/1b/d3518151f820549a3e92ba53edf45c6ccaf002e008c54183a7ed19e66cdb/pedalboard-0.9.26-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:38a7e65670d9fccd3179dea5f5c3c97085bb7d6aec041d8524bc6077db553e20", size = 5047586, upload-time = "2026-10-07T21:21:16.085Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/62/e82b26a6abdabb95fbcd6583f7285e61b93080339fb21de307887b7dbf4f/pedalboard-0.9.26-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:90679f25cbc40c642c56bf80129e97be009924e9ee9a92ea33d6c2f540145e47", size = 5942944, upload-time = "2026-10-07T21:21:17.781Z" },
+    { url = "https://files.pythonhosted.org/packages/22/44/1bf69a80bfa96f2b3e268668c57a6702792d288d41ff5f19d7edb577b57f/pedalboard-0.9.26-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:a34e1e45bce67552b4692f4f18b3f35560293e9feeb89a3b819588df5b307700", size = 6049181, upload-time = "2026-10-07T21:21:19.467Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/55/eb95ca568bec01ae73a16fe47c56369f3b84a0d94778981bb7efd1c5e440/pedalboard-0.9.26-cp312-cp312-win_amd64.whl", hash = "sha256:816b7063d3befb00263bfee7656932ee5f51788c586d5184d4d61f7a85f61aea", size = 3691266, upload-time = "2026-10-07T21:21:21.283Z" },
+    { url = "https://files.pythonhosted.org/packages/64/8d/182a2b16e54e3e064e9a215691227a24cb96ef0f4a6a69dcc657eaf4ef78/pedalboard-0.9.26-cp313-cp313-macosx_10_14_x86_64.whl", hash = "sha256:2df416c5a5e3c8a8adb1d7b062fee86b556ae8d6d0afe76b260db2dfd3fbb39b", size = 2669197, upload-time = "2026-10-07T21:21:22.904Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/48/62870b99d07442a7a859578136d37d8792978dc1fb4aba740eb29f4af4a1/pedalboard-0.9.26-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:0459fb09960016fa01415622be70108d5d2c7b85c3ee84743897b58f4dd37802", size = 2469504, upload-time = "2026-10-07T21:21:24.24Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/87/f3cec44a6ed611826b71f4b208db2187d546d04e3e812d552da202055f80/pedalboard-0.9.26-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:34c565a601445374d13b3268a81619543383b0491aa0194410586e556554e6bc", size = 4908812, upload-time = "2026-10-07T21:21:25.625Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/70/2035222c4ecf40f4e39bb6355d4b423bca41f4699776fac6b3e7b1f72b90/pedalboard-0.9.26-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0f138351370b7d146f97937c1cdd156616385c1d79c679afa80cd3074b83893c", size = 5047044, upload-time = "2026-10-07T21:21:27.304Z" },
+    { url = "https://files.pythonhosted.org/packages/22/9c/b5b58c6ef9c90f547bec9e228f4ec3fc0440a1eded3f4d091cd08c27895c/pedalboard-0.9.26-cp313-cp313-win_amd64.whl", hash = "sha256:c77e917715ef4d5babc8452bc6ecc601d1bf113284ef82d0b962f7989b2f0d84", size = 3691487, upload-time = "2026-10-07T21:21:28.602Z" },
 ]
 
 [[package]]
@@ -1006,6 +1037,43 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "sounddevice"
+version = "0.5.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ec/db/0c890e2d9aab9ba284021efc02e1d3aebfecab1b611762d7434602209bcf/sounddevice-0.5.6.tar.gz", hash = "sha256:8ec9fbfde2e32f020b167e348f3ab3bac6625a5f15af524d790108ac7147a410", size = 1120094, upload-time = "2026-08-17T07:55:05.048Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/72/1f/62eef605172bddc1017508469a12f75bc7c4194ece35c734f822795f53b1/sounddevice-0.5.6-py3-none-any.whl", hash = "sha256:de099612311ad81e55d31ccbd83f43ea6bf4d87b48f9b6ea55a1fbcde0eee4e0", size = 32793, upload-time = "2026-08-17T07:54:57.507Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/84/85e719d49cf98b2f406d9ac9c338892286c4448eb42ef0b2625ccf159616/sounddevice-0.5.6-py3-none-macosx_10_6_x86_64.macosx_10_6_universal2.whl", hash = "sha256:e3aef00ad8b1d1740eb66d9a7671eab88a4d2b8fa4ab33498d742e63b65c309c", size = 1009647, upload-time = "2026-08-17T07:54:58.814Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/6f/6292145099f72a153a710245f46ae43e5fb6c77bec1b6086cb76c12dc280/sounddevice-0.5.6-py3-none-win32.whl", hash = "sha256:b36b807eb02abd257198bf84b2af05e4fea199a9d2f0019014169c7136d45e9c", size = 1009627, upload-time = "2026-08-17T07:55:00.401Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/3e/cbc593c31a5f0d817b3fe97e64aa8461bd0f55cb07b67ce1b776296ae336/sounddevice-0.5.6-py3-none-win_amd64.whl", hash = "sha256:7f4162f514f007b0bf25a3ccfed3f1705bc2ec311888a90232729eec4f57a4f4", size = 1009630, upload-time = "2026-08-17T07:55:02.088Z" },
+    { url = "https://files.pythonhosted.org/packages/60/a4/b0c21c9f215a6fd9606b8f8748c21212dc098e5d5a2d93068c50edcf19b4/sounddevice-0.5.6-py3-none-win_arm64.whl", hash = "sha256:c8ae19173e5f27f8c12d4b5eee2dbfe542cee125d591e663e0fb4dfb75246d45", size = 1009630, upload-time = "2026-08-17T07:55:03.689Z" },
+]
+
+[[package]]
+name = "soundfile"
+version = "0.14.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+    { name = "numpy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d2/db/949331952a6fb1c5b12e9de80fd08747966c2039d1a61db4764fbd3981c2/soundfile-0.14.0.tar.gz", hash = "sha256:ba1c1a2d618bca5c406647c83b89f07cc8810fa506a50622a6993ba130c1de11", size = 47842, upload-time = "2026-06-06T08:58:47.869Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b1/d1/5e338af9ca6ed0786cd5bb03f6d60de1c325728c1189014f3b59aae7403c/soundfile-0.14.0-py2.py3-none-any.whl", hash = "sha256:8ba81ae3a89fd5ab3bef8a8eb481fbbe794e806309675a89b4df48b8d31908a8", size = 26799, upload-time = "2026-06-06T08:58:33.269Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/72/c6b21e58d3113596e7e8de0a08d6f1d95173492cfbca0a4db14148cbba2a/soundfile-0.14.0-py2.py3-none-macosx_10_9_x86_64.whl", hash = "sha256:19be05428da76ed61a4cad29b8e4bcf43a3e5c100089d2ec81dc961eed1b0dd4", size = 1144568, upload-time = "2026-06-06T08:58:35.231Z" },
+    { url = "https://files.pythonhosted.org/packages/63/7a/dfdd6f8c748988427119f75eb860a3cedd858d1aea1fe28f39ad8559ef22/soundfile-0.14.0-py2.py3-none-macosx_11_0_arm64.whl", hash = "sha256:d828d35a059626da52f1415b5faee610aeab393319cb3fc4a9aef47b619fc14c", size = 1103726, upload-time = "2026-06-06T08:58:37.948Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/f8/fc39fad6f879633461d27394cd1ddaf1f769ffa0597dca35872f51b16461/soundfile-0.14.0-py2.py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:e85724a90bc99a6e8062c0b4ddf725f53b2a3b70afd4da875e9d2cfc4e92f377", size = 1238050, upload-time = "2026-06-06T08:58:39.932Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/a2/70fd4432b924684c372df8b0a45708c36c057ef3596c9eb53e0a806b980b/soundfile-0.14.0-py2.py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:1e38bac1853412871318e82a1ba69a8be677619b56025bbfcccdb41b6cafe82d", size = 1315963, upload-time = "2026-06-06T08:58:41.716Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/34/c9e80783d83eab739a9531fdee03675d53e0bf1b2ccb4bb3af5844675046/soundfile-0.14.0-py2.py3-none-win32.whl", hash = "sha256:0a6ae43c50c71b4e020cc55382925cb89451c1ed1a0c3d0f5d802da269226849", size = 902199, upload-time = "2026-06-06T08:58:43.289Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/97/b39c18ac1df45e755ca22b8b00e872929da5d107998a207a5e4ac831bfda/soundfile-0.14.0-py2.py3-none-win_amd64.whl", hash = "sha256:299491d3499460fb1b74bb4bd78b57ffc2d243a5fafa7b6ec1b264875c78453e", size = 1021480, upload-time = "2026-06-06T08:58:45.016Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/83/55c65e61cf457805ce2ec157c1c6ae17715d0851aa2374422de0538838ca/soundfile-0.14.0-py2.py3-none-win_arm64.whl", hash = "sha256:e090704718e124e7c844695236f1fce8d18a5e761eaf7c82dfcd124620805f98", size = 888858, upload-time = "2026-06-06T08:58:46.593Z" },
 ]
 
 [[package]]

@@ -37,6 +37,7 @@ from app import paths
 
 log = logging.getLogger(__name__)
 _LOCK = threading.Lock()
+_PW_SEM = threading.BoundedSemaphore(2)
 _BAD: dict[str, list[float]] = {}
 _SESSIONS: dict[str, dict[str, float]] = {}   # cid -> {cookie_token: created_ts}
 MAX_HOURS = 24 * 30
@@ -71,7 +72,7 @@ def _verify_pw(stored: str, given: str) -> bool:
         return hmac.compare_digest(got, want)
     # Geriye donuk uyumluluk: eski kapsul.json kayitlarindaki tuzsuz SHA-256
     raw_hash = hashlib.sha256(given.encode("utf-8")).hexdigest()
-    return hmac.compare_digest(raw_hash.encode(), stored.lower().encode()) or hmac.compare_digest(given.lower().encode(), stored.lower().encode())
+    return hmac.compare_digest(raw_hash.encode(), stored.lower().encode())   # v2.5.3: ozetin kendisi parola yerine gecmez
 
 
 def _client_ip(h: Any) -> str:
@@ -230,16 +231,35 @@ def get(cid: str) -> dict[str, Any] | None:
 def pw_ok(it: dict[str, Any], given: str, ip: str) -> bool:
     if not it.get("pw"):
         return True
+    if not given:   # v2.5.3: dogru parola her zaman gecer; yanlislar artan beklemeyle yavaslatilir (kilitlenme yok)
+        return False
+    with _PW_SEM:
+        ok = _verify_pw(str(it["pw"]), given)
+    if ok:
+        return True
     now = time.time()
     hits = [t for t in _BAD.get(ip, []) if now - t < 60]
-    if len(hits) >= 10:
-        _BAD[ip] = hits
-        return False
-    if _verify_pw(str(it["pw"]), given):
-        return True
     hits.append(now)
     _BAD[ip] = hits[-20:]
+    if len(hits) > 5:
+        time.sleep(min(4.0, 0.5 * (len(hits) - 5)))
     return False
+
+
+def reserve_download(cid: str, what: str = "") -> bool:
+    """v2.5.3: Indirme hakkini kilit altinda kontrol edip ayirir (eskiden /raw sayilmiyor, eszamanli istekler max_dl'i asiyordu)."""
+    with _LOCK:
+        items = _load()
+        it = items.get(cid)
+        if not it:
+            return False
+        mx = int(it.get("max_dl") or 0)
+        if mx and int(it.get("downloads", 0)) >= mx:
+            return False
+        it["downloads"] = int(it.get("downloads", 0)) + 1
+        _save(items)
+    _notify("dl", it, what)
+    return True
 
 
 def count_download(cid: str, what: str = "") -> None:
@@ -267,12 +287,13 @@ def page(cid: str, it: dict[str, Any], host: str = "") -> str:
     kind = "image" if mime.startswith("image/") else "video" if mime.startswith("video/") else "audio" if mime.startswith("audio/") else ""
     name = html.escape(it["name"])
     left = max(0, int(it["expires"] - time.time()))
-    note = html.escape(it.get("note") or "")
+    locked = bool(it.get("pw"))   # v2.5.3: sifreli kapsulde not ve yorumlar sifre girilmeden gosterilmez
+    note = "" if locked else html.escape(it.get("note") or "")
     files = it.get("files") or []
     multi = len(files) > 1
     if multi:
         kind = ""
-    cms = "".join(f'<div class="cmi"><b>{html.escape(c["name"])}</b>{html.escape(c["text"])}</div>' for c in (it.get("comments") or [])[-50:])
+    cms = "" if locked else "".join(f'<div class="cmi"><b>{html.escape(c["name"])}</b>{html.escape(c["text"])}</div>' for c in (it.get("comments") or [])[-50:])
     return f"""<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{name} · Kami Kapsül</title><meta name="robots" content="noindex">
 <style>
@@ -368,7 +389,11 @@ def serve(h: Any, rest: list[str], query: dict[str, list[str]], host: str = "") 
     if sub == "check":
         return h._send(b'{"ok":true}', "application/json")
     files = it.get("files") or [{"path": it["path"], "name": it["name"]}]
+    rng = str(h.headers.get("Range") or "").replace(" ", "")
+    first_chunk = (not rng) or rng.startswith("bytes=0-")   # devam/arama istekleri (Range) ayrica sayilmaz
     if sub == "zip":
+        if not reserve_download(cid, it["name"]):
+            return h._send(b'{"ok":false,"error":"limit"}', "application/json", code=410)
         return _send_zip(h, files, it["name"], cid)
     if sub not in ("raw", "dl"):
         return h._err(404)
@@ -379,9 +404,9 @@ def serve(h: Any, rest: list[str], query: dict[str, list[str]], host: str = "") 
     if not 0 <= idx < len(files):
         return h._err(404)
     f = files[idx]
+    if first_chunk and not reserve_download(cid, f["name"]):
+        return h._send(b'{"ok":false,"error":"limit"}', "application/json", code=410)
     _send_file(h, Path(f["path"]), f["name"], attach=(sub == "dl"))
-    if sub == "dl":
-        count_download(cid, f["name"])
 
 
 def serve_post(h: Any, rest: list[str], query: dict[str, list[str]], body: dict[str, Any]) -> None:
@@ -449,8 +474,7 @@ def _send_zip(h: Any, files: list[dict[str, Any]], name: str, cid: str) -> None:
                         chunk = src.read(1 << 20)
                         if not chunk:
                             break
-                        dst.write(chunk)
-        count_download(cid, "zip")
+                        dst.write(chunk)   # v2.5.3: sayim reserve_download ile istek basinda yapildi
     except (ConnectionError, OSError):
         pass
 

@@ -249,8 +249,11 @@ class Recorder:
             args = [self._ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", *_video_args(self._fps(), mode),
                     "-f", "segment", "-segment_time", str(SEG), "-segment_wrap", str(wrap), "-reset_timestamps", "1",
                     "-segment_format", "mpegts", str(self.work / "seg_%03d.ts")]
-            self.buf = attach(subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            # v2.5.3: stderr hic okunmuyordu; boru dolunca ffmpeg donup tampon "canli ama donmus" kaliyordu -> dosyaya
+            errf = open(self.work / "ffmpeg_err.log", "ab")
+            self.buf = attach(subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errf,
                                         creationflags=NOWIN))
+            errf.close()
             return True
 
     def watch(self) -> None:
@@ -343,7 +346,7 @@ class Recorder:
                 v_args = _video_args(fps, mode)
             p = attach(subprocess.Popen([self._ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
                                   *v_args, str(job / "v.mkv")],
-                                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  creationflags=NOWIN))
             t0 = time.time() + 0.15      # ddagrab acilis gecikmesi (yaklasik)
             sinks = {}

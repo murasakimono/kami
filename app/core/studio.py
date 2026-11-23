@@ -693,7 +693,7 @@ class Studio:
         qid = "q" + str(int(time.time() * 1000)) + "_" + str(len(getattr(self, "_render_q", [])) + 1)
         item = {"id": qid, "name": project.get("name") or Path(str(out)).stem, "out": out,
                 "state": "queued", "p": 0.0, "error": "", "project": project, "opts": dict(opts or {}),
-                "cancel": threading.Event()}
+                "cancel": threading.Event(), "started": time.time()}   # v2.5.3: "started" yoktu -> her is KeyError ile "hata"
         with self._lock:
             q = getattr(self, "_render_q", None)
             if q is None:
@@ -721,6 +721,7 @@ class Studio:
                     nxt["state"] = "cancelled"
                     continue
                 nxt["state"] = "running"
+                nxt["started"] = time.time()
             self._export(nxt, nxt["project"], nxt["out"], nxt["opts"])
 
     def queue_list(self) -> dict[str, Any]:
@@ -765,6 +766,9 @@ class Studio:
     def _export(self, job: dict, project: dict, out: str, opts: dict) -> None:
         import tempfile
         work = Path(tempfile.mkdtemp(prefix="kstudio_"))
+        # v2.5.3: once gecici dosyaya yazilir, basarida yerine konur; iptal/hata ayni adli eski dosyayi bozmaz
+        final_out = out
+        out = str(Path(out).with_name(Path(out).stem + ".kami-part" + Path(out).suffix))
         try:
             enc = self.encoder() if opts.get("hw", True) else "libx264"
             for attempt in (enc, "libx264") if enc != "libx264" else ("libx264",):
@@ -795,6 +799,7 @@ class Studio:
                         pass
                     return
                 if rc == 0:
+                    os.replace(out, final_out)
                     job.update(state="done", p=1.0, secs=round(time.time() - job["started"], 1), encoder=attempt)
                     return
                 tail = "".join(err[-12:])
@@ -806,6 +811,11 @@ class Studio:
             job.update(state="error", error=str(exc)[:300])
         finally:
             shutil.rmtree(work, ignore_errors=True)
+            try:
+                if os.path.exists(out) and out != final_out:
+                    os.remove(out)   # yarim kalan .kami-part
+            except OSError:
+                pass
 
     def frame(self, project: dict[str, Any], t: float, out: str) -> str:
         """Tek kare (kapak / MCP'nin goz atmasi icin): ayni grafikle t aninda bir PNG."""
@@ -1103,6 +1113,12 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
             ch.append(f"zoompan=z={_q(f'max(1,{z})')}:x={_q(f'max(0,min(iw-iw/zoom,({cxe})*iw-iw/zoom/2))')}:"
                       f"y={_q(f'max(0,min(ih-ih/zoom,({cye})*ih-ih/zoom/2))')}:d=1:s={W}x{H}:fps={FPS},format=rgba")
         fxat = c.get("fxAt") or {}
+        # v2.5.3: alfa iceren klipte (contain/PiP, yesil perde, yarim kirpma) cogu efekt alfa desteklemedigi icin ffmpeg
+        # yuv420p'ye cevirip seffaf alani SIYAH yapiyordu (74/243 efekt). Alfa ayrilir, efekt RGB'ye uygulanir, geri eklenir.
+        fx_ids = [f_ for f_ in (c.get("fx") or []) if FX.get(f_)]
+        alpha_keep = bool(fx_ids) and (fit == "contain" or bool(key.get("on")) or c.get("crop") in ("half-w", "half-h"))
+        if alpha_keep:
+            ch.append(f"split[c{k}aS][c{k}rS];[c{k}aS]alphaextract,scale={W}:{H}[c{k}AL];[c{k}rS]format=rgb24")
         for fid in c.get("fx") or []:
             fx = FX.get(fid)
             if not fx:
@@ -1119,6 +1135,8 @@ def build_export(project: dict, out: str, work: Path, enc: str, opts: dict) -> t
                           f"[{tg}A][{tg}C]overlay=enable='between(t,{a0 - cut0:.4f},{a1 - cut0:.4f})'")
             else:
                 ch.append(_fx_chain(fx["ff"], W, H, 0.0, f"c{k}{fid}"))
+        if alpha_keep:
+            ch.append(f"scale={W}:{H},format=rgb24[c{k}FX];[c{k}FX][c{k}AL]alphamerge,format=rgba")
         mf = studio_fx_adv.mask_filter(c.get("mask"), W, H)
         if mf:
             ch.append(mf)

@@ -17,6 +17,7 @@ from app.core.plugin_loader import load_plugins
 from app.core.queue_store import DownloadStore
 from app.core.settings import Settings
 from app.core import oplog, resume_router
+from app.core.lifecycle import STOP as _lc_stop
 from app.engines.aria2_engine import Aria2Engine
 from app.ui.api import Api
 
@@ -178,6 +179,10 @@ def _already_running_mutex() -> bool:
 
 
 def main() -> int:
+    if "--selfcheck-deps" in sys.argv[1:]:   # v2.5.3 build.py: paketlenmis exe'de bagimliliklar yukleniyor mu (en basta:
+        from app.core import deps_check      # veri klasoru/log/tek-ornek kilidine dokunmadan)
+        _i = sys.argv.index("--selfcheck-deps") + 1
+        return deps_check.run_cli(sys.argv[_i] if _i < len(sys.argv) else "deps_check.json")
     _set_app_id("Murasakimono.Kami.App")
     # Kami Oda / Player: ses kullanici tiklamasi beklemeden baslasin (oda otomatik girince AudioContext askida kaliyordu)
     # Kucultup/tepsiden geri acinca beyaz-siyah ekran: Chromium'un Windows pencere ortusme hesabi (native occlusion)
@@ -526,7 +531,9 @@ def main() -> int:
                 api._player_win = make_player_window(prewarm=True)
         except Exception:
             log.debug("Player on isitma", exc_info=True)
-    threading.Timer(8.0, _prewarm_player).start()
+    _t_pw = threading.Timer(8.0, _prewarm_player)
+    _t_pw.daemon = True   # v2.5.3: erken kapatmada sureci tutmasin
+    _t_pw.start()
     api._front_player = player_front.request
 
     def _startup_selftest() -> None:
@@ -547,7 +554,9 @@ def main() -> int:
             )
         except Exception:
             log.debug("Acilis kendini sinamasi", exc_info=True)
-    threading.Timer(15.0, _startup_selftest).start()
+    _t_st = threading.Timer(15.0, lambda: None if _lc_stop.is_set() else _startup_selftest())
+    _t_st.daemon = True   # v2.5.3: kapanmis GUI'de 7 pencere acmaya calismasin
+    _t_st.start()
 
     # ---- Kami Picture: fotograf goruntuleyici + Kami Lens (ayri pencere, ayni api)
     picture_front = WindowFront("Kami Picture")
@@ -869,6 +878,8 @@ def main() -> int:
             if shutdown_done["v"]:
                 return
             shutdown_done["v"] = True
+        from app.core.lifecycle import STOP as _STOP
+        _STOP.set()   # v2.5.3: once tum arka plan donguleri dursun, sonra servisler/veritabani kapansin
         log.info("Kami kapaniyor")
         for key in ("shield", "song_hotkey", "lens_hotkey", "rec_replay_key", "rec_record_key", "scrobbler_hotkey", "companion_hotkey", "hotkey"):
             obj = cleanup_refs.get(key)
@@ -895,7 +906,7 @@ def main() -> int:
             _safe_stop("api._ai", api._ai.stop)
         if getattr(api, "recorder", None) is not None:
             _safe_stop("api.recorder", api.recorder.shutdown)
-        for key in ("scheduler", "shutdown", "follow", "phone"):
+        for key in ("scheduler", "shutdown", "follow", "phone", "queues", "rss"):
             obj = cleanup_refs.get(key)
             if obj is not None:
                 _safe_stop(key, obj.stop)
@@ -938,7 +949,8 @@ def main() -> int:
         if not quitting["v"] and settings.get("close_to_tray") and tray.running:
             winwin.hide(front._hwnd())   # arayuz is parcacigindayiz; Async: beklemez
             return False                 # kapatmayi iptal et
-        quitting["v"] = True
+        # v2.5.3: burada quitting=True YAPILMAZ: aksi halde on_main_closed -> quit_app hic calismiyor, keep_warm ile
+        # gizli tutulan Kamify/Player pencereleri sureci (aria2, kopru, muzik) gorunmez sekilde ayakta tutuyordu.
         return None
 
     def on_main_closed():
@@ -1195,8 +1207,8 @@ def main() -> int:
     api._island_factory = _make_island_window
 
     def _music_island_loop() -> None:
-        while True:
-            time.sleep(2.0)
+        from app.core.lifecycle import STOP as _STOP
+        while not _STOP.wait(2.0):
             try:
                 api.music_island_tick()
             except Exception:
@@ -1205,12 +1217,12 @@ def main() -> int:
 
     def _caption_loop() -> None:   # yeni acilan her pencerenin gri baslik cubugunu uygulama rengine boyar
         from app.core import winwin as _ww
-        while True:
+        from app.core.lifecycle import STOP as _STOP
+        while not _STOP.wait(0.4):
             try:
                 _ww.tint_own_windows()
             except Exception:
                 log.debug("baslik rengi", exc_info=True)
-            time.sleep(0.4)
     if sys.platform == "win32":
         threading.Thread(target=_caption_loop, name="kami-caption", daemon=True).start()
     if settings.get("mini_island"):
@@ -1350,6 +1362,7 @@ def main() -> int:
             settings.set("shutdown_when_done", True)   # 60 sn iptal edilebilir geri sayim (ShutdownWatcher)
     queues = QueueRunner(manager, on_done=_queue_done)
     queues.start()
+    cleanup_refs["queues"] = queues
     api._queues = queues
     # v1.29 RSS otomatik indirme (torrent akislari / podcast)
     from app.core.rss import RssService
@@ -1361,17 +1374,21 @@ def main() -> int:
         return r.content[:8 * 1024 * 1024]
     rss = RssService(_rss_fetch, api._rss_add, notify=lambda t, msg: tray.notify(t, msg) if tray.running else None)
     rss.start()
+    cleanup_refs["rss"] = rss
     api._rss = rss
 
     def _reader_series_loop() -> None:   # v1.30 Reader yeni bolum takibi: 30 dk'da bir (ilk yoklama 2 dk sonra)
         import time as _t
-        _t.sleep(120)
+        from app.core.lifecycle import STOP as _STOP
+        if _STOP.wait(120):
+            return
         while True:
             try:
                 api.reader_series_check()
             except Exception:
                 log.exception("Reader seri yoklamasi")
-            _t.sleep(1800)
+            if _STOP.wait(1800):
+                return
     threading.Thread(target=_reader_series_loop, name="kami-reader-series", daemon=True).start()
     watcher = Watcher(manager, media_post.set_extra,
                       player=lambda p: _watch_play(p))
@@ -1454,6 +1471,38 @@ def main() -> int:
     events.on("ui.warn", tray_warn)
     post.start()
 
+    # v2.5.3: Kami Relay (Cloudflare Worker) - telefondan gonderilen linkleri 20 sn'de bir cek, biten indirmeleri bildir.
+    def _relay_cfg() -> tuple[str, str]:
+        return str(settings.get("oracle_relay_url") or "").strip(), api._oracle_secret()
+
+    def _relay_loop() -> None:
+        from app.core.lifecycle import STOP as _STOP
+        fails = 0
+        while not _STOP.wait(20.0 if fails < 3 else 120.0):
+            url, sec = _relay_cfg()
+            if not url or not sec:
+                continue
+            try:
+                r = api.oracle_relay_pull()
+                fails = 0 if r.get("ok") else fails + 1
+                if r.get("items"):
+                    tray.notify("Kami Relay", f"Telefondan {len(r['items'])} link geldi, indiriliyor")
+            except Exception:
+                fails += 1
+                log.debug("Relay cekme", exc_info=True)
+    threading.Thread(target=_relay_loop, name="kami-relay", daemon=True).start()
+
+    def _relay_done(download=None, **_kw) -> None:
+        url, sec = _relay_cfg()
+        if not url or not sec or download is None:
+            return
+        from app.core import oracle_relay
+        payload = {"title": str(getattr(download, "filename", "") or "")[:200],
+                   "size": int(getattr(download, "size", 0) or 0)}
+        threading.Thread(target=oracle_relay.relay_push_event, args=(url, sec, "download.completed", payload),
+                         name="kami-relay-push", daemon=True).start()
+    events.on("download.completed", _relay_done)
+
     def update_loop() -> None:
         import time as _t
         _t.sleep(30)
@@ -1475,7 +1524,9 @@ def main() -> int:
                 backup.maybe_auto_backup(settings, local_storage=ls_data)
             except Exception:
                 log.exception("Otomatik yedek")
-            _t.sleep(3600)
+            from app.core.lifecycle import STOP as _STOP
+            if _STOP.wait(3600):
+                return
 
     threading.Thread(target=update_loop, name="kami-update", daemon=True).start()
 

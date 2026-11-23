@@ -274,14 +274,19 @@ class DebridService:
     def status(self) -> dict[str, Any]:
         if not self.has_token():
             return {"has_token": False}
+        err = getattr(self, "_user_err", None)   # v2.5.3: hata da 60 sn onbellekli (cevrimdisiyken her yoklama aga cikmasin)
+        if err and time.time() - err[0] < 60:
+            return {"has_token": True, "ok": False, "error": err[1]}
         try:
             if not self._user_cache or time.time() - self._user_cache[0] > 300:
                 self._user_cache = (time.time(), self.client.user())
+            self._user_err = None
             u = self._user_cache[1]
             return {"has_token": True, "ok": True, "username": u.get("username", ""),
                     "type": u.get("type", ""), "expiration": u.get("expiration", ""),
                     "premium_days": int((u.get("premium") or 0) // 86400)}
         except DebridError as exc:
+            self._user_err = (time.time(), exc.code)
             return {"has_token": True, "ok": False, "error": exc.code}
 
     # ---- hoster destegi

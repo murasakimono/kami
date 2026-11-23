@@ -25,7 +25,9 @@ Eklenti register() icinde ctx uzerinden su parcalari kaydeder:
 from __future__ import annotations
 
 import logging
+import os
 import re
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -77,6 +79,32 @@ class Engine(ABC):
 
     def shutdown(self) -> None:  # pragma: no cover - istege bagli
         pass
+
+
+# v2.5.3: Arka planda dosyayi isleyen son-islemciler (or. MEGA sifre cozme) dosyayi "mesgul" isaretler; PostComplete
+# (butunluk/ffprobe/sha256/Defender) bitene kadar bekler. Eskiden sifreli dosya bozuk sanilip silinebiliyordu.
+_BUSY: dict[str, "threading.Event"] = {}
+_BUSY_LOCK = threading.Lock()
+
+
+def mark_busy(path: str) -> "threading.Event":
+    ev = threading.Event()
+    with _BUSY_LOCK:
+        _BUSY[os.path.normcase(os.path.abspath(path))] = ev
+    return ev
+
+
+def mark_done(path: str) -> None:
+    with _BUSY_LOCK:
+        ev = _BUSY.pop(os.path.normcase(os.path.abspath(path)), None)
+    if ev is not None:
+        ev.set()
+
+
+def wait_not_busy(path: str, timeout: float = 3600.0) -> bool:
+    with _BUSY_LOCK:
+        ev = _BUSY.get(os.path.normcase(os.path.abspath(path or "")))
+    return True if ev is None else ev.wait(timeout)
 
 
 class PostProcessor(ABC):
