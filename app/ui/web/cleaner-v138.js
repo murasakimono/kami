@@ -316,9 +316,11 @@
 
   async function renderTreemapTab(stage) {
     const root = (document.getElementById("root")?.value || "").trim();
-    stage.innerHTML = `<div class="cl-crumb" id="clCrumb"></div><div class="cl-tree-wrap"><canvas id="clTreeCanvas"></canvas><div class="cl-tip" id="clTip" hidden></div></div><small style="color:#8A829E">İpucu: Tıklayıp <b>Space</b> ile önizle (QuickLook) · Klasöre çift tıkla: içine gir</small>`;
+    stage.innerHTML = `<div class="cl-crumb" id="clCrumb"></div><div class="cl-tree-wrap"><canvas id="clTreeCanvas"></canvas><div class="cl-tip" id="clTip" hidden></div><div id="clTreeMsg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8A829E;font-size:13px;pointer-events:none">Klasör taranıyor…</div></div><small style="color:#8A829E">İpucu: Tıklayıp <b>Space</b> ile önizle (QuickLook) · Klasöre çift tıkla: içine gir</small>`;
     const r = await api()?.cleaner_treemap?.(root).catch(() => null);
-    if (!r?.ok) { stage.innerHTML += `<p style="color:#F87171">Tarama başarısız.</p>`; return; }
+    const msg = document.getElementById("clTreeMsg");
+    if (!r?.ok) { if (msg) { msg.textContent = "Tarama başarısız."; msg.style.color = "#F87171"; } return; }
+    if (msg) { if ((r.items || []).length) msg.remove(); else msg.textContent = "Bu klasörde gösterilecek dosya yok."; }
     CL.lastTree = r;
     renderCrumbs(r.root);
     drawTreemap(r.items || []);

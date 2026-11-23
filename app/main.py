@@ -421,6 +421,7 @@ def main() -> int:
     events.on("ui.attention", lambda reason: show_window())
 
     api = Api(manager, engine, registry, lambda: bridge.port)
+    api.heal_speed_profile()   # onceki oturum Oda/oyunda kapandiysa hiz siniri takili kalmasin
     try:
         from app.core.games import TRACKER as _GAME_TRACKER
         _GAME_TRACKER.on_active_change = api._on_game_active_change

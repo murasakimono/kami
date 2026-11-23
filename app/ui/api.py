@@ -95,7 +95,7 @@ class Api(StudioMixin, EnhanceMixin):
         self._island_factory = None
         self._warns: list[dict[str, Any]] = []
         self._probe_rules: dict[str, dict[str, Any]] = {}   # url -> eslesen kural (secim penceresi icin)
-        self._manual_speed_profile = str(manager.settings.get("speed_profile") or "full")
+        self._manual_speed_profile = self._initial_manual_speed_profile(manager.settings)
         self._auto_speed_reason = ""
         self._island_drop_files: list[str] = []
         self._island_sp_t = 0.0
@@ -4916,6 +4916,13 @@ class Api(StudioMixin, EnhanceMixin):
 
     def music_island_tick(self) -> None:
         """v1.38.0: Kamify gizliyken arka planda Spotify/librespot durumunu tazeler, Mini-Ada'yi ve gorev cubugu ThumbButtons'u senkronlar."""
+        # Oda penceresi "left" gondermeden kapandiysa (cokme, gorev yoneticisi) Oda hiz profili takili kalmasin
+        if getattr(self, "_auto_speed_reason", "") == "room":
+            import time as _t
+            ri = getattr(self, "_room_island", None)
+            if not isinstance(ri, dict) or _t.time() - float(ri.get("t", 0) or 0) > 15:
+                self._room_island = None
+                self.speed_profile_set(getattr(self, "_manual_speed_profile", "full"), auto=True, reason="")
         import time as _t
         from app.core import music_hub, winwin
         now_t = _t.monotonic()
@@ -5736,12 +5743,34 @@ class Api(StudioMixin, EnhanceMixin):
             "profiles": profs,
         }
 
+    @staticmethod
+    def _initial_manual_speed_profile(settings: Any) -> str:
+        """Acilista elle secilen profil. Eski surumler Oda/oyun otomatik profilini 'speed_profile'a kalici yaziyordu;
+        Kami odadayken kapanirsa bir sonraki acilista hiz 8 MB/s'ye takili kaliyordu (23.11 canli bulgu)."""
+        man = str(settings.get("speed_profile_manual") or "")
+        if man not in ("full", "game", "room", "night"):
+            cur = str(settings.get("speed_profile") or "full")
+            man = cur if cur in ("full", "night") else "full"   # room/game asla elle kalici sayilmaz (eski kayit)
+        return man
+
+    def heal_speed_profile(self) -> None:
+        """Acilista: etkin profil elle secilenden farkliysa (onceki oturum Oda/oyunda kapandi) elle secilene don."""
+        try:
+            if str(self._manager.settings.get("speed_profile") or "full") != self._manual_speed_profile:
+                self.speed_profile_set(self._manual_speed_profile, auto=False)
+        except Exception:
+            pass
+
     def speed_profile_set(self, name: str, auto: bool = False, reason: str = "") -> dict[str, Any]:
         profs = self._manager.settings.get("speed_profiles") or {"full": 0, "stream": 15000, "game": 4000, "room": 8000, "night": 0}
         key = name if name in profs else "full"
         if not auto:
             self._manual_speed_profile = key
             self._auto_speed_reason = ""
+            try:
+                self._manager.settings.set("speed_profile_manual", key)
+            except Exception:
+                pass
         else:
             self._auto_speed_reason = reason
         try:

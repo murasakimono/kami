@@ -190,6 +190,8 @@ body.pl-open #sunak { visibility: hidden; }
 #player .pl-empty { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; text-align: center;
   background: radial-gradient(ellipse 50% 50% at 50% 45%, rgba(109, 40, 217, .16), transparent 70%); }
 #player .pl-empty[hidden] { display: none; }
+/* Kutuphane cekmecesi acikken bos ekran yazisi cekmecenin altinda kesiliyordu: kalan alanda ortala */
+body:has(#plDrawer:not([hidden])) #player .pl-empty { right: min(420px, 92vw); padding: 0 16px; }
 #player .pl-empty div { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 #player .pl-empty b { font: 400 54px "Damnation", serif; background: linear-gradient(180deg, #fff 0%, #E4DBFF 30%, #7C4DFF 52%, #2A1650 58%, #D9CCFF 74%, #9D7BFF 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 10px rgba(124, 77, 255, .5)); }

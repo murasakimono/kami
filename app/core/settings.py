@@ -55,7 +55,8 @@ DEFAULTS: dict[str, Any] = {
     "hotkey_enabled": True,
     "hotkey": "ctrl+alt+k",        # genel kisayol: Kami'yi one getir + panodaki linki sor
     "speed_limit_preset_kib": 2048,# arac cubugundaki "hiz siniri" dugmesinin degeri
-    "speed_profile": "full",       # baglam hiz profili: full | game | room | night
+    "speed_profile": "full",       # baglam hiz profili: full | game | room | night (o an etkin olan)
+    "speed_profile_manual": "full",# kullanicinin ELLE sectigi profil; Oda/oyun otomatik profili bunu kalici bozmaz
     "speed_profiles": {"full": 0, "game": 12288, "room": 8192, "night": 4096},
     "pano_shelf_record": True,     # v1.31.2: kopyalanan metin/linkler Pano rafina (parola yoneticisi kopyalari haric)
     "pano_exclude_apps": ["keepass", "bitwarden", "1password", "enpass", "lastpass", "dashlane"],
@@ -321,8 +322,8 @@ def _coerce(key: str, value: Any) -> Any:
         if sv not in ("curl3d", "slide", "off"):
             raise ValueError("reader_page_anim")
         return sv
-    if key == "speed_profile" and str(value) not in ("full", "game", "room", "night"):
-        raise ValueError("speed_profile")
+    if key in ("speed_profile", "speed_profile_manual") and str(value) not in ("full", "game", "room", "night"):
+        raise ValueError(key)
     if isinstance(default, list):
         if isinstance(value, str):
             value = [x.strip() for x in value.replace("\n", ",").split(",")]

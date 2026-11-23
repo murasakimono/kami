@@ -1155,6 +1155,11 @@ STATE_HOOKS.push(skState);
   $("#skTabs")?.addEventListener("mouseout", (e) => {
     if (modPeek && !e.relatedTarget?.closest?.(".sk-tab[data-mod]")) modPeek.hidden = true;
   });
+  // Sekmeye tiklayinca modul penceresi farenin ustune acilir, mouseout hic gelmez -> baloncuk asili kaliyordu
+  const hidePeek = () => { if (modPeek) modPeek.hidden = true; };
+  $("#skTabs")?.addEventListener("click", hidePeek, true);
+  window.addEventListener("blur", hidePeek);
+  document.addEventListener("mouseleave", hidePeek);
 
   window.skOpenCmdPalette = () => {
     let pal = $("#skCmdPal");
@@ -1171,7 +1176,7 @@ STATE_HOOKS.push(skState);
       { label: "Kami İyileştirici", hint: "RTX 4050 GPU video büyütme & 2 sn split önizleme", run: () => api?.enhance_open?.() },
       { label: "Kami Müzik Etiket", hint: "1-tık Hi-Res kapak & toplu ID3", run: () => api?.music_tag_open?.() },
       { label: "Belleği Temizle (RAM)", hint: "Boşta WebView2 belleğini anında düşür", run: () => $("#skRamPill")?.click() },
-      { label: "Oracle Relay Senkron", hint: "iPhone mobil veri kuyruğunu çek", run: () => api?.oracle_relay_pull?.() },
+      { label: "Kami Relay: kuyruğu çek", hint: "Telefondan gönderilen linkleri şimdi al", run: () => api?.oracle_relay_pull?.() },
     ];
     const inp = pal.querySelector("#skCmdIn"), listEl = pal.querySelector("#skCmdList");
     let selIdx = 0;

@@ -157,8 +157,8 @@ async function historyRefresh() {
   const rows = await api.history_search($("#historyQ").value || "");
   $("#historyEmpty").hidden = rows.length > 0;
   $("#historyList").innerHTML = rows.map((h, i) => rdRow(h.filename || h.url,
-    `<span>${new Date(h.finished * 1000).toLocaleString(state.lang)}</span>${h.size ? `<span>${fmtBytes(h.size)}</span>` : ""}` +
-    (h.exists ? "" : `<span class="st-error">${T("hs_gone")}</span>`),
+    `<span>${new Date(h.finished * 1000).toLocaleString(state.lang)}</span>${h.size ? ` · <span>${fmtBytes(h.size)}</span>` : ""}` +
+    (h.exists ? "" : ` · <span class="st-error">${T("hs_gone")}</span>`),
     (h.exists ? `<button type="button" class="btn ghost" data-hs="show" data-i="${i}">${T("hs_show")}</button>` : "") +
     `<button type="button" class="btn ghost" data-hs="again" data-i="${i}">${T("hs_again")}</button>`)).join("");
   historyRefresh.rows = rows;
