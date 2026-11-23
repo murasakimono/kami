@@ -313,6 +313,9 @@ function onPeerGone(pid) {
   dropRx(pid);
 }
 // iPhone: Safari arka plana gecince iOS mikrofonu keser (PiP'de dinleme surer). Odadakiler bunu gorsun;
+// Tarayicidan katilanlar icin emniyet: odadayken sayfa yanlislikla baska yere giderse once sor (Kami penceresinde gerekmez).
+window.addEventListener("beforeunload", (e) => { if (!window.pywebview && S.core?.alive) { e.preventDefault(); e.returnValue = ""; } });
+
 // geri gelince mikrofon kendiliginden toparlansin.
 const IOS = /iPhone|iPad/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 document.addEventListener("visibilitychange", () => {
@@ -835,14 +838,42 @@ function chatEl(who, me) {
   $("msgs").appendChild(el); $("msgs").scrollTop = $("msgs").scrollHeight;
   return el;
 }
+// Sohbet dosyalari ASLA sayfadan uzaklastirmaz: eskiden <a target=_blank download> vardi; iPhone/WebView'da tiklayinca
+// oda sayfasi blob adresine gidiyor, baglanti kopuyor ve kisi odadan dusuyordu (23.11 canli bulgu: Ilayda foto tikladi -> atildi).
+async function saveBlob(blob, name) {
+  try {
+    const f = new File([blob], name, { type: blob.type || "application/octet-stream" });
+    if (IOS && navigator.canShare?.({ files: [f] })) { await navigator.share({ files: [f] }); return; }
+  } catch (e) { if (e?.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.rel = "noopener";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+function imgViewer(url, name, blob) {
+  document.querySelector(".rm-lb")?.remove();
+  const lb = document.createElement("div"); lb.className = "rm-lb";
+  lb.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(5,3,10,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;animation:rmLb .18s ease-out";
+  lb.innerHTML = `<img src="${url}" alt="${esc(name)}" style="max-width:100%;max-height:calc(100% - 70px);object-fit:contain;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6)"><div style="display:flex;gap:8px"><button type="button" data-a="save" style="padding:9px 16px;border:0;border-radius:9px;background:#7C3AED;color:#fff;font-weight:700;cursor:pointer">Kaydet</button><button type="button" data-a="x" style="padding:9px 16px;border:1px solid rgba(255,255,255,.18);border-radius:9px;background:transparent;color:#ddd;cursor:pointer">Kapat</button></div>`;
+  lb.onclick = (e) => {
+    const a = e.target.closest?.("[data-a]")?.dataset.a;
+    if (a === "save") { e.stopPropagation(); saveBlob(blob, name); return; }
+    if (a === "x" || e.target === lb) lb.remove();
+  };
+  document.addEventListener("keydown", function k(e) { if (e.key === "Escape") { lb.remove(); document.removeEventListener("keydown", k); } });
+  document.body.appendChild(lb);
+}
+if (!document.getElementById("rmLbCss")) { const st = document.createElement("style"); st.id = "rmLbCss"; st.textContent = "@keyframes rmLb{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}"; document.head.appendChild(st); }
 function fileShow(el, name, mime, blob, size) {
   const url = URL.createObjectURL(blob), body = el.querySelector(".fbody");
+  const dl = `<button type="button" class="fdl" data-save>⬇ ${esc(name)} <small>${fmtB(size)}</small></button>`;
   if (/^image\//.test(mime)) {
-    body.innerHTML = `<a href="${url}" download="${esc(name)}" target="_blank"><img src="${url}" alt="${esc(name)}"></a>`;
-    body.querySelector("img").onload = () => ($("msgs").scrollTop = $("msgs").scrollHeight);
-  } else if (/^video\//.test(mime)) body.innerHTML = `<video src="${url}" controls playsinline></video><a href="${url}" download="${esc(name)}">${esc(name)}</a>`;
-  else if (/^audio\//.test(mime)) body.innerHTML = `<audio src="${url}" controls></audio><a href="${url}" download="${esc(name)}">${esc(name)}</a>`;
-  else body.innerHTML = `<a class="fdl" href="${url}" download="${esc(name)}">⬇ ${esc(name)} <small>${fmtB(size)}</small></a>`;
+    body.innerHTML = `<img src="${url}" alt="${esc(name)}" style="cursor:zoom-in">`;
+    const im = body.querySelector("img");
+    im.onload = () => ($("msgs").scrollTop = $("msgs").scrollHeight);
+    im.onclick = (e) => { e.preventDefault(); imgViewer(url, name, blob); };
+  } else if (/^video\//.test(mime)) body.innerHTML = `<video src="${url}" controls playsinline></video>${dl}`;
+  else if (/^audio\//.test(mime)) body.innerHTML = `<audio src="${url}" controls></audio>${dl}`;
+  else body.innerHTML = dl;
+  body.querySelector("[data-save]")?.addEventListener("click", (e) => { e.preventDefault(); saveBlob(blob, name); });
 }
 function fileProg(el, name, got, size) {
   el.querySelector(".fbody").innerHTML = `<span class="fprog">${esc(name)} <small>${fmtB(got)} / ${fmtB(size)}</small><i style="width:${size ? Math.round(got / size * 100) : 0}%"></i></span>`;

@@ -289,3 +289,4 @@ body.rm-mini .rm-stage:not(.hasvid) .tk { position: static !important; transform
 body.rm-mini .rm-stage:not(.hasvid) .tk-face { width: 32px; height: 32px; font-size: 14px; }
 body.rm-mini .rm-stage:not(.hasvid) .tk small, body.rm-mini .rm-stage:not(.hasvid) .tk input { display: none; }
 body.rm-mini .rm-stage:not(.hasvid) .rm-circle { display: flex; gap: 8px; padding: 38px 10px 6px; justify-content: flex-start; overflow-x: auto; }
+.msg.file button.fdl { color: inherit; font: inherit; cursor: pointer; }
