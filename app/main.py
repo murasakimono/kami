@@ -127,6 +127,29 @@ def _setup_logging() -> None:
 _FAULT_FILE = None
 
 
+def _fit_win(w: int, h: int) -> tuple[int, int]:
+    """v2.5.5: varsayilan pencere boyunu ekranin kullanilabilir alanina sigdir (gorev cubugu haric, mantiksal px).
+    Laptop 1080p @ %125'te kullanilabilir yukseklik ~820 px: 860-960 px'lik pencerelerin alt kismi (Beat FX zinciri,
+    Studio teslim cubugu) ekran disinda kaliyordu."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        r = wintypes.RECT()
+        if not ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0):   # SPI_GETWORKAREA
+            return w, h
+        try:
+            dpi = ctypes.windll.user32.GetDpiForSystem() or 96
+        except Exception:
+            dpi = 96
+        s = dpi / 96.0
+        aw, ah = (r.right - r.left) / s, (r.bottom - r.top) / s
+        if aw < 200 or ah < 200:
+            return w, h
+        return int(min(w, aw - 24)), int(min(h, ah - 24))
+    except Exception:
+        return w, h
+
+
 def _magnet_arg(argv: list[str]) -> str:
     """Windows magnet: isleyicisi -> kami_open.pyw --magnet "<link>"."""
     for i, a in enumerate(argv):
@@ -432,7 +455,7 @@ def main() -> int:
         "Kami",
         url=str(paths.WEB_DIR / "index.html"),
         js_api=api,
-        width=1445, height=850, min_size=(820, 520),
+        width=_fit_win(1445, 850)[0], height=_fit_win(1445, 850)[1], min_size=(820, 520),
         background_color="#0D0A12" if settings.get("theme") == "dark" else "#F5F3F9",
         text_select=False,
         minimized=start_hidden,
@@ -564,7 +587,7 @@ def main() -> int:
 
     def make_picture_window(selftest: bool = False, js_api: Any = None):
         w = webview.create_window("Kami Picture [SelfTest]" if selftest else "Kami Picture", url=str(paths.WEB_DIR / "picture.html"), js_api=js_api or api,
-                                  width=1280, height=820, min_size=(520, 360), background_color="#050408",
+                                  width=_fit_win(1280, 820)[0], height=_fit_win(1280, 820)[1], min_size=(520, 360), background_color="#050408",
                                   text_select=False, hidden=selftest)
 
         def closed() -> None:
@@ -593,7 +616,7 @@ def main() -> int:
             fr = WindowFront(t)
             def _make(selftest: bool = False, js_api: Any = None):
                 w = webview.create_window(f"{t} [SelfTest]" if selftest else t, url=str(paths.WEB_DIR / f), js_api=js_api or api,
-                                          width=ww, height=hh, min_size=(760, 520), background_color="#08070C",
+                                          width=_fit_win(ww, hh)[0], height=_fit_win(ww, hh)[1], min_size=(760, 520), background_color="#08070C",
                                           text_select=True, hidden=selftest)
                 def _on_closed():
                     if getattr(api, f"_{k}_win", None) is w:
@@ -624,7 +647,7 @@ def main() -> int:
 
     def make_reader_window(selftest: bool = False, js_api: Any = None):
         w = webview.create_window("Kami Reader [SelfTest]" if selftest else "Kami Reader", url=str(paths.WEB_DIR / "reader.html"), js_api=js_api or api,
-                                  width=1360, height=880, min_size=(560, 400), background_color="#07060B",
+                                  width=_fit_win(1360, 880)[0], height=_fit_win(1360, 880)[1], min_size=(560, 400), background_color="#07060B",
                                   text_select=True, hidden=selftest)
 
         def closed() -> None:
@@ -662,7 +685,7 @@ def main() -> int:
 
     def make_studio_window(selftest: bool = False, js_api: Any = None):
         w = webview.create_window("Kami Studio [SelfTest]" if selftest else "Kami Studio", url=str(paths.WEB_DIR / "studio.html"), js_api=js_api or api,
-                                  width=1600, height=960, min_size=(1100, 680), background_color="#07060B",
+                                  width=_fit_win(1600, 960)[0], height=_fit_win(1600, 960)[1], min_size=(1100, 680), background_color="#07060B",
                                   text_select=False, hidden=selftest)
 
         def closed() -> None:
@@ -727,7 +750,7 @@ def main() -> int:
                 k.stop()
 
     def make_room_window(url: str):
-        w = webview.create_window("Kami Oda", url=url, js_api=api, width=1280, height=820, min_size=(420, 520),
+        w = webview.create_window("Kami Oda", url=url, js_api=api, width=_fit_win(1280, 820)[0], height=_fit_win(1280, 820)[1], min_size=(420, 520),
                                   background_color="#07060B", text_select=True)
 
         # v1.35.2: closing/closed arayuz is parcaciginda calisir. Burada evaluate_js (JS yanitini bekler) ya da
@@ -982,7 +1005,7 @@ def main() -> int:
                 return
             w = webview.create_window(
                 "Kami", url=str(paths.WEB_DIR / "index.html"), js_api=api,
-                width=1445, height=850, min_size=(820, 520),
+                width=_fit_win(1445, 850)[0], height=_fit_win(1445, 850)[1], min_size=(820, 520),
                 background_color="#0D0A12" if settings.get("theme") == "dark" else "#F5F3F9", text_select=False)
             main_win["w"] = w
             bind_main(w)
