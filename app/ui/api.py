@@ -2658,6 +2658,10 @@ class Api(StudioMixin, EnhanceMixin):
             return True
         people = [{"name": str(p.get("name", ""))[:24], "talk": bool(p.get("talk")), "muted": bool(p.get("muted")),
                    "me": bool(p.get("me"))} for p in (st.get("people") or [])[:8] if isinstance(p, dict)]
+        # 23.11: 'Oda hep acik' (room_always) ev sahibini gizli pencerede odaya sokuyor; odada yalniz sen varken
+        # hiz siniri (room profili, 8 MB/s) ve oda seridi DEVREYE GIRMEZ - yalniz baska biri gelince.
+        if not any(not p["me"] for p in people):
+            people = []
         if not people:
             self._room_island = None
             if getattr(self, "_auto_speed_reason", "") == "room":
@@ -2712,11 +2716,23 @@ class Api(StudioMixin, EnhanceMixin):
             mw = winwin.MiniWindow("Kami Oda")
             self._room_mini = mw
         if on:
-            w, h = (380, 224) if has_video else (330, 86)
+            w, h = (380, 224) if has_video else (360, 86)
             ok = mw.enter(w, h)
         else:
             ok = mw.leave()
         return {"ok": bool(ok), "mini": bool(on)}
+
+    def room_mini_snap(self) -> None:
+        mw = getattr(self, "_room_mini", None)
+        if mw is not None:
+            mw.snap()
+
+    def room_mini_resize(self, has_video: bool = True) -> None:
+        """23.11 Oda PiP cift kip: kamera/ekran paylasimi gelince video karti, gidince kompakt serit (otomatik)."""
+        mw = getattr(self, "_room_mini", None)
+        if mw is not None:
+            w, h = (380, 224) if has_video else (360, 86)
+            mw.resize(w, h)
 
     def room_mini_move(self, dx: int, dy: int) -> None:
         mw = getattr(self, "_room_mini", None)
@@ -4927,6 +4943,17 @@ class Api(StudioMixin, EnhanceMixin):
             log.debug("ana pencere one getirilemedi", exc_info=True)
         return {"ok": True}
 
+    @staticmethod
+    def _music_here(m: dict[str, Any] | None) -> bool:
+        if not m:
+            return False
+        if m.get("local_librespot"):
+            return True
+        import platform
+        dev = str(m.get("device_name") or "").strip().casefold()
+        host = platform.node().strip().casefold()
+        return bool(dev) and (dev == host or dev == "kami")
+
     def music_island_tick(self) -> None:
         """v1.38.0: Kamify gizliyken arka planda Spotify/librespot durumunu tazeler, Mini-Ada'yi ve gorev cubugu ThumbButtons'u senkronlar."""
         # Oda penceresi "left" gondermeden kapandiysa (cokme, gorev yoneticisi) Oda hiz profili takili kalmasin
@@ -4953,6 +4980,9 @@ class Api(StudioMixin, EnhanceMixin):
             m = music_hub.cached_now()
         playing = bool(m and m.get("playing") and m.get("title"))
         self._update_music_thumbbar(playing)
+        # 23.11: ada yalniz muzik BU bilgisayarda calarken (Kami'nin librespot'u ya da bu PC'deki Spotify) acilir;
+        # telefonda/baska cihazda calan Spotify (Web API her cihazi bildirir) adayi kendi kendine acmasin.
+        playing = playing and self._music_here(m)
         if self._island_shown and not getattr(self, "_island_auto", False):
             return
         h = winwin.find_window("Kamify")

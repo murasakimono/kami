@@ -1020,7 +1020,8 @@ function ensureMiniBar() {
   bar.innerHTML = `<div class="rm-mdrag" title="Sürükleyerek taşı"><span class="rm-mdot"></span><b id="rmMiniTxt">Kami Oda · Mini-Ada</b></div>
     <button type="button" id="rmMiniMic" title="Mikrofon">🎙</button>
     <button type="button" id="rmMiniDeaf" title="Sağırlaştır">🎧</button>
-    <button type="button" id="rmMiniExp" title="Büyüt">⤢</button>`;
+    <button type="button" id="rmMiniExp" title="Odaya dön">⤢</button>
+    <button type="button" id="rmMiniLeave" class="lv" title="Ayrıl">✕</button>`;
   document.body.appendChild(bar);
   let drag = null;
   bar.addEventListener("pointerdown", (e) => {
@@ -1035,11 +1036,12 @@ function ensureMiniBar() {
     drag = { x: e.screenX, y: e.screenY };
     window.pywebview?.api?.room_mini_move?.(dx, dy);
   });
-  bar.addEventListener("pointerup", () => { drag = null; });
+  bar.addEventListener("pointerup", () => { if (drag) window.pywebview?.api?.room_mini_snap?.(); drag = null; });
   bar.addEventListener("pointercancel", () => { drag = null; });
   $("rmMiniMic").onclick = () => $("bMic")?.click();
   $("rmMiniDeaf").onclick = () => $("bDeaf")?.click();
   $("rmMiniExp").onclick = () => roomToggleMini(false);
+  $("rmMiniLeave").onclick = async () => { await roomToggleMini(false); $("bLeave")?.click(); };
   return bar;
 }
 function syncMiniBar() {
@@ -1058,6 +1060,7 @@ async function roomToggleMini(force) {
   ensureMiniBar();
   try {
     await api.room_mini_mode(next, hasVid);
+    S._miniVid = hasVid;
     S._roomMini = next;
     document.body.classList.toggle("rm-mini", next);
     $("bPip")?.classList.toggle("act", next);
@@ -1069,7 +1072,13 @@ async function roomToggleMini(force) {
     return false;
   }
 }
-setInterval(() => { if (S._roomMini) syncMiniBar(); }, 600);
+setInterval(() => {
+  if (!S._roomMini) return;
+  syncMiniBar();
+  // 23.11 cift kip: kamera/ekran paylasimi acilinca video kartina, kapaninca kompakt serite kendiliginden gec
+  const hv = S.tiles.size > 0 || !!$("ytTile");
+  if (hv !== S._miniVid) { S._miniVid = hv; window.pywebview?.api?.room_mini_resize?.(hv); setTimeout(() => layout?.(), 120); }
+}, 600);
 $("bPip").onclick = async () => {
   const api = window.pywebview?.api;
   if (api?.room_mini_mode) {

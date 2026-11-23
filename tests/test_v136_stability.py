@@ -148,7 +148,7 @@ def test_music_island_auto_show_hide(monkeypatch):
         calls.append((show, persist)); a._island_shown = bool(show)
         return {"ok": True}
     a.mini_island_toggle = toggle
-    state = {"m": {"playing": True, "title": "Sarki"}, "vis": False}
+    state = {"m": {"playing": True, "title": "Sarki", "local_librespot": True}, "vis": False}
     monkeypatch.setattr(music_hub, "cached_now", lambda: state["m"])
     monkeypatch.setattr(winwin, "find_window", lambda t: 123)
     monkeypatch.setattr(winwin, "is_visible", lambda h: state["vis"])

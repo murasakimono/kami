@@ -444,7 +444,31 @@ class MiniWindow:
         r = _RECT(); u.GetWindowRect(hwnd, ctypes.byref(r))
         k = self._scale(hwnd)
         w, h = int(width * k), int(height * k)
-        u.SetWindowPos(hwnd, -1, r.right - w, r.bottom - h, w, h, self.SWP_ASYNC)
+        x, y = self._clamp(hwnd, r.right - w, r.bottom - h, w, h)
+        u.SetWindowPos(hwnd, -1, x, y, w, h, self.SWP_ASYNC)
+
+    def _clamp(self, hwnd: int, x: int, y: int, w: int, h: int) -> tuple[int, int]:
+        """23.11: mini pencere ekran disina tasmasin (kullanici ss: PiP yarim kaliyordu)."""
+        wa = self._work(hwnd)
+        x = max(wa.left, min(x, wa.right - w))
+        y = max(wa.top, min(y, wa.bottom - h))
+        return x, y
+
+    def snap(self) -> None:
+        """Birakinca en yakin koseye yapisir (16 px bosluk), her zaman calisma alaninin icinde."""
+        hwnd = self._hwnd()
+        if not hwnd or self.saved is None:
+            return
+        u = self._api()
+        r = _RECT(); u.GetWindowRect(hwnd, ctypes.byref(r))
+        w, h = r.right - r.left, r.bottom - r.top
+        wa = self._work(hwnd)
+        m = int(16 * self._scale(hwnd))
+        cx, cy = (r.left + r.right) // 2, (r.top + r.bottom) // 2
+        x = wa.left + m if cx < (wa.left + wa.right) // 2 else wa.right - w - m
+        y = wa.top + m if cy < (wa.top + wa.bottom) // 2 else wa.bottom - h - m
+        x, y = self._clamp(hwnd, x, y, w, h)
+        u.SetWindowPos(hwnd, -1, x, y, 0, 0, self.SWP_NOSIZE | self.SWP_ASYNC)
 
     def move(self, dx: int, dy: int) -> None:
         hwnd = self._hwnd()
@@ -453,7 +477,9 @@ class MiniWindow:
         u = self._api()
         r = _RECT(); u.GetWindowRect(hwnd, ctypes.byref(r))
         k = self._scale(hwnd)
-        u.SetWindowPos(hwnd, 0, r.left + int(dx * k), r.top + int(dy * k), 0, 0, self.SWP_NOSIZE | self.SWP_NOZORDER | self.SWP_ASYNC)
+        w, h = r.right - r.left, r.bottom - r.top
+        x, y = self._clamp(hwnd, r.left + int(dx * k), r.top + int(dy * k), w, h)
+        u.SetWindowPos(hwnd, 0, x, y, 0, 0, self.SWP_NOSIZE | self.SWP_NOZORDER | self.SWP_ASYNC)
 
     def leave(self) -> bool:
         hwnd = self._hwnd()
