@@ -1480,7 +1480,7 @@ async function rmPostRoom(ep, body) {
       method: "POST",
       credentials: "same-origin",
       headers: hdr,
-      body: JSON.stringify({ id: S.core.id, ...(body || {}) }),
+      body: JSON.stringify({ id: S.core.id, ps: S.core.ps || "", ...(body || {}) }),
     });
     return await r.json();
   } catch { return null; }

@@ -500,8 +500,9 @@ class MediaRunner:
             job = MediaJob(download_id, url, directory, dict(options), self.engine,
                            connections=self._connections(),
                            on_progress=lambda **kw: self.on_event(download_id, "progress", **kw))
+            job._finished = threading.Event()
             self._jobs[download_id] = job
-        threading.Thread(target=self._run, args=(job,), name=f"kami-media-{download_id}", daemon=True).start()
+        threading.Thread(target=self._run, args=(job, old), name=f"kami-media-{download_id}", daemon=True).start()
 
     def cancel(self, download_id: int) -> None:
         with self._lock:
@@ -514,25 +515,40 @@ class MediaRunner:
             job = self._jobs.get(download_id)
         return bool(job and not job.cancel.is_set())
 
-    def _run(self, job: MediaJob) -> None:
-        with self._sem:
-            try:
-                if job.cancel.is_set():
-                    raise MediaCancelled()
-                self.on_event(job.download_id, "started")
-                path = job.run()
-                self.on_event(job.download_id, "done", path=path)
-            except MediaCancelled:
-                self.on_event(job.download_id, "cancelled")
-            except MediaError as exc:
-                self.on_event(job.download_id, "error", error=str(exc))
-            except Exception as exc:  # beklenmeyen
-                log.exception("Medya isi coktu")
-                self.on_event(job.download_id, "error", error=str(exc))
-            finally:
-                with self._lock:
-                    if self._jobs.get(job.download_id) is job:
-                        del self._jobs[job.download_id]
+    def _run(self, job: MediaJob, prev: MediaJob | None = None) -> None:
+        # v2.5.3: duraklat->devam: eski is (ffmpeg birlestirme dahil) tamamen bitmeden yenisi ayni .part'a yazmasin
+        prev_done = getattr(prev, "_finished", None) if prev is not None else None
+        if prev_done is not None:
+            prev_done.wait(120)
+        if getattr(job, "_finished", None) is None:
+            job._finished = threading.Event()
+
+        def emit(kind: str, **kw: Any) -> None:   # yerine yenisi gecmis eski is olay gondermesin ("done" sanilmasin)
+            with self._lock:
+                current = self._jobs.get(job.download_id) is job
+            if current:
+                self.on_event(job.download_id, kind, **kw)
+        try:
+            with self._sem:
+                try:
+                    if job.cancel.is_set():
+                        raise MediaCancelled()
+                    emit("started")
+                    path = job.run()
+                    emit("done", path=path)
+                except MediaCancelled:
+                    emit("cancelled")
+                except MediaError as exc:
+                    emit("error", error=str(exc))
+                except Exception as exc:  # beklenmeyen
+                    log.exception("Medya isi coktu")
+                    emit("error", error=str(exc))
+                finally:
+                    with self._lock:
+                        if self._jobs.get(job.download_id) is job:
+                            del self._jobs[job.download_id]
+        finally:
+            job._finished.set()
 
 
 # ---------------------------------------------------------------- ffmpeg + guncelleme

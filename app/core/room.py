@@ -56,6 +56,23 @@ class Room:
         self.queue_v = 0
         self.cv = threading.Condition()
         self.on_join: Callable[[str], None] | None = None
+        self.peer_keys: dict[str, str] = {}   # v2.5.3: pid -> sunucunun verdigi gizli anahtar (kimlige burunmeyi onler)
+
+    def bind_peer(self, pid: str, ps: str) -> tuple[bool, str]:
+        """Ilk yoklamada pid'e anahtar verilir; sonraki her istek ayni anahtari gostermek zorunda."""
+        with self.cv:
+            key = self.peer_keys.get(pid)
+            if key is None:
+                if len(self.peer_keys) > 500:
+                    self.peer_keys = {k: v for k, v in self.peer_keys.items() if k in self.peers}
+                key = secrets.token_urlsafe(16)
+                self.peer_keys[pid] = key
+                return True, key
+        return hmac.compare_digest(str(ps or "").encode(), key.encode()), key
+
+    def peer_ok(self, pid: str, ps: str) -> bool:
+        key = self.peer_keys.get(pid)
+        return key is None or hmac.compare_digest(str(ps or "").encode(), key.encode())
 
     def say(self, who: str, text: str, kind: str = "chat", reply: int = 0) -> None:
         who_c = re.sub(r"\s+", " ", str(who or "")).strip()[:40]
@@ -325,6 +342,14 @@ def hash_pw(password: str) -> str:
 
 
 _PW_SEM = threading.BoundedSemaphore(2)
+
+
+def _clen(headers) -> int:
+    """v2.5.3: Content-Length -1 / sayi degil -> read(-1) tuneli EOF'a kadar bekletiyordu ya da istisna."""
+    try:
+        return max(0, min(int(headers.get("Content-Length") or 0), 64 * 1024 * 1024))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _verify_pw(stored: str, given: str) -> bool:
@@ -700,6 +725,9 @@ def _handler(srv: RoomServer):
                     pid = (q.get("id") or [""])[0][:40]
                     if not pid:
                         return self._err(400)
+                    ok_ps, peer_key = r.bind_peer(pid, (q.get("ps") or [""])[0][:64])
+                    if not ok_ps:
+                        return self._json({"ok": False, "error": "peer_key"}, 403)
                     cid = (q.get("cid") or [""])[0][:48]
                     r.touch(pid, (q.get("name") or ["Misafir"])[0], (q.get("kind") or ["user"])[0][:10], cid)
                     try:
@@ -710,7 +738,9 @@ def _handler(srv: RoomServer):
                         since = int((q.get("n") or ["0"])[0] or 0)
                     except ValueError:
                         since = 0
-                    self._json(r.poll(pid, since, (q.get("rv") or [""])[0], 20.0, ack))
+                    res_ = r.poll(pid, since, (q.get("rv") or [""])[0], 20.0, ack)
+                    res_["ps"] = peer_key
+                    self._json(res_)
                 elif rest[0] == "bridge":
                     from app.core.phone import _BRIDGE_HTML
                     self._send(_BRIDGE_HTML.encode("utf-8"), MIME[".html"])
@@ -809,7 +839,7 @@ def _handler(srv: RoomServer):
                 from urllib.parse import parse_qs, urlsplit
                 from app.core import kapsul
                 u = urlsplit(self.path)
-                n = int(self.headers.get("Content-Length") or 0)
+                n = _clen(self.headers)
                 try:
                     body = json.loads(self.rfile.read(min(n, 8000)) or b"{}")
                 except ValueError:
@@ -822,7 +852,7 @@ def _handler(srv: RoomServer):
                     return self._json({"ok": False, "error": "phone_off"}, 503)
                 if not ph._rate_ok():
                     return self._json({"ok": False, "error": "rate"}, 429)
-                n = int(self.headers.get("Content-Length") or 0)
+                n = _clen(self.headers)
                 if n < 0 or n > 200000:
                     return self._json({"ok": False, "error": "size"}, 413)
                 raw = self.rfile.read(n).decode("utf-8", "replace") if n else ""
@@ -871,7 +901,7 @@ def _handler(srv: RoomServer):
                 expected = ph.key()
                 if not expected or not hmac.compare_digest(given.encode(), expected.encode()):
                     return self._json({"ok": False, "error": "key"}, 401)
-                n = int(self.headers.get("Content-Length") or 0)
+                n = _clen(self.headers)
                 max_lim = 32 * 1024 * 1024 if k == "upload" else 200000
                 if n <= 0 or n > max_lim:
                     return self._json({"ok": False, "error": "size"}, 413)
@@ -896,7 +926,7 @@ def _handler(srv: RoomServer):
                     return self._json({"ok": True, "path": str(dest), "kind": kind})
                 except Exception as exc:
                     return self._json({"ok": False, "error": str(exc)[:120]}, 400)
-            n = int(self.headers.get("Content-Length") or 0)
+            n = _clen(self.headers)
             try:
                 body = json.loads(self.rfile.read(min(n, 200000)) or b"{}")
             except ValueError:
@@ -913,6 +943,8 @@ def _handler(srv: RoomServer):
                 return self._err(400)
             if not self._key_ok():
                 return self._json({"ok": False, "error": "password"}, 401)
+            if not r.peer_ok(pid, str(body.get("ps", ""))[:64]):   # v2.5.3: baskasinin kimligiyle sinyal/ad/ayrilma yok
+                return self._json({"ok": False, "error": "peer_key"}, 403)
             if k == "sig":
                 return self._json({"ok": r.signal(pid, str(body.get("to", ""))[:40], body.get("data"))})
             if k == "chat":

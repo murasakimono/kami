@@ -435,6 +435,25 @@ def _sp_api(method: str, path: str, body: dict[str, Any] | None = None, token: s
         return {"ok": False, "error": str(exc)[:120]}
 
 
+def _sp_pages(path: str, page: int, cap: int) -> dict[str, Any]:
+    """v2.5.3: Spotify sayfalamasi ('next') - listeler 50/100 ogede kesiliyordu. En fazla `cap` oge."""
+    sep = "&" if "?" in path else "?"
+    r = _sp_api("GET", f"{path}{sep}limit={page}")
+    if not r.get("ok"):
+        return r
+    d = r.get("data") or {}
+    items = list(d.get("items") or [])
+    nxt = d.get("next")
+    while nxt and len(items) < cap:
+        r2 = _sp_api("GET", str(nxt))
+        if not r2.get("ok"):
+            break
+        d2 = r2.get("data") or {}
+        items.extend(d2.get("items") or [])
+        nxt = d2.get("next")
+    return {"ok": True, "data": {"items": items[:cap], "total": d.get("total", len(items))}}
+
+
 def spotify_search(query: str, kind: str = "track,album,playlist", limit: int = 10) -> dict[str, Any]:
     import urllib.parse
     q = str(query or "").strip()
@@ -468,7 +487,7 @@ def spotify_search(query: str, kind: str = "track,album,playlist", limit: int = 
 
 
 def spotify_playlists(limit: int = 40) -> dict[str, Any]:
-    r = _sp_api("GET", f"/me/playlists?limit={min(50, int(limit))}")
+    r = _sp_pages("/me/playlists", 50, max(int(limit), 500))
     if not r.get("ok"):
         return {**r, "items": []}
     me = _sp_me_id()
@@ -499,7 +518,7 @@ def spotify_playlist_tracks(playlist_id: str, limit: int = 100) -> dict[str, Any
     pid = str(playlist_id or "").strip()
     if not pid:
         return {"ok": False, "items": []}
-    r = _sp_api("GET", f"/playlists/{pid}/items?limit={min(100, int(limit))}")
+    r = _sp_pages(f"/playlists/{pid}/items", 100, max(int(limit), 2000))
     if not r.get("ok"):
         return {**r, "items": []}
     items = []
@@ -518,7 +537,7 @@ def spotify_playlist_tracks(playlist_id: str, limit: int = 100) -> dict[str, Any
 
 
 def spotify_saved_tracks(limit: int = 50) -> dict[str, Any]:
-    r = _sp_api("GET", f"/me/tracks?limit={min(50, int(limit))}")
+    r = _sp_pages("/me/tracks", 50, max(int(limit), 1000))
     if not r.get("ok"):
         return {**r, "items": []}
     items = []
@@ -788,7 +807,7 @@ def spotify_album_tracks(album_id: str, limit: int = 50) -> dict[str, Any]:
     aid = str(album_id or "").strip()
     if not aid:
         return {"ok": False, "items": []}
-    r = _sp_api("GET", f"/albums/{aid}/tracks?limit={min(50, int(limit))}")
+    r = _sp_pages(f"/albums/{aid}/tracks", 50, max(int(limit), 300))
     if not r.get("ok"):
         return {**r, "items": []}
     items = [{
@@ -994,7 +1013,7 @@ def ytm_get_playlist(url_or_id: str, limit: int = 2000, save: bool = True) -> di
 
 
 def ytm_to_spotify_playlist(url_or_id: str, new_name: str = "") -> dict[str, Any]:
-    pl = ytm_get_playlist(url_or_id, limit=100, save=True)
+    pl = ytm_get_playlist(url_or_id, limit=1000, save=True)
     if not pl.get("ok"):
         return pl
     name = (new_name or "").strip() or f"{pl['title']} (YTM)"
@@ -1012,7 +1031,11 @@ def ytm_to_spotify_playlist(url_or_id: str, new_name: str = "") -> dict[str, Any
         if tr and tr.get("uri"):
             uris.append(tr["uri"])
     for i in range(0, len(uris), 50):
-        spotify_playlist_modify(sp_pid, uris[i:i + 50], remove=False)
+        rr = spotify_playlist_modify(sp_pid, uris[i:i + 50], remove=False)
+        if not (rr or {}).get("ok"):   # v2.5.3: ekleme hatasi "basarili" diye raporlanmasin
+            added = i
+            return {"ok": False, "error": (rr or {}).get("error", "add_failed"), "playlist_id": sp_pid, "added": added,
+                    "matched": len(uris), "total": len(pl["items"])}
     return {"ok": True, "playlist_id": sp_pid, "name": name, "matched": len(uris), "total": len(pl["items"])}
 
 

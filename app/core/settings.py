@@ -227,6 +227,12 @@ class Settings:
                                     log.warning("Bozuk ayar degeri varsayilana dondu: %s", k)
                 except Exception:
                     log.exception("Ayarlar okunamadi, varsayilanlar kullaniliyor")
+                    try:   # v2.5.3: bozuk dosyayi yedekle; ilk set() kullanicinin ayarlarini sessizce silmesin
+                        import shutil
+                        import time as _t
+                        shutil.copy2(self.path, self.path.with_name(f"settings.bozuk-{int(_t.time())}.json"))
+                    except OSError:
+                        pass
 
     def save(self) -> None:
         with self._lock:

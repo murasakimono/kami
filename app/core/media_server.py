@@ -26,6 +26,8 @@ import secrets
 import shutil
 import subprocess
 import threading
+
+_COVER_SEM = threading.BoundedSemaphore(3)
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -483,10 +485,10 @@ def _make_handler(server: MediaServer):
         def log_message(self, fmt, *args):
             log.debug("media: " + fmt, *args)
 
-        def _cors(self) -> None:
+        def _cors(self, cache: bool = False) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")   # file:// sayfasi (Origin: null) + Web Audio
             self.send_header("Cross-Origin-Resource-Policy", "cross-origin")
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", "max-age=86400" if cache else "no-store")
 
         def _err(self, code: int) -> None:
             self.send_response(code)
@@ -565,9 +567,9 @@ def _make_handler(server: MediaServer):
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
 
-        def _bytes(self, data: bytes, ctype: str, head: bool) -> None:
+        def _bytes(self, data: bytes, ctype: str, head: bool, cache: bool = False) -> None:
             self.send_response(200)
-            self._cors()
+            self._cors(cache)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
@@ -663,13 +665,40 @@ def _make_handler(server: MediaServer):
             self._bytes(f.read_bytes(), ok[name], head)
 
         def _cover(self, path: str, head: bool) -> None:
+            # v2.5.3: kapak bir kez cikarilir ve diskte onbelleklenir; ayni anda en fazla 3 ffmpeg (300 albumluk
+            # kutuphane her acilista 300 es zamanli ffmpeg baslatiyordu) + tarayici onbellegi.
+            import hashlib
+            try:
+                st = os.stat(path)
+            except OSError:
+                return self._err(404)
+            key = hashlib.sha1(f"{path}|{st.st_mtime_ns}|{st.st_size}".encode("utf-8", "replace")).hexdigest()
+            cdir = server.cache_dir / "covers"
+            cf = cdir / f"{key}.jpg"
+            miss = cdir / f"{key}.none"
+            if cf.is_file():
+                return self._bytes(cf.read_bytes(), "image/jpeg", head, cache=True)
+            if miss.is_file():
+                return self._err(404)
             ff = server.ffmpeg()
             if not ff:
                 return self._err(404)
-            r = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-i", path, "-map", "0:v:0", "-frames:v", "1",
-                                "-c:v", "mjpeg", "-f", "image2", "pipe:1"], capture_output=True, timeout=20, creationflags=NO_WINDOW)
+            with _COVER_SEM:
+                if cf.is_file():
+                    return self._bytes(cf.read_bytes(), "image/jpeg", head, cache=True)
+                r = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-i", path, "-map", "0:v:0", "-frames:v", "1",
+                                    "-c:v", "mjpeg", "-f", "image2", "pipe:1"], capture_output=True, timeout=20, creationflags=NO_WINDOW)
+            cdir.mkdir(parents=True, exist_ok=True)
             if r.returncode or not r.stdout:
+                try:
+                    miss.write_bytes(b"")
+                except OSError:
+                    pass
                 return self._err(404)
-            self._bytes(r.stdout, "image/jpeg", head)
+            try:
+                cf.write_bytes(r.stdout)
+            except OSError:
+                pass
+            self._bytes(r.stdout, "image/jpeg", head, cache=True)
 
     return Handler

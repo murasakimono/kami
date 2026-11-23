@@ -91,6 +91,7 @@ def _run(cmd: list[str], on_line: Callable[[str], None], cwd: Path | None = None
     proc = subprocess.Popen(cmd, cwd=str(cwd) if cwd else None, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, creationflags=NO_WINDOW, text=True,
                             encoding="utf-8", errors="replace")
+    from app.core.procjob import attach as _pj_attach; _pj_attach(proc)   # v2.5.3: Kami kapaninca GPU sureci de olsun
     assert proc.stdout is not None
     for line in proc.stdout:
         line = line.rstrip()
@@ -230,6 +231,7 @@ def run_video(job: dict, ffmpeg: str, path: str, opts: dict[str, Any], out_dir: 
     job["line"] = "FlashVSR başlıyor (ilk çalıştırmada ~3 GB model iner)"
     proc = subprocess.Popen(args, cwd=str(SRC), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             creationflags=NO_WINDOW, env=env, text=True, encoding="utf-8", errors="replace")
+    from app.core.procjob import attach as _pj_attach; _pj_attach(proc)   # v2.5.3: Kami kapaninca GPU sureci de olsun
     tail: list[str] = []
     assert proc.stdout is not None
     for raw in proc.stdout:

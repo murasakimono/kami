@@ -75,13 +75,21 @@ function defaultFit(c) { return c.fit || (c.track === "v1" || vidTracks().length
 const selClips = () => ST.p.clips.filter(c => ST.sel.has(c.id));
 
 // ---------------------------------------------------------------- gecmis / kayit
-function snap() { ST.undo.push(JSON.stringify(ST.p)); if (ST.undo.length > 120) ST.undo.shift(); ST.redo = []; try { const log = JSON.parse(localStorage.getItem("kami.studio.rev") || "[]"); log.unshift({ t: Date.now(), clips: ST.p.clips.length, tracks: ST.p.tracks.length }); localStorage.setItem("kami.studio.rev", JSON.stringify(log.slice(0, 200))); } catch {} }
+// v2.5.3: geri al anlik goruntusu bilesik klip yiginini (compoundStack) da tasir; eskiden bilesik klip icinde Ctrl+Z
+// ana kurguyu geri getirip yigini birakiyordu, otomatik kayit da ana kurguyu bilesik klibin icine yaziyordu.
+function snapState() { return JSON.stringify({ __v: 2, p: ST.p, cs: ST.compoundStack || [] }); }
+function restoreState(s) {
+  const o = JSON.parse(s);
+  if (o && o.__v === 2) { ST.p = o.p; ST.compoundStack = o.cs || []; } else { ST.p = o; ST.compoundStack = []; }
+  try { renderCompCrumb(); } catch {}
+}
+function snap() { ST.undo.push(snapState()); if (ST.undo.length > 120) ST.undo.shift(); ST.redo = []; try { const log = JSON.parse(localStorage.getItem("kami.studio.rev") || "[]"); log.unshift({ t: Date.now(), clips: ST.p.clips.length, tracks: ST.p.tracks.length }); localStorage.setItem("kami.studio.rev", JSON.stringify(log.slice(0, 200))); } catch {} }
 function changed(full = true) {
   ST.dirty = true; $("#saved").textContent = "● kaydedilmedi"; $("#saved").classList.add("dirty");
   if (full) renderTimeline(); renderInsp(); assDirty(); draw(); scheduleSave();
 }
-function undo() { if (!ST.undo.length) return; ST.redo.push(JSON.stringify(ST.p)); ST.p = JSON.parse(ST.undo.pop()); afterLoad(true); }
-function redo() { if (!ST.redo.length) return; ST.undo.push(JSON.stringify(ST.p)); ST.p = JSON.parse(ST.redo.pop()); afterLoad(true); }
+function undo() { if (!ST.undo.length) return; ST.redo.push(snapState()); restoreState(ST.undo.pop()); afterLoad(true); }
+function redo() { if (!ST.redo.length) return; ST.undo.push(snapState()); restoreState(ST.redo.pop()); afterLoad(true); }
 let saveT = 0;
 function scheduleSave() { clearTimeout(saveT); saveT = setTimeout(save, 1500); }
 function rootProjectClone() {
@@ -2315,8 +2323,13 @@ async function inbox() {
     const mcp = await api.studio_current();
     if (typeof mcp === "string" && mcp && mcp !== ST.path) { if (ST.dirty) await save(); await openProject(mcp); toast("Kami AI yeni bir proje açtı"); }
     else if (ST.path && await api.studio_changed(ST.path)) {   // Kami AI (MCP) ya da baska yerden duzenlendi
-      const r = await job("studio_open", [ST.path]);
-      if (r?.ok) { ST.undo.push(JSON.stringify(ST.p)); ST.p = r.project; ST.p.markers ||= []; afterLoad(true); ST.dirty = false; $("#saved").textContent = "↻ Kami AI düzenledi"; }
+      // v2.5.3: kaydedilmemis duzenleme ya da acik bilesik klip varken dosyayi sessizce yeniden yukleme (veri kaybi)
+      if (ST.dirty || ST.compoundStack?.length) {
+        if (!ST._extWarned) { ST._extWarned = true; toast("Proje dosyası dışarıda değişti. Kaydedilmemiş düzenlemen korunuyor; dış değişikliği görmek için projeyi yeniden aç."); }
+      } else {
+        const r = await job("studio_open", [ST.path]);
+        if (r?.ok) { ST.undo.push(snapState()); ST.p = r.project; ST.p.markers ||= []; ST.compoundStack = []; afterLoad(true); ST.dirty = false; ST._extWarned = false; $("#saved").textContent = "↻ Kami AI düzenledi"; }
+      }
     }
   } catch (e) { console.warn(e); }
   setTimeout(inbox, 900);

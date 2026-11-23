@@ -140,6 +140,7 @@ def run(job: dict, ffmpeg: str, kind: str, path: str, start: float, dur: float, 
             out_fps = fps if opts.get("mode", "slow") == "slow" else fps * factor
             job["line"] = f"Ara kareler üretiliyor ({expect} kare)"
         proc = subprocess.Popen(args, cwd=str(ex.parent), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=NO_WINDOW)
+        from app.core.procjob import attach as _pj_attach; _pj_attach(proc)   # v2.5.3: Kami kapaninca GPU sureci de olsun
         err: list[bytes] = []
         threading.Thread(target=lambda: err.append(proc.stderr.read() if proc.stderr else b""), daemon=True).start()
         rc = _watch(proc, fout, expect, job, 0.1, 0.9)

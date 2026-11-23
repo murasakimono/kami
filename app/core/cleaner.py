@@ -66,14 +66,15 @@ def disk_treemap(root: str = "", budget_s: float = 12.0) -> dict[str, Any]:
         entries = list(os.scandir(base))
     except OSError as exc:
         return {"ok": False, "error": str(exc)[:120], "items": []}
-    for ent in entries:
+    # v2.5.3: klasorler paralel olculur; eskiden ilk buyuk klasor tum sure butcesini yiyip kalanlar 0 gorunuyordu
+    def _measure(ent):
         sz, approx = 0, False
         try:
             is_dir = ent.is_dir(follow_symlinks=False)
             if not is_dir:
                 sz = ent.stat(follow_symlinks=False).st_size
         except OSError:
-            continue
+            return None
         if is_dir:
             st = [ent.path]
             while st:
@@ -93,7 +94,11 @@ def disk_treemap(root: str = "", budget_s: float = 12.0) -> dict[str, Any]:
                                 pass
                 except OSError:
                     pass
-        buckets.append({"name": ent.name, "path": ent.path, "size": sz, "dir": is_dir, "approx": approx})
+        return {"name": ent.name, "path": ent.path, "size": sz, "dir": is_dir, "approx": approx}
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        buckets = [b for b in ex.map(_measure, entries) if b]
     buckets.sort(key=lambda x: x["size"], reverse=True)
     return {"ok": True, "root": str(base), "items": buckets[:24], "approx": any(x["approx"] for x in buckets)}
 

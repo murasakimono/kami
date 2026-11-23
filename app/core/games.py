@@ -298,10 +298,13 @@ def _gog_exe(install: str, pid: str) -> str:
         info = json.loads((Path(install) / f"goggame-{pid}.info").read_text(encoding="utf-8", errors="ignore"))
         for t in info.get("playTasks") or []:
             if t.get("isPrimary") and t.get("path"):
+                if t.get("arguments") or (t.get("workingDir") and t["workingDir"] != str(Path(t["path"]).parent)):
+                    # v2.5.3: DOSBox/ScummVM gibi argumanli gorevler exe tek basina acilinca calismaz -> Galaxy baslatsin
+                    return f"goggalaxy://openGameView/{pid}"
                 return str(Path(install) / t["path"])
     except (OSError, ValueError):
         pass
-    return ""
+    return f"goggalaxy://openGameView/{pid}" if pid else ""   # birincil gorevi olmayan oyun da baslatilabilsin
 
 
 def _scan_gog() -> list[dict[str, Any]]:
@@ -638,6 +641,9 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
     exact_to_key: dict[str, str] = {}
     steam_ids: set[str] = set()
 
+    # v2.5.3: kurulu Steam oyununun sahiplik kaydi atlandigi icin Steam'in toplam oynama suresi kayboluyordu
+    steam_owned_mins = {str(x.get("id")): int(x.get("steam_mins") or 0) for x in raw
+                        if x.get("store") == "Steam" and not x.get("installed") and x.get("steam_mins")}
     for g in raw:
         title_clean = re.sub(r"\s+", " ", str(g.get("title") or "").strip())
         if not title_clean:
@@ -665,11 +671,9 @@ def list_games(include_owned: bool = True) -> dict[str, Any]:
                     cov_dirty = True
                 else:
                     sgdb_later.append(title_clean)   # v1.35.4: kalanlar arka planda; liste beklemez
-            pt_sec = int(playtimes.get(key, 0))
-            if not pt_sec and g.get("steam_mins"):
-                pt_sec = int(g["steam_mins"]) * 60
-            if not pt_sec and g.get("playtime_sec"):
-                pt_sec = int(g["playtime_sec"])
+            # en buyuk deger: Kami'nin olctugu birkac saniye Steam'in yillik toplamini ezmesin
+            st_min = int(g.get("steam_mins") or steam_owned_mins.get(str(g.get("id")), 0) if g.get("store") == "Steam" else g.get("steam_mins") or 0)
+            pt_sec = max(int(playtimes.get(key, 0)), st_min * 60, int(g.get("playtime_sec") or 0))
             merged[key] = {
                 "key": key,
                 "title": title_clean,
@@ -743,7 +747,13 @@ def launch_game(launch_target: str, key: str = "") -> dict[str, Any]:
             or (Path(t).suffix.lower() in (".exe", ".lnk", ".url") and Path(t).is_file())):
         return {"ok": False, "error": "unsupported_target"}
     try:
-        os.startfile(t)
+        if Path(t).suffix.lower() == ".exe":   # v2.5.3: calisma klasoru oyunun klasoru olsun (cogu oyun dosyalarini bulamiyordu)
+            try:
+                os.startfile(t, cwd=str(Path(t).parent))
+            except TypeError:
+                os.startfile(t)
+        else:
+            os.startfile(t)
         _record_last_played(key)
         return {"ok": True}
     except Exception as exc:
@@ -891,6 +901,16 @@ def restore_save_snapshot(key: str, snap_id: str, dest_dir: str = "") -> dict[st
     if not snap_dir.is_dir():
         return {"ok": False, "error": "snapshot_not_found"}
     meta = _load_json(snap_dir / "meta.json")
+    if meta.get("method") == "ludusavi" and (snap_dir / "ludusavi").is_dir() and not dest_dir:
+        # v2.5.3: ludusavi ile alinan yedek ludusavi ile geri yuklenir (eskiden yalniz files/ okunup "hedef yok" donuyordu)
+        try:
+            r = subprocess.run(["ludusavi", "restore", "--force", "--path", str(snap_dir / "ludusavi"), str(meta.get("title") or key)],
+                               capture_output=True, text=True, timeout=180,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            return {"ok": r.returncode == 0, "restored": snap_id, "target": "ludusavi",
+                    "error": "" if r.returncode == 0 else (r.stderr or r.stdout or "ludusavi_failed")[-200:]}
+        except FileNotFoundError:
+            return {"ok": False, "error": "ludusavi_missing"}
     target = Path(dest_dir or meta.get("src_dir") or "")
     files_src = snap_dir / "files"
     if not target or not files_src.is_dir():

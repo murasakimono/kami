@@ -270,6 +270,7 @@ def _run_logged(name: str, cmd: list[str], on_line: Callable[[str], None]) -> in
     p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                          encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
                          env=_clean_env(), cwd=str(paths.USER_DIR) if paths.USER_DIR.is_dir() else None)
+    from app.core.procjob import attach as _pj_attach; _pj_attach(p)   # v2.5.3: Kami kapaninca GPU sureci de olsun
     tail: list[str] = []
     for line in p.stdout or []:
         line = line.rstrip()
@@ -469,6 +470,7 @@ def _run_once(args: list[str], on_msg: Callable[[dict], None], cancel: threading
         p = subprocess.Popen([python_exe(tool), "-m", args[0], "@" + argfile], cwd=str(paths.TOOLSRC_DIR),
                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                              encoding="utf-8", errors="replace", creationflags=NO_WINDOW, env=env)
+        from app.core.procjob import attach as _pj_attach; _pj_attach(p)   # v2.5.3: Kami kapaninca GPU sureci de olsun
         last: dict = {"error": "no_output"}
         noise: list[str] = []
         def _watch() -> None:
@@ -578,8 +580,13 @@ def _listdir_cached(d: str) -> list[str]:
         names = os.listdir(d)
     except OSError:
         names = []
+    if len(_DISK_CACHE) > 2000:   # v2.5.3: sinirsiz buyumesin
+        _DISK_CACHE.clear()
     _DISK_CACHE[d] = (now, names)
     return names
+
+
+_DS_CACHE: dict[str, tuple[tuple, dict]] = {}
 
 
 def _norm(name: str) -> str:
@@ -593,6 +600,12 @@ def disk_state(path: str) -> dict:
     if not path:
         return out
     d, fn = os.path.split(path)
+    # v2.5.3: get_state saniyede 2 kez her bitmis oge icin klasoru tariyordu; sonuc, klasor listesi onbellegi
+    # degismedikce (ayni zaman damgasi) tekrar hesaplanmaz
+    key = (_DISK_CACHE.get(d, (None,))[0], _DISK_CACHE.get(os.path.join(d, "Ayrilmis"), (None,))[0])
+    hit = _DS_CACHE.get(path)
+    if hit and key[0] is not None and hit[0] == key:
+        return dict(hit[1])
     stem = _norm(os.path.splitext(fn)[0])
     for n in _listdir_cached(d):
         nn = _norm(n)
@@ -604,6 +617,9 @@ def disk_state(path: str) -> dict:
              if _norm(n).startswith(stem + " (") and _norm(n).endswith((".mp3", ".flac", ".wav"))]
     if files:
         out["ai_uvr_files"] = sorted(files)
+    if len(_DS_CACHE) > 5000:
+        _DS_CACHE.clear()
+    _DS_CACHE[path] = ((_DISK_CACHE.get(d, (None,))[0], _DISK_CACHE.get(sep, (None,))[0]), dict(out))
     return out
 
 

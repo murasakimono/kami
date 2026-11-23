@@ -220,7 +220,8 @@ def _verify_sha256(path: Path, expected: str) -> None:
     exp = str(expected or "").strip().lower()
     if exp.startswith("sha256:"):
         exp = exp.split(":", 1)[1].strip()
-    if not exp:
+    if not exp:   # GitHub eski varliklarda digest vermez; yalniz TLS ile github.com'dan iner
+        logging.getLogger(__name__).warning("Guncelleme dosyasinda SHA-256 ozeti yok, yalniz HTTPS dogrulamasi: %s", path.name)
         return
     h = hashlib.sha256()
     with open(path, "rb") as f:

@@ -94,12 +94,26 @@ let checkerPat = null;
 function edChecker(g) { if (checkerPat) return checkerPat; const c = document.createElement("canvas"); c.width = c.height = 16; const x = c.getContext("2d"); x.fillStyle = "#1a1622"; x.fillRect(0, 0, 16, 16); x.fillStyle = "#26212f"; x.fillRect(0, 0, 8, 8); x.fillRect(8, 8, 8, 8); checkerPat = g.createPattern(c, "repeat"); return checkerPat; }
 
 // ---------------------------------------------------------------- geri al
+// v2.5.3: gecmis adet degil BAYT butcesiyle sinirlanir (24 MP katman ~96 MB; 80 adim WebView2'yi cokertebiliyordu)
+const ED_UNDO_BUDGET = 1200 * 1024 * 1024;
+function edSnapBytes(s) {
+  if (!s) return 0;
+  if (s.full) return typeof s.full === "string" ? s.full.length * 2 : 64 * 1024 * 1024;
+  return (s.items || []).reduce((a, it) => a + (it.data?.data?.length || 0), 0);
+}
+function edTrimUndo() {
+  let total = 0;
+  for (let i = ED.undo.length - 1; i >= 0; i--) {
+    total += edSnapBytes(ED.undo[i]);
+    if (total > ED_UNDO_BUDGET && i < ED.undo.length - 1) { ED.undo.splice(0, i + 1); break; }
+  }
+}
 function edSnap(label, layers = [ED.cur]) {
   const snap = { label, cur: ED.cur, W: ED.W, H: ED.H, items: layers.map((i) => { const l = ED.layers[i]; return { id: l.id, m: !!l._swapped, adj: l.adj ? JSON.parse(JSON.stringify(l.adj)) : null, data: l.c.getContext("2d").getImageData(0, 0, l.c.width, l.c.height), x: l.x, y: l.y, w: l.c.width, h: l.c.height }; }) };
-  ED.undo.push(snap); if (ED.undo.length > 80) ED.undo.shift(); ED.redo = []; ED.dirty = true; edBump();
+  ED.undo.push(snap); if (ED.undo.length > 80) ED.undo.shift(); edTrimUndo(); ED.redo = []; ED.dirty = true; edBump();
 }
 function edSnapAll(label) {   // katman ekleme/silme/kirpma: tum belge
-  ED.undo.push({ label, full: edSerialize(true) }); if (ED.undo.length > 40) ED.undo.shift(); ED.redo = []; ED.dirty = true; edBump();
+  ED.undo.push({ label, full: edSerialize(true) }); if (ED.undo.length > 40) ED.undo.shift(); edTrimUndo(); ED.redo = []; ED.dirty = true; edBump();
 }
 function edApplySnap(s, into) {
   if (s.full) { into.push({ label: s.label, full: edSerialize(true) }); edDeserialize(s.full); return; }

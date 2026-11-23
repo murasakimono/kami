@@ -90,6 +90,7 @@ def _run(cmd: list[str], on_line: Callable[[str], None], cwd: Path | None = None
     proc = subprocess.Popen(cmd, cwd=str(cwd) if cwd else None, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, creationflags=NO_WINDOW, text=True,
                             encoding="utf-8", errors="replace", env=env)
+    from app.core.procjob import attach as _pj_attach; _pj_attach(proc)   # v2.5.3: Kami kapaninca GPU sureci de olsun
     assert proc.stdout is not None
     for line in proc.stdout:
         line = line.rstrip()
@@ -244,8 +245,10 @@ def run_video(job: dict, ffmpeg: str, path: str, opts: dict[str, Any], work: Pat
     vp = subprocess.Popen([str(VSPIPE), "-p", "-c", "y4m", str(vpy.resolve()), "-"], cwd=str(work),
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=NO_WINDOW,
                           env=env)
+    from app.core.procjob import attach as _pj_attach; _pj_attach(vp)   # v2.5.3: Kami kapaninca GPU sureci de olsun
     ff = subprocess.Popen(enc, stdin=vp.stdout, stdout=subprocess.DEVNULL,
                           stderr=subprocess.PIPE, creationflags=NO_WINDOW)
+    from app.core.procjob import attach as _pj_attach; _pj_attach(ff)   # v2.5.3: Kami kapaninca GPU sureci de olsun
     if vp.stdout:
         vp.stdout.close()
     err: list[bytes] = []

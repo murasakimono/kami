@@ -4045,8 +4045,8 @@ class Api(StudioMixin, EnhanceMixin):
         try:
             q.write_text(text + "\n", encoding="utf-8")
             other = p.with_suffix(".txt" if lrc else ".lrc")
-            if other.is_file() and not lrc:
-                pass   # zamanli .lrc onceliklidir; duz metin yalnizca .lrc yoksa okunur
+            if other.is_file():   # v2.5.3: eski yan dosya yeni yapistirilan sozun onune gecmesin (.lrc oncelikli okunuyordu)
+                other.replace(other.with_name(other.name + ".eski"))
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:160]}
         if p.suffix.lower() == ".mp3" and self._manager.settings.get("lyrics_embed", True):

@@ -107,6 +107,12 @@ def translate_manga_page(
                     [mit, "-i", str(p), "-o", str(dst.parent), "-l", target_lang.upper()],
                     capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180, creationflags=NO_WINDOW,
                 )
+                if r.returncode == 0 and not dst.is_file():
+                    # v2.5.3: manga-image-translator ciktiyi KAYNAK adiyla yazar; beklenen ada tasi
+                    for cand in sorted(dst.parent.glob(p.stem + ".*"), key=lambda x: x.stat().st_mtime, reverse=True):
+                        if cand.resolve() != p.resolve() and cand.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+                            cand.replace(dst)
+                            break
                 if r.returncode == 0 and dst.is_file():
                     return {"ok": True, "path": str(dst), "engine": "manga_image_translator", "bubbles": 1}
             except Exception:

@@ -847,3 +847,17 @@ async function initFaz7() {
 }
 
 window.addEventListener("pywebviewready", init);
+
+// v2.5.3 erisilebilirlik: yalniz simgeli butonlara (metinsiz) title'dan aria-label ver; ekran okuyucu "dugme" demesin.
+(() => {
+  const fix = (root) => {
+    for (const b of (root.querySelectorAll ? root.querySelectorAll("button:not([aria-label])") : [])) {
+      if (!b.textContent.trim() || /^[\p{Extended_Pictographic}\s✓✕×←→↑↓⏮⏭▶⏸⏹●…+−]+$/u.test(b.textContent.trim())) {
+        const t = b.getAttribute("title") || b.dataset.tip || "";
+        if (t) b.setAttribute("aria-label", t);
+      }
+    }
+  };
+  const run = () => { fix(document); new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) fix(n); }).observe(document.body, { childList: true, subtree: true }); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run); else run();
+})();

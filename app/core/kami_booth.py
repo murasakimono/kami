@@ -8,6 +8,7 @@ import logging
 import os
 import secrets
 import socket
+import subprocess
 import threading
 import time
 import urllib.parse
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from app import paths
-from app.core import beat_studio
+from app.core import beat_studio, kami_beat
 
 log = logging.getLogger(__name__)
 
@@ -284,7 +285,17 @@ class BoothServer:
                             wav_bytes = body
                         fname = f"iphone_booth_{int(time.time())}_{uuid.uuid4().hex[:4]}.wav"
                         out_p = beat_studio.recordings_dir() / fname
-                        out_p.write_bytes(wav_bytes)
+                        if "wav" in ctype or "application/json" in ctype or wav_bytes[:4] == b"RIFF":
+                            out_p.write_bytes(wav_bytes)
+                        else:   # v2.5.3: telefon kayit uygulamasindan gelen m4a/caf/mp3 -> 48 kHz WAV
+                            raw_p = out_p.with_suffix(".src")
+                            raw_p.write_bytes(wav_bytes)
+                            ff = kami_beat._find_ffmpeg()
+                            r_ = subprocess.run([ff, "-y", "-hide_banner", "-loglevel", "error", "-i", str(raw_p), "-ar", "48000", str(out_p)],
+                                                capture_output=True, timeout=300, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) if ff else None
+                            raw_p.unlink(missing_ok=True)
+                            if not r_ or r_.returncode != 0 or not out_p.is_file():
+                                return self._send_json(400, {"ok": False, "error": "unsupported_audio"})
                         take = None
                         if owner._project_id:
                             tr = beat_studio.add_take_to_track(owner._project_id, owner._track_id, str(out_p), label="iPhone Booth Take")

@@ -69,7 +69,28 @@ function encodeWav(samples, sampleRate) {
   return new Blob([buf], { type: "audio/wav" });
 }
 
-recBtn.onclick = async () => {
+// v2.5.3: Tarayicilar mikrofonu yalniz HTTPS/localhost'ta acar; yerel agda http ile navigator.mediaDevices yoktur.
+// O durumda telefonun kendi kayit uygulamasindan (Sesli Notlar vb.) alinan dosya secilip PC'ye gonderilir.
+const NO_MIC = !(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+if (NO_MIC) {
+  st.textContent = "Bu bağlantıda tarayıcı mikrofona izin vermiyor. Sesli Notlar'da kaydet, sonra buradan dosyayı seç.";
+  recBtn.textContent = "📁 Kaydı Seç & PC'ye Gönder";
+  const pick = document.createElement("input");
+  pick.type = "file"; pick.accept = "audio/*"; pick.hidden = true;
+  document.body.appendChild(pick);
+  pick.onchange = async () => {
+    const f = pick.files && pick.files[0];
+    if (!f) return;
+    recBtn.disabled = true; recBtn.textContent = "Gönderiliyor…";
+    try {
+      const resp = await fetch("/api/upload_wav", { method: "POST", headers: { "Content-Type": f.type || "application/octet-stream", "X-Booth-Name": encodeURIComponent(f.name), ..._hdrs() }, credentials: "same-origin", body: f });
+      const j = await resp.json();
+      st.textContent = j.ok ? "✓ PC'deki aktif Vokal kanalına eklendi!" : ("Hata: " + (j.error || "?"));
+    } catch (e) { st.textContent = "Gönderim hatası: " + e.message; }
+    recBtn.disabled = false; recBtn.textContent = "📁 Yeni Kaydı Seç"; pick.value = "";
+  };
+  recBtn.onclick = () => pick.click();
+} else recBtn.onclick = async () => {
   if (!recording) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 48000, channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });

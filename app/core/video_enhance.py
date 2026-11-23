@@ -341,6 +341,7 @@ def _exec_progress(job: dict, cmd: list[str], total: float, p0: float = 0.0, p1:
     """ffmpeg'i -progress pipe:1 ile calistirir, yuzdeyi gunceller. -9 = iptal."""
     total = max(0.001, float(total or 0.001))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=NO_WINDOW)
+    from app.core.procjob import attach as _pj_attach; _pj_attach(proc)   # v2.5.3: Kami kapaninca GPU sureci de olsun
     err: list[bytes] = []
     threading.Thread(target=lambda: err.append(proc.stderr.read() if proc.stderr else b""), daemon=True).start()
     if proc.stdout is not None:
@@ -368,6 +369,7 @@ def _run_tool(job: dict, args: list[str], ex: Path, out_dir: Path, expect: int,
     """ncnn ikilisini calistirir; cikti dosya sayisindan yuzde hesaplar."""
     proc = subprocess.Popen(args, cwd=str(ex.parent), stdout=subprocess.DEVNULL,
                             stderr=subprocess.PIPE, creationflags=NO_WINDOW)
+    from app.core.procjob import attach as _pj_attach; _pj_attach(proc)   # v2.5.3: Kami kapaninca GPU sureci de olsun
     err: list[bytes] = []
     threading.Thread(target=lambda: err.append(proc.stderr.read() if proc.stderr else b""), daemon=True).start()
     while proc.poll() is None:

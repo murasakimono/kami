@@ -47,7 +47,7 @@
     url(p) { return this.base + p; }
     _headers(extra = {}) { return this.key ? { "X-Kami-Key": this.key, ...extra } : extra; }
     async post(p, body) {
-      try { const r = await fetch(this.url(p), { method: "POST", credentials: "same-origin", headers: this._headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: this.id, ...body }) }); return r.ok ? r.json() : null; } catch { return null; }
+      try { const r = await fetch(this.url(p), { method: "POST", credentials: "same-origin", headers: this._headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: this.id, ps: this.ps || "", ...body }) }); return r.ok ? r.json() : null; } catch { return null; }
     }
     async join() {
       try { this.ice = (await (await fetch(this.url("ice"), { cache: "no-store", credentials: "same-origin", headers: this._headers() })).json()).iceServers || []; } catch { this.ice = []; }
@@ -62,9 +62,9 @@
       this.alive = false; clearInterval(this._beat);
       for (const id of [...this.peers.keys()]) this._drop(id);
       if (this.key) {
-        await fetch(this.url("leave"), { method: "POST", keepalive: true, credentials: "same-origin", headers: this._headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: this.id }) }).catch(() => {});
+        await fetch(this.url("leave"), { method: "POST", keepalive: true, credentials: "same-origin", headers: this._headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: this.id, ps: this.ps || "" }) }).catch(() => {});
       } else {
-        navigator.sendBeacon?.(this.url("leave"), new Blob([JSON.stringify({ id: this.id })], { type: "application/json" })) || this.post("leave", {});
+        navigator.sendBeacon?.(this.url("leave"), new Blob([JSON.stringify({ id: this.id, ps: this.ps || "" })], { type: "application/json" })) || this.post("leave", {});
       }
     }
     setMe(st) { this.post("me", st); }
@@ -76,9 +76,10 @@
       let fails = 0;
       while (this.alive) {
         try {
-          const q = `poll?id=${this.id}&cid=${encodeURIComponent(this.cid)}&name=${encodeURIComponent(this.name)}&kind=${this.kind}&n=${this.n}&rv=${this.rv}&a=${this.sack}`;
+          const q = `poll?id=${this.id}&cid=${encodeURIComponent(this.cid)}&name=${encodeURIComponent(this.name)}&kind=${this.kind}&n=${this.n}&rv=${this.rv}&a=${this.sack}&ps=${encodeURIComponent(this.ps || "")}`;
           const r = await (await fetch(this.url(q), { cache: "no-store", credentials: "same-origin", headers: this._headers() })).json();
           fails = 0;
+          if (r.ps) this.ps = r.ps;   // v2.5.3: sunucunun bu kimlige verdigi anahtar
           if (r.rv !== this.rv) { this.rv = r.rv; this.roster = r.roster; this._sync(); this.on.roster?.(r.roster, r.host); }
           if (r.events?.length) { this.n = Math.max(this.n, ...r.events.map((e) => e.n)); this.on.events?.(r.events); }
           for (const s of r.signals || []) {

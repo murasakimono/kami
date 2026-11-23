@@ -496,8 +496,15 @@ class DebridService:
         links = list(info.get("links") or [])
         selected = [f for f in info.get("files") or [] if f.get("selected")]
         files: list[dict[str, Any]] = []
+        failed: list[str] = []
         for i, link in enumerate(links):
-            u = self.client.unrestrict(link)
+            try:
+                u = self.client.unrestrict(link)
+            except DebridError as exc:
+                if exc.code in ("rd_bad_token", "rd_no_token", "rd_network"):
+                    raise   # tum torrent sonra tekrar denenir
+                failed.append(f"{link[-24:]}: {exc.code}")   # v2.5.3: tek kotu link butun torrenti dusurmesin
+                continue
             if not u.get("download"):
                 continue
             rel = ""
@@ -510,6 +517,11 @@ class DebridService:
             if folder and f["rel"].startswith(folder + "/"):
                 f["rel"] = f["rel"][len(folder) + 1:]
         log.info("RD torrent hazir: %s -> %d dosya kuyruga", info.get("filename"), len(files))
+        if failed:
+            log.warning("RD: %d link acilamadi: %s", len(failed), "; ".join(failed[:5]))
+            self.notify({"kind": "error", "error": "rd_partial", "detail": f"{len(failed)} dosya açılamadı, {len(files)} dosya kuyrukta"})
+        if not files:
+            raise DebridError("rd_failed", "no_links")
         return self._enqueue(files, folder)
 
     def _enqueue(self, files: list[dict[str, Any]], folder: str) -> int:

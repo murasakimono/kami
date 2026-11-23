@@ -94,7 +94,7 @@
   }
   window.KPAL = window.KPAL || [];
   window.KPAL.push(() => [{ t: "Kami Doktor", sub: "Sağlık kontrolü ve onarım", run: open }]);
-  const initDoc = () => { mountButton(); setTimeout(checkDot, 6000); setInterval(checkDot, 300000); };
+  const initDoc = () => { mountButton(); setTimeout(checkDot, 6000); setInterval(() => { if (!document.hidden) checkDot(); }, 1800000); };   // v2.5.3: 5 dk yerine 30 dk, pencere gizliyken calismaz (21 kontrol + ag denemesi)
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initDoc); else initDoc();
   window.KamiDoctor = { open, renderInto, checkDot };
 })();

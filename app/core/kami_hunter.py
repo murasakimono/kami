@@ -392,6 +392,9 @@ def archive_underground_track(
         try:
             with requests.get(stream, stream=True, timeout=25, headers={"User-Agent": UA}) as resp:
                 resp.raise_for_status()
+                ctype = str(resp.headers.get("Content-Type") or "").lower()
+                if "text/html" in ctype or "json" in ctype:   # v2.5.3: sayfa HTML'i ses diye kaydedilmesin -> yt-dlp yolu
+                    raise ValueError("not_audio")
                 with open(tmp_dl, "wb") as f:
                     for chunk in resp.iter_content(65536):
                         if chunk:
@@ -424,10 +427,19 @@ def archive_underground_track(
         if artist:
             cmd += ["-metadata", f"artist={artist}"]
         cmd += ["-metadata", "genre=Underground Rap", str(dst)]
-        r = subprocess.run(cmd, capture_output=True, creationflags=nowin)
-        meta_ok = r.returncode == 0 and dst.is_file()
+        try:
+            r = subprocess.run(cmd, capture_output=True, creationflags=nowin, timeout=600)
+            meta_ok = r.returncode == 0 and dst.is_file()
+        except subprocess.TimeoutExpired:
+            meta_ok = False
     if not meta_ok and tmp_src != dst:
-        shutil.copy2(tmp_src, dst)
+        # v2.5.3: ffmpeg okuyamadiysa dosya ses degildir; .mp3 adiyla kopyalayip "basarili" demek yerine hata
+        try:
+            if tmp_src != src_file and tmp_src.is_file():
+                tmp_src.unlink()
+        except OSError:
+            pass
+        return {"ok": False, "error": "Kaynak ses dosyası değil ya da dönüştürülemedi"}
     if tmp_src != src_file and tmp_src.is_file() and tmp_src != dst:
         try:
             tmp_src.unlink()

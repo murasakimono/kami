@@ -81,3 +81,37 @@ def test_lifecycle_stop_event_exists_and_main_uses_it():
     assert not STOP.is_set()
     src = (Path(__file__).resolve().parent.parent / "app" / "main.py").read_text(encoding="utf-8")
     assert "_STOP.set()" in src and "while True:\n            time.sleep(2.0)" not in src
+
+
+def test_room_peer_key_blocks_impersonation():
+    from app.core import room
+    r = room.Room("host")
+    ok, key = r.bind_peer("p1", "")
+    assert ok and key
+    assert r.bind_peer("p1", "")[0] is False          # baskasi ayni kimlikle yoklayamaz
+    assert r.bind_peer("p1", key)[0] is True
+    assert r.peer_ok("p1", "yanlis") is False and r.peer_ok("p1", key) is True
+
+
+def test_ini_fixer_does_not_append_unknown_keys_and_keeps_utf16(tmp_path):
+    from app.core import games_companion as gc
+    ini = tmp_path / "g.ini"
+    ini.write_text("[/Script/Engine]\r\nbUseVSync=True\r\n", encoding="utf-16")
+    r = gc.fix_game_ini(str(ini), ["disable_vsync"])
+    txt = ini.read_text(encoding="utf-16")
+    assert r["ok"] and "bUseVSync=False" in txt and "iPresentInterval" not in txt
+    assert "iPresentInterval" in r["not_found"]
+
+
+def test_kamipack_rejects_files_missing_from_manifest(tmp_path):
+    import json, zipfile
+    from app.core import kamipack
+    pk = tmp_path / "x.kamipack"
+    with zipfile.ZipFile(pk, "w") as zf:
+        payload = b"{}"
+        zf.writestr("manifest.json", json.dumps({"format": kamipack.PACK_FORMAT,
+                                                 "sha256": {"payload.json": kamipack._sha256_bytes(payload)}}))
+        zf.writestr("payload.json", payload)
+        zf.writestr("assets/evil.png", b"x")
+    fn = getattr(kamipack, "inspect_kamipack", None) or getattr(kamipack, "verify_kamipack", None) or getattr(kamipack, "read_kamipack")
+    assert fn(str(pk))["ok"] is False

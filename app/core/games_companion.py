@@ -186,7 +186,10 @@ def fix_game_ini(ini_path: str, presets: list[str] | None = None) -> dict[str, A
     if not bak.exists():
         shutil.copy2(p, bak)
 
-    txt = p.read_text(encoding="utf-8", errors="replace")
+    raw = p.read_bytes()   # v2.5.3: UTF-16 (Unreal) dosyalar UTF-8'e cevrilip bozulmasin; satir sonu korunur
+    enc = "utf-16" if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else ("utf-8-sig" if raw[:3] == b"\xef\xbb\xbf" else "utf-8")
+    txt = raw.decode(enc, errors="replace")
+    nl = "\r\n" if "\r\n" in txt else "\n"
     wanted = set(presets or ["unlock_fps", "disable_mouse_accel", "disable_vsync"])
     replacements: list[tuple[str, str]] = []
     if "unlock_fps" in wanted:
@@ -206,12 +209,12 @@ def fix_game_ini(ini_path: str, presets: list[str] | None = None) -> dict[str, A
                 lines[i] = pat.sub(rf"\g<1>{val}", ln)
                 hit = True
                 applied.append(f"{key}={val}")
-        if not hit:
-            lines.append(f"{key}={val}")
-            applied.append(f"{key}={val} (eklendi)")
-
-    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return {"ok": True, "path": str(p), "backup": str(bak), "applied": applied}
+        # v2.5.3: dosyada olmayan anahtar SONA EKLENMEZ: [bolum] disina yazilan anahtar oyunlarca yok sayilir ya da
+        # baska motorun anahtari (Unreal/Bethesda) ilgisiz bir dosyaya girip onu bozar.
+    with open(p, "w", encoding=enc, newline="") as fh:
+        fh.write(nl.join(lines) + nl)
+    return {"ok": True, "path": str(p), "backup": str(bak), "applied": applied,
+            "not_found": [k for k, _ in replacements if not any(a.startswith(k + "=") for a in applied)]}
 
 
 def snapshot_save(game_key: str, source_path: str) -> dict[str, Any]:

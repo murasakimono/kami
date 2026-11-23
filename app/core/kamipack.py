@@ -13,6 +13,8 @@ BLOCKED_EXTENSIONS = {
     ".py", ".pyc", ".pyo", ".bat", ".cmd", ".ps1", ".psm1",
     ".exe", ".dll", ".so", ".dylib", ".msi", ".vbs", ".vbe",
     ".js", ".mjs", ".cjs", ".sh", ".bash", ".zsh", ".jar",
+    # v2.5.3: Windows'ta cift tikla calisan diger turler
+    ".lnk", ".hta", ".scr", ".url", ".reg", ".wsf", ".wsh", ".cpl", ".com", ".pif", ".msc", ".jse", ".appref-ms",
 }
 
 
@@ -23,7 +25,7 @@ def _sha256_bytes(data: bytes) -> str:
 def _is_safe_member(name: str) -> tuple[bool, str]:
     if not name or name.startswith("/") or name.startswith("\\") or ":" in name:
         return False, f"Gecersiz arsiv yolu: {name}"
-    p = PurePosixPath(name.replace("\\", "/"))
+    p = PurePosixPath(name.replace("\\", "/").rstrip(". "))   # v2.5.3: "x.exe." / "x.exe " Windows'ta x.exe olur
     if ".." in p.parts:
         return False, f"Dizin atlama engellendi: {name}"
     if p.suffix.lower() in BLOCKED_EXTENSIONS:
@@ -111,6 +113,12 @@ def inspect_kamipack(pack_path: str | Path) -> dict[str, Any]:
                 return {"ok": False, "error": f"Desteklenmeyen format: {manifest.get('format')}"}
 
             expected_hashes = manifest.get("sha256") or {}
+            # v2.5.3: manifestte olmayan dosya kabul edilmez (ozet listesi disinda kalan icerik sessizce cikariliyordu)
+            for member in names:
+                if member.endswith("/") or member in ("manifest.json",):
+                    continue
+                if member not in expected_hashes:
+                    return {"ok": False, "error": f"Manifestte olmayan dosya: {member}"}
             for member, expected in expected_hashes.items():
                 if member not in names:
                     return {"ok": False, "error": f"Manifestte yer alan dosya arsivde yok: {member}"}

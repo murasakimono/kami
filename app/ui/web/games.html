@@ -270,7 +270,7 @@
       const loadSnaps = async () => {
         const box = document.getElementById("detSnapList"); if (!box) return;
         const snaps = await api()?.games_list_snapshots?.(g.key).catch(() => []) || [];
-        box.innerHTML = snaps.length ? snaps.map((s) => `<div class="snap-row"><b style="flex:1">${esc(s.id)}</b><small style="color:var(--mut)">${s.files} dosya</small>${s.src_dir ? `<button class="btn" data-rsnap="${esc(s.id)}" style="padding:3px 8px;font-size:11px">Geri Yükle</button>` : ""}</div>`).join("")
+        box.innerHTML = snaps.length ? snaps.map((s) => `<div class="snap-row"><b style="flex:1">${esc(s.id)}</b><small style="color:var(--mut)">${s.files} dosya</small>${(s.src_dir || s.method === "ludusavi") ? `<button class="btn" data-rsnap="${esc(s.id)}" style="padding:3px 8px;font-size:11px">Geri Yükle</button>` : ""}</div>`).join("")
           : `<small style="color:var(--mut)">Henüz yerel save snapshot yok.</small>`;
         box.querySelectorAll("[data-rsnap]").forEach((rb) => {
           rb.onclick = async () => {
@@ -283,7 +283,7 @@
       loadSnaps();
       document.getElementById("detSnapBtn").onclick = async () => {
         const r = await api()?.games_save_snapshot?.(g.key, g.title, "");
-        keyNote(r?.ok ? "✓ Snapshot alındı" : "Snapshot kaydedildi (" + (r?.error || "Ludusavi yok") + ")");
+        keyNote(r?.ok ? "✓ Snapshot alındı" : "Snapshot alınamadı: " + (r?.error === "ludusavi_missing" ? "Ludusavi kurulu değil" : (r?.error || "?")));
         loadSnaps();
       };
       const covBox = document.getElementById("detCovPick"), covGrid = document.getElementById("detCovGrid");

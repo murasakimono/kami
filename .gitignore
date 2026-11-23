@@ -25,3 +25,5 @@ Claude outputs/
 denetim/
 .tmp/
 .pytmp/
+
+.wrangler/

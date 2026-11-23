@@ -594,7 +594,17 @@ class DownloadManager:
         if d.gid:
             self.engine.remove(d.gid)
         if delete_file and d.path:
-            from app.core.mediatools import remove_or_trash
+            from app.core.mediatools import remove_or_trash, to_trash
+            if os.path.isdir(d.path) and d.status == Status.COMPLETE:
+                # v2.5.3: cok dosyali torrentin yolu klasordur; eskiden yalniz dosyalar silindigi icin klasor diskte kaliyordu
+                if not to_trash([d.path]):
+                    log.warning("Klasor Geri Donusum Kutusu'na tasinamadi: %s", d.path)
+            for side in (d.path + ".kami.json",):   # Provenance yan dosyasi
+                try:
+                    if os.path.isfile(side):
+                        os.remove(side)
+                except OSError:
+                    pass
             for p in (d.path, d.path + ".aria2"):
                 try:
                     if os.path.isfile(p):
@@ -954,6 +964,10 @@ class DownloadManager:
             except Exception:
                 log.debug("Motor kaldirma basarisiz (tamamlanma temizligi): %s", d.gid)
             changes["gid"] = ""
+        if d.headers:   # v2.5.3: oturum cerezleri/yetki basliklari kami.db'de duz metin kalmasin
+            clean = {k: v for k, v in d.headers.items() if str(k).lower() not in ("cookie", "authorization", "proxy-authorization")}
+            if clean != d.headers:
+                changes["headers"] = clean
         # Kami Provenance: dosyanin yanina kanitlanabilir kaynak kaydi (sidecar)
         try:
             from app.core import provenance

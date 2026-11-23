@@ -974,7 +974,7 @@
       subBar.querySelector("#backAlb").onclick = () => setNav(NAV);
       subBar.querySelector("[data-splayctx]").onclick = (ev) => { ev.stopPropagation(); spPlay("", CUR_PL.uri, ev.currentTarget); };
       const r = await api()?.music_spotify_album_tracks?.(oalb.dataset.openalb).catch(() => null);
-      list.innerHTML = (r?.items || []).map((t) => trackRowHtml(t, null)).join("") || `<div style="color:var(--mut);padding:12px">Albüm boş.</div>`;
+      list.innerHTML = (r?.items || []).map((t) => trackRowHtml(t, CUR_PL.id || "album")).join("") || `<div style="color:var(--mut);padding:12px">Albüm boş.</div>`;   // v2.5.3: albüm bağlamında çal (tek parça çalıp durmasın)
       refreshListMotion();
       return;
     }
