@@ -40,25 +40,53 @@
     <div class="kb-actions">
       <button type="button" class="btn" id="refPick">Referans</button>
       <button type="button" class="btn" id="abToggle" disabled>A/B: Miks (A)</button>
-      <button type="button" class="btn ok" id="mixdownBtn">Mixdown (-14 LUFS)</button>
+      <button type="button" class="btn ok" id="mixdownBtn" title="Klip düzenlemeleri + kanal efektleriyle WAV (-14 LUFS)">Bounce (-14 LUFS)</button>
       <button type="button" class="btn pri" id="toStudioBtn">🎬 Lirik Video</button>
     </div>
   </header>
 
   <main class="kb-body" id="kbBody">
     <section class="kb-main" id="studioPane">
-      <div class="kb-ruler-row">
-        <div class="kb-ruler-lbl">
-          <span>KANAL MİKSERİ</span>
-          <small id="selTrackHint">Ana Vokal seçili</small>
+      <div class="kb-tl-bar" aria-label="Zaman çizelgesi araçları">
+        <div class="kb-tl-grp">
+          <button type="button" class="btn ic" id="tlUndo" title="Geri al (Ctrl+Z)" disabled>↶</button>
+          <button type="button" class="btn ic" id="tlRedo" title="Yinele (Ctrl+Y / Ctrl+Shift+Z)" disabled>↷</button>
         </div>
-        <div class="kb-ruler" id="kbRuler">
-          <div class="kb-ruler-ticks" id="rulerTicks"></div>
-          <div class="kb-master-prog" id="masterProg"></div>
+        <div class="kb-tl-grp">
+          <button type="button" class="btn ic" id="tlSplit" title="Çalma çizgisinde böl (S)">✂</button>
+          <button type="button" class="btn ic" id="tlDup" title="Kopyala, hemen sağına (Ctrl+D)">⧉</button>
+          <button type="button" class="btn ic" id="tlDel" title="Sil (Delete)">✕</button>
         </div>
+        <label class="kb-tl-snap" title="Izgaraya yapış (sürüklerken Alt basılıysa kapalı)">
+          <span>Izgara</span>
+          <select id="tlSnap" class="kb-sel">
+            <option value="0">Kapalı</option>
+            <option value="1">1 bar</option>
+            <option value="2">1/2</option>
+            <option value="4" selected>1/4 vuruş</option>
+            <option value="8">1/8</option>
+            <option value="16">1/16</option>
+          </select>
+        </label>
+        <div class="kb-tl-grp">
+          <button type="button" class="btn ic" id="tlZoomOut" title="Uzaklaş (-)">−</button>
+          <span class="kb-num kb-tl-zoom" id="tlZoomLbl">40 px/s</span>
+          <button type="button" class="btn ic" id="tlZoomIn" title="Yakınlaş (+)">+</button>
+          <button type="button" class="btn" id="tlFit" title="Tüm parçayı sığdır">Sığdır</button>
+        </div>
+        <label class="kb-chk kb-tl-follow"><input type="checkbox" id="tlFollow" checked><span>Takip et</span></label>
+        <span class="kb-tl-note" title="Efektleri duymak için Bounce al">Önizleme: efektsiz</span>
+        <span class="kb-tl-hint" id="selTrackHint">Ana Vokal seçili</span>
       </div>
 
-      <div class="kb-tracks-scroll" id="tracksWrap"></div>
+      <div class="kb-tl" id="kbTimeline">
+        <div class="kb-tl-corner">KANALLAR</div>
+        <div class="kb-tl-ruler-wrap"><canvas id="tlRuler" class="kb-tl-ruler" title="Tıkla / sürükle: konum"></canvas></div>
+        <div class="kb-tl-heads" id="tlHeads"></div>
+        <div class="kb-tl-scroll" id="tlScroll">
+          <div class="kb-tl-content" id="tlContent"></div>
+        </div>
+      </div>
 
       <section class="kb-console" aria-label="FX Rack ve AI Miks">
         <div class="kb-ai-bar">
@@ -144,7 +172,20 @@
             <span>Kayıt sonrası AI dip gürültü temizle</span>
           </label>
           <button type="button" class="btn pri full" id="pcRecBtn">🎙 Kayda Başla</button>
-          <small class="kb-mut" id="pcRecSt">Hazır — Ana Vokal kanalına kaydeder.</small>
+          <small class="kb-mut" id="pcRecSt">Hazır — seçili vokal kanalına, çalma çizgisinden itibaren kaydeder.</small>
+        </div>
+
+        <div class="kb-mod">
+          <div class="kb-mod-head">
+            <b>Kayıt Gecikmesi (alkış testi)</b>
+            <span class="kb-badge-em kb-num" id="latCur">0 ms</span>
+          </div>
+          <small class="kb-mut">Kulaklığı mikrofona yaklaştır (veya hoparlörü aç), "Ölç"e bas: kısa bir tık çalınıp mikrofondan geri dinlenir. Sonuç yeni kayıt kliplerini o kadar sola kaydırır.</small>
+          <div class="kb-lat-row">
+            <button type="button" class="btn full" id="latMeasure">Gecikmeyi ölç</button>
+            <button type="button" class="btn ok" id="latApply" disabled>Uygula</button>
+          </div>
+          <small class="kb-mut kb-num" id="latRes">—</small>
         </div>
 
         <div class="kb-mod">
@@ -193,6 +234,8 @@
   </footer>
 
   <audio id="audPreview" preload="metadata"></audio>
+  <script src="beat-clips.js"></script>
+  <script src="beat-timeline.js"></script>
   <script src="beat.js"></script>
 </body>
 </html>

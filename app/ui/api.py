@@ -6674,6 +6674,10 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core import beat_studio
         return beat_studio.waveform_peaks(audio_path, buckets=buckets)
 
+    def beat_waveform_tile(self, audio_path: str, rate: int = 64, index: int = 0, size: int = 2048) -> dict[str, Any]:
+        from app.core import beat_studio
+        return beat_studio.waveform_tile(audio_path, rate=int(rate), index=int(index), size=int(size))
+
     def beat_media_url(self, audio_path: str) -> dict[str, Any]:
         if not self._media:
             return {"ok": False, "error": "media_unavailable"}

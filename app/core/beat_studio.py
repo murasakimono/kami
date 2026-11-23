@@ -321,22 +321,114 @@ def measure_lufs(path: str) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)[:120]}
 
 
+PEAK_RATE = 256          # temel tepe cozunurlugu (tepe/sn); 8192 Hz mono cozumde 32 ornek = 1 tepe
+_PEAK_SR = 8192
+_PEAK_CACHE: dict[tuple[str, float, int], tuple[Any, float]] = {}
+_PEAK_CACHE_MAX = 8
+
+
+def _peak_base(path: str):
+    """(tepeler[float32, PEAK_RATE/sn, 0..1 mutlak], sure_sn). Bellekte LRU; 1 saatlik dosya ~3.7 MB.
+    ffmpeg ile akis halinde cozulur (tum dosya bellege alinmaz)."""
+    import numpy as np
+    st = os.stat(path)
+    key = (os.path.abspath(path), st.st_mtime, st.st_size)
+    hit = _PEAK_CACHE.pop(key, None)
+    if hit is not None:
+        _PEAK_CACHE[key] = hit
+        return hit
+    step = _PEAK_SR // PEAK_RATE
+    peaks_parts = []
+    n_samples = 0
+    ff = kami_beat._find_ffmpeg()
+    if ff:
+        proc = subprocess.Popen([ff, "-hide_banner", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", str(_PEAK_SR),
+                                 "-f", "f32le", "pipe:1"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                creationflags=NO_WINDOW)
+        rest = np.zeros(0, dtype="<f4")
+        try:
+            while True:
+                chunk = proc.stdout.read(step * 4 * 8192)
+                if not chunk:
+                    break
+                arr = np.frombuffer(chunk[: len(chunk) // 4 * 4], dtype="<f4")
+                arr = np.concatenate([rest, arr]) if len(rest) else arr
+                full = len(arr) // step * step
+                if full:
+                    peaks_parts.append(np.abs(arr[:full]).reshape(-1, step).max(axis=1))
+                rest = arr[full:].copy()
+                n_samples += full
+            if len(rest):
+                peaks_parts.append(np.array([np.abs(rest).max()], dtype="<f4"))
+                n_samples += len(rest)
+        finally:
+            proc.stdout.close()
+            proc.wait(timeout=30)
+        dur = n_samples / float(_PEAK_SR)
+    else:
+        import soundfile as sf
+        data, sr = sf.read(path, dtype="float32", always_2d=True)
+        mono = np.abs(data).mean(axis=1)
+        bounds = np.unique((np.arange(0, int(len(mono) * PEAK_RATE / sr) + 1) * sr / PEAK_RATE).astype(int))
+        bounds = bounds[bounds < len(mono)]
+        if len(bounds):
+            peaks_parts.append(np.maximum.reduceat(mono, bounds))
+        dur = len(mono) / float(sr)
+    peaks = np.concatenate(peaks_parts).astype("float32") if peaks_parts else np.zeros(0, dtype="float32")
+    res = (peaks, dur)
+    _PEAK_CACHE[key] = res
+    while len(_PEAK_CACHE) > _PEAK_CACHE_MAX:
+        _PEAK_CACHE.pop(next(iter(_PEAK_CACHE)))
+    return res
+
+
 def waveform_peaks(path: str, buckets: int = 160) -> dict[str, Any]:
     """Arayuzde dalga formu cizimi icin normalize tepe degerleri (0..1) uretir."""
     import numpy as np
     if not path or not os.path.isfile(path):
         return {"ok": False, "peaks": []}
     try:
-        data, sr = _read_audio_np(path, 24000)
-        mono = np.abs(data).mean(axis=1)
-        if len(mono) == 0:
+        base, dur = _peak_base(path)
+        if len(base) == 0:
             return {"ok": True, "peaks": [], "duration": 0.0}
-        step = max(1, len(mono) // max(16, buckets))
-        peaks = [round(float(mono[i : i + step].max()), 3) for i in range(0, len(mono), step)][:buckets]
-        mx = max(peaks) if peaks else 1.0
+        buckets = max(16, min(int(buckets or 160), 200000))
+        edges = np.linspace(0, len(base), min(buckets, len(base)) + 1).astype(int)
+        edges = np.unique(edges[:-1])
+        pk = np.maximum.reduceat(base, edges)
+        mx = float(pk.max()) if len(pk) else 0.0
         if mx > 0:
-            peaks = [round(p / mx, 3) for p in peaks]
-        return {"ok": True, "peaks": peaks, "duration": round(len(mono) / sr, 2)}
+            pk = pk / mx
+        return {"ok": True, "peaks": [round(float(x), 3) for x in pk], "duration": round(dur, 3)}
+    except Exception as exc:
+        return {"ok": False, "peaks": [], "error": str(exc)[:120]}
+
+
+def waveform_tile(path: str, rate: int = 64, index: int = 0, size: int = 2048) -> dict[str, Any]:
+    """Zaman cizelgesi icin karo: `rate` tepe/sn cozunurlukte `index`. karo (size tepe).
+    Degerler dosyanin genel tepesine gore normalize (karolar birbiriyle tutarli). Yalniz gorunen karolar istenir."""
+    import numpy as np
+    if not path or not os.path.isfile(path):
+        return {"ok": False, "peaks": [], "error": "file_not_found"}
+    try:
+        rate = int(rate)
+        if rate < 1 or rate > PEAK_RATE or (PEAK_RATE % rate):
+            return {"ok": False, "peaks": [], "error": "bad_rate"}
+        size = max(64, min(int(size or 2048), 8192))
+        base, dur = _peak_base(path)
+        gmax = float(base.max()) if len(base) else 0.0
+        f = PEAK_RATE // rate
+        a = int(index) * size * f
+        seg = base[a: a + size * f]
+        if len(seg) == 0:
+            return {"ok": True, "peaks": [], "duration": round(dur, 3), "rate": rate, "index": int(index)}
+        pad = (-len(seg)) % f
+        if pad:
+            seg = np.concatenate([seg, np.zeros(pad, dtype=seg.dtype)])
+        pk = seg.reshape(-1, f).max(axis=1)
+        if gmax > 0:
+            pk = pk / gmax
+        return {"ok": True, "peaks": [round(float(x), 3) for x in pk], "duration": round(dur, 3),
+                "rate": rate, "index": int(index)}
     except Exception as exc:
         return {"ok": False, "peaks": [], "error": str(exc)[:120]}
 
@@ -647,7 +739,20 @@ def list_projects() -> dict[str, Any]:
     out = []
     for fp in sorted(projects_dir().glob("*.kbeat.json"), key=lambda x: x.stat().st_mtime, reverse=True):
         try:
-            d = json.loads(fp.read_text(encoding="utf-8"))
+            try:
+                d = _read_project_file(fp)
+            except Exception:
+                # bozuk ana dosya: listeden dusurme (load_project history'den kurtarir), bilgiyi son saglam kayittan al
+                pid0 = fp.name[: -len(".kbeat.json")]
+                d = None
+                for snap in sorted(_history_dir(pid0).glob("*.json"), reverse=True):
+                    try:
+                        d = _read_project_file(snap)
+                        break
+                    except Exception:
+                        continue
+                if d is None:
+                    continue
             out.append({
                 "id": d.get("id", fp.stem.replace(".kbeat", "")),
                 "name": d.get("name", "Adsız"),

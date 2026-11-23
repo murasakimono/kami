@@ -189,6 +189,7 @@ def test_save_atomic_history_ring_and_recovery(bs):
     assert [p["id"] for p in bs.list_projects()["projects"]] == [pid]
     # bozuk ana dosya -> en yeni history
     fp.write_text('{"id": "' + pid + '", "tracks": [', encoding="utf-8")
+    assert [p["name"] for p in bs.list_projects()["projects"]] == ["Ad 13"], "bozuk proje listeden dusmemeli"
     r = bs.load_project(pid)
     assert r["ok"] and r["recovered"] is True and r["project"]["name"] == "Ad 13"
     assert json.loads(fp.read_text(encoding="utf-8"))["name"] == "Ad 13", "kurtarilan surum geri yazilmali"
@@ -400,3 +401,26 @@ def test_beat_ui_js_syntax():
         assert p.returncode == 0, f"{name}: {p.stderr}"
     html = (ROOT / "app/ui/web/beat.html").read_text(encoding="utf-8")
     assert html.index("beat-clips.js") < html.index("beat-timeline.js") < html.index('src="beat.js"')
+
+
+# ---------------- 7. dalga formu karolari ----------------
+def test_waveform_tiles_and_peaks(tmp_path):
+    import numpy as np
+    from app.core import beat_studio as bs
+    p = tmp_path / "w.wav"
+    n = 10 * SR
+    a = np.zeros((n, 2), dtype="float32")
+    a[: 5 * SR] = 0.2
+    a[5 * SR:] = 0.8
+    bs._write_wav_np(str(p), a, SR)
+    full = bs.waveform_peaks(str(p), 100)
+    assert full["ok"] and len(full["peaks"]) == 100 and full["duration"] == pytest.approx(10.0, abs=0.01)
+    # (adim kenarinda yeniden ornekleme tasmasi olabilir -> oran ile kontrol)
+    assert full["peaks"][90] > 0.9 and full["peaks"][10] / full["peaks"][90] == pytest.approx(0.25, abs=0.02)
+    t0 = bs.waveform_tile(str(p), rate=64, index=0, size=256)   # 256 tepe = 4 s
+    t1 = bs.waveform_tile(str(p), rate=64, index=1, size=256)   # 4..8 s
+    assert t0["ok"] and len(t0["peaks"]) == 256
+    hi = t1["peaks"][-1]
+    assert hi > 0.9 and max(t0["peaks"]) / hi == pytest.approx(0.25, abs=0.02) and t1["peaks"][0] / hi == pytest.approx(0.25, abs=0.02)
+    assert len(bs.waveform_tile(str(p), rate=64, index=2, size=256)["peaks"]) == 128   # son karo yarim
+    assert bs.waveform_tile(str(p), rate=3)["ok"] is False
