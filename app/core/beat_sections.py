@@ -18,8 +18,8 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 MIN_SECTION_BARS = 4
-ANALYSIS_SR = 22050
-_BANDS = (0, 150, 400, 1000, 2500, 6000, 11025)
+ANALYSIS_SR = 11025          # bolum analizi icin yeterli; 1 saatlik beat ~160 MB float32 mono
+_BANDS = (0, 150, 400, 1000, 2500, 5000, 1e9)
 
 _PROGRESS_LOCK = threading.Lock()
 PROGRESS: dict[str, Any] = {"pid": "", "stage": "", "pct": 0, "running": False, "t": 0.0}
@@ -281,6 +281,32 @@ def _beat_source(proj: dict[str, Any]) -> dict[str, Any] | None:
             "src_out": float(c.get("src_out") or 0.0), "start": float(c.get("start") or 0.0)}
 
 
+def _read_mono(path: str, sr: int, t_in: float = 0.0, t_len: float = 0.0):
+    """Mono float32 (yalniz klibin kesiti). ffmpeg ile dogrudan mono/dusuk ornekleme (uzun beat'te bellek dostu);
+    ffmpeg yoksa beat_studio okuyucusu."""
+    import subprocess
+
+    import numpy as np
+
+    from app.core import beat_studio, kami_beat
+    ff = kami_beat._find_ffmpeg()
+    if ff:
+        cmd = [ff, "-hide_banner", "-loglevel", "error"]
+        if t_in > 0:
+            cmd += ["-ss", f"{t_in:.6f}"]
+        if t_len > 0:
+            cmd += ["-t", f"{t_len:.6f}"]
+        cmd += ["-i", path, "-ac", "1", "-ar", str(sr), "-f", "f32le", "pipe:1"]
+        r = subprocess.run(cmd, capture_output=True, timeout=600, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if r.returncode == 0 and r.stdout:
+            return np.frombuffer(r.stdout, dtype="<f4").copy(), sr
+    data, sr2 = beat_studio._read_audio_np(path, sr)
+    mono = data.mean(axis=1)
+    s0 = int(round(t_in * sr2))
+    s1 = int(round((t_in + t_len) * sr2)) if t_len > 0 else len(mono)
+    return mono[s0:s1], sr2
+
+
 def analyze_project(pid: str, path: str = "") -> dict[str, Any]:
     """BPM + ton + bolum haritasi. Projeye YAZMAZ (arayuz sonucu tek geri-al adimi olarak uygular)."""
     import os
@@ -310,14 +336,10 @@ def analyze_project(pid: str, path: str = "") -> dict[str, Any]:
         except Exception:
             key = {}
         _set_progress(pid, "Ses çözülüyor", 45)
-        data, sr = beat_studio._read_audio_np(path, ANALYSIS_SR)
-        mono = data.mean(axis=1)
-        offset = 0.0
-        if src:
-            s0 = int(round(src["src_in"] * sr))
-            s1 = int(round(src["src_out"] * sr)) if src["src_out"] > src["src_in"] else len(mono)
-            mono = mono[s0:s1]
-            offset = src["start"]
+        t_in = src["src_in"] if src else 0.0
+        t_len = (src["src_out"] - src["src_in"]) if src and src["src_out"] > src["src_in"] else 0.0
+        mono, sr = _read_mono(path, ANALYSIS_SR, t_in, t_len)
+        offset = src["start"] if src else 0.0
         _set_progress(pid, "Bölümler aranıyor", 70)
         use_bpm = bpm if bpm > 0 else 120.0
         res = detect_sections(mono, sr, use_bpm, offset=offset)

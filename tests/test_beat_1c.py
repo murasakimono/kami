@@ -124,6 +124,16 @@ def test_analyze_project_uses_beat_clip(bs, tmp_path, monkeypatch):
     assert bsx.get_progress()["running"] is False
     # projeye yazmaz (arayuz geri alinabilir adim olarak uygular)
     assert bs.load_project(pr["id"])["project"]["sections"] == []
+    # klip zaman cizelgesinde 2 bar ileride ve basindan 4 bar (intro) kirpilmis: kesit + konum dikkate alinir
+    proj = bs.load_project(pr["id"])["project"]
+    beat = next(t for t in proj["tracks"] if t["role"] == "beat")
+    beat["clips"][0].update({"start": 4.0, "src_in": 8.0})
+    bs.save_project(proj)
+    res2 = bsx.analyze_project(pr["id"])
+    assert res2["ok"]
+    got = [(round(s["start"] / BAR), round(s["end"] / BAR), s["name"].split()[0]) for s in res2["sections"]]
+    assert [g[2] for g in got] == ["Verse", "Nakarat", "Verse", "Nakarat", "Outro"], got
+    assert [g[0] for g in got] == [2, 10, 18, 26, 34] and got[-1][1] == 38, got
 
 
 def _has_sf() -> bool:
