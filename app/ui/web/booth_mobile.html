@@ -15,7 +15,8 @@
     button { border:0; border-radius:12px; padding:14px 18px; font:600 15px inherit; cursor:pointer; }
     #recBtn { flex:1; background:var(--ac); color:#fff; }
     #recBtn.live { background:var(--bad); }
-    #scrollBtn { background:#241B35; color:var(--tx); }
+    #scrollBtn, #targetBtn { background:#241B35; color:var(--tx); }
+    #targetBtn.idea { background:#3A2A12; color:#F5C66B; }
     .st { font-size:12px; color:var(--mut); padding:6px 16px; background:#120D1B; }
   </style>
 </head>
@@ -25,12 +26,21 @@
   <div class="tp" id="tp">Söz Defteri yükleniyor…</div>
   <div class="bar">
     <button id="scrollBtn">Akış: Kapalı</button>
+    <button id="targetBtn" title="Kayıt nereye gitsin: projedeki vokal kanalı / Kami fikir rafı">Hedef: Kanal</button>
     <button id="recBtn">🎙 Kayda Başla</button>
   </div>
 <script>
 const _tok = new URLSearchParams(location.search).get("token") || "";
 if (_tok) { try { history.replaceState(null, "", location.pathname); } catch {} }
-const _hdrs = () => (_tok ? { "X-Booth-Token": _tok } : {});
+// 1e-2: hedef secimi (kanal / fikir rafi); PC'deki secim varsayilan, telefondan degistirilebilir
+let TARGET = "", TARGET_TOUCHED = false;
+const _hdrs = () => Object.assign(_tok ? { "X-Booth-Token": _tok } : {}, TARGET ? { "X-Booth-Target": TARGET } : {});
+const okMsg = (j) => (j.target === "idea" ? "✓ Kami fikir rafına eklendi!" : "✓ PC'deki aktif Vokal kanalına eklendi!");
+function syncTarget() {
+  const b = document.getElementById("targetBtn");
+  b.textContent = TARGET === "idea" ? "Hedef: 💡 Fikir" : "Hedef: Kanal";
+  b.classList.toggle("idea", TARGET === "idea");
+}
 let ctx = null, stream = null, node = null, chunks = [], recording = false, recStart = 0, tInt = 0, scrollInt = 0, scrolling = false;
 const tp = document.getElementById("tp"), st = document.getElementById("st"), recBtn = document.getElementById("recBtn"), scrollBtn = document.getElementById("scrollBtn");
 
@@ -39,12 +49,17 @@ async function loadLyrics() {
     const r = await (await fetch("/api/teleprompter", { headers: _hdrs(), credentials: "same-origin" })).json();
     if (r.ok) {
       document.getElementById("projName").textContent = r.project_name || "Kami Booth";
+      if (!TARGET_TOUCHED && r.target) { TARGET = r.target; syncTarget(); }
       tp.textContent = r.lyrics || "PC'deki Söz Defteri boş. Yazdığın sözler burada canlı görünür.";
     }
   } catch {}
 }
 loadLyrics();
 setInterval(loadLyrics, 3500);
+
+document.getElementById("targetBtn").onclick = () => {
+  TARGET = TARGET === "idea" ? "track" : "idea"; TARGET_TOUCHED = true; syncTarget();
+};
 
 scrollBtn.onclick = () => {
   scrolling = !scrolling;
@@ -85,7 +100,7 @@ if (NO_MIC) {
     try {
       const resp = await fetch("/api/upload_wav", { method: "POST", headers: { "Content-Type": f.type || "application/octet-stream", "X-Booth-Name": encodeURIComponent(f.name), ..._hdrs() }, credentials: "same-origin", body: f });
       const j = await resp.json();
-      st.textContent = j.ok ? "✓ PC'deki aktif Vokal kanalına eklendi!" : ("Hata: " + (j.error || "?"));
+      st.textContent = j.ok ? okMsg(j) : ("Hata: " + (j.error || "?"));
     } catch (e) { st.textContent = "Gönderim hatası: " + e.message; }
     recBtn.disabled = false; recBtn.textContent = "📁 Yeni Kaydı Seç"; pick.value = "";
   };
@@ -120,7 +135,7 @@ if (NO_MIC) {
       await ctx.close();
       const resp = await fetch("/api/upload_wav", { method: "POST", headers: { "Content-Type": "audio/wav", ..._hdrs() }, credentials: "same-origin", body: blob });
       const j = await resp.json();
-      st.textContent = j.ok ? "✓ PC'deki aktif Vokal kanalına eklendi!" : ("Hata: " + (j.error || "?"));
+      st.textContent = j.ok ? okMsg(j) : ("Hata: " + (j.error || "?"));
     } catch (e) { st.textContent = "Gönderim hatası: " + e.message; }
     recBtn.disabled = false; recBtn.textContent = "🎙 Yeni Take Başlat";
   }

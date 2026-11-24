@@ -318,10 +318,13 @@ class BoothServer:
         self._project_id = ""
         self._track_id = "vocal1"
         self._last_upload: dict[str, Any] | None = None
+        self._target = "track"                # 1e-2: "track" (proje kanali) | "idea" (fikir rafi)
 
-    def set_target(self, project_id: str, track_id: str = "vocal1") -> None:
+    def set_target(self, project_id: str, track_id: str = "vocal1", target: str = "") -> None:
         self._project_id = project_id
         self._track_id = track_id or "vocal1"
+        if target in ("track", "idea"):
+            self._target = target
 
     def status(self) -> dict[str, Any]:
         running = self._srv is not None
@@ -334,13 +337,16 @@ class BoothServer:
             "url": url,
             "project_id": self._project_id,
             "track_id": self._track_id,
+            "target": self._target,
             "last_upload": self._last_upload,
         }
 
-    def start(self, project_id: str = "", track_id: str = "vocal1") -> dict[str, Any]:
+    def start(self, project_id: str = "", track_id: str = "vocal1", target: str = "") -> dict[str, Any]:
         with self._lock:
             self._project_id = project_id or self._project_id
             self._track_id = track_id or self._track_id
+            if target in ("track", "idea"):
+                self._target = target
             if self._srv is not None:
                 return self.status()
             self._token = secrets.token_urlsafe(24)
@@ -406,7 +412,8 @@ class BoothServer:
                                 lyrics = p.get("lyrics", "")
                                 bpm = float(p.get("bpm") or 120.0)
                                 name = p.get("name", name)
-                        return self._send_json(200, {"ok": True, "lyrics": lyrics, "bpm": bpm, "project_name": name})
+                        return self._send_json(200, {"ok": True, "lyrics": lyrics, "bpm": bpm, "project_name": name,
+                                                     "target": owner._target})
 
                     html_p = paths.WEB_DIR / "booth_mobile.html"
                     if not html_p.is_file():
@@ -432,8 +439,10 @@ class BoothServer:
                             return self._send_json(400, {"ok": False, "error": "invalid_size"})
                         body = self.rfile.read(ln)
                         ctype = (self.headers.get("Content-Type") or "").lower()
+                        target = (self.headers.get("X-Booth-Target") or "").strip().lower()
                         if "application/json" in ctype:
                             payload = json.loads(body.decode("utf-8"))
+                            target = str(payload.get("target") or target).lower()
                             b64 = str(payload.get("data_url") or "").split(",")[-1]
                             wav_bytes = base64.b64decode(b64)
                         else:
@@ -451,12 +460,23 @@ class BoothServer:
                             raw_p.unlink(missing_ok=True)
                             if not r_ or r_.returncode != 0 or not out_p.is_file():
                                 return self._send_json(400, {"ok": False, "error": "unsupported_audio"})
+                        if target not in ("track", "idea"):
+                            target = owner._target
+                        if target == "idea":   # 1e-2: fikir rafina (projeye dokunmaz)
+                            from app.core import beat_ideas
+                            nm = urllib.parse.unquote(self.headers.get("X-Booth-Name") or "")
+                            ir = beat_ideas.add_idea(str(out_p), name=os.path.splitext(nm)[0][:60], source="iphone", move=True)
+                            idea = ir.get("item")
+                            owner._last_upload = {"path": (idea or {}).get("file", str(out_p)), "take": None, "idea": idea,
+                                                  "target": "idea", "ts": time.time()}
+                            return self._send_json(200 if ir.get("ok") else 500, {"ok": bool(ir.get("ok")), "target": "idea",
+                                                                                  "idea": idea, "error": ir.get("error")})
                         take = None
                         if owner._project_id:
                             tr = beat_studio.add_take_to_track(owner._project_id, owner._track_id, str(out_p), label="iPhone Booth Take")
                             take = tr.get("take")
-                        owner._last_upload = {"path": str(out_p), "take": take, "ts": time.time()}
-                        return self._send_json(200, {"ok": True, "path": str(out_p), "take": take})
+                        owner._last_upload = {"path": str(out_p), "take": take, "target": "track", "ts": time.time()}
+                        return self._send_json(200, {"ok": True, "path": str(out_p), "take": take, "target": "track"})
                     except Exception as exc:
                         return self._send_json(500, {"ok": False, "error": str(exc)[:120]})
 
