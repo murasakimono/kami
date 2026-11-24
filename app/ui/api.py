@@ -127,7 +127,7 @@ class Api(StudioMixin, EnhanceMixin):
         "subtitle_batch", "clip_factory_highlights", "hardsub_extract", "kamipack_export", "kamipack_import",
         "kasa_index_media", "lyrics_word_sync",
         "mpv_install", "mix_autodj", "music_tag_fetch_cover", "music_tag_auto_apply", "player_replaygain",
-        "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_analyze_sections", "beat_mic_test", "beat_find_lyric_start", "beat_apply_fx", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
+        "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_analyze_sections", "beat_mic_test", "beat_find_lyric_start", "beat_apply_fx", "beat_preview_render", "beat_vst_editor", "beat_vst_params", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
         "enhance_preview_split", "enhance_batch_start", "pic_tarif_run",
         "games_hltb_real", "games_pcgamingwiki", "games_mod_install", "games_ocr_translate",
         "oracle_relay_ping", "oracle_relay_pull",
@@ -6706,6 +6706,31 @@ class Api(StudioMixin, EnhanceMixin):
     def beat_apply_fx(self, in_path: str, out_path: str, fx_list: list, use_denoise: bool = False) -> dict[str, Any]:
         from app.core import beat_studio
         return beat_studio.apply_fx_chain(in_path, out_path, fx_list, use_denoise=bool(use_denoise))
+
+    # ---- Revize 4: efekt parametreleri + efektli onizleme + VST penceresi ----
+    def beat_fx_schema(self) -> dict[str, Any]:
+        """Yerlesik efektlerin parametre semasi (surguler) + pedalboard/VST/pencere durumu."""
+        from app.core import beat_fx
+        return {"ok": True, "schema": beat_fx.schema_public(), "available": beat_fx.available(),
+                "vst_top": beat_fx.VST_PARAM_TOP}
+
+    def beat_preview_render(self, pid: str, track_id: str, start: float = 0.0, dur: float = 15.0,
+                            clip_id: str = "", track: dict | None = None, loop: dict | None = None) -> dict[str, Any]:
+        """Efektli onizleme penceresi (bounce ile ayni render yolu). pywebview her cagriyi ayri is parcaciginda
+        calistirdigi icin arayuz beklemez; job_start ile de cagrilabilir. Donen WAV beat_media_url ile acilir."""
+        from app.core import beat_studio
+        return beat_studio.preview_render(str(pid or ""), str(track_id or ""), float(start or 0.0), float(dur or 15.0),
+                                          str(clip_id or ""), track if isinstance(track, dict) else None,
+                                          loop if isinstance(loop, dict) else None)
+
+    def beat_vst_params(self, path: str, query: str = "", limit: int = 24, refresh: bool = False) -> dict[str, Any]:
+        from app.core import beat_fx
+        return beat_fx.vst_params(str(path or ""), str(query or ""), int(limit or 24), bool(refresh))
+
+    def beat_vst_editor(self, path: str, state_b64: str = "", params: dict | None = None) -> dict[str, Any]:
+        """Eklentinin kendi penceresi (ayri surec; kapaninca durum doner). Arka plan isi olarak cagrilir."""
+        from app.core import beat_fx
+        return beat_fx.open_editor(str(path or ""), str(state_b64 or ""), params if isinstance(params, dict) else None)
 
     def beat_render_mixdown(self, pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:
         from app.core import beat_studio

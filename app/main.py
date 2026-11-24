@@ -222,6 +222,11 @@ def main() -> int:
     _setup_logging()
     from app.core.extras import APP_VERSION as _APP_VERSION
     log.info("Kami %s basladi", _APP_VERSION)
+    if "--vst-editor" in sys.argv[1:]:   # Kami Beat R4: VST3 eklentisinin kendi penceresi (ayri surec, beat_fx.open_editor)
+        from app.core import beat_fx
+        _i = sys.argv.index("--vst-editor")
+        _a = sys.argv[_i + 1:_i + 4]
+        return beat_fx.editor_child_main(*_a) if len(_a) == 3 else 2
     if "--studio-mcp" in sys.argv[1:]:   # Claude masaustu: Kami Studio MCP sunucusu (stdio, pencere yok)
         from app.core import studio_mcp
         return studio_mcp.main()
