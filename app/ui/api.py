@@ -128,7 +128,7 @@ class Api(StudioMixin, EnhanceMixin):
         "subtitle_batch", "clip_factory_highlights", "hardsub_extract", "kamipack_export", "kamipack_import",
         "kasa_index_media", "lyrics_word_sync",
         "mpv_install", "mix_autodj", "music_tag_fetch_cover", "music_tag_auto_apply", "player_replaygain",
-        "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_analyze_sections", "beat_mic_test", "beat_find_lyric_start", "beat_apply_fx", "beat_preview_render", "beat_vst_editor", "beat_vst_params", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
+        "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_analyze_sections", "beat_mic_test", "beat_find_lyric_start", "beat_apply_fx", "beat_preview_render", "beat_vst_editor", "beat_vst_params", "beat_reference_analyze", "beat_style_resolve", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
         "enhance_preview_split", "enhance_batch_start", "pic_tarif_run",
         "games_hltb_real", "games_pcgamingwiki", "games_mod_install", "games_ocr_translate",
         "oracle_relay_ping", "oracle_relay_pull",
@@ -6732,6 +6732,55 @@ class Api(StudioMixin, EnhanceMixin):
         """Eklentinin kendi penceresi (ayri surec; kapaninca durum doner). Arka plan isi olarak cagrilir."""
         from app.core import beat_fx
         return beat_fx.open_editor(str(path or ""), str(state_b64 or ""), params if isinstance(params, dict) else None)
+
+    # ---- Asama 2a: tarz onayarlari, adlib hizli efektleri, atmalar, referans A/B ----
+    def _beat_plugins(self) -> list[dict[str, Any]]:
+        """scan_vst3 sonucu (120 sn onbellek; kart izgarasi ve cozumleme sik cagirir)."""
+        import time as _t
+        from app.core import beat_studio
+        c = getattr(self, "_beat_vst_cache", None)
+        if c and _t.monotonic() - c[0] < 120:
+            return c[1]
+        plugins = beat_studio.scan_vst3().get("plugins") or []
+        self._beat_vst_cache = (_t.monotonic(), plugins)
+        return plugins
+
+    def beat_style_presets(self) -> dict[str, Any]:
+        from app.core import beat_style
+        return beat_style.list_presets(self._beat_plugins())
+
+    def beat_style_resolve(self, preset_id: str, intensity: float = 50.0, use_vst: bool = True,
+                           bpm: float = 0.0) -> dict[str, Any]:
+        from app.core import beat_style
+        return beat_style.resolve(str(preset_id or ""), self._beat_plugins(), float(intensity), bool(use_vst), float(bpm or 0.0))
+
+    def beat_style_suggest(self, tracks: list, main_tid: str, preset_id: str) -> dict[str, Any]:
+        from app.core import beat_style
+        return {"ok": True, "suggestions": beat_style.layer_suggestions(tracks if isinstance(tracks, list) else [],
+                                                                        str(main_tid or ""), str(preset_id or ""))}
+
+    def beat_user_preset_save(self, name: str, fx: list, desc: str = "", genre: str = "", denoise: bool = False,
+                              kind: str = "vocal") -> dict[str, Any]:
+        from app.core import beat_style
+        return beat_style.save_user_preset(str(name or ""), fx if isinstance(fx, list) else [], str(desc or ""),
+                                           str(genre or ""), bool(denoise), str(kind or "vocal"))
+
+    def beat_user_preset_delete(self, preset_id: str) -> dict[str, Any]:
+        from app.core import beat_style
+        return beat_style.delete_user_preset(str(preset_id or ""))
+
+    def beat_style_catalog(self) -> dict[str, Any]:
+        from app.core import beat_style
+        return beat_style.catalog()
+
+    def beat_quick_fx(self, kind: str, bpm: float = 0.0, note: str = "1/8d") -> dict[str, Any]:
+        from app.core import beat_style
+        return beat_style.quick_fx(str(kind or ""), float(bpm or 0.0), str(note or "1/8d"))
+
+    def beat_reference_analyze(self, pid: str, path: str, start: float = 0.0) -> dict[str, Any]:
+        """Referans LUFS + guncel miks LUFS -> seviye esleme; bant karsilastirmasi (arka plan isi)."""
+        from app.core import beat_reference
+        return beat_reference.analyze(str(pid or ""), str(path or ""), float(start or 0.0))
 
     def beat_render_mixdown(self, pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:
         from app.core import beat_studio

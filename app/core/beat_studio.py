@@ -509,6 +509,7 @@ def _default_project(name: str = "Yeni Parça") -> dict[str, Any]:
         "key": "Am",
         "lyrics": "",
         "reference_path": "",
+        "reference": {"path": "", "gain_db": 0.0, "start": 0.0},   # 2a: referans A/B (gain_db: seviye eslemesi)
         "last_mixdown": "",
         "updated_at": time.time(),
         "schema": SCHEMA_VERSION,
@@ -718,6 +719,9 @@ def migrate_project(proj: dict[str, Any]) -> bool:
         elif stf != st:
             lt["start"] = stf
             changed = True
+    if not isinstance(proj.get("reference"), dict) and proj.get("reference_path"):   # 2a: eski tek alanli referans
+        proj["reference"] = {"path": str(proj["reference_path"]), "gain_db": 0.0, "start": 0.0}
+        changed = True
     return changed
 
 
@@ -1325,25 +1329,21 @@ def apply_recording(pid: str, track_id: str, audio_path: str, plan: dict[str, An
             "mode": mode, "u0e": u0e}
 
 
-def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:
-    """Projedeki aktif kanallari efektleriyle isleyip tek WAV/MP3 dosyasinda birlestirir."""
+def mix_array(proj: dict[str, Any], sr: int = 48000, fx_info: dict[str, Any] | None = None, pid: str = ""):
+    """Projedeki aktif kanallari (mute/solo kurali) efektleriyle isleyip ses seviyesi/pan ile toplar.
+    Ses seviyesi normalizasyonu YOK (arayuzde duyulan ham miks). Dondurur (N,2) float32 ya da None (calinacak yok).
+    2a: referans A/B seviye eslemesi ayni diziyi olcer; render_mixdown bunun ustune hedef LUFS + limiter uygular."""
     import numpy as np
-
-    loaded = load_project(pid)
-    if not loaded.get("ok"):
-        return loaded
-    proj = loaded["project"]
     tracks = proj.get("tracks", [])
     has_solo = any(t.get("solo") for t in tracks)
-
-    sr = 48000
+    pid = pid or str(proj.get("id") or "mix")
     rendered_tracks: list[tuple[Any, dict[str, Any]]] = []
     max_len = 0
 
     tmp_dir = recordings_dir() / "_mix_tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     src_cache: dict[str, Any] = {}
-    fx_info: dict[str, Any] = {}
+    fx_info = {} if fx_info is None else fx_info
 
     for tr in tracks:
         if tr.get("mute") or (has_solo and not tr.get("solo")):
@@ -1380,7 +1380,7 @@ def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> 
         rendered_tracks.append((data, {"offset": offset_samples, "tr": tr}))
 
     if not rendered_tracks or max_len == 0:
-        return {"ok": False, "error": "no_playable_tracks"}
+        return None
 
     mix = np.zeros((max_len, 2), dtype="float32")
     for data, meta in rendered_tracks:
@@ -1393,6 +1393,22 @@ def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> 
         end = off + len(data)
         mix[off:end, 0] += data[:, 0] * l_gain
         mix[off:end, 1] += data[:, 1] * r_gain
+    return mix
+
+
+def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:
+    """Projedeki aktif kanallari efektleriyle isleyip tek WAV/MP3 dosyasinda birlestirir."""
+    import numpy as np
+
+    loaded = load_project(pid)
+    if not loaded.get("ok"):
+        return loaded
+    proj = loaded["project"]
+    sr = 48000
+    fx_info: dict[str, Any] = {}
+    mix = mix_array(proj, sr, fx_info, pid)
+    if mix is None:
+        return {"ok": False, "error": "no_playable_tracks"}
 
     if not out_path:
         safe_name = re.sub(r'[<>:"/\\|?*]', "_", str(proj.get("name") or pid)).strip() or pid
