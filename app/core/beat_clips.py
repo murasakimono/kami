@@ -18,6 +18,7 @@ from typing import Any
 
 MIN_LEN = 0.01            # 10 ms: bir klibin alabilecegi en kisa uzunluk
 DIVISIONS = (1, 2, 4, 8, 16, 32)
+TAIL_MAX = 10.0           # 2a: klip fx kuyrugu / on-kabarma ust siniri (sn)
 
 
 def r6(x: float) -> float:
@@ -95,6 +96,12 @@ def normalize(clip: dict[str, Any]) -> dict[str, Any]:
     else:
         c.pop("stack_id", None)
         c.pop("stack_active", None)
+    # 2a: klip pan'i (-1..1) ve klip fx kuyrugu/on-kabarmasi (sn). Alan yoksa eklenmez (eski projeler ayni kalir).
+    if "pan" in c:
+        c["pan"] = r6(max(-1.0, min(1.0, _num(c.get("pan")))))
+    for k in ("tail_sec", "head_sec"):
+        if k in c:
+            c[k] = r6(max(0.0, min(TAIL_MAX, _num(c.get(k)))))
     return _clamp_fades(c)
 
 

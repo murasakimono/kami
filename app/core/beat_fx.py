@@ -94,7 +94,16 @@ FX_SCHEMA: dict[str, dict[str, Any]] = {
         _p("wet_level", "Islak", "%", 0.0, 1.0, 0.12, 0.01),
         _p("dry_level", "Kuru", "%", 0.0, 1.0, 0.9, 0.01),
         _p("width", "Genişlik", "%", 0.0, 1.0, 1.0, 0.01)]},
+    # 2a: ters reverb (efekt atmasi). pedalboard'da hazir yok -> ozel (numpy) islem: ses ters cevrilir, reverb'un
+    # yalniz islak kuyrugu alinir (pedalboard Reverb ya da numpy tarak yedegi), tekrar ters cevrilip kuruya eklenir.
+    # Kabarma kelimeden ONCE duyulur; klibin head_sec alani bu kabarmaya yer acar.
+    "reverse_reverb": {"label": "Ters Reverb", "group": "Alan", "pb": "Reverb", "custom": True, "params": [
+        _p("room_size", "Oda", "%", 0.0, 1.0, 0.8, 0.01),
+        _p("damping", "Sönüm", "%", 0.0, 1.0, 0.5, 0.01),
+        _p("wet_level", "Islak", "%", 0.0, 1.0, 0.5, 0.01),
+        _p("dry_level", "Kuru", "%", 0.0, 1.0, 1.0, 0.01)]},
 }
+CUSTOM_FX = {k for k, v in FX_SCHEMA.items() if v.get("custom")}
 
 VST_PARAM_TOP = 24          # cok parametreli eklentide arayuzde ilk gosterilen
 _IMPORTANT = ("mix", "dry", "wet", "gain", "output", "input", "volume", "level", "threshold", "ratio", "attack",
@@ -273,12 +282,83 @@ def build_plugins(pb, fx_list: list[dict[str, Any]] | None) -> tuple[list[Any], 
     return plugins, borrowed, skipped
 
 
-def _numpy_fallback(data, fx: dict[str, Any]):
-    """pedalboard yokken birebir yapilabilen efektler (dogrusal). Desteklenmiyorsa None."""
+def _chunked_feedback(x, d: int, fb: float, feed_input_delayed: bool):
+    """Geri beslemeli gecikme hatti, d ornek bloklar halinde vektorel.
+    feed_input_delayed=True : w[t] = x[t-d] + fb*w[t-d]   (pedalboard/JUCE Delay'in islak cikisi)
+    feed_input_delayed=False: y[t] = x[t]   + fb*y[t-d]   (tarak filtresi)"""
+    import numpy as np
+    n = len(x)
+    y = np.zeros_like(x) if feed_input_delayed else x.astype("float32", copy=True)
+    d = max(1, int(d))
+    for k in range(d, n, d):
+        m = min(d, n - k)
+        if feed_input_delayed:
+            y[k:k + m] = x[k - d:k - d + m] + fb * y[k - d:k - d + m]
+        else:
+            y[k:k + m] += fb * y[k - d:k - d + m]
+    return y
+
+
+def _np_delay(data, sr: int, fx: dict[str, Any]):
+    """pedalboard.Delay ile ayni dogrusal model: islak = gecikme hattinin ciktisi (girdi + fb*islak geri beslenir),
+    cikis = (1-mix)*kuru + mix*islak."""
+    c = clamp_fx(fx)
+    d = int(round(_f(c.get("delay_seconds"), 0.25) * sr))
+    fb = _f(c.get("feedback"), 0.2)
+    mix = _f(c.get("mix"), 0.15)
+    w = _chunked_feedback(data, d, fb, True)
+    return ((1.0 - mix) * data + mix * w).astype("float32")
+
+
+_COMB_MS = (29.7, 37.1, 41.1, 43.7)
+
+
+def _np_reverb_wet(x, sr: int, room: float, damping: float):
+    """Yalniz islak reverb kuyrugu (pedalboard yokken): 4 paralel tarak, oda boyutu geri beslemeyi belirler.
+    Yaklasiktir (Freeverb degil) ama kuyruk uzunlugu/yogunlugu ayni yonde davranir."""
+    import numpy as np
+    g = 0.70 + 0.27 * max(0.0, min(1.0, room))
+    g *= 1.0 - 0.15 * max(0.0, min(1.0, damping))
+    m = x.mean(axis=1) if x.ndim == 2 else x
+    wl = np.zeros(len(m), dtype="float32")
+    wr = np.zeros(len(m), dtype="float32")
+    for k, ms in enumerate(_COMB_MS):
+        y = _chunked_feedback(m.astype("float32"), int(round(ms / 1000.0 * sr)), g, False) - m
+        wl += y
+        wr += y if k % 2 == 0 else -y * 0.6 + y * 0.4
+    norm = (1.0 - g) * 1.6
+    return (np.stack([wl, wr], axis=1) * norm).astype("float32")
+
+
+def _reverse_reverb(data, sr: int, fx: dict[str, Any], pb=None):
+    import numpy as np
+    c = clamp_fx(fx)
+    room, damp = _f(c.get("room_size"), 0.8), _f(c.get("damping"), 0.5)
+    wet_l, dry_l = _f(c.get("wet_level"), 0.5), _f(c.get("dry_level"), 1.0)
+    rev = np.ascontiguousarray(data[::-1])
+    wet = None
+    if pb is not None and hasattr(pb, "Reverb") and hasattr(pb, "Pedalboard"):
+        try:
+            board = pb.Pedalboard([pb.Reverb(room_size=room, damping=damp, wet_level=1.0, dry_level=0.0, width=1.0)])
+            wet = np.asarray(board(np.ascontiguousarray(rev.T), sr), dtype="float32").T
+            if wet.shape != rev.shape:
+                wet = None
+        except Exception:
+            log.debug("ters reverb: pedalboard Reverb kullanilamadi", exc_info=True)
+            wet = None
+    if wet is None:
+        wet = _np_reverb_wet(rev, sr, room, damp)
+    return (data * dry_l + wet[::-1] * wet_l).astype("float32")
+
+
+def _numpy_fallback(data, fx: dict[str, Any], sr: int = 48000):
+    """pedalboard yokken birebir (dogrusal) yapilabilen efektler: gain, delay. Desteklenmiyorsa None."""
     t = str(fx.get("type") or "").lower()
     if t == "gain":
         g = 10.0 ** (_f(clamp_fx(fx).get("gain_db"), 0.0) / 20.0)
         return (data * g).astype("float32")
+    if t == "delay":
+        return _np_delay(data, sr, fx)
     return None
 
 
@@ -299,35 +379,56 @@ def process(data, sr: int, fx_list: list[dict[str, Any]] | None, denoise: bool =
     if not act or not len(out):
         return out, info
     pb = pedalboard_module()
-    if pb is not None:
-        plugins, borrowed, skipped = build_plugins(pb, act)
-        info["engine"] = "pedalboard"
-        info["skipped"] += skipped
-        try:
-            if plugins:
-                board = pb.Pedalboard(plugins)
-                res = board(np.ascontiguousarray(out.T), sr)     # pedalboard (kanal, ornek) bekler
-                res = np.asarray(res, dtype="float32").T
-                n = len(out)
-                if len(res) < n:                                  # uzunluk korunur (zaman hizasi)
-                    res = np.concatenate([res, np.zeros((n - len(res), res.shape[1]), dtype="float32")])
-                if res.shape[1] == 1:
-                    res = np.repeat(res, 2, axis=1)
-                out = np.ascontiguousarray(res[:n, :2])
-                info["applied"] += len(plugins)
-        finally:
-            for vp, plg in borrowed:
-                POOL.release(vp, plg)
-        return out, info
-    info["engine"] = "numpy"
+    info["engine"] = "pedalboard" if pb is not None else "numpy"
+    # 2a: ozel (numpy) efektler (ters reverb) zinciri bolumlere ayirir; aradaki bolumler pedalboard ile tek seferde
+    runs: list[tuple[bool, list[dict[str, Any]]]] = []
     for fx in act:
-        r = _numpy_fallback(out, fx)
-        if r is None:
-            info["skipped"].append(str(fx.get("type") or "?"))
+        cu = str(fx.get("type") or "").lower() in CUSTOM_FX
+        if runs and not cu and not runs[-1][0]:
+            runs[-1][1].append(fx)
         else:
-            out = r
-            info["applied"] += 1
+            runs.append((cu, [fx]))
+    for cu, run in runs:
+        if cu:
+            try:
+                out = _reverse_reverb(out, sr, run[0], pb)
+                info["applied"] += 1
+            except Exception:
+                log.debug("ozel efekt atlandi", exc_info=True)
+                info["skipped"].append(str(run[0].get("type") or "?"))
+        elif pb is not None:
+            out = _process_pb(pb, out, sr, run, info)
+        else:
+            for fx in run:
+                r = _numpy_fallback(out, fx, sr)
+                if r is None:
+                    info["skipped"].append(str(fx.get("type") or "?"))
+                else:
+                    out = r
+                    info["applied"] += 1
     return out, info
+
+
+def _process_pb(pb, out, sr: int, run: list[dict[str, Any]], info: dict[str, Any]):
+    import numpy as np
+    plugins, borrowed, skipped = build_plugins(pb, run)
+    info["skipped"] += skipped
+    try:
+        if plugins:
+            board = pb.Pedalboard(plugins)
+            res = board(np.ascontiguousarray(out.T), sr)     # pedalboard (kanal, ornek) bekler
+            res = np.asarray(res, dtype="float32").T
+            n = len(out)
+            if len(res) < n:                                  # uzunluk korunur (zaman hizasi)
+                res = np.concatenate([res, np.zeros((n - len(res), res.shape[1]), dtype="float32")])
+            if res.shape[1] == 1:
+                res = np.repeat(res, 2, axis=1)
+            out = np.ascontiguousarray(res[:n, :2])
+            info["applied"] += len(plugins)
+    finally:
+        for vp, plg in borrowed:
+            POOL.release(vp, plg)
+    return out
 
 
 # ---------------- VST3 parametreleri ----------------

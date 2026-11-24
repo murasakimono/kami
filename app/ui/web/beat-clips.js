@@ -6,6 +6,7 @@
 (function (root) {
   const MIN_LEN = 0.01;
   const DIVISIONS = [1, 2, 4, 8, 16, 32];
+  const TAIL_MAX = 10;
 
   const r6 = (x) => Math.floor(Number(x) * 1e6 + 0.5) / 1e6;
   const num = (v, d = 0) => {
@@ -70,6 +71,9 @@
       delete c.stack_id;
       delete c.stack_active;
     }
+    // 2a: klip pan'i (-1..1) ve klip fx kuyrugu / on-kabarmasi (sn); alan yoksa eklenmez (Python ile ayni)
+    if ("pan" in c) c.pan = r6(Math.max(-1, Math.min(1, num(c.pan))));
+    for (const k of ["tail_sec", "head_sec"]) if (k in c) c[k] = r6(Math.max(0, Math.min(TAIL_MAX, num(c[k]))));
     return clampFades(c);
   }
 

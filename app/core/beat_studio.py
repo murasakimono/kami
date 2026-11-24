@@ -890,12 +890,44 @@ def _clip_env(c: dict[str, Any], n: int, sr: int):
     return env
 
 
+def stereo_pan(seg, pan: float):
+    """2a: klip pan'i. W3C StereoPannerNode'un stereo giris formulu birebir (Web Audio kuru onizleme klibi
+    StereoPannerNode'dan gecirir -> efektli/kuru onizleme ve bounce ayni). pan=0 birim kazanc (degisiklik yok).
+    pan>0: x=pan, L' = L*cos(x*pi/2), R' = R + L*sin(x*pi/2);  pan<=0: x=pan+1, L' = L + R*cos(x*pi/2), R' = R*sin(x*pi/2)."""
+    import numpy as np
+    p = max(-1.0, min(1.0, float(pan or 0.0)))
+    if abs(p) < 1e-9 or not len(seg):
+        return seg
+    out = np.empty_like(seg)
+    L, R = seg[:, 0], seg[:, 1]
+    if p > 0:
+        x = p * math.pi / 2.0
+        out[:, 0] = L * math.cos(x)
+        out[:, 1] = R + L * math.sin(x)
+    else:
+        x = (p + 1.0) * math.pi / 2.0
+        out[:, 0] = L + R * math.cos(x)
+        out[:, 1] = R * math.sin(x)
+    return out
+
+
+def clip_fx_span(c: dict[str, Any]) -> tuple[float, float]:
+    """Klibin duyulan araligi: klip fx'i varsa head_sec kadar once baslar (ters reverb kabarmasi) ve tail_sec
+    kadar sonra biter (delay/reverb kuyrugu bir sonraki klibin ustune karisir)."""
+    s, e = beat_clips.clip_bounds(c)
+    if not beat_fx.active_fx(c.get("fx")):
+        return s, e
+    hd = max(0.0, min(beat_clips.TAIL_MAX, float(c.get("head_sec") or 0.0)))
+    tl = max(0.0, min(beat_clips.TAIL_MAX, float(c.get("tail_sec") or 0.0)))
+    return max(0.0, s - hd), e + tl
+
+
 def track_has_fx(tr: dict[str, Any], t0: float = 0.0, t1: float | None = None) -> bool:
     """Kanalda (ya da [t0, t1) araligindaki kliplerde) duyulan bir efekt var mi."""
     if beat_fx.active_fx(tr.get("fx")) or tr.get("denoise"):
         return True
     for raw in beat_clips.stack_view(list(tr.get("clips") or [])):
-        s, e = beat_clips.clip_bounds(raw)
+        s, e = clip_fx_span(raw)
         if e <= t0 or (t1 is not None and s >= t1) or raw.get("muted"):
             continue
         if beat_fx.active_fx(raw.get("fx")):
@@ -907,7 +939,8 @@ def render_track_audio(tr: dict[str, Any], sr: int = 48000, cache: dict[str, Any
                        t0: float = 0.0, t1: float | None = None, preroll: float | None = None,
                        info: dict[str, Any] | None = None):
     """Kanalin TEK render yolu (bounce ve efektli onizleme ayni fonksiyonu kullanir -> ayni duyulur).
-    Sira: klip kaynagi -> klip fx (klibin kendi zinciri) -> klip zarfi (gain + fade) -> klipler toplanir
+    Sira: klip kaynagi -> klip fx (klibin kendi zinciri) -> klip zarfi (gain + fade) -> klip pan'i (2a) -> klipler toplanir
+    (2a: tail_sec/head_sec'li efektli klipte zarf efektten once, kuyruk klip sonrasina tasar)
     -> kanal fx (+ denoise; 'skip_track_fx' klipler bu adimi atlar) . Ses seviyesi/pan/master cagiranda.
     Pencere [t0, t1): t1 None ise kanalin sonuna kadar. Pencereli render'da efektler pencereden `preroll`
     sn once baslatilip kirpilir (durumlu efektler isinsin). Dondurur: (N,2) float32, N = pencere uzunlugu."""
@@ -940,19 +973,34 @@ def render_track_audio(tr: dict[str, Any], sr: int = 48000, cache: dict[str, Any
         b = min(int(round(c["src_out"] * sr)), len(src))
         if b <= a:
             continue
-        items.append((c, src, a, b - a, int(round(c["start"] * sr))))
-    end = max([off + n for _, _, _, n, off in items] or [0])
+        off = int(round(c["start"] * sr))
+        hd = tl = 0
+        if beat_fx.active_fx(c.get("fx")):        # 2a: klip fx kuyrugu (tail_sec) / on-kabarma (head_sec)
+            hd = min(off, int(round(float(c.get("head_sec") or 0.0) * sr)))
+            tl = int(round(float(c.get("tail_sec") or 0.0) * sr))
+        items.append((c, src, a, b - a, off, hd, tl))
+    end = max([off + n + tl for _, _, _, n, off, _, tl in items] or [0])
     if w1 is None:
         w1 = max(end, w0)
     length = w1 - p0
     through = np.zeros((max(0, length), 2), dtype="float32")
     skip = None
-    for c, src, a, n, off in items:
-        lo, hi = max(off, p0), min(off + n, w1)
+    for c, src, a, n, off, hd, tl in items:
+        lo, hi = max(off - hd, p0), min(off + n + tl, w1)
         if hi <= lo:
             continue
         cfx = beat_fx.active_fx(c.get("fx"))
-        if cfx:
+        if cfx and (hd or tl):
+            # Kuyruklu klip: zarf (gain + fade) efektten ONCE uygulanir (fade-out kuyrugu kesmesin), klip sessizlik
+            # ile [off-hd, off+n+tl) boyuna uzatilip butun olarak islenir (kisa bolgeler; pencere disi kuyruk da dogru).
+            full = np.zeros((hd + n + tl, 2), dtype="float32")
+            full[hd:hd + n] = src[a:a + n] * _clip_env(c, n, sr)[:, None]
+            full, ci = beat_fx.process(full, sr, cfx)
+            info["skipped"] += ci["skipped"]
+            if ci["engine"] != "none":
+                info["engine"] = ci["engine"]
+            seg = full[lo - (off - hd): hi - (off - hd)]
+        elif cfx:
             plo = max(off, lo - pre) if windowed else off
             seg = src[a + (plo - off): a + (hi - off)].astype("float32", copy=True)
             seg, ci = beat_fx.process(seg, sr, cfx)
@@ -960,9 +1008,12 @@ def render_track_audio(tr: dict[str, Any], sr: int = 48000, cache: dict[str, Any
             if ci["engine"] != "none":
                 info["engine"] = ci["engine"]
             seg = seg[lo - plo:]
+            seg *= _clip_env(c, n, sr)[lo - off: hi - off, None]
         else:
             seg = src[a + (lo - off): a + (hi - off)].astype("float32", copy=True)
-        seg *= _clip_env(c, n, sr)[lo - off: hi - off, None]
+            seg *= _clip_env(c, n, sr)[lo - off: hi - off, None]
+        if c.get("pan"):
+            seg = stereo_pan(seg, float(c["pan"]))
         if c.get("skip_track_fx"):
             if skip is None:
                 skip = np.zeros_like(through)
@@ -1024,11 +1075,12 @@ def preview_key(tr: dict[str, Any], t0: float, t1: float, sr: int = 48000, prero
     parts = []
     for raw in beat_clips.stack_view(list(tr.get("clips") or [])):
         c = beat_clips.normalize(raw)
-        s, e = beat_clips.clip_bounds(c)
+        s, e = clip_fx_span(c)
         if c.get("muted") or not c["path"] or e <= lo or s >= t1:
             continue
         parts.append([_file_sig(c["path"]), c["src_in"], c["src_out"], c["start"], c["gain_db"], c["fade_in"],
-                      c["fade_out"], beat_fx.chain_hash(c.get("fx")), bool(c.get("skip_track_fx"))])
+                      c["fade_out"], beat_fx.chain_hash(c.get("fx")), bool(c.get("skip_track_fx")),
+                      c.get("pan", 0.0), c.get("tail_sec", 0.0), c.get("head_sec", 0.0)])
     raw_key = json.dumps({"c": parts, "fx": beat_fx.chain_hash(tr.get("fx"), bool(tr.get("denoise"))),
                           "w": [round(t0, 3), round(t1, 3)], "sr": sr, "pre": preroll}, sort_keys=True, default=str)
     return hashlib.sha1(raw_key.encode("utf-8")).hexdigest()[:20]
