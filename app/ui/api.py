@@ -121,6 +121,7 @@ class Api(StudioMixin, EnhanceMixin):
         "batch_from_page", "batch_add", "phone_test", "ntfy_test", "ntfy_set_topic",
         "music_lrc_polish_ollama", "cleaner_dust", "cleaner_janitor", "games_scan_folder", "scrobbler_recognize_now",
         "scene_search", "item_peek",
+        "beat_shelf_add_url", "beat_shelf_to_project", "beat_layer_align", "beat_idea_to_project",  # Kami Beat 1d/1e
         # Denetim 2.3.5: arayüze bağlanan yavaş araçlar (ffmpeg/ağ) — job_start ile arka planda çalışmalı
         "audio_fx_apply", "audio_to_midi", "tts_speak", "beat_analyze", "beat_grid", "player_detect_scenes",
         "crawler_crawl", "web_archive_save", "library_find_duplicates", "library_scan_health", "library_smart_compress",
@@ -6850,6 +6851,141 @@ class Api(StudioMixin, EnhanceMixin):
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:120]}
 
+    # ---- Asama 1d: kanal ekle/sil/sirala + Double/Adlib/Chant katmanlari ----
+    def beat_tracks_op(self, tracks: list, op: str, args: dict | None = None) -> dict[str, Any]:
+        """Kanal islemi (add/remove/move/reorder/rename/recolor); projeye yazmaz, arayuz donen listeyi uygular."""
+        from app.core import beat_layers, beat_studio
+        return beat_layers.tracks_op(tracks if isinstance(tracks, list) else [], str(op or ""),
+                                     args if isinstance(args, dict) else {}, beat_studio.VOCAL_PRESETS)
+
+    def beat_layer_prepare(self, tracks: list, kind: str, main_tid: str, t0: float = 0.0, t1: float = 0.0,
+                           seed: str = "") -> dict[str, Any]:
+        """Katman kaydinin hedef kanali (gerekirse olusturur + yerlesim); projeye yazmaz."""
+        from app.core import beat_fx, beat_layers, beat_studio
+        return beat_layers.prepare_layer(tracks if isinstance(tracks, list) else [], str(kind or ""), str(main_tid or "vocal1"),
+                                         float(t0 or 0.0), float(t1 or 0.0), beat_layers.fnv1a(str(seed or "")),
+                                         beat_studio.VOCAL_PRESETS, bool(beat_fx.available().get("pedalboard")))
+
+    def beat_layer_layout(self, tracks: list, main_tid: str, seed: str = "") -> dict[str, Any]:
+        from app.core import beat_fx, beat_layers
+        out = beat_layers.layout_layers(tracks if isinstance(tracks, list) else [], str(main_tid or "vocal1"),
+                                        beat_layers.fnv1a(str(seed or "")), bool(beat_fx.available().get("pedalboard")))
+        return {"ok": True, "tracks": out}
+
+    def beat_layer_align(self, pid: str, layer_tid: str, clip_id: str, main_tid: str = "", bias_ms: float = 0.0,
+                         proj: dict | None = None) -> dict[str, Any]:
+        """Katman klibini ana vokale hizalama onerisi (arka plan isi). proj verilirse diske bakmadan onu kullanir."""
+        from app.core import beat_layers, beat_studio
+        if not isinstance(proj, dict):
+            ld = beat_studio.load_project(str(pid or ""))
+            if not ld.get("ok"):
+                return ld
+            proj = ld["project"]
+        return beat_layers.propose_alignment(proj, str(layer_tid or ""), str(clip_id or ""), str(main_tid or ""),
+                                             float(bias_ms or 0.0))
+
+    # ---- Asama 1d-2: kulaklikta efektli dinleme ----
+    def beat_monitor_start(self, device_id: int = -1, out_device: int = -1, reverb: bool = True, tune: bool = False,
+                           blocksize: int = 128) -> dict[str, Any]:
+        from app.core import beat_monitor, beat_studio
+        vsts = beat_studio.scan_vst3().get("plugins", []) if tune else []
+        return beat_monitor.MONITOR.start(None if device_id is None or int(device_id) < 0 else int(device_id),
+                                          None if out_device is None or int(out_device) < 0 else int(out_device),
+                                          int(blocksize or 128), 48000, bool(reverb), bool(tune), vsts)
+
+    def beat_monitor_stop(self) -> dict[str, Any]:
+        from app.core import beat_monitor
+        return beat_monitor.MONITOR.stop()
+
+    def beat_monitor_status(self) -> dict[str, Any]:
+        from app.core import beat_monitor
+        return beat_monitor.MONITOR.status()
+
+    # ---- Asama 1e-1: beat rafi + lisans ----
+    def beat_shelf_list(self, query: str = "", bpm_min: float = 0.0, bpm_max: float = 0.0, key: str = "",
+                        license_kind: str = "") -> dict[str, Any]:
+        from app.core import beat_shelf
+        return beat_shelf.list_items(str(query or ""), float(bpm_min or 0.0), float(bpm_max or 0.0), str(key or ""),
+                                     str(license_kind or ""))
+
+    def beat_shelf_add_url(self, url: str) -> dict[str, Any]:
+        """Arka plan isi: baglantidan beat indir (mevcut yt-dlp motoru, yalniz ses) -> rafa."""
+        from app.core import beat_shelf
+        return beat_shelf.add_from_url(str(url or ""), engine=self._engine)
+
+    def beat_shelf_progress(self) -> dict[str, Any]:
+        from app.core import beat_shelf
+        return {"ok": True, **beat_shelf.progress()}
+
+    def beat_shelf_add_file(self, path: str) -> dict[str, Any]:
+        from app.core import beat_shelf
+        return beat_shelf.add_local_file(str(path or ""))
+
+    def beat_shelf_update(self, item_id: str, fields: dict | None = None) -> dict[str, Any]:
+        from app.core import beat_shelf
+        return beat_shelf.update_item(str(item_id or ""), fields if isinstance(fields, dict) else {})
+
+    def beat_shelf_remove(self, item_id: str, delete_file: bool = False) -> dict[str, Any]:
+        from app.core import beat_shelf
+        return beat_shelf.remove_item(str(item_id or ""), bool(delete_file))
+
+    def beat_shelf_to_project(self, pid: str, item_id: str, start: float = -1.0) -> dict[str, Any]:
+        from app.core import beat_shelf
+        return beat_shelf.add_to_project(str(pid or ""), str(item_id or ""), float(start if start is not None else -1.0))
+
+    def beat_release_check(self, pid: str) -> dict[str, Any]:
+        """Yayin / disa aktarma oncesi lisans uyarilari."""
+        from app.core import beat_shelf, beat_studio
+        ld = beat_studio.load_project(str(pid or ""))
+        if not ld.get("ok"):
+            return ld
+        return {"ok": True, "warnings": beat_shelf.release_warnings(ld["project"]),
+                "beat_meta": ld["project"].get("beat_meta")}
+
+    # ---- Asama 1e-2: fikir rafi ----
+    def beat_ideas_list(self, query: str = "", tag: str = "", project: str = "") -> dict[str, Any]:
+        from app.core import beat_ideas
+        return beat_ideas.list_ideas(str(query or ""), str(tag or ""), str(project or ""))
+
+    def beat_idea_add_file(self, path: str, name: str = "", tags: Any = None, note: str = "") -> dict[str, Any]:
+        from app.core import beat_ideas
+        return beat_ideas.add_idea(str(path or ""), str(name or ""), tags, str(note or ""), source="file")
+
+    def beat_idea_quick_start(self, device_id: int = -1) -> dict[str, Any]:
+        """PC mikrofonundan hizli fikir kaydi (projesiz; en fazla 30 sn, arayuz durdurur)."""
+        from app.core import kami_booth
+        return kami_booth.RECORDER.start("", "", None if device_id is None or int(device_id) < 0 else int(device_id))
+
+    def beat_idea_quick_stop(self, name: str = "", cancel: bool = False) -> dict[str, Any]:
+        from app.core import beat_ideas, kami_booth
+        if cancel:
+            return kami_booth.RECORDER.cancel()
+        r = kami_booth.RECORDER.stop(ai_clean=False)
+        if not r.get("ok") or not r.get("path"):
+            return r
+        return beat_ideas.add_idea(str(r["path"]), str(name or ""), source="pc", move=True)
+
+    def beat_idea_update(self, idea_id: str, fields: dict | None = None) -> dict[str, Any]:
+        from app.core import beat_ideas
+        return beat_ideas.update_idea(str(idea_id or ""), fields if isinstance(fields, dict) else {})
+
+    def beat_idea_remove(self, idea_id: str) -> dict[str, Any]:
+        from app.core import beat_ideas
+        return beat_ideas.remove_idea(str(idea_id or ""))
+
+    def beat_idea_link(self, idea_id: str, pid: str = "", line: int = -1) -> dict[str, Any]:
+        from app.core import beat_ideas
+        return beat_ideas.link_idea(str(idea_id or ""), str(pid or ""), int(line if line is not None else -1))
+
+    def beat_ideas_for_project(self, pid: str) -> dict[str, Any]:
+        from app.core import beat_ideas
+        return beat_ideas.ideas_for_project(str(pid or ""))
+
+    def beat_idea_to_project(self, pid: str, idea_id: str, track_id: str = "vocal1", start: float = -1.0) -> dict[str, Any]:
+        from app.core import beat_ideas
+        return beat_ideas.add_idea_to_project(str(pid or ""), str(idea_id or ""), str(track_id or "vocal1"),
+                                              float(start if start is not None else -1.0))
+
     def booth_devices(self) -> dict[str, Any]:
         from app.core import kami_booth
         return kami_booth.list_input_devices()
@@ -6875,10 +7011,16 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core import kami_booth
         return kami_booth.RECORDER.status()
 
-    def booth_server_start(self, pid: str = "", track_id: str = "vocal1") -> dict[str, Any]:
+    def booth_server_start(self, pid: str = "", track_id: str = "vocal1", target: str = "") -> dict[str, Any]:
         self._beat_bind_latency()   # R2: genel gecikme ayari yeni kayitlara uygulansin
         from app.core import kami_booth
-        return kami_booth.BOOTH.start(pid, track_id)
+        return kami_booth.BOOTH.start(pid, track_id, str(target or ""))
+
+    def booth_server_target(self, pid: str = "", track_id: str = "vocal1", target: str = "track") -> dict[str, Any]:
+        """1e-2: iPhone Booth kayitlarinin hedefi: 'track' (proje kanali) | 'idea' (fikir rafi)."""
+        from app.core import kami_booth
+        kami_booth.BOOTH.set_target(str(pid or ""), str(track_id or "vocal1"), str(target or "track"))
+        return kami_booth.BOOTH.status()
 
     def booth_server_stop(self) -> dict[str, Any]:
         from app.core import kami_booth
