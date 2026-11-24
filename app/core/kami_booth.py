@@ -73,6 +73,10 @@ class PcRecorder:
         self._epoch0: float | None = None     # 1b: kaydin 0. orneginin duvar saati (time.time)
         self._frames = 0
         self._level = 0.0                     # son status okumasindan beri tepe (0..1)
+        self._tapped = False                  # 1d-2: izleme akisinin ham girisini dinliyor (mikrofon ikinci kez acilmaz)
+
+    def _tap(self, indata, frames: int) -> None:
+        self._on_block(indata, frames)
 
     def _on_block(self, indata, frames: int) -> None:
         """Ses geri cagrisi: parcayi sakla, ilk blokta zaman capasini kur, tepe seviyesini guncelle."""
@@ -119,6 +123,16 @@ class PcRecorder:
                 self._frames = 0
                 self._level = 0.0
 
+                from app.core import beat_monitor
+                if beat_monitor.MONITOR.can_tap(device_id):
+                    # 1d-2: efektli dinleme acik -> ayni mikrofonun HAM bloklari kayda (efekt yalniz kulaklikta)
+                    self._sr = beat_monitor.MONITOR.status().get("sr") or self._sr
+                    beat_monitor.MONITOR.add_tap(self._tap)
+                    self._tapped = True
+                    self._recording = True
+                    self._started_at = time.time()
+                    return {"ok": True, "sr": self._sr, "tapped": True}
+
                 def _cb(indata, frames, time_info, status):
                     self._on_block(indata, frames)
 
@@ -139,6 +153,10 @@ class PcRecorder:
                 return {"ok": False, "error": str(exc)[:140]}
 
     def _close_stream(self) -> None:
+        if self._tapped:
+            from app.core import beat_monitor
+            beat_monitor.MONITOR.remove_tap(self._tap)
+            self._tapped = False
         try:
             if self._stream is not None:
                 self._stream.stop()
