@@ -289,16 +289,18 @@ def test_bounce_fx_runs_once_per_track(bs, tmp_path, monkeypatch):
     from app.core import beat_clips as bc
     vt["clips"] = bc.split(vt["clips"], vt["clips"][0]["id"], 0.5, new_id="r")
     bs.save_project(proj)
+    # R4: kanal zinciri bellekte (beat_fx.process) islenir; klipler birlestirildikten sonra kanal basina BIR kez
+    from app.core import beat_fx
     calls = []
-    real = bs.apply_fx_chain
+    real = beat_fx.process
 
-    def spy(*a, **kw):
-        calls.append(a[0])
-        return real(*a, **kw)
-    monkeypatch.setattr(bs, "apply_fx_chain", spy)
+    def spy(data, sr, fx_list, *a, **kw):
+        calls.append((len(data), fx_list))
+        return real(data, sr, fx_list, *a, **kw)
+    monkeypatch.setattr(beat_fx, "process", spy)
     res = bs.bounce(pid, str(tmp_path / "o.wav"), target_lufs=0.0)
     assert res["ok"]
-    assert len(calls) == 1 and "_mix_tmp" in calls[0]
+    assert len(calls) == 1 and calls[0][1] == vt["fx"] and calls[0][0] == SR
 
 
 # ---------------- 5. gecikme ----------------
