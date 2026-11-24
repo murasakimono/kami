@@ -653,3 +653,184 @@ body.kb-drag-fi, body.kb-drag-fi *, body.kb-drag-fo, body.kb-drag-fo * { cursor:
 /* Kayit sirasinda tek izinli parilti: kirmizi nabiz */
 .tr-btn.rec.on { animation: kb-rec-pulse 1.2s ease-in-out infinite; }
 @keyframes kb-rec-pulse { 50% { box-shadow: 0 0 0 4px rgba(255, 77, 106, .25); } }
+
+/* ================= Kami Beat 1b: kayit akisi ================= */
+.kb-tl-bar { overflow-x: auto; overflow-y: hidden; }
+.kb-tl-follow { white-space: nowrap; }
+.kb-tl-bar .btn.on { color: var(--amb); border-color: rgba(245, 158, 11, .6); background: rgba(245, 158, 11, .10); }
+#tlMetro.on { color: var(--ok); border-color: rgba(20, 241, 149, .55); background: rgba(20, 241, 149, .08); }
+#tlPunch.on { color: var(--bad); border-color: rgba(255, 77, 106, .6); background: rgba(255, 77, 106, .10); }
+.kb-rec-grp select { height: 28px; padding: 2px 24px 2px 8px; font-size: 12px; }
+.kb-tl-vol { width: 64px; accent-color: var(--ok); }
+.kb-tl-pre { display: flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
+.kb-tl-pre input { width: 48px; height: 28px; font-size: 12px; }
+
+/* Dongu bandi (seritlerin ustunde, tiklamayi engellemez) */
+.kb-loop-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(142, 132, 168, .04);
+  border-left: 1px dashed rgba(142, 132, 168, .35);
+  border-right: 1px dashed rgba(142, 132, 168, .35);
+}
+.kb-loop-band.on { background: rgba(245, 158, 11, .06); border-color: rgba(245, 158, 11, .55); border-style: solid; }
+.kb-tl-lane { z-index: 1; }
+
+/* Take destesi: arkadaki kartlar kenarlari hafif kayik yigin (Kami kimligi) */
+.kb-clip-ghost {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  background: #0D0A13;
+  border: 1px solid color-mix(in srgb, var(--tc) 30%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--tc) 55%, transparent);
+  border-radius: 4px 4px 0 0;
+  pointer-events: none;
+  transform-origin: 0 100%;
+}
+.kb-clip-ghost.g1 { transform: translate(5px, -4px) rotate(.35deg); opacity: .9; }
+.kb-clip-ghost.g2 { transform: translate(10px, -8px) rotate(-.4deg); opacity: .6; }
+.kb-clip.stacked { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), inset 0 -8px 16px rgba(0, 0, 0, .25), -2px 2px 0 rgba(0, 0, 0, .35); }
+.kb-stack-badge {
+  position: absolute;
+  right: 14px;
+  top: 1px;
+  z-index: 4;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--tc) 22%, #110D17);
+  border: 1px solid color-mix(in srgb, var(--tc) 55%, transparent);
+  color: var(--tx);
+  font: 600 12px/16px "Chakra Petch", system-ui, sans-serif;
+  cursor: pointer;
+}
+.kb-stack-badge:hover { background: color-mix(in srgb, var(--tc) 40%, #110D17); }
+.kb-clip.stacked .kb-clip-lbl { right: 56px; }
+
+/* Imza hareketi: yeni take destenin ustune kayarak oturur (yalniz burada; diger her yer sakin) */
+@keyframes kb-take-in {
+  0% { transform: translate(14px, -20px) rotate(-2deg); opacity: 0; }
+  60% { transform: translate(-1px, 1px) rotate(.2deg); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+.kb-take-in { animation: kb-take-in .34s cubic-bezier(.2, .8, .2, 1) both; }
+
+.kb-stack-pop {
+  position: fixed;
+  z-index: 110;
+  min-width: 260px;
+  max-width: 360px;
+  padding: 4px;
+  background: var(--elev);
+  border: 1px solid var(--line-hi);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  animation: kb-ctx-in .15s var(--ease);
+}
+.kb-stack-head { padding: 6px 8px 4px; font-size: 12px; font-weight: 700; letter-spacing: .5px; color: var(--mut); }
+.kb-stack-row {
+  display: grid;
+  grid-template-columns: 12px 1fr auto 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.kb-stack-row:hover { background: rgba(157, 107, 255, .14); }
+.kb-stack-row.on { background: rgba(157, 107, 255, .20); color: #fff; }
+.kb-stack-dot { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--mut); }
+.kb-stack-row.on .kb-stack-dot { background: var(--ok); border-color: var(--ok); }
+.kb-stack-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-stack-len { color: var(--mut); }
+.kb-stack-del { width: 24px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: var(--mut); cursor: pointer; font-size: 12px; }
+.kb-stack-del:hover { background: rgba(255, 77, 106, .18); color: var(--bad); }
+.kb-stack-foot { padding: 4px 8px 6px; font-size: 12px; color: #6E6588; border-top: 1px solid var(--line); margin-top: 4px; }
+
+/* Canli kayit karti (serit uzerinde) */
+.kb-rec-live {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  z-index: 3;
+  pointer-events: none;
+}
+.kb-rec-live .top, .kb-rec-live .g {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px 4px 0 0;
+  border: 1px solid rgba(255, 77, 106, .55);
+  border-top: 2px solid var(--bad);
+  background: rgba(255, 77, 106, .08);
+}
+.kb-rec-live .g { display: none; background: #120A10; border-color: rgba(255, 77, 106, .3); }
+.kb-rec-live.has1 .g1 { display: block; transform: translate(4px, -4px) rotate(.35deg); }
+.kb-rec-live.has2 .g2 { display: block; transform: translate(8px, -7px) rotate(-.4deg); opacity: .6; }
+.kb-rec-live .top { display: flex; align-items: flex-start; gap: 6px; padding: 2px 8px; font-size: 12px; font-weight: 600; color: #FFD3DB; white-space: nowrap; overflow: hidden; }
+.kb-rec-live .dot { width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: var(--bad); animation: kb-dot-pulse 1s ease-in-out infinite; flex: none; }
+@keyframes kb-dot-pulse { 50% { opacity: .35; } }
+
+/* Kayit modu: ekstra paneller sonuklesir, zaman cizelgesi duzenlemeye kapanir */
+.kb-tl { position: relative; }
+body.kb-recmode .kb-console,
+body.kb-recmode .kb-side-tabs,
+body.kb-recmode .kb-side-pane:not(#pane-booth),
+body.kb-recmode #pane-booth .kb-mod:not(:first-child),
+body.kb-recmode .kb-actions,
+body.kb-recmode .kb-tl-heads { opacity: .35; transition: opacity .2s var(--ease); }
+body.kb-recmode .kb-console, body.kb-recmode .kb-actions { pointer-events: none; }
+body.kb-recmode .kb-tl-content, body.kb-recmode .kb-tl-ruler { pointer-events: none; }
+body.kb-recmode .kb-tl-bar > :not(.kb-rec-grp) { opacity: .35; pointer-events: none; }
+
+.kb-rec-hud {
+  position: absolute;
+  right: 16px;
+  top: 40px;
+  z-index: 20;
+  width: 320px;
+  padding: 12px 16px;
+  background: rgba(15, 11, 22, .94);
+  border: 1px solid rgba(255, 77, 106, .45);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 8px 24px rgba(0, 0, 0, .45);
+  pointer-events: none;
+}
+.kb-hud-row { display: flex; align-items: center; gap: 8px; }
+.kb-hud-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); animation: kb-rec-pulse-dot 1.2s ease-in-out infinite; }
+@keyframes kb-rec-pulse-dot { 50% { box-shadow: 0 0 0 6px rgba(255, 77, 106, .22); } }
+.kb-hud-mode { font-weight: 700; letter-spacing: 1px; color: #FFD3DB; font-size: 12px; }
+.kb-hud-lap { color: var(--amb); font-size: 12px; }
+.kb-hud-time { margin-left: auto; font-size: 24px; font-weight: 600; color: var(--tx); }
+.kb-hud-meter {
+  position: relative;
+  height: 16px;
+  margin: 8px 0 4px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.kb-hud-meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #14F195 0 70%, #F59E0B 85%, #FF4D6A 100%); background-size: 320px 100%; transition: width .08s linear; }
+.kb-hud-meter b { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: var(--tx); opacity: .8; }
+.kb-hud-ticks { position: absolute; inset: 0; background: linear-gradient(90deg, transparent calc(100% - 1px), rgba(237, 233, 246, .2) 0) 0 0 / 10% 100%; }
+.kb-hud-sub { justify-content: space-between; font-size: 12px; color: var(--mut); }
+.kb-hud-keys { margin-top: 6px; font-size: 12px; color: #6E6588; }
+.kb-hud-count {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 21;
+  transform: translate(-50%, -50%);
+  font-size: 160px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--tx);
+  text-shadow: 0 4px 24px rgba(0, 0, 0, .6);
+  pointer-events: none;
+}
+.kb-hud-count.beat { animation: kb-count-beat .3s var(--ease); }
+@keyframes kb-count-beat { from { opacity: .4; transform: translate(-50%, -50%) scale(1.12); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }

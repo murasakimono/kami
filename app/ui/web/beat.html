@@ -68,6 +68,18 @@
             <option value="16">1/16</option>
           </select>
         </label>
+        <div class="kb-tl-grp kb-rec-grp" aria-label="Kayıt akışı">
+          <button type="button" class="btn ic" id="tlLoop" title="Döngü aç/kapa (L) — cetvelde sürükleyerek bölge çiz">⟲</button>
+          <button type="button" class="btn ic" id="tlMetro" title="Metronom aç/kapa (M) — yalnız kulaklığa, kayda girmez">♩</button>
+          <input type="range" class="kb-tl-vol" id="tlMetroVol" min="0" max="100" value="60" title="Metronom ses düzeyi">
+          <select id="tlCount" class="kb-sel" title="Sayarak giriş (C ile aç/kapa)">
+            <option value="0">Sayım yok</option>
+            <option value="1">Sayım 1 bar</option>
+            <option value="2">Sayım 2 bar</option>
+          </select>
+          <button type="button" class="btn" id="tlPunch" title="Punch-in: seçili klipte döngü bölgesini yeniden kaydet (ön-çalma ile)">Punch</button>
+          <label class="kb-tl-pre" title="Punch ön-çalma süresi (sn)"><span>Ön</span><input type="number" id="tlPreroll" min="0" max="10" step="0.5" value="2"><span>sn</span></label>
+        </div>
         <div class="kb-tl-grp">
           <button type="button" class="btn ic" id="tlZoomOut" title="Uzaklaş (-)">−</button>
           <span class="kb-num kb-tl-zoom" id="tlZoomLbl">40 px/s</span>
@@ -85,6 +97,21 @@
         <div class="kb-tl-heads" id="tlHeads"></div>
         <div class="kb-tl-scroll" id="tlScroll">
           <div class="kb-tl-content" id="tlContent"></div>
+        </div>
+        <div class="kb-hud-count kb-num" id="hudCount" hidden></div>
+        <div class="kb-rec-hud" id="recHud" hidden aria-live="polite">
+          <div class="kb-hud-row">
+            <span class="kb-hud-dot"></span>
+            <span class="kb-hud-mode" id="hudMode">KAYIT</span>
+            <span class="kb-hud-lap" id="hudLap"></span>
+            <span class="kb-num kb-hud-time" id="hudTime">0:00.0</span>
+          </div>
+          <div class="kb-hud-meter"><i id="hudLvl"></i><b id="hudPeak"></b><span class="kb-hud-ticks"></span></div>
+          <div class="kb-hud-row kb-hud-sub">
+            <span class="kb-num" id="hudDb">−∞ dB</span>
+            <span id="hudTrack"></span>
+          </div>
+          <div class="kb-hud-keys">R / Boşluk: bitir · Esc: iptal (take atılmaz)</div>
         </div>
       </div>
 

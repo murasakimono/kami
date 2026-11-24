@@ -13,7 +13,6 @@
   let BOOTH_RUNNING = false;
   let SEL_TID = "vocal1";
   let ACTIVE_AUDIO_PATH = "";
-  let VU_TIMER = 0;
   let LAST_MASH_OUT = "";
   // ---- Asama 1a: geri al / otomatik kayit / zaman cizelgesi ----
   const UNDO = [], REDO = [];
@@ -307,6 +306,7 @@
 
   function renderProject() {
     if (!PROJ) return;
+    syncLoopUi();
     $("#metaPill").textContent = `${Math.round(PROJ.bpm || 120)} BPM · ${PROJ.key || "—"}`;
     if (document.activeElement !== $("#lyrInput")) $("#lyrInput").value = PROJ.lyrics || "";
     $("#abToggle").disabled = !PROJ.reference_path;
@@ -447,8 +447,10 @@
       onPickForTrack: (tid, t) => pickAudioFor(tid, t),
       follow: () => $("#tlFollow").checked,
       keepRolling: () => PC_REC,
+      onLoopChange: () => { syncLoopUi(); scheduleSave(); },
     });
     TL.setSnap(+$("#tlSnap").value);
+    applyRecSetUi();
   }
 
   function selectTrack(tid) {
@@ -485,6 +487,13 @@
   // Kisayollar (metin alanina yazarken calismaz)
   document.addEventListener("keydown", (e) => {
     const t = e.target;
+    if (RECST) {   // kayit modu: yalniz bitir / iptal / metronom
+      const k0 = e.key;
+      if (k0 === "Escape") { e.preventDefault(); recCancel(); }
+      else if (k0 === "r" || k0 === "R" || k0 === " ") { e.preventDefault(); if (t && t.tagName === "BUTTON") t.blur(); recStop(); }
+      else if ((k0 === "m" || k0 === "M") && !(e.ctrlKey || e.metaKey)) { e.preventDefault(); toggleMetro(); }
+      return;
+    }
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) {
       if (t.type !== "range") return;   // surgu odaktaysa kisayollar yine calissin
       if (/^(Arrow|Page|Home|End)/.test(e.key)) return;
@@ -502,6 +511,10 @@
     else if (!ctrl && (k === "+" || k === "=" || e.code === "NumpadAdd")) { e.preventDefault(); TL.zoomBy(1.5); }
     else if (!ctrl && (k === "-" || k === "_" || e.code === "NumpadSubtract")) { e.preventDefault(); TL.zoomBy(1 / 1.5); }
     else if (k === "Home") { e.preventDefault(); TL.setPlayhead(0); TL.ensureVisible(0); }
+    else if (!ctrl && !e.altKey && (k === "r" || k === "R")) { e.preventDefault(); recStart(); }
+    else if (!ctrl && !e.altKey && (k === "l" || k === "L")) { e.preventDefault(); toggleLoopUi(); }
+    else if (!ctrl && !e.altKey && (k === "m" || k === "M")) { e.preventDefault(); toggleMetro(); }
+    else if (!ctrl && !e.altKey && (k === "c" || k === "C")) { e.preventDefault(); toggleCount(); }
   });
 
   async function analyzeLyricsUI() {
@@ -579,6 +592,16 @@
       const tr = PROJ.tracks.find((x) => x.id === el.dataset.take);
       const tk = tr?.takes?.find((t) => t.id === el.value);
       if (!tr || !tk) return;
+      // 1b: take bir destenin uyesiyse (dongu/punch take'i) comping yerine desteyi o take'e cevir
+      const inStack = tr.clips.find((c) => c.take_id === tk.id && c.stack_id);
+      if (inStack) {
+        edit(`Aktif take: ${tk.label}`, () => {
+          tr.active_take = tk.id;
+          tr.clips = BeatClips.stackSetActive(tr.clips, inStack.stack_id, inStack.id);
+        });
+        TL?.animateTakeIn([inStack.id]);
+        return;
+      }
       const sel = TL ? TL.selection() : new Set();
       const mine = tr.clips.filter((c) => sel.has(c.id));
       const targets = new Set((mine.length ? mine : tr.clips.filter((c) => c.take_id === tr.active_take)).map((c) => c.id));
@@ -730,42 +753,204 @@
     return true;
   }
 
+  // ---------------- 1b: kayit akisi (metronom, sayim, dongu + take destesi, punch-in, kayit modu) ----------------
+  const RECSET = Object.assign({ metro: false, vol: 0.6, count: 1, lastCount: 1, preroll: 2 },
+    (() => { try { return JSON.parse(localStorage.getItem("kb.rec") || "{}"); } catch { return {}; } })());
+  let RECST = null;        // aktif kayit plani
+  let LVL_TIMER = 0, LVL_BUSY = false, LVL_PEAK = 0;
+  const saveRecSet = () => { try { localStorage.setItem("kb.rec", JSON.stringify(RECSET)); } catch {} };
+  const fmtSigned = (x) => (x < 0 ? "−" : "") + fmtTime(Math.abs(x));
+
+  function applyRecSetUi() {
+    $("#tlMetro").classList.toggle("on", !!RECSET.metro);
+    $("#tlMetroVol").value = String(Math.round(RECSET.vol * 100));
+    $("#tlCount").value = String(RECSET.count);
+    $("#tlPreroll").value = String(RECSET.preroll);
+    TL?.setMetronome({ on: !!RECSET.metro, vol: RECSET.vol });
+  }
+  function syncLoopUi() { const L = PROJ?.loop; $("#tlLoop").classList.toggle("on", !!(L && L.on)); }
+  function toggleMetro() {
+    RECSET.metro = !RECSET.metro; saveRecSet(); applyRecSetUi();
+    setStatus(RECSET.metro ? "Metronom açık (yalnız kulaklık)" : "Metronom kapalı");
+  }
+  function toggleCount() {
+    if (RECSET.count) { RECSET.lastCount = RECSET.count; RECSET.count = 0; } else RECSET.count = RECSET.lastCount || 1;
+    saveRecSet(); applyRecSetUi();
+    setStatus(RECSET.count ? `Sayarak giriş: ${RECSET.count} bar` : "Sayarak giriş kapalı");
+  }
+  function toggleLoopUi() {
+    const L = TL?.toggleLoop();
+    syncLoopUi();
+    if (L) setStatus(L.on ? `Döngü açık: ${fmtTime(L.start)} → ${fmtTime(L.end)}` : "Döngü kapalı");
+  }
+  $("#tlMetro").onclick = toggleMetro;
+  $("#tlLoop").onclick = toggleLoopUi;
+  $("#tlMetroVol").addEventListener("input", (e) => { RECSET.vol = (+e.target.value || 0) / 100; TL?.setMetronome({ vol: RECSET.vol }); });
+  $("#tlMetroVol").addEventListener("change", (e) => { saveRecSet(); e.target.blur(); });
+  $("#tlCount").onchange = (e) => { RECSET.count = +e.target.value || 0; if (RECSET.count) RECSET.lastCount = RECSET.count; saveRecSet(); e.target.blur(); };
+  $("#tlPreroll").onchange = (e) => { RECSET.preroll = Math.max(0, Math.min(10, +e.target.value || 0)); e.target.value = RECSET.preroll; saveRecSet(); };
+  $("#tlPunch").onclick = () => (RECST ? recStop() : recStart("punch"));
+
+  function hudCount(n) {
+    const c = $("#hudCount");
+    if (n > 0) {
+      c.hidden = false;
+      c.textContent = String(n);
+      c.classList.remove("beat"); void c.offsetWidth; c.classList.add("beat");
+      $("#hudMode").textContent = "SAYIM";
+    } else {
+      c.hidden = true;
+      if (RECST) $("#hudMode").textContent = { loop: "DÖNGÜ KAYDI", punch: "PUNCH", linear: "KAYIT" }[RECST.mode];
+    }
+  }
+  function hudLap(n) { $("#hudLap").textContent = RECST?.mode === "loop" ? `Tur ${n + 1}${n ? ` · ${n} take` : ""}` : ""; }
+
+  function enterRecUi(plan) {
+    document.body.classList.add("kb-recmode");
+    $("#recHud").hidden = false;
+    $("#hudMode").textContent = plan.countIn ? "SAYIM" : plan.mode === "punch" ? "ÖN-ÇALMA" : plan.mode === "loop" ? "DÖNGÜ KAYDI" : "KAYIT";
+    $("#hudTime").textContent = "0:00.0";
+    $("#hudTrack").textContent = "→ " + ((PROJ?.tracks || []).find((x) => x.id === plan.tid)?.name || plan.tid);
+    hudLap(0);
+    $("#pcRecBtn").classList.add("bad"); $("#pcRecBtn").classList.remove("pri"); $("#pcRecBtn").textContent = "⏹ Kaydı Durdur";
+    $("#trRec").classList.add("on");
+    $("#tlPunch").classList.toggle("on", plan.mode === "punch");
+    $("#pcRecSt").textContent = `Kayıt alınıyor → ${$("#hudTrack").textContent.slice(2)} @ ${fmtTime(plan.keep_from)}`;
+    TL?.setRecLive({ trId: plan.tid, mode: plan.mode, from: plan.keep_from, a: plan.a, b: plan.b, t0: plan.t0, t1: plan.t1, laps: 0 });
+    LVL_PEAK = 0;
+    clearInterval(LVL_TIMER);
+    LVL_TIMER = setInterval(pollLevel, 90);
+  }
+  function exitRecUi() {
+    document.body.classList.remove("kb-recmode");
+    $("#recHud").hidden = true;
+    $("#hudCount").hidden = true;
+    clearInterval(LVL_TIMER); LVL_TIMER = 0;
+    $("#micVuFill").style.width = "0%";
+    $("#pcRecBtn").classList.remove("bad"); $("#pcRecBtn").classList.add("pri"); $("#pcRecBtn").textContent = "🎙 Kayda Başla";
+    $("#trRec").classList.remove("on");
+    $("#tlPunch").classList.remove("on");
+    TL?.setRecLive(null);
+  }
+  async function pollLevel() {
+    const u = TL?.uNow();
+    if (RECST && u != null) {
+      const rel = u - RECST.keep_from;
+      $("#hudTime").textContent = fmtSigned(rel);
+      if (RECST.mode === "punch") $("#hudMode").textContent = rel < 0 ? "ÖN-ÇALMA" : "PUNCH";
+    }
+    if (LVL_BUSY) return;
+    LVL_BUSY = true;
+    try {
+      const st = await api()?.booth_rec_status?.().catch(() => null);
+      if (!st?.ok || !RECST) return;
+      const db = Number(st.level_db);
+      const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+      LVL_PEAK = Math.max(pct, LVL_PEAK - 1.2);
+      $("#hudLvl").style.width = pct + "%";
+      $("#hudPeak").style.left = LVL_PEAK + "%";
+      $("#hudLvl").classList.toggle("hot", db > -6);
+      $("#hudDb").textContent = db <= -119 ? "−∞ dB" : `${db.toFixed(1)} dB${st.clip ? " · CLIP!" : ""}`;
+      $("#micVuFill").style.width = pct + "%";
+    } finally { LVL_BUSY = false; }
+  }
+
+  async function recStart(kind = "auto") {
+    if (RECST || !PROJ || !TL) return;
+    const bpmv = Number(PROJ.bpm) || 120;
+    let plan;
+    if (kind === "punch") {
+      const sel = [...TL.selection()].map((id) => TL.findClip(id)).filter(Boolean);
+      if (sel.length !== 1) { setStatus("Punch için önce tek bir klip seç."); return; }
+      const L = PROJ.loop;
+      if (!L || !(L.end - L.start >= 0.05)) { setStatus("Punch aralığı yok: cetvelde sürükleyerek bölge çiz (döngü kapalı da olabilir)."); return; }
+      const [s, e] = BeatClips.clipBounds(sel[0].clip);
+      const t0 = Math.max(s, L.start), t1 = Math.min(e, L.end);
+      if (t1 - t0 < 0.05) { setStatus("Punch aralığı seçili klibin üstünde değil."); return; }
+      const pre = Math.max(0, Number(RECSET.preroll) || 0);
+      plan = { mode: "punch", tid: sel[0].tr.id, clipId: sel[0].clip.id, t0, t1, ustart: t0 - pre, keep_from: t0,
+        loop: null, countIn: null, stopAtU: t1 + 0.3 };
+    } else {
+      const L = TL.loopRegion();
+      const tid = recTrackId();
+      const cnt = BeatTransport.countInPlan(L ? L.a : TL.getPlayhead(), bpmv, RECSET.count);
+      plan = { mode: L ? "loop" : "linear", tid, a: L?.a, b: L?.b, ustart: cnt.transport_start, keep_from: cnt.rec_from,
+        loop: L || null, countIn: cnt.beats ? { origin: cnt.rec_from, ticks: cnt.ticks } : null, stopAtU: null };
+    }
+    TL.stop();
+    await flushSave();
+    const r = await api()?.booth_rec_start?.(PROJ.id, plan.tid, +$("#micSel").value, -1);
+    if (!r?.ok) { setStatus("Kayıt başlamadı: " + (r?.error || "mikrofon açılamadı")); $("#pcRecSt").textContent = "Hata: " + (r?.error || "?"); return; }
+    RECST = plan;
+    PC_REC = true;
+    SAVE_LOCK++;   // kayit bitip Python klibi ekleyene kadar eski projeyi diske yazma
+    enterRecUi(plan);
+    const ok = await TL.play(plan.ustart, {
+      loop: plan.loop, countIn: plan.countIn, rec: true, force: true, stopAtU: plan.stopAtU,
+      onCount: hudCount,
+      onLap: (n) => { if (RECST !== plan) return; plan.laps = n; TL.recLap(n); hudLap(n); if (n) setStatus(`Take ${n} tamam — tur ${n + 1} kaydediliyor`); },
+      onAutoStop: () => { if (RECST === plan) recStop(); },
+    });
+    if (!ok && RECST === plan) { await recCancel(true); setStatus("Kayıt başlatılamadı (ses motoru açılamadı)."); }
+  }
+
+  async function recStop() {
+    if (!RECST) return;
+    const plan = RECST;
+    RECST = null;
+    const anchor = TL?.anchor();
+    TL?.stop();
+    PC_REC = false;
+    exitRecUi();
+    SAVE_LOCK = Math.max(0, SAVE_LOCK - 1);
+    const p = {
+      mode: plan.mode, track_id: plan.tid, keep_from: plan.keep_from,
+      anchor_u: anchor ? anchor.u : plan.ustart, anchor_wall: (anchor ? anchor.wall : Date.now()) / 1000,
+      loop_a: plan.a ?? null, loop_b: plan.b ?? null, clip_id: plan.clipId || "", t0: plan.t0 ?? null, t1: plan.t1 ?? null, xfade: 0.01,
+    };
+    setStatus("Kayıt işleniyor…");
+    $("#pcRecSt").textContent = "Kayıt işleniyor…";
+    const r = await serverMutate("", () => api()?.booth_rec_stop?.($("#micClean").checked, p));
+    if (r?.ok) {
+      const ids = r.new_clip_ids || [];
+      const msg = r.mode === "loop" ? `✓ ${ids.length} take tek destede — son tur aktif (rozete tıkla: take seç)`
+        : r.mode === "punch" ? "✓ Punch tamam — yeni take aralığın destesinde aktif"
+          : `✓ Kaydedildi (${r.duration}s) — klip zaman çizelgesinde`;
+      setStatus(msg);
+      $("#pcRecSt").textContent = msg;
+      const top = ids[ids.length - 1];
+      if (top && TL.findClip(top)) TL.select(top, false);
+      TL.animateTakeIn([top]);
+      TL.setPlayhead(plan.mode === "punch" ? plan.t0 : plan.keep_from, false);
+    } else {
+      const err = { no_complete_lap: "Tam tur tamamlanmadı — take oluşmadı (ham kayıt klasörde duruyor).",
+        punch_too_short: "Punch kaydı çok kısa kaldı.", punch_clip_not_found: "Punch klibi bulunamadı (silinmiş olabilir).",
+        empty_recording: "Kayıt boş." }[r?.error] || ("Kayıt hatası: " + (r?.error || "?"));
+      setStatus(err);
+      $("#pcRecSt").textContent = err;
+    }
+  }
+
+  async function recCancel(silent) {
+    if (!RECST) return;
+    RECST = null;
+    TL?.stop();
+    PC_REC = false;
+    exitRecUi();
+    SAVE_LOCK = Math.max(0, SAVE_LOCK - 1);
+    const r = await api()?.booth_rec_cancel?.().catch(() => null);
+    if (silent) return;
+    const msg = r?.ok ? `Kayıt iptal edildi — take eklenmedi, ham ses saklandı: ${String(r.path || "").split(/[\\/]/).pop()}`
+      : "İptal: " + (r?.error || "?");
+    setStatus(msg);
+    $("#pcRecSt").textContent = msg;
+  }
+
   function recTrackId() {
     const tr = selTrack();
     return tr && tr.role !== "beat" ? tr.id : ((PROJ?.tracks || []).find((x) => x.role === "vocal")?.id || "vocal1");
   }
-  $("#pcRecBtn").onclick = async () => {
-    const recBtn = $("#pcRecBtn"), trRec = $("#trRec");
-    if (!PC_REC) {
-      await flushSave();
-      const tid = recTrackId();
-      const startAt = TL ? TL.getPlayhead() : 0;
-      const r = await api()?.booth_rec_start?.(PROJ?.id || "", tid, +$("#micSel").value, startAt);
-      if (r?.ok) {
-        PC_REC = true;
-        SAVE_LOCK++;   // kayit bitip Python klibi ekleyene kadar eski projeyi diske yazma
-        recBtn.classList.add("bad"); recBtn.classList.remove("pri"); recBtn.textContent = "⏹ Kaydı Durdur";
-        trRec.classList.add("on");
-        const trName = (PROJ?.tracks || []).find((x) => x.id === tid)?.name || tid;
-        $("#pcRecSt").textContent = `Kayıt alınıyor → ${trName} @ ${fmtTime(startAt)}`;
-        TL?.play(startAt);   // beat'i duyarak kayit
-        clearInterval(VU_TIMER);
-        VU_TIMER = setInterval(() => {
-          $("#micVuFill").style.width = `${30 + Math.round(Math.random() * 62)}%`;
-        }, 120);
-      } else $("#pcRecSt").textContent = "Hata: " + (r?.error || "?");
-    } else {
-      PC_REC = false;
-      clearInterval(VU_TIMER); VU_TIMER = 0; $("#micVuFill").style.width = "0%";
-      recBtn.classList.remove("bad"); recBtn.classList.add("pri"); recBtn.textContent = "🎙 Kayda Başla";
-      trRec.classList.remove("on");
-      TL?.stop();
-      SAVE_LOCK = Math.max(0, SAVE_LOCK - 1);
-      const r = await serverMutate("", () => api()?.booth_rec_stop?.($("#micClean").checked));
-      if (r?.ok) $("#pcRecSt").textContent = `✓ Kaydedildi (${r.duration}s) — klip zaman çizelgesinde`;
-      else $("#pcRecSt").textContent = "Hata: " + (r?.error || "?");
-    }
-  };
+  $("#pcRecBtn").onclick = () => (RECST ? recStop() : recStart());
 
   // ---- Gecikme (alkis) testi ----
   $("#latMeasure").onclick = async () => {
