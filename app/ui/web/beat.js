@@ -621,7 +621,7 @@
         n.title = s.title || "";
         n.dataset.kind = s.kind || "";
         $("#fxPreviewToggle").classList.toggle("on", s.enabled);
-        $("#fxPreviewToggle").textContent = s.enabled ? "FX ▶ Açık" : "FX ▶ Kapalı";
+        $("#fxPreviewToggle").textContent = s.enabled ? "FX ▶" : "FX ✕";
         $("#fxPreviewScope").disabled = !s.enabled;
         $("#fxPreviewScope").value = s.scope;
       },

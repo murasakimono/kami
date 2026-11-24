@@ -257,7 +257,9 @@
       if (!T) return;
       const P = o.getProj();
       const want = new Set(targets().map((t) => t.id));
-      for (const tr of P?.tracks || []) {
+      const sel = o.selTid();
+      const order = (P?.tracks || []).slice().sort((a, b) => (b.id === sel) - (a.id === sel));   // secili kanal once
+      for (const tr of order) {
         const e = ent(tr.id);
         if (!want.has(tr.id)) { clearTimeout(e.timer); e.req++; e.busy = false; dropWet(tr.id); continue; }
         const sig = trackSig(tr);

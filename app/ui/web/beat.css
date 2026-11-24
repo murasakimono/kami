@@ -1119,7 +1119,7 @@ button.kb-fx-led:hover { outline: 2px solid color-mix(in srgb, var(--ok) 40%, tr
   color: var(--ok); font: 700 10.5px/15px "Chakra Petch", system-ui, sans-serif; cursor: pointer; letter-spacing: .5px;
 }
 .kb-clipfx-badge:hover { background: color-mix(in srgb, var(--ok) 35%, #110D17); }
-.kb-clip:has(.kb-clipfx-badge) .kb-clip-lbl { padding-left: 44px; }
+.kb-clip:has(.kb-clipfx-badge) .kb-clip-lbl { padding-left: 42px; }
 .kb-region {
   position: absolute; top: 4px; bottom: 4px; z-index: 5; pointer-events: none;
   background: color-mix(in srgb, var(--ok) 16%, transparent); border: 1px dashed var(--ok); border-radius: 3px;
