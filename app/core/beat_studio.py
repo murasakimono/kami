@@ -1374,8 +1374,14 @@ def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> 
     proj["last_mixdown"] = out_path
     save_project(proj)
     lufs_info = measure_lufs(out_path)
+    try:   # 1e: yayin oncesi lisans uyarisi (raftan gelen beat ticari kullanima kapali / lisans / kredi)
+        from app.core import beat_shelf
+        release = beat_shelf.release_warnings(proj)
+    except Exception:
+        log.debug("lisans uyarisi hesaplanamadi", exc_info=True)
+        release = []
     return {"ok": True, "path": out_path, "lufs": lufs_info.get("lufs"), "peak_db": lufs_info.get("peak_db"), "duration": lufs_info.get("duration"),
-            "fx_skipped": sorted(set(fx_info.get("skipped") or []))}
+            "fx_skipped": sorted(set(fx_info.get("skipped") or [])), "release_warnings": release}
 
 
 def bounce(pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:
