@@ -50,6 +50,74 @@ def _ytdlp():
     return yt_dlp
 
 
+# 24.11: YouTube korumasini (n challenge) eski yt-dlp cozemeyince yalniz resim formatlari gelir ve indirme
+# "Requested format is not available" ile duser. Bu durumda gunluk sinir beklenmeden yt-dlp guncellenir,
+# hicbir indirme surmuyorsa modul yeniden yuklenir ve islem bir kez tekrar denenir.
+_CHALLENGE_RE = re.compile(r"n challenge|Only images are available|Requested format is not available|"
+                           r"nsig extraction failed|Signature extraction failed|jsc\]", re.I)
+_EMERGENCY_MIN_GAP = 30 * 60
+_emergency_lock = threading.Lock()
+_emergency_last = 0.0
+_active_jobs = 0
+_active_lock = threading.Lock()
+
+
+def looks_like_challenge(msg: str) -> bool:
+    return bool(_CHALLENGE_RE.search(msg or ""))
+
+
+def _reload_ytdlp() -> bool:
+    """yt_dlp modullerini bosaltir ki bir sonraki _ytdlp() guncel kopyayi yuklesin. Indirme surerken yapilmaz."""
+    global _registered
+    with _active_lock:
+        if _active_jobs > 0:
+            return False
+        from app import paths
+        pl = str(paths.PYLIB_DIR)
+        if (paths.PYLIB_DIR / "yt_dlp").is_dir():
+            if pl in sys.path:
+                sys.path.remove(pl)
+            sys.path.insert(0, pl)
+        for name in [m for m in sys.modules if m == "yt_dlp" or m.startswith(("yt_dlp.", "yt_dlp_ejs"))]:
+            sys.modules.pop(name, None)
+        import importlib
+        importlib.invalidate_caches()
+        _registered = False
+        return True
+
+
+def emergency_update(url: str, msg: str) -> bool:
+    """YouTube koruma hatasinda: yt-dlp'yi hemen guncelle (30 dk'da bir), yeni surum yuklendiyse True."""
+    global _emergency_last
+    if not (is_youtube(url) and looks_like_challenge(msg)):
+        return False
+    with _emergency_lock:
+        if time.time() - _emergency_last < _EMERGENCY_MIN_GAP:
+            return False
+        _emergency_last = time.time()
+        from app import paths
+        try:
+            if paths.FROZEN:
+                ver = update_pylib(paths.PYLIB_DIR)
+            else:
+                uv = shutil.which("uv")
+                if not uv:
+                    return False
+                r = subprocess.run([uv, "pip", "install", "--python", sys.executable, "-U", "yt-dlp[default,curl-cffi]"],
+                                   capture_output=True, text=True, timeout=120,
+                                   creationflags=0x08000000 if os.name == "nt" else 0)
+                ver = "uv" if r.returncode == 0 and "Installed" in (r.stdout + r.stderr) else ""
+        except Exception:
+            log.exception("acil yt-dlp guncellemesi basarisiz")
+            return False
+        if not ver:
+            log.info("acil yt-dlp guncellemesi: zaten guncel")
+            return False
+        ok = _reload_ytdlp()
+        log.info("acil yt-dlp guncellemesi: %s (%s)", ver, "yeniden yuklendi" if ok else "indirme suruyor; yeniden baslatinca")
+        return ok
+
+
 def is_youtube(url: str) -> bool:
     host = (urlparse(url).hostname or "").lower()
     return any(host == h or host.endswith("." + h) for h in _YT_HOSTS)
@@ -293,7 +361,27 @@ class MediaJob:
 
     # ---- calistir ----
     def run(self) -> str:
-        """Indirir; son dosya yolunu dondurur. MediaCancelled / MediaError firlatir."""
+        """Indirir; son dosya yolunu dondurur. MediaCancelled / MediaError firlatir.
+        24.11: YouTube koruma hatasinda yt-dlp acil guncellenir ve bir kez tekrar denenir."""
+        try:
+            return self._run_once()
+        except MediaError as exc:
+            if not self.cancel.is_set() and emergency_update(self.url, getattr(exc, "raw", "") or str(exc)):
+                self._aria_error = ""
+                return self._run_once()
+            raise
+
+    def _run_once(self) -> str:
+        global _active_jobs
+        with _active_lock:
+            _active_jobs += 1
+        try:
+            return self._run_inner()
+        finally:
+            with _active_lock:
+                _active_jobs -= 1
+
+    def _run_inner(self) -> str:
         yt_dlp = _ytdlp()
         args = build_args(self.options, self.directory)
         ydl_opts = yt_dlp.parse_options(args).ydl_opts
@@ -322,7 +410,9 @@ class MediaJob:
             if self.cancel.is_set():
                 raise MediaCancelled() from exc
             msg = self._aria_error or _clean_error(str(exc))
-            raise MediaError(msg) from exc
+            err = MediaError(msg)
+            err.raw = str(exc) + " " + _YdlLogger.recent()
+            raise err from exc
         return self.final_path
 
 
@@ -410,6 +500,16 @@ def _cookiefile(url: str, cookie_header: str = ""):
 
 
 class _YdlLogger:
+    _recent: list[str] = []   # son uyarilar (koruma hatasi tespiti icin; is parcaciklari arasi ortak, kisa)
+
+    @classmethod
+    def _keep(cls, msg: str) -> None:
+        cls._recent = (cls._recent + [msg[:300]])[-12:]
+
+    @classmethod
+    def recent(cls) -> str:
+        return " ".join(cls._recent)
+
     def debug(self, msg: str) -> None:
         if msg.startswith("[debug]"):
             return
@@ -418,14 +518,25 @@ class _YdlLogger:
         pass
 
     def warning(self, msg: str) -> None:
+        self._keep(msg)
         log.info("yt-dlp: %s", msg)
 
     def error(self, msg: str) -> None:
+        self._keep(msg)
         log.warning("yt-dlp: %s", msg)
 
 
 # ---------------------------------------------------------------- bilgi alma
 def probe(url: str, headers: dict[str, str] | None = None, timeout: float = 30.0) -> dict[str, Any]:
+    try:
+        return _probe(url, headers, timeout)
+    except MediaError as exc:
+        if emergency_update(url, getattr(exc, "raw", "") or str(exc)):
+            return _probe(url, headers, timeout)
+        raise
+
+
+def _probe(url: str, headers: dict[str, str] | None = None, timeout: float = 30.0) -> dict[str, Any]:
     """Linki yt-dlp ile cozer (indirmeden). Listeler duz (flat) gelir.
 
     Donus: {kind: video|playlist, title, duration, thumbnail, heights, url, single_url, entries:[...]}
@@ -447,7 +558,9 @@ def probe(url: str, headers: dict[str, str] | None = None, timeout: float = 30.0
                 yt_dlp.YoutubeDL({**opts, "cookiefile": ck} if ck else opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as exc:
-        raise MediaError(_clean_error(str(exc))) from exc
+        err = MediaError(_clean_error(str(exc)))
+        err.raw = str(exc) + " " + _YdlLogger.recent()
+        raise err from exc
     if not info:
         raise MediaError("bilgi alinamadi")
     if info.get("_type") == "playlist" or info.get("entries") is not None:

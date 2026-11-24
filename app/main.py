@@ -401,7 +401,7 @@ def main() -> int:
     store = DownloadStore(paths.DB_PATH)
     from app.engines import ytdlp_engine
     if settings.get("ytdlp_autoupdate"):
-        ytdlp_engine.start_self_update(24, settings)
+        ytdlp_engine.start_self_update(6, settings)   # 24.11: 24 sa -> 6 sa (YouTube degisiklikleri hizli)
     media = ytdlp_engine.MediaRunner(engine, max_concurrent=settings.get("max_concurrent"),
                                      connections_getter=lambda: int(settings.get("connections")))
     manager = DownloadManager(store, engine, events, settings, registry, media=media)
