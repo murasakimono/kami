@@ -252,7 +252,9 @@
       const ghosts = n > 2 ? `<div class="kb-clip-ghost g2" style="${geo}"></div>` : "";
       const ghost1 = n > 1 ? `<div class="kb-clip-ghost g1" style="${geo}"></div>` : "";
       const badge = n > 1 ? `<b class="kb-stack-badge" data-h="stack" title="Take destesi — tıkla: take seç">▤ ${n}</b>` : "";
-      return `${ghosts}${ghost1}<div class="${cls}" data-clip="${esc(c.id)}" ${n > 1 ? `data-stack="${esc(c.stack_id)}"` : ""} style="${geo}">${badge}
+      const nfx = (c.fx || []).filter((f) => f && !f.bypass).length;   // R4: klibin kendi efekti / kanal efektini atlama
+      const fxb = BC.hasClipFx(c) ? `<b class="kb-clipfx-badge" data-h="clipfx" title="Bu klibin kendi efekti var${c.skip_track_fx ? " · kanal efektini atlıyor" : ""} — tıkla: klip efektlerini aç">FX${nfx ? " " + nfx : ""}${c.skip_track_fx ? " ⤳" : ""}</b>` : "";
+      return `${ghosts}${ghost1}<div class="${cls}" data-clip="${esc(c.id)}" ${n > 1 ? `data-stack="${esc(c.stack_id)}"` : ""} style="${geo}">${badge}${fxb}
         <canvas class="kb-clip-wf"></canvas>
         <span class="kb-clip-lbl">${esc(label)}${gain ? ` · ${gain > 0 ? "+" : ""}${gain.toFixed(1)} dB` : ""}${c.muted ? " · sessiz" : ""}</span>
         <i class="kb-fade-h l" data-h="fi" title="Fade in (sürükle)"></i><i class="kb-fade-h r" data-h="fo" title="Fade out (sürükle)"></i>
@@ -770,6 +772,16 @@
       if (!hit) return;
       const mode = ev.target.dataset.h || "move";
       if (mode === "stack") { ev.preventDefault(); select(id, false); openStackMenu(card, hit); return; }
+      if (mode === "clipfx") { ev.preventDefault(); select(id, false); opts.onClipFx?.(hit.tr.id, id); return; }
+      if (mode === "move" && (ev.ctrlKey || ev.metaKey)) {   // R4: Ctrl+surukle = klipte bolge sec ("Bu bolgeye efekt")
+        ev.preventDefault();
+        select(id, false);
+        card.setPointerCapture(ev.pointerId);
+        const [cs0, ce0] = BC.clipBounds(hit.clip);
+        S.drag = { mode: "region", id, trId: hit.tr.id, x0: ev.clientX, t0: clamp(snapT(tAt, ev), cs0, ce0), cs: cs0, ce: ce0, moved: false, before: opts.snap() };
+        showRegion(hit.tr.id, S.drag.t0, S.drag.t0);
+        return;
+      }
       if (mode === "move") select(id, ev.shiftKey);
       else if (!S.sel.has(id)) select(id, false);
       if (ev.shiftKey && mode === "move" && !S.sel.has(id)) return;   // shift ile secimden cikarildi
@@ -795,6 +807,13 @@
       const dxT = x2t(ev.clientX - D.x0);
       if (!D.moved && Math.abs(ev.clientX - D.x0) < 3) return;
       D.moved = true;
+      if (D.mode === "region") {
+        const rc = el.content.getBoundingClientRect();
+        D.t1 = clamp(snapT(x2t(ev.clientX - rc.left), ev), D.cs, D.ce);
+        showRegion(D.trId, D.t0, D.t1);
+        showTip(ev.clientX, ev.clientY, D.t1, "Bölge");
+        return;
+      }
       const hit = findClip(D.id);
       if (!hit) return;
       const o = D.orig;
@@ -835,6 +854,12 @@
       S.drag = null;
       hideTip();
       document.body.classList.remove("kb-dragging", `kb-drag-${D.mode}`);
+      if (D.mode === "region") {
+        const a = Math.min(D.t0, D.t1 ?? D.t0), b = Math.max(D.t0, D.t1 ?? D.t0);
+        if (!D.moved || b - a < 0.05) { hideRegion(); return; }
+        openRegionMenu(ev.clientX, ev.clientY, D.trId, D.id, a, b);
+        return;
+      }
       if (!D.moved) return;
       if (opts.snap() !== D.before) {
         const label = { move: "Taşı", ts: "Baştan kırp", te: "Sondan kırp", fi: "Fade in", fo: "Fade out" }[D.mode];
@@ -936,6 +961,45 @@
     });
     document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") hideStackMenu(); });
 
+    // ---------------- R4: bolge secimi (Ctrl+surukle) ----------------
+    let REGION = null;     // { trId, clipId, t0, t1 }
+    function showRegion(trId, a, b) {
+      let d = el.content.querySelector(".kb-region");
+      const lane = el.content.querySelector(`.kb-tl-lane[data-lane="${CSS.escape(trId)}"]`);
+      if (!lane) return;
+      if (!d || d.parentElement !== lane) { d?.remove(); d = document.createElement("div"); d.className = "kb-region"; lane.appendChild(d); }
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      d.style.left = t2x(lo) + "px";
+      d.style.width = Math.max(2, t2x(hi - lo)) + "px";
+      d.dataset.label = `${lo.toFixed(2)}–${hi.toFixed(2)} sn`;
+    }
+    function hideRegion() { REGION = null; el.content.querySelector(".kb-region")?.remove(); }
+    function openRegionMenu(x, y, trId, clipId, a, b) {
+      hideMenu();
+      REGION = { trId, clipId, t0: a, t1: b };
+      menu = document.createElement("div");
+      menu.className = "kb-ctx";
+      menu.innerHTML = `<button data-act="regionfx">Bu bölgeye efekt <kbd>${a.toFixed(2)}–${b.toFixed(2)} sn</kbd></button><button data-act="cancel">Vazgeç</button>`;
+      document.body.appendChild(menu);
+      menu.style.left = Math.min(x, window.innerWidth - menu.offsetWidth - 8) + "px";
+      menu.style.top = Math.min(y + 8, window.innerHeight - menu.offsetHeight - 8) + "px";
+      menu.addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        const R = REGION;
+        hideMenu(); hideRegion();
+        if (btn.dataset.act === "regionfx" && R) opts.onRegionFx?.(R.trId, R.clipId, R.t0, R.t1);
+      });
+    }
+    /** Dongu bandi klibin icindeyse 'Bu bolgeye efekt (dongu)' icin aralik. */
+    function loopRangeOn(clip) {
+      const L = loopRegion() || (proj()?.loop && Number(proj().loop.end) - Number(proj().loop.start) >= 0.05 ? { a: Number(proj().loop.start), b: Number(proj().loop.end) } : null);
+      if (!L) return null;
+      const [s, e] = BC.clipBounds(clip);
+      const a = Math.max(s, L.a), b = Math.min(e, L.b);
+      return b - a >= 0.05 ? { a, b } : null;
+    }
+
     // ---------------- Sag tik menusu ----------------
     let menu = null;
     function hideMenu() { if (menu) { menu.remove(); menu = null; } }
@@ -947,6 +1011,8 @@
       const rc = el.content.getBoundingClientRect();
       const tAt = x2t(ev.clientX - rc.left);
       const anyMuted = [...S.sel].some((id) => findClip(id)?.clip.muted);
+      const hitC = findClip(card.dataset.clip);
+      const lr = hitC ? loopRangeOn(hitC.clip) : null;
       hideMenu();
       menu = document.createElement("div");
       menu.className = "kb-ctx";
@@ -957,7 +1023,9 @@
         <hr>
         <button data-act="fade">Fade sıfırla</button>
         <button data-act="mute">${anyMuted ? "Klibin sesini aç" : "Klibi sessize al"}</button>
-        ${findClip(card.dataset.clip)?.clip.stack_id ? `<hr><button data-act="stack">Take destesini aç</button>` : ""}`;
+        ${findClip(card.dataset.clip)?.clip.stack_id ? `<hr><button data-act="stack">Take destesini aç</button>` : ""}
+        <hr><button data-act="clipfx">Klip efektleri…</button>
+        ${lr ? `<button data-act="loopfx">Bu bölgeye efekt (döngü) <kbd>${lr.a.toFixed(2)}–${lr.b.toFixed(2)}</kbd></button>` : `<button data-act="hint" disabled title="Klipte Ctrl+sürükleyerek veya döngü bandıyla aralık seç">Bölgeye efekt: Ctrl+sürükle</button>`}`;
       document.body.appendChild(menu);
       const mw = menu.offsetWidth, mh = menu.offsetHeight;
       menu.style.left = Math.min(ev.clientX, window.innerWidth - mw - 8) + "px";
@@ -975,10 +1043,12 @@
         else if (act === "fade") resetFadeSelected();
         else if (act === "mute") toggleMuteSelected();
         else if (act === "stack") { const h = findClip(card.dataset.clip); if (h) openStackMenu(card, h); }
+        else if (act === "clipfx" && hitC) opts.onClipFx?.(hitC.tr.id, hitC.clip.id);
+        else if (act === "loopfx" && hitC && lr) opts.onRegionFx?.(hitC.tr.id, hitC.clip.id, lr.a, lr.b);
       });
     });
-    document.addEventListener("pointerdown", (ev) => { if (menu && !menu.contains(ev.target)) hideMenu(); });
-    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") hideMenu(); });
+    document.addEventListener("pointerdown", (ev) => { if (menu && !menu.contains(ev.target)) { hideMenu(); if (REGION) hideRegion(); } });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { hideMenu(); if (REGION) hideRegion(); } });
 
     // ---------------- Komutlar (geri al yigini beat.js'te) ----------------
     function forSel(fnTrack) {
@@ -1074,6 +1144,7 @@
       ctx: null, playing: false, when: 0, uStart: 0, loop: null, nodes: new Set(), buffers: new Map(), loading: new Map(),
       raf: 0, timers: [], els: [], token: 0, sched: 0, segs: [], segNext: null, metroH: 0, metroGain: null, bus: null,
       audible: [], o: {}, anchor: null, lastLaps: 0, lastCount: null, autoStopped: false,
+      dry: new Map(), dryLast: new Map(), audTr: new Set(),   // R4: kanal basina kuru dugum + duyulan kanallar
     };
     const Metro = { on: false, vol: 0.6 };
 
@@ -1121,7 +1192,9 @@
       for (const t of Eng.timers) clearTimeout(t);
       for (const a of Eng.els) { try { a.pause(); a.removeAttribute("src"); a.load(); } catch {} }
       if (Eng.metroGain) { try { Eng.metroGain.disconnect(); } catch {} Eng.metroGain = null; }
+      for (const w of WET.values()) { for (const n of w.nodes || []) { try { n.stop?.(); } catch {} try { n.disconnect?.(); } catch {} } w.nodes = new Set(); }
       Eng.nodes = new Set(); Eng.timers = []; Eng.els = []; Eng.segs = []; Eng.segNext = null; Eng.audible = [];
+      Eng.dry = new Map(); Eng.dryLast = new Map(); Eng.audTr = new Set();
       if (Eng.playing) S.playhead = currentTime();
       Eng.playing = false;
       Eng.loop = null;
@@ -1168,7 +1241,7 @@
       const toCtx = (t) => seg.cs + (t - seg.ts);
       g.gain.setValueAtTime(env(pts[0]), toCtx(pts[0]));
       for (let i = 1; i < pts.length; i++) g.gain.linearRampToValueAtTime(env(pts[i]), toCtx(pts[i]));
-      g.connect(Eng.bus.get(tr.id));
+      g.connect(Eng.dry.get(tr.id) || Eng.bus.get(tr.id));
       if (buf.stream) {
         // uzun kaynak: <audio> akisi (yaklasik senkron, onizleme icin)
         const a = new Audio();
@@ -1210,7 +1283,103 @@
         if (!buf) { missing++; continue; }
         scheduleClipPart(tr, c, buf, seg, s0, e0, token);
       }
+      for (const [tid, w] of WET) if (Eng.audTr.has(tid)) scheduleWetPart(tid, w, seg, 0);
       return missing;
+    }
+
+    // ---------------- R4: efektli onizleme katmani ----------------
+    // Python'un bounce ile AYNI yoldan isledigi kanal penceresi [t0, t1) (WET) kanalin kuru klipleri yerine calinir:
+    // kuru klipler yine planlanir ama kanalin kuru dugumu (Eng.dry) pencere boyunca 0'a iner; islak kaynak ayni
+    // AudioContext saatinde, ornek-dogru konumda (offset = t - t0) baslar. Gecislerde 20 ms capraz gecis.
+    // Dongu dikislerinde (pencere tum donguyu kapliyorsa) kuru ses araya girmez, 3 ms kenar rampasi.
+    const WET_XF = 0.02;
+    const WET = new Map();            // trId -> { buf, t0, t1, sig, nodes:Set }
+    function dryLast(tid) { return Eng.dryLast.has(tid) ? Eng.dryLast.get(tid) : 1; }
+    function scheduleWetPart(tid, w, seg, fromCtx) {
+      const ac = Eng.ctx;
+      const dry = Eng.dry.get(tid), bus = Eng.bus.get(tid);
+      if (!ac || !dry || !bus || !w?.buf) return;
+      const s0 = Math.max(seg.ts, w.t0), e0 = Math.min(seg.te, w.t1);
+      if (!(e0 - s0 > 0.005)) return;
+      const toCtx = (t) => seg.cs + (t - seg.ts);
+      let ca = toCtx(s0);
+      const cb = toCtx(e0);
+      const from = Math.max(fromCtx || 0, ac.currentTime + 0.01);
+      if (cb <= from + 0.005) return;
+      const L = Eng.loop;
+      const wholeLoop = !!L && w.t0 <= L.a + 1e-6 && w.t1 >= L.b - 1e-6;       // pencere tum donguyu kapliyor
+      const seamIn = wholeLoop && seg.lap > 0 && s0 <= seg.ts + 1e-6 && ca >= from;   // onceki tur da islak bitti
+      const seamOut = wholeLoop && Number.isFinite(seg.te) && e0 >= seg.te - 1e-6;
+      if (ca < from) ca = from;
+      const xin = seamIn ? EDGE_RAMP : WET_XF, xout = seamOut ? EDGE_RAMP : WET_XF;
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0, ca);
+      g.gain.linearRampToValueAtTime(1, ca + xin);
+      g.gain.setValueAtTime(1, Math.max(ca + xin, cb - xout));
+      g.gain.linearRampToValueAtTime(0, cb);
+      g.connect(bus);
+      const src = ac.createBufferSource();
+      src.buffer = w.buf;
+      src.connect(g);
+      const offset = s0 + (ca - toCtx(s0)) - w.t0;
+      src.start(ca, Math.max(0, offset), Math.max(0.001, cb - ca));
+      const nodes = w.nodes || (w.nodes = new Set());
+      nodes.add(src); nodes.add(g);
+      src.onended = () => { nodes.delete(src); nodes.delete(g); try { g.disconnect(); } catch {} };
+      // kuru dugum: pencere boyunca 0 (dikiste zaten 0)
+      if (!seamIn) {
+        dry.gain.setValueAtTime(dryLast(tid), ca);
+        dry.gain.linearRampToValueAtTime(0, ca + xin);
+      }
+      if (!seamOut) {
+        dry.gain.setValueAtTime(0, Math.max(ca + xin, cb - xout));
+        dry.gain.linearRampToValueAtTime(1, cb);
+        Eng.dryLast.set(tid, 1);
+      } else Eng.dryLast.set(tid, 0);
+    }
+    function stopWetNodes(w, at) {
+      if (!w?.nodes) return;
+      for (const n of w.nodes) {
+        try {
+          if (n.gain) { n.gain.cancelScheduledValues(at); n.gain.setValueAtTime(n.gain.value, at); n.gain.linearRampToValueAtTime(0, at + WET_XF); }
+          else n.stop(at + WET_XF + 0.005);
+        } catch {}
+      }
+      w.nodes = new Set();
+    }
+    /** Kanalin islak penceresini ayarlar/kaldirir (w = {buf, t0, t1, sig} | null). Calarken anindan itibaren
+        yeniden planlanir: eski islak kaynak 20 ms'de kisilir, yenisi ayni anda acilir; w null ise kuru geri gelir. */
+    function setWet(tid, w) {
+      const old = WET.get(tid);
+      const ac = Eng.ctx;
+      const now = ac ? ac.currentTime + 0.03 : 0;
+      if (old) stopWetNodes(old, now);
+      if (w) WET.set(tid, Object.assign({}, w, { nodes: new Set() })); else WET.delete(tid);
+      if (!Eng.playing || !ac) return;
+      const dry = Eng.dry.get(tid);
+      if (!dry) return;
+      dry.gain.cancelScheduledValues(now);
+      const cur = dry.gain.value;
+      dry.gain.setValueAtTime(cur, now);
+      Eng.dryLast.set(tid, cur);
+      const nw = WET.get(tid);
+      const tNow = Math.max(0, tAtU(Eng.uStart + (now - Eng.when)));
+      const covers = !!nw && Eng.audTr.has(tid) && tNow >= nw.t0 && tNow < nw.t1 - 0.03;
+      if (!covers && cur !== 1) {            // simdi islak yok: kuru 20 ms'de geri gelir
+        dry.gain.linearRampToValueAtTime(1, now + WET_XF);
+        Eng.dryLast.set(tid, 1);
+      }
+      if (nw && Eng.audTr.has(tid)) {
+        for (const seg of Eng.segs) {
+          const segEnd = Number.isFinite(seg.te) ? seg.cs + (seg.te - seg.ts) : Infinity;
+          if (segEnd > now) scheduleWetPart(tid, nw, seg, covers ? now : now + WET_XF);
+        }
+      }
+    }
+    function wetInfo() {
+      const o = {};
+      for (const [tid, w] of WET) o[tid] = { t0: w.t0, t1: w.t1, sig: w.sig };
+      return o;
     }
 
     function click(at, accent, strong) {
@@ -1298,6 +1467,8 @@
       Eng.when = when; Eng.uStart = start; Eng.loop = effLoop; Eng.playing = true; Eng.o = o; Eng.audible = audible;
       Eng.lastLaps = 0; Eng.lastCount = null; Eng.autoStopped = false;
       Eng.bus = new Map();
+      Eng.dry = new Map(); Eng.dryLast = new Map();
+      Eng.audTr = new Set(trs.filter((t) => !(t.mute || (hasSolo && !t.solo))).map((t) => t.id));
       for (const tr of trs) {
         const g = track(ac.createGain());
         g.gain.value = dbToGain(tr.volume_db);
@@ -1305,6 +1476,10 @@
         if (pan) { pan.pan.value = clamp(Number(tr.pan) || 0, -1, 1); g.connect(pan); pan.connect(ac.destination); track(pan); }
         else g.connect(ac.destination);
         Eng.bus.set(tr.id, g);
+        const d = track(ac.createGain());       // R4: kuru klipler buradan; islak pencere boyunca 0
+        d.gain.value = 1;
+        d.connect(g);
+        Eng.dry.set(tr.id, d);
       }
       Eng.metroGain = ac.createGain();                 // metronom yalniz cikisa (kulakliga) gider, kayda girmez
       Eng.metroGain.gain.value = Metro.vol;
@@ -1316,8 +1491,9 @@
       Eng.sched = setInterval(() => schedTick(token), SCHED_MS);
       const missing = audible.filter((a) => !Eng.buffers.get(a.c.path)).length;
       if (missing) opts.onStatus?.(`${missing} klibin kaynağı açılamadı (dosya taşınmış olabilir).`);
-      else if (slow) opts.onStatus?.("Önizleme çalıyor (efektsiz).");
+      else if (slow) opts.onStatus?.(WET.size ? "Önizleme çalıyor." : "Önizleme çalıyor (efektsiz).");
       opts.onPlayState?.(true);
+      opts.onPlayStart?.(start, effLoop);
       const endT = projectEnd();
       const beatS = BT.beatSec(bpm());
       const tick = () => {
@@ -1406,6 +1582,8 @@
 
     return {
       render, setZoom, zoomBy, fit, ensureVisible, setPlayhead, play, stop: stopEngine, toggle, restartIfPlaying,
+      // R4: efektli onizleme katmani
+      setWet, wetInfo, hasWet: (tid) => WET.has(tid),
       isPlaying: () => Eng.playing, getPlayhead: () => (Eng.playing ? currentTime() : S.playhead),
       selection: () => S.sel, clearSel, pruneSelection, select,
       splitSelected, duplicateSelected, deleteSelected, resetFadeSelected, toggleMuteSelected,
