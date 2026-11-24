@@ -95,6 +95,7 @@ class RoomAir:
         m = np.asarray(x, dtype="float32").reshape(-1)
         n = len(m)
         wet = np.zeros(n, dtype="float32")
+        side = np.zeros(n, dtype="float32")           # sag kanal: hatlar donusumlu isaretle -> genislik
         for k, d in enumerate(self.delays):
             buf, p = self.bufs[k], self.pos[k]
             if n > d:
@@ -105,10 +106,9 @@ class RoomAir:
             buf[idx] = y
             self.pos[k] = (p + n) % d
             wet += past
-        wet *= self.wet / len(self.delays)
-        l = m + wet
-        r = m + np.roll(wet, 7) if n > 7 else m + wet
-        return np.stack([l, r], axis=1).astype("float32")
+            side += past if k % 2 == 0 else -past
+        g = self.wet / len(self.delays)
+        return np.stack([m + wet * g, m + side * g], axis=1).astype("float32")
 
 
 class Monitor:

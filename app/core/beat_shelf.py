@@ -104,7 +104,7 @@ def parse_bpm_key(text: str) -> dict[str, Any]:
         if 50 <= v <= 220:
             out["bpm"] = v
     m = re.search(r"\bkey\s*[:\-]\s*([A-G](?:#|b|♯|♭)?)\s*(minor|min|m|major|maj)?\b", t, re.I) \
-        or re.search(r"\b([A-G](?:#|b|♯|♭)?)\s*(minor|min|major|maj)\b", t)
+        or re.search(r"\b([A-G](?:#|b|♯|♭)?)\s*((?i:minor|min|major|maj))\b", t)
     if m:
         root = m.group(1)[0].upper() + m.group(1)[1:].replace("♯", "#").replace("♭", "b")
         q = (m.group(2) or "").lower()

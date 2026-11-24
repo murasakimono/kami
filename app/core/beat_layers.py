@@ -353,12 +353,13 @@ def onset_envelope(x, sr: int, rate: int = ENV_RATE):
         return np.zeros(max(0, n))
     fr = x[: n * hop].reshape(n, hop)
     rms = np.sqrt(np.mean(fr * fr, axis=1) + 1e-12)
+    if float(np.max(rms)) < 1e-4:                     # sessiz (-80 dBFS alti): zarf yok
+        return np.zeros(n)
     lg = np.log10(rms + 1e-5)
-    k = np.ones(5) / 5.0
-    lg = np.convolve(lg, k, mode="same")
+    lg = np.convolve(np.pad(lg, 2, mode="edge"), np.ones(5) / 5.0, mode="valid")   # kenarda yapay sicrama olmasin
     d = np.diff(lg, prepend=lg[0])
     d[d < 0] = 0.0
-    return np.convolve(d, np.ones(3) / 3.0, mode="same")
+    return np.convolve(np.pad(d, 1, mode="edge"), np.ones(3) / 3.0, mode="valid")
 
 
 def _ncc_lag(a, b, max_lag: int) -> tuple[int, float]:
@@ -404,8 +405,8 @@ def align_signals(ref, sig, sr: int, max_global_ms: float = 150.0, local_ms: flo
         if a0 < 0 or a1 > n:
             continue
         seg_s = es[s:s + w]
-        if float(np.sum(seg_s)) < 0.02 * float(np.sum(es)) / max(1, n // w):
-            continue                                 # sessiz pencere
+        if float(np.sum(seg_s)) < 0.25 * float(np.sum(es)) / max(1, n // w):
+            continue                                 # sessiz / zayif pencere (gurultu kaymasi oneriyi bozmasin)
         best, bc = 0, -1.0
         ref_win = er[a0:a1]
         # seg_s'i ref_win icinde kaydirarak (g etrafinda +-lm) en iyi eslesme
@@ -429,7 +430,7 @@ def align_signals(ref, sig, sr: int, max_global_ms: float = 150.0, local_ms: flo
     segs: list[dict[str, float]] = []
     good = [(s, o) for s, o, c in loc if c > 0.3]
     if good:
-        # 3'luk medyan ile yumusat, benzer kaymalari grupla; tek pencerelik grup komsusuna katilir (gurultu)
+        # 3'luk medyan ile yumusat, benzer kaymalari grupla; 3 pencereden (750 ms) kisa grup komsusuna katilir (gurultu)
         vals = [o for _, o in good]
         sm = [int(np.median(vals[max(0, i - 1): i + 2])) for i in range(len(vals))]
         groups: list[list[Any]] = [[good[0][0], [sm[0]]]]
@@ -440,11 +441,14 @@ def align_signals(ref, sig, sr: int, max_global_ms: float = 150.0, local_ms: flo
                 groups[-1][1].append(o)
         merged: list[list[Any]] = []
         for gr in groups:
-            if merged and (len(gr[1]) < 2 or abs(float(np.median(gr[1])) - float(np.median(merged[-1][1]))) * to_ms
+            if merged and (len(gr[1]) < 3 or abs(float(np.median(gr[1])) - float(np.median(merged[-1][1]))) * to_ms
                            <= split_ms / 2.0):
                 merged[-1][1].extend(gr[1])
             else:
                 merged.append(gr)
+        if len(merged) > 1 and len(merged[0][1]) < 3:      # kisa ilk grup sonrakine katilir
+            merged[1] = [merged[0][0], merged[0][1] + merged[1][1]]
+            merged.pop(0)
         for i, (s0, os_) in enumerate(merged):
             t1 = merged[i + 1][0] / ENV_RATE if i + 1 < len(merged) else n / ENV_RATE
             segs.append({"t0": 0.0 if i == 0 else s0 / ENV_RATE, "t1": t1,
