@@ -229,7 +229,8 @@
   /** Islenen sesi degistiren her seyin imzasi (ses seviyesi/pan/mute haric: onlar Web Audio'da). */
   function trackSig(tr) {
     const clips = (tr.clips || []).map((c) => [c.id, c.path, c.src_in, c.src_out, c.start, c.gain_db, c.fade_in, c.fade_out,
-      !!c.muted, c.stack_id || "", !!c.stack_active, c.fx || null, !!c.skip_track_fx]);
+      !!c.muted, c.stack_id || "", !!c.stack_active, c.fx || null, !!c.skip_track_fx,
+      Number(c.pan) || 0, Number(c.tail_sec) || 0, Number(c.head_sec) || 0]);       // 2a: klip pan'i + kuyruk
     return JSON.stringify([tr.fx || [], !!tr.denoise, clips]);
   }
 

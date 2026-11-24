@@ -35,11 +35,16 @@
       <span class="kb-pill" id="metaPill" title="Tempo ve Ton">120 BPM · Am</span>
     </div>
 
+    <div class="kb-listen" aria-label="Dinleme simülatörü">
+      <select id="listenSel" class="kb-sel" title="Başka cihazda nasıl duyulur — yalnız DİNLEMEYİ değiştirir, bounce'a girmez"></select>
+      <span class="kb-listen-badge" id="listenBadge" hidden></span>
+    </div>
+
     <div class="kb-spacer"></div>
 
     <div class="kb-actions">
-      <button type="button" class="btn" id="refPick">Referans</button>
-      <button type="button" class="btn" id="abToggle" disabled>A/B: Miks (A)</button>
+      <button type="button" class="btn" id="refPick" title="Referans şarkı: seç, seviye eşitle, spektrum karşılaştır">Referans…</button>
+      <button type="button" class="btn kb-ab" id="abToggle" disabled title="Miks ↔ Referans anında geçiş (B) — aynı zaman konumu, seviye eşitlenmiş">A/B: Miks</button>
       <button type="button" class="btn ok" id="mixdownBtn" title="Klip düzenlemeleri + kanal efektleriyle WAV (-14 LUFS)">Bounce (-14 LUFS)</button>
       <button type="button" class="btn pri" id="toStudioBtn">🎬 Lirik Video</button>
     </div>
@@ -176,6 +181,31 @@
             <select id="fxAddSel" class="kb-sel" title="Zincire yerleşik efekt ekle (VST3 için sağdaki VST3 sekmesi)"><option value="">+ Efekt…</option></select>
             <select id="fxPresetSel" class="kb-sel" title="Bu seviyeye (kanal/klip) vokal şablonu uygula"><option value="">Şablon…</option></select>
             <small>Modüle tıkla: parametreler · LED: bypass · sürükle: sırala</small>
+          </div>
+          <div class="kb-sty" id="styBar" aria-label="Tarz önayarları">
+            <div class="kb-sty-head">
+              <button type="button" class="kb-sty-fold" id="styFold" title="Tarz önayarlarını göster/gizle">▾ TARZ ÖNAYARLARI</button>
+              <span class="kb-sty-cur" id="styCur"></span>
+              <label class="kb-sty-int" title="Önayar yoğunluğu: wet/mix, kompresyon oranı/eşiği ve saturasyon ölçeklenir (50 = tasarlanan). Sürgü önayarı yeniden uygular.">
+                <span>Yoğunluk</span><input type="range" id="styInt" min="0" max="100" step="1" value="50"><b class="kb-num" id="styIntVal">50</b>
+              </label>
+              <label class="kb-chk" title="Kapalıysa tüm zincir yerleşik efektlerle (birebir ayarlı) kurulur"><input type="checkbox" id="styVst" checked><span>Kurulu eklentileri kullan</span></label>
+              <button type="button" class="btn" id="stySave" title="Bu kanalın zincirini kendi önayarın olarak kaydet (listenin başına gelir)">Önayar olarak kaydet</button>
+              <span class="kb-sty-savebox" id="stySaveBox" hidden><input type="text" id="stySaveName" maxlength="60" placeholder="Önayar adı"><button type="button" class="btn ok" id="stySaveOk">Kaydet</button></span>
+            </div>
+            <div class="kb-sty-suggest" id="stySuggest" hidden></div>
+            <div class="kb-sty-grid" id="styGrid"></div>
+            <div class="kb-sty-info kb-mut" id="styInfo"></div>
+          </div>
+          <div class="kb-adlib" id="adlibQuick" hidden aria-label="Adlib hızlı efektleri">
+            <span class="kb-adlib-lbl" title="Seçili adlib klip(ler)ine — seçim yoksa kanaldaki tüm kliplere — klip efekti olarak eklenir (tek geri al)">ADLIB HIZLI</span>
+            <button type="button" class="btn" data-adlib="phone">Telefon</button>
+            <button type="button" class="btn" data-adlib="high" title="+4 yarım ton (formant korumasız)">İnce ses</button>
+            <button type="button" class="btn" data-adlib="low" title="−4 yarım ton (formant korumasız)">Kalın ses</button>
+            <button type="button" class="btn" data-adlib="whisper" title="HPF + doygunluk + hafif reverb">Fısıltı / yakın</button>
+            <button type="button" class="btn" data-adlib="autopan" title="Klipler arasında dönüşümlü sol/sağ pan (±50)">Otomatik pan</button>
+            <button type="button" class="btn" data-adlib="echo_tail" title="Her klibin son vuruşuna BPM'e kilitli delay atar, yankı klip sonrasına taşar">Yankı kuyruğu</button>
+            <select id="adlibNote" class="kb-sel" title="Delay zamanı (proje BPM'ine kilitli)"><option value="1/4">1/4</option><option value="1/8">1/8</option><option value="1/8d" selected>nokta 1/8</option></select>
           </div>
           <div class="kb-fx-clipopts" id="fxClipOpts" hidden>
             <label class="kb-chk" title="Bu klip kanalın efekt zincirinden geçmez (yalnız kendi efektleri)"><input type="checkbox" id="fxSkipTrack"><span>Kanal efektini atla</span></label>
@@ -441,6 +471,18 @@
     </aside>
   </main>
 
+  <div class="kb-refbox" id="refBox" hidden role="dialog" aria-labelledby="refTitle">
+    <div class="kb-refbox-head"><b id="refTitle">Referans A/B</b><button type="button" class="btn ic" id="refClose" title="Kapat">✕</button></div>
+    <div class="kb-ref-file"><span id="refName" class="kb-mut">Referans seçilmedi</span>
+      <button type="button" class="btn" id="refChoose">Dosya seç…</button>
+      <button type="button" class="btn" id="refRemove" hidden>Kaldır</button></div>
+    <label class="kb-ref-row" title="Referansın hangi saniyesi zaman çizelgesinin 0'ına denk gelsin"><span>Başlangıç</span><input type="number" id="refStart" min="0" step="0.5" value="0"><span>sn</span></label>
+    <label class="kb-ref-row" title="Seviye eşitleme kazancı (otomatik ölçülür; elle ince ayar)"><span>Kazanç</span><input type="range" id="refGain" min="-24" max="24" step="0.1" value="0"><b class="kb-num" id="refGainVal">0.0 dB</b></label>
+    <div class="kb-ref-match" id="refMatch"></div>
+    <ul class="kb-ref-notes" id="refNotes"></ul>
+    <div class="kb-pop-btns"><button type="button" class="btn" id="refMeasure" title="Güncel miksi kaydedip yeniden ölç">Yeniden ölç</button><span class="kb-mut">Kısayol: <kbd>B</kbd></span></div>
+  </div>
+
   <div class="kb-release" id="releaseBox" hidden role="alertdialog" aria-labelledby="releaseTitle">
     <div class="kb-release-card">
       <b id="releaseTitle">Yayın öncesi lisans kontrolü</b>
@@ -461,6 +503,8 @@
   <script src="beat-lyrics.js"></script>
   <script src="beat-timeline.js"></script>
   <script src="beat-fx.js"></script>
+  <script src="beat-sim.js"></script>
+  <script src="beat-style.js"></script>
   <script src="beat-library.js"></script>
   <script src="beat.js"></script>
 </body>

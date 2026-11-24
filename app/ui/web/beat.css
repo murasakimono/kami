@@ -1226,3 +1226,69 @@ button.kb-fx-led:hover { outline: 2px solid color-mix(in srgb, var(--ok) 40%, tr
 /* 1e: bes sekme dar yan panele sigsin (iki satira sarar) */
 .kb-side-tabs { flex-wrap: wrap; }
 .kb-side-tabs button { min-width: 33%; padding: 8px 4px; white-space: nowrap; }
+
+/* ---------------- Asama 2a: tarz onayarlari, adlib hizli, dinleme simulatoru, referans A/B, atma kuyrugu ---------------- */
+.kb-sty { border-bottom: 1px solid var(--line); padding: 6px 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.kb-sty-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.kb-sty-fold { background: none; border: 0; color: var(--mut); font: 700 11px/1 var(--mono); letter-spacing: .08em; cursor: pointer; padding: 4px 0; }
+.kb-sty-fold:hover { color: var(--tx); }
+.kb-sty-cur { color: var(--ac); font-weight: 600; min-width: 0; }
+.kb-sty-int { display: flex; align-items: center; gap: 6px; color: var(--mut); }
+.kb-sty-int input { width: 120px; accent-color: var(--ac); }
+.kb-sty-int b { width: 26px; text-align: right; color: var(--tx); }
+.kb-sty-savebox { display: inline-flex; gap: 4px; }
+.kb-sty-savebox input { height: 28px; width: 180px; background: var(--well); border: 1px solid var(--line-hi); color: var(--tx); border-radius: 3px; padding: 0 8px; }
+.kb-sty-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 6px; max-height: 196px; overflow-y: auto; padding-right: 2px; }
+.kb-sty-card { position: relative; display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 7px 9px 6px; border-radius: 4px;
+  background: var(--well); border: 1px solid var(--line); color: var(--tx); cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
+.kb-sty-card:hover { border-color: var(--line-hi); background: #0D0915; transform: translateY(-1px); }
+.kb-sty-card.on { border-color: var(--ac); background: color-mix(in srgb, var(--ac) 12%, var(--well)); box-shadow: inset 3px 0 0 var(--ac); }
+.kb-sty-card.user { border-style: dashed; }
+.kb-sty-top { display: flex; align-items: baseline; gap: 6px; }
+.kb-sty-top b { font-size: 12.5px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kb-sty-tag { font-style: normal; font: 600 10px/1.4 var(--mono); color: var(--mut); border: 1px solid var(--line); border-radius: 99px; padding: 0 6px; white-space: nowrap; }
+.kb-sty-desc { font-size: 11px; color: var(--mut); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.kb-sty-meter { display: flex; align-items: center; gap: 6px; font: 10.5px/1.3 var(--mono); color: #A79CC4; }
+.kb-sty-bar { position: relative; width: 34px; height: 4px; border-radius: 2px; background: #241B36; overflow: hidden; flex: none; }
+.kb-sty-bar::after { content: ""; position: absolute; inset: 0; width: calc(var(--k) * 100%); background: var(--ok); border-radius: 2px; }
+.kb-sty-del { position: absolute; right: 4px; top: 3px; font-size: 11px; color: var(--mut); padding: 0 3px; }
+.kb-sty-del:hover { color: var(--bad); }
+.kb-sty-info { font-size: 11.5px; line-height: 1.5; }
+.kb-sty-steps { display: flex; flex-wrap: wrap; gap: 4px; }
+.kb-sty-step { padding: 0 6px; border-radius: 3px; border: 1px solid var(--line); font: 10.5px/1.6 var(--mono); color: #B9AEDA; }
+.kb-sty-step.vst { border-color: color-mix(in srgb, var(--ok) 50%, transparent); color: var(--ok); }
+.kb-sty-step.skip { opacity: .55; text-decoration: line-through; }
+.kb-sty-notes { color: var(--amb); margin-top: 3px; }
+.kb-sty-suggest { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border-radius: 3px; font-size: 12px;
+  background: color-mix(in srgb, var(--ac) 10%, var(--well)); border: 1px solid var(--line-hi); }
+.kb-sty-suggest b { font-weight: 600; color: var(--tx); }
+.kb-adlib { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.kb-adlib-lbl { font: 700 11px/1 var(--mono); letter-spacing: .08em; color: #EC4899; margin-right: 4px; cursor: help; }
+.kb-adlib .btn { height: 28px; font-size: 12px; }
+.kb-adlib select { height: 28px; font-size: 12px; }
+
+.kb-listen { display: flex; align-items: center; gap: 8px; margin-left: 10px; }
+.kb-listen select { height: 30px; font-size: 12px; }
+.kb-listen-badge { padding: 3px 10px; border-radius: 99px; font: 700 11px/1.4 var(--mono); letter-spacing: .04em; color: #0B0710;
+  background: var(--amb); box-shadow: 0 0 0 3px rgba(245, 158, 11, .18); animation: kbSimPulse 2.4s ease-in-out infinite; white-space: nowrap; }
+@keyframes kbSimPulse { 50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, .06); } }
+body.kb-sim-on .kb-transport { box-shadow: 0 0 0 1px rgba(245, 158, 11, .55); border-radius: 6px; }
+.kb-ab.on { border-color: #38BDF8; color: #38BDF8; background: rgba(56, 189, 248, .08); }
+
+.kb-refbox { position: fixed; z-index: 70; width: 370px; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 4px;
+  background: var(--elev); border: 1px solid var(--line-hi); box-shadow: 0 14px 34px rgba(0, 0, 0, .55); font-size: 12px; }
+.kb-refbox-head { display: flex; align-items: center; justify-content: space-between; }
+.kb-ref-file { display: flex; align-items: center; gap: 6px; }
+.kb-ref-file span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kb-ref-row { display: flex; align-items: center; gap: 8px; color: var(--mut); }
+.kb-ref-row > span:first-child { width: 64px; }
+.kb-ref-row input[type=number] { width: 70px; height: 26px; background: var(--well); border: 1px solid var(--line); color: var(--tx); border-radius: 3px; padding: 0 6px; }
+.kb-ref-row input[type=range] { flex: 1; accent-color: #38BDF8; }
+.kb-ref-row b { width: 58px; text-align: right; color: var(--tx); }
+.kb-ref-match { color: #38BDF8; line-height: 1.45; }
+.kb-ref-notes { margin: 0; padding-left: 16px; line-height: 1.55; color: var(--tx); }
+.kb-ref-notes:empty { display: none; }
+
+.kb-clip-tail { position: absolute; top: 10px; bottom: 10px; pointer-events: auto; border-radius: 0 3px 3px 0; z-index: 0;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tc) 30%, transparent), transparent); border-top: 1px dashed color-mix(in srgb, var(--tc) 60%, transparent); }
+.kb-clip-tail.l { border-radius: 3px 0 0 3px; background: linear-gradient(270deg, color-mix(in srgb, var(--tc) 30%, transparent), transparent); }

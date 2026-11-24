@@ -132,6 +132,8 @@
     const fs = await api()?.beat_fx_schema?.().catch(() => null);
     if (fs?.ok && window.BeatFx) BeatFx.setSchema(fs);
     fillFxSelects();
+    initListen();
+    loadStyles();
     renderVsts();
     renderMics(dr?.devices || []);
 
@@ -193,6 +195,7 @@
     PROJ = r.project;
     if (!opts.keepHistory) { UNDO.length = 0; REDO.length = 0; TL?.clearSel(); }
     renderProject();
+    syncReference();
     if (!opts.keepView) { TL?.setPlayhead(0, false); TL?.fit(); }
     if (r.recovered) setStatus("⚠ Proje dosyası bozuktu — son otomatik kayıttan kurtarıldı.");
     hideAlign();
@@ -433,6 +436,8 @@
         </div>`).join("");
     }
     syncFxPanel(c);
+    renderStyle(c);
+    renderAdlibQuick(c);
   }
 
   /** Acik paneli (varsa) gecerli zincirdeki module yeniden baglar; modul yoksa kapatir. */
@@ -475,7 +480,7 @@
     syncLoopUi();
     $("#metaPill").textContent = `${Math.round(PROJ.bpm || 120)} BPM · ${PROJ.key || "—"}`;
     if (document.activeElement !== $("#lyrInput")) $("#lyrInput").value = PROJ.lyrics || "";
-    $("#abToggle").disabled = !PROJ.reference_path;
+    $("#abToggle").disabled = !refOf();
     syncLatUi();
 
     const tracks = PROJ.tracks || [];
@@ -626,6 +631,7 @@
       onSelection: () => { if (FX_OPEN?.level === "clip") FX_OPEN = null; autoClipLevel(); renderFxRack(); },
       onClipFx: (tid, cid) => clipFx(tid, cid),
       onRegionFx: (tid, cid, a, b) => regionFx(tid, cid, a, b),
+      onThrow: (tid, cid, a, b, kind, note) => throwFx(tid, cid, a, b, kind, note),
       onPlayStart: () => PREV?.refresh(true),
     });
     TL.setSnap(gridMode());
@@ -767,6 +773,7 @@
     else if (!ctrl && !e.altKey && (k === "l" || k === "L")) { e.preventDefault(); toggleLoopUi(); }
     else if (!ctrl && !e.altKey && (k === "m" || k === "M")) { e.preventDefault(); toggleMetro(); }
     else if (!ctrl && !e.altKey && (k === "c" || k === "C")) { e.preventDefault(); toggleCount(); }
+    else if (!ctrl && !e.altKey && (k === "b" || k === "B")) { e.preventDefault(); toggleAB(); }
     else if (!ctrl && !e.altKey && (k === "n" || k === "N") && PR.on) { e.preventDefault(); prSyncNow(); }
   });
 
@@ -1386,7 +1393,7 @@
     FX_OPEN = null;
     fxEdit(`${p.name} uygulandı.`, (c) => {
       c.owner.fx = JSON.parse(JSON.stringify(p.fx));
-      if (c.level === "track") { c.tr.preset = k; c.tr.denoise = !!p.denoise; delete c.tr.preset_base; }
+      if (c.level === "track") { c.tr.preset = k; c.tr.denoise = !!p.denoise; delete c.tr.preset_base; delete c.tr.style; }
     });
   });
   $("#fxSkipTrack").addEventListener("change", (e) => {
@@ -1428,6 +1435,329 @@
     FX_OPEN = null;
     renderFxRack();
   }
+
+
+  // ================= Asama 2a: tarz onayarlari =================
+  const STY = { presets: [], open: localStorage.getItem("kb_sty_open") !== "0", notes: new Map(), live: { before: null, timer: 0, seq: 0, commit: false } };
+  const fxSig = (fx) => JSON.stringify((fx || []).map((f) => { const o = Object.assign({}, f); delete o.name; return o; }));
+  const styCustom = (tr) => !!tr?.style && fxSig(tr.fx) !== tr.style.fx_sig;
+  async function loadStyles() {
+    const r = await api()?.beat_style_presets?.().catch(() => null);
+    STY.presets = r?.presets || [];
+    renderStyle();
+  }
+  function resolveStyle(id, intensity) {
+    return api()?.beat_style_resolve?.(id, intensity, $("#styVst").checked, Number(PROJ?.bpm) || 0).catch((e) => ({ ok: false, error: String(e) }));
+  }
+  function renderStyle(c) {
+    c = c || fxCtx();
+    const tr = c.tr;
+    const bar = $("#styBar");
+    if (!bar) return;
+    $("#styFold").textContent = `${STY.open ? "▾" : "▸"} TARZ ÖNAYARLARI`;
+    $("#styGrid").hidden = !STY.open;
+    $("#styInfo").hidden = !STY.open;
+    const st = c.level === "track" ? tr?.style : null;
+    const kind = tr?.layer === "adlib" || /adlib/i.test(tr?.name || "") ? "adlib" : "vocal";
+    $("#styGrid").innerHTML = STY.presets.length ? BeatStyle.cardsHtml(STY.presets, st ? { id: st.id, custom: styCustom(tr) } : null, kind)
+      : '<div class="kb-mut">Önayar listesi yükleniyor…</div>';
+    $("#styCur").textContent = st ? `${st.name}${styCustom(tr) ? " · Özel" : ""}` : (c.level === "clip" ? "Klip seviyesi: kart zinciri bu klibe uygulanır" : "");
+    const v = st ? Math.round(st.intensity ?? 50) : 50;
+    if (document.activeElement !== $("#styInt")) { $("#styInt").value = v; $("#styIntVal").textContent = String(v); }
+    $("#styInt").disabled = !st;
+    $("#styInt").title = st ? "Önayar yoğunluğu (50 = tasarlanan). Sürgü önayarı yeniden uygular; özel değişiklikler geri al ile döner." : "Önce bir önayar kartı seç";
+    $("#stySave").disabled = !(c.chain || []).length;
+    const n = tr ? STY.notes.get(tr.id) : null;
+    $("#styInfo").innerHTML = n && st && n.id === st.id ? styInfoHtml(n) : (STY.open ? "Kart seç: zincir tek adımda kurulur (tek geri al), efektli önizleme ~1-2 sn'de yenilenir. Kartın üstünde bekle: açıklama + neden." : "");
+  }
+  function styInfoHtml(r) {
+    const used = (r.steps || []).map((s) => `<span class="kb-sty-step ${s.engine}" title="${esc(s.note || "")}">${esc(s.plugin || s.label)}${s.engine === "skip" ? " ✕" : ""}</span>`).join("");
+    const notes = (r.notes || []).filter((t) => /incelt|atlandı|seç/.test(t));
+    return `<div class="kb-sty-steps">${used}</div>${notes.length ? `<div class="kb-sty-notes">⚠ ${notes.map(esc).join(" · ")}</div>` : ""}`;
+  }
+  async function applyStyle(id) {
+    const c0 = fxCtx();
+    if (!PROJ || !c0.tr) return;
+    const inten = c0.level === "track" ? (c0.tr.style?.intensity ?? 50) : 50;
+    setStatus("Önayar hazırlanıyor…");
+    const r = await resolveStyle(id, inten);
+    if (!r?.ok) { setStatus("Önayar uygulanamadı: " + (r?.error || "?")); return; }
+    FX_OPEN = null;
+    let tid = "";
+    fxEdit(`${r.name} uygulandı (${r.fx.length} modül${r.vst_total ? ` · eklenti ${r.vst_installed}/${r.vst_total}` : ""})`, (c) => {
+      c.owner.fx = JSON.parse(JSON.stringify(r.fx));
+      if (c.level === "track") {
+        tid = c.tr.id;
+        c.tr.style = { id, name: r.name, intensity: inten, use_vst: !!r.use_vst, fx_sig: fxSig(c.owner.fx) };
+        c.tr.preset = ""; delete c.tr.preset_base;
+        c.tr.denoise = !!r.denoise;
+      }
+    });
+    if (tid) { STY.notes.set(tid, r); renderStyle(); suggestLayers(tid, id); }
+  }
+  // ---- yogunluk surgusu (canli; birakinca tek geri al adimi) ----
+  async function liveIntensity(v) {
+    const tr = selTrack();
+    if (!tr?.style || fxCtx().level !== "track") { STY.live.before = null; STY.live.commit = false; return; }
+    const my = ++STY.live.seq;
+    const r = await resolveStyle(tr.style.id, v);
+    if (my !== STY.live.seq) return;
+    if (r?.ok) {
+      tr.fx = r.fx; tr.style.intensity = v; tr.style.fx_sig = fxSig(tr.fx);
+      STY.notes.set(tr.id, r);
+      FX_OPEN = null;
+      renderFxRack();
+      PREV?.refresh();
+    }
+    if (STY.live.commit) {
+      const b = STY.live.before;
+      STY.live.before = null; STY.live.commit = false;
+      if (b) fxCommit(`Önayar yoğunluğu ${v}`, b);
+    }
+  }
+  $("#styInt").addEventListener("input", (e) => {
+    $("#styIntVal").textContent = e.target.value;
+    if (!selTrack()?.style) return;
+    if (STY.live.before === null) STY.live.before = snap();
+    clearTimeout(STY.live.timer);
+    STY.live.timer = setTimeout(() => liveIntensity(+e.target.value), 120);
+  });
+  $("#styInt").addEventListener("change", (e) => {
+    if (!selTrack()?.style) return;
+    if (STY.live.before === null) STY.live.before = snap();
+    STY.live.commit = true;
+    clearTimeout(STY.live.timer);
+    liveIntensity(+e.target.value);
+    e.target.blur();
+  });
+  $("#styFold").onclick = () => { STY.open = !STY.open; localStorage.setItem("kb_sty_open", STY.open ? "1" : "0"); renderStyle(); };
+  $("#styGrid").addEventListener("click", async (e) => {
+    const del = e.target.closest("[data-stydel]");
+    if (del) {
+      e.stopPropagation();
+      const r = await api()?.beat_user_preset_delete?.(del.dataset.stydel).catch(() => null);
+      setStatus(r?.ok ? "Önayar silindi." : "Silinemedi: " + (r?.error || "?"));
+      loadStyles();
+      return;
+    }
+    const card = e.target.closest("[data-sty]");
+    if (card) applyStyle(card.dataset.sty);
+  });
+  $("#stySave").onclick = () => {
+    const tr = selTrack();
+    $("#stySaveBox").hidden = !$("#stySaveBox").hidden;
+    if (!$("#stySaveBox").hidden) { $("#stySaveName").value = tr?.style ? `${tr.style.name} (benim)` : `${tr?.name || "Vokal"} zinciri`; $("#stySaveName").select(); $("#stySaveName").focus(); }
+  };
+  async function saveUserPreset() {
+    const c = fxCtx();
+    const name = $("#stySaveName").value.trim();
+    if (!name) return;
+    const kind = c.tr?.layer === "adlib" ? "adlib" : "vocal";
+    const r = await api()?.beat_user_preset_save?.(name, JSON.parse(JSON.stringify(c.chain || [])),
+      c.tr?.style ? `${c.tr.style.name} tabanlı` : "", "Kendi", !!c.tr?.denoise, kind).catch(() => null);
+    $("#stySaveBox").hidden = true;
+    if (!r?.ok) { setStatus("Önayar kaydedilemedi: " + (r?.error || "?")); return; }
+    setStatus(`“${r.preset.name}” önayar olarak kaydedildi — listenin başında.`);
+    await loadStyles();
+  }
+  $("#stySaveOk").onclick = saveUserPreset;
+  $("#stySaveName").addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") saveUserPreset(); else if (e.key === "Escape") $("#stySaveBox").hidden = true; });
+  $("#styVst").addEventListener("change", (e) => { e.target.blur(); const tr = selTrack(); if (tr?.style && fxCtx().level === "track") applyStyle(tr.style.id); });
+  // ---- katman esleniği onerisi ----
+  async function suggestLayers(tid, id) {
+    const r = await api()?.beat_style_suggest?.(PROJ.tracks, tid, id).catch(() => null);
+    const list = r?.suggestions || [];
+    const box = $("#stySuggest");
+    if (!list.length) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = `<span>Katmanlara eşlenik önayar:</span>${list.map((x) => `<b title="${esc(x.track_name)} kanalına">${esc(LAYER_LBL[x.kind] || x.kind)} → ${esc(x.name)}</b>`).join("")}
+      <button type="button" class="btn ok" id="styLayerApply">Uygula</button><button type="button" class="btn ic" id="styLayerClose" title="Kapat">✕</button>`;
+    $("#styLayerClose").onclick = () => { box.hidden = true; };
+    $("#styLayerApply").onclick = async () => {
+      box.hidden = true;
+      const res = await Promise.all(list.map((x) => resolveStyle(x.preset_id, PROJ.tracks.find((t) => t.id === tid)?.style?.intensity ?? 50)));
+      edit(`Katmanlara eşlenik önayar uygulandı (${list.length} kanal)`, () => {
+        list.forEach((x, i) => {
+          const r2 = res[i];
+          const t = PROJ.tracks.find((y) => y.id === x.track_id);
+          if (!t || !r2?.ok) return;
+          t.fx = JSON.parse(JSON.stringify(r2.fx));
+          t.style = { id: x.preset_id, name: r2.name, intensity: r2.intensity, use_vst: !!r2.use_vst, fx_sig: fxSig(t.fx) };
+          t.preset = ""; delete t.preset_base;
+          STY.notes.set(t.id, r2);
+        });
+      });
+    };
+  }
+
+  // ================= Asama 2a: adlib hizli efektleri + efekt atmalari =================
+  function isAdlibTrack(tr) { return !!tr && (tr.layer === "adlib" || (tr.role === "vocal" && /adlib/i.test(tr.name || ""))); }
+  function renderAdlibQuick(c) {
+    c = c || fxCtx();
+    $("#adlibQuick").hidden = !isAdlibTrack(c.tr) || !(c.tr.clips || []).length;
+  }
+  $("#adlibQuick").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-adlib]");
+    if (!b || !PROJ) return;
+    b.blur();
+    const tr = selTrack();
+    if (!isAdlibTrack(tr)) return;
+    const recipe = await api()?.beat_quick_fx?.(b.dataset.adlib, Number(PROJ.bpm) || 0, $("#adlibNote").value).catch(() => null);
+    if (!recipe?.ok) { setStatus("Efekt hazırlanamadı: " + (recipe?.error || "?")); return; }
+    const own = new Set((tr.clips || []).map((x) => x.id));
+    let ids = [...(TL?.selection() || [])].filter((id) => own.has(id));
+    const scope = ids.length ? `${ids.length} klip` : "tüm klipler";
+    if (!ids.length) ids = (recipe.mode === "echo_tail" ? BeatClips.stackView(tr.clips) : tr.clips).map((x) => x.id);
+    let made = [];
+    edit(`Adlib: ${recipe.label} (${scope})`, () => {
+      const r = BeatStyle.applyAdlib(tr.clips, ids, recipe);
+      tr.clips = r.clips;
+      made = r.ids;
+    });
+    if (made.length === 1 && recipe.mode !== "autopan") { TL?.select(made[0], false); FX_LEVEL = "clip"; FX_OPEN = null; renderFxRack(); }
+  });
+  /** Bolgeye efekt atma (Ctrl+surukle menusu): bolge ayri klip olur, ortaya efekt + kuyruk; tek geri al. */
+  async function throwFx(tid, cid, t0, t1, kind, note) {
+    const tr = PROJ?.tracks.find((x) => x.id === tid);
+    if (!tr) return;
+    const recipe = await api()?.beat_quick_fx?.(kind, Number(PROJ.bpm) || 0, note || "1/8").catch(() => null);
+    if (!recipe?.ok) { setStatus("Efekt hazırlanamadı: " + (recipe?.error || "?")); return; }
+    let mid = "";
+    edit(`${recipe.label}: ${t0.toFixed(2)}–${t1.toFixed(2)} sn${recipe.tail_sec ? ` (kuyruk ${recipe.tail_sec.toFixed(1)} sn)` : ""}`, () => {
+      const r = BeatStyle.applyThrow(tr.clips, cid, t0, t1, recipe);
+      tr.clips = r.clips;
+      mid = r.mid_id;
+    });
+    if (!mid) { setStatus("Bölge çok kısa ya da klibin dışında."); return; }
+    if (tid !== SEL_TID) { SEL_TID = tid; renderProject(); }
+    TL?.select(mid, false);
+    FX_LEVEL = "clip";
+    FX_OPEN = null;
+    renderFxRack();
+  }
+
+  // ================= Asama 2a: dinleme simulatoru =================
+  function initListen() {
+    if (!window.BeatSim) { $("#listenSel").hidden = true; return; }
+    $("#listenSel").innerHTML = BeatSim.list().map((p) => `<option value="${esc(p.id)}">Dinleme: ${esc(p.label)}</option>`).join("");
+    $("#listenSel").onchange = (e) => {
+      const id = TL?.setListen(e.target.value) || "normal";
+      const p = BeatSim.profile(id);
+      $("#listenBadge").hidden = id === "normal";
+      $("#listenBadge").textContent = p.badge;
+      document.body.classList.toggle("kb-sim-on", id !== "normal");
+      setStatus(id === "normal" ? "Dinleme: Normal" : `${p.badge} — yalnız dinleme; bounce etkilenmez.`);
+      e.target.blur();
+    };
+  }
+
+  // ================= Asama 2a: referans A/B =================
+  function refOf() {
+    const r = PROJ?.reference;
+    if (r && r.path) return r;
+    return PROJ?.reference_path ? { path: PROJ.reference_path, gain_db: 0, start: 0 } : null;
+  }
+  async function syncReference() {
+    const r = refOf();
+    $("#abToggle").disabled = !r;
+    renderRefBox();
+    if (!TL) return;
+    if (!r) { TL.setReference(null); setAB("A", true); return; }
+    const ok = await TL.setReference({ path: r.path, gain_db: Number(r.gain_db) || 0, start: Number(r.start) || 0 });
+    if (!ok) setStatus("Referans açılamadı (dosya taşınmış olabilir).");
+  }
+  function renderRefBox() {
+    const r = refOf();
+    $("#refName").textContent = r ? r.path.split(/[\\/]/).pop() : "Referans seçilmedi";
+    $("#refName").title = r?.path || "";
+    $("#refRemove").hidden = !r;
+    $("#refStart").value = r ? String(Number(r.start) || 0) : "0";
+    const g = r ? Number(r.gain_db) || 0 : 0;
+    $("#refGain").value = String(g);
+    $("#refGainVal").textContent = `${g > 0 ? "+" : ""}${g.toFixed(1)} dB`;
+    const an = r?.analysis;
+    $("#refMatch").textContent = an ? `${an.match_text}${an.ref_lufs != null ? ` · Referans ${an.ref_lufs} LUFS` : ""}${an.mix_lufs != null ? ` · Miks ${an.mix_lufs.toFixed(1)} LUFS` : ""}` : (r ? "Ölçülmedi — “Yeniden ölç”." : "");
+    $("#refNotes").innerHTML = (an?.notes || []).map((t) => `<li>${esc(t)}</li>`).join("");
+  }
+  function ensureRef() {
+    if (!PROJ.reference || typeof PROJ.reference !== "object") PROJ.reference = { path: "", gain_db: 0, start: 0 };
+    if (!PROJ.reference.path && PROJ.reference_path) PROJ.reference.path = PROJ.reference_path;
+    return PROJ.reference;
+  }
+  async function measureRef() {
+    const r = refOf();
+    if (!PROJ || !r) return;
+    await flushSave();
+    setStatus("Referans ve miks ölçülüyor (LUFS + spektrum)…");
+    $("#refMatch").textContent = "Ölçülüyor…";
+    const res = await runJob("beat_reference_analyze", [PROJ.id, r.path, Number(r.start) || 0]);
+    if (!res?.ok) { setStatus("Referans ölçülemedi: " + (res?.error || "?")); renderRefBox(); return; }
+    const ref = ensureRef();
+    if (res.match?.ok) ref.gain_db = res.match.gain_db;
+    ref.analysis = { ref_lufs: res.ref_lufs, mix_lufs: res.mix_lufs, match_text: res.warning || res.match?.text || "",
+      notes: (res.notes || []).map((n) => n.text), at: Date.now() };
+    scheduleSave();
+    TL?.setRefGain(ref.gain_db);
+    renderRefBox();
+    setStatus(res.warning || res.match?.text || "Referans ölçüldü.");
+  }
+  function setAB(mode, quiet) {
+    if (!TL) return;
+    if (mode === "B" && !TL.hasReference()) { if (!quiet) setStatus(refOf() ? "Referans yükleniyor…" : "Önce “Referans…” ile bir şarkı seç."); mode = "A"; }
+    const m = TL.setAB(mode);
+    AB_MODE = m;
+    $("#abToggle").textContent = m === "B" ? "A/B: Referans" : "A/B: Miks";
+    $("#abToggle").classList.toggle("on", m === "B");
+    if (!quiet) {
+      const g = Number(refOf()?.gain_db) || 0;
+      setStatus(m === "B" ? `B: Referans (seviye eşitli ${g > 0 ? "+" : ""}${g.toFixed(1)} dB)${TL.isPlaying() ? "" : " — Boşluk ile çal"}` : "A: Miks");
+    }
+  }
+  function toggleAB() { setAB(AB_MODE === "B" ? "A" : "B"); }
+  $("#abToggle").onclick = (e) => { e.currentTarget.blur(); toggleAB(); };
+  $("#refPick").onclick = (e) => {
+    e.currentTarget.blur();
+    const box = $("#refBox");
+    box.hidden = !box.hidden;
+    if (!box.hidden) { const rc = $("#refPick").getBoundingClientRect(); box.style.top = `${rc.bottom + 6}px`; box.style.left = `${Math.max(8, Math.min(rc.left, window.innerWidth - 380))}px`; renderRefBox(); }
+  };
+  $("#refClose").onclick = () => { $("#refBox").hidden = true; };
+  $("#refChoose").onclick = async () => {
+    if (!PROJ) return;
+    const pr = await api()?.beat_pick_audio?.();
+    if (!pr?.path) return;
+    const ref = ensureRef();
+    Object.assign(ref, { path: pr.path, gain_db: 0, start: 0 });
+    delete ref.analysis;
+    PROJ.reference_path = pr.path;
+    scheduleSave();
+    await syncReference();
+    measureRef();
+  };
+  $("#refRemove").onclick = () => {
+    if (!PROJ) return;
+    PROJ.reference = { path: "", gain_db: 0, start: 0 };
+    PROJ.reference_path = "";
+    scheduleSave();
+    syncReference();
+    setStatus("Referans kaldırıldı.");
+  };
+  $("#refMeasure").onclick = () => measureRef();
+  $("#refGain").addEventListener("input", (e) => {
+    if (!refOf()) return;
+    const g = Number(e.target.value) || 0;
+    ensureRef().gain_db = g;
+    $("#refGainVal").textContent = `${g > 0 ? "+" : ""}${g.toFixed(1)} dB`;
+    TL?.setRefGain(g);
+    scheduleSave();
+  });
+  $("#refStart").addEventListener("change", (e) => {
+    if (!refOf()) return;
+    ensureRef().start = Math.max(0, Number(e.target.value) || 0);
+    scheduleSave();
+    syncReference();
+  });
+  $("#refStart").addEventListener("keydown", (e) => e.stopPropagation());
 
   $("#vstList").addEventListener("click", async (e) => {
     const b = e.target.closest("[data-addvst]"); if (!b || !PROJ) return;
@@ -1485,24 +1815,6 @@
     await flushSave();
     const r = await api()?.beat_export_lyric_video?.(PROJ.id, PROJ.name);
     setStatus(r?.ok ? "✓ Kami Studio açıldı ve sözler aktarıldı." : ("Hata: " + (r?.error || "?")));
-  };
-
-  $("#refPick").onclick = async () => {
-    if (!PROJ) return;
-    const pr = await api()?.beat_pick_audio?.();
-    if (pr?.path) {
-      PROJ.reference_path = pr.path; scheduleSave(); $("#abToggle").disabled = false;
-      const lr = await api()?.beat_measure_lufs?.(pr.path);
-      if (lr?.ok) $("#lufsMsg").textContent = `Referans LUFS: ${lr.lufs} · Peak: ${lr.peak_db} dB`;
-    }
-  };
-  $("#abToggle").onclick = async () => {
-    if (!PROJ) return;
-    AB_MODE = AB_MODE === "A" ? "B" : "A";
-    $("#abToggle").textContent = AB_MODE === "A" ? "A/B: Miks (A)" : "A/B: Referans (B)";
-    const p = AB_MODE === "B" ? PROJ.reference_path : PROJ.last_mixdown;
-    if (p) await playPath(p, AB_MODE === "B" ? "Referans (B)" : "Miks (A)");
-    else setStatus("Önce Mixdown al veya Referans seç.");
   };
 
   $("#lyrInput").addEventListener("input", () => { analyzeLyricsUI(); scheduleSave(); });

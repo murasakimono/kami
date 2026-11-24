@@ -241,6 +241,17 @@
       });
     }
 
+    // 2a: klip pan'i etiketi + efekt kuyrugu (tail_sec / head_sec) klip disina tasan soluk serit
+    function panTxt(c) {
+      const p = Number(c.pan) || 0;
+      return Math.abs(p) < 0.005 ? "" : ` · ${p < 0 ? "L" : "R"}${Math.round(Math.abs(p) * 100)}`;
+    }
+    function tailHtml(c, s, e, col) {
+      if (c.muted || !(c.fx || []).some((f) => f && !f.bypass)) return "";
+      const tl = Number(c.tail_sec) || 0, hd = Math.min(Number(c.head_sec) || 0, s);
+      return (tl > 0 ? `<i class="kb-clip-tail r" style="left:${t2x(e)}px;width:${t2x(tl)}px;--tc:${col}" title="Efekt kuyruğu ${tl.toFixed(1)} sn — sonraki klibin üstüne karışır"></i>` : "")
+        + (hd > 0 ? `<i class="kb-clip-tail l" style="left:${t2x(s - hd)}px;width:${t2x(hd)}px;--tc:${col}" title="Ters reverb kabarması ${hd.toFixed(1)} sn"></i>` : "");
+    }
     function clipHtml(tr, c, col, all) {
       const [s, e] = BC.clipBounds(c);
       const take = (tr.takes || []).find((t) => t.id === c.take_id);
@@ -255,9 +266,9 @@
       const badge = n > 1 ? `<b class="kb-stack-badge" data-h="stack" title="Take destesi — tıkla: take seç">▤ ${n}</b>` : "";
       const nfx = (c.fx || []).filter((f) => f && !f.bypass).length;   // R4: klibin kendi efekti / kanal efektini atlama
       const fxb = BC.hasClipFx(c) ? `<b class="kb-clipfx-badge" data-h="clipfx" title="Bu klibin kendi efekti var${c.skip_track_fx ? " · kanal efektini atlıyor" : ""} — tıkla: klip efektlerini aç">FX${nfx ? " " + nfx : ""}${c.skip_track_fx ? " ⤳" : ""}</b>` : "";
-      return `${ghosts}${ghost1}<div class="${cls}" data-clip="${esc(c.id)}" ${n > 1 ? `data-stack="${esc(c.stack_id)}"` : ""} style="${geo}">${badge}${fxb}
+      return `${ghosts}${ghost1}${tailHtml(c, s, e, col)}<div class="${cls}" data-clip="${esc(c.id)}" ${n > 1 ? `data-stack="${esc(c.stack_id)}"` : ""} style="${geo}">${badge}${fxb}
         <canvas class="kb-clip-wf"></canvas>
-        <span class="kb-clip-lbl">${esc(label)}${gain ? ` · ${gain > 0 ? "+" : ""}${gain.toFixed(1)} dB` : ""}${c.muted ? " · sessiz" : ""}</span>
+        <span class="kb-clip-lbl">${esc(label)}${gain ? ` · ${gain > 0 ? "+" : ""}${gain.toFixed(1)} dB` : ""}${c.muted ? " · sessiz" : ""}${panTxt(c)}</span>
         <i class="kb-fade-h l" data-h="fi" title="Fade in (sürükle)"></i><i class="kb-fade-h r" data-h="fo" title="Fade out (sürükle)"></i>
         <i class="kb-edge l" data-h="ts"></i><i class="kb-edge r" data-h="te"></i>
       </div>`;
@@ -985,7 +996,14 @@
       REGION = { trId, clipId, t0: a, t1: b };
       menu = document.createElement("div");
       menu.className = "kb-ctx";
-      menu.innerHTML = `<button data-act="regionfx">Bu bölgeye efekt <kbd>${a.toFixed(2)}–${b.toFixed(2)} sn</kbd></button><button data-act="cancel">Vazgeç</button>`;
+      // 2a: efekt atmalari — bolge ayri klip olur, ortaya efekt + kuyruk (delay proje BPM'ine kilitli)
+      menu.innerHTML = `<button data-act="regionfx">Bu bölgeye efekt <kbd>${a.toFixed(2)}–${b.toFixed(2)} sn</kbd></button><hr>
+        <button data-act="throw" data-kind="throw_delay" data-note="1/4">Yankı at (delay) <kbd>1/4</kbd></button>
+        <button data-act="throw" data-kind="throw_delay" data-note="1/8">Yankı at (delay) <kbd>1/8</kbd></button>
+        <button data-act="throw" data-kind="throw_delay" data-note="1/8d">Yankı at (delay) <kbd>nokta 1/8</kbd></button>
+        <button data-act="throw" data-kind="throw_reverb">Reverb at</button>
+        <button data-act="throw" data-kind="throw_phone">Telefon at</button>
+        <button data-act="throw" data-kind="throw_reverse">Ters reverb</button><hr><button data-act="cancel">Vazgeç</button>`;
       document.body.appendChild(menu);
       menu.style.left = Math.min(x, window.innerWidth - menu.offsetWidth - 8) + "px";
       menu.style.top = Math.min(y + 8, window.innerHeight - menu.offsetHeight - 8) + "px";
@@ -995,6 +1013,7 @@
         const R = REGION;
         hideMenu(); hideRegion();
         if (btn.dataset.act === "regionfx" && R) opts.onRegionFx?.(R.trId, R.clipId, R.t0, R.t1);
+        else if (btn.dataset.act === "throw" && R) opts.onThrow?.(R.trId, R.clipId, R.t0, R.t1, btn.dataset.kind, btn.dataset.note || "1/8");
       });
     }
     /** Dongu bandi klibin icindeyse 'Bu bolgeye efekt (dongu)' icin aralik. */
@@ -1031,7 +1050,9 @@
         <button data-act="mute">${anyMuted ? "Klibin sesini aç" : "Klibi sessize al"}</button>
         ${findClip(card.dataset.clip)?.clip.stack_id ? `<hr><button data-act="stack">Take destesini aç</button>` : ""}
         <hr><button data-act="clipfx">Klip efektleri…</button>
-        ${lr ? `<button data-act="loopfx">Bu bölgeye efekt (döngü) <kbd>${lr.a.toFixed(2)}–${lr.b.toFixed(2)}</kbd></button>` : `<button data-act="hint" disabled title="Klipte Ctrl+sürükleyerek veya döngü bandıyla aralık seç">Bölgeye efekt: Ctrl+sürükle</button>`}`;
+        ${lr ? `<button data-act="loopfx">Bu bölgeye efekt (döngü) <kbd>${lr.a.toFixed(2)}–${lr.b.toFixed(2)}</kbd></button>
+        <button data-act="loopthrow" data-kind="throw_delay" data-note="1/8">Döngüye yankı at <kbd>1/8</kbd></button>
+        <button data-act="loopthrow" data-kind="throw_reverb">Döngüye reverb at</button>` : `<button data-act="hint" disabled title="Klipte Ctrl+sürükleyerek veya döngü bandıyla aralık seç">Bölgeye efekt / atma: Ctrl+sürükle</button>`}`;
       document.body.appendChild(menu);
       const mw = menu.offsetWidth, mh = menu.offsetHeight;
       menu.style.left = Math.min(ev.clientX, window.innerWidth - mw - 8) + "px";
@@ -1051,6 +1072,7 @@
         else if (act === "stack") { const h = findClip(card.dataset.clip); if (h) openStackMenu(card, h); }
         else if (act === "clipfx" && hitC) opts.onClipFx?.(hitC.tr.id, hitC.clip.id);
         else if (act === "loopfx" && hitC && lr) opts.onRegionFx?.(hitC.tr.id, hitC.clip.id, lr.a, lr.b);
+        else if (act === "loopthrow" && hitC && lr) opts.onThrow?.(hitC.tr.id, hitC.clip.id, lr.a, lr.b, b.dataset.kind, b.dataset.note || "1/8");
       });
     });
     document.addEventListener("pointerdown", (ev) => { if (menu && !menu.contains(ev.target)) { hideMenu(); if (REGION) hideRegion(); } });
@@ -1153,10 +1175,106 @@
       dry: new Map(), dryLast: new Map(), audTr: new Set(),   // R4: kanal basina kuru dugum + duyulan kanallar
     };
     const Metro = { on: false, vol: 0.6 };
+    // 2a: kalici master grafi (her calmada yeniden kurulmaz): kanallar -> mixOut ─┐
+    //                                                  referans -> refOut ─┴-> simIn -> [dinleme simulatoru] -> cikis
+    // Metronom bu grafa girmez (dogrudan cikis). Simulator yalniz dinlemeyi etkiler; bounce Python'da, bu grafin disinda.
+    const Out = { mixOut: null, refOut: null, simIn: null, chain: null, listen: "normal", ab: "A",
+                  ref: null /* {path, gain_db, start, buf} */, refNodes: new Set() };
 
     function ctx() {
-      if (!Eng.ctx) Eng.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+      if (!Eng.ctx) {
+        Eng.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+        const ac = Eng.ctx;
+        Out.mixOut = ac.createGain(); Out.refOut = ac.createGain(); Out.simIn = ac.createGain();
+        Out.mixOut.gain.value = Out.ab === "A" ? 1 : 0;
+        Out.refOut.gain.value = Out.ab === "B" ? 1 : 0;
+        Out.mixOut.connect(Out.simIn); Out.refOut.connect(Out.simIn);
+        applyListen();
+      }
       return Eng.ctx;
+    }
+    function applyListen() {
+      const ac = Eng.ctx;
+      if (!ac || !Out.simIn) return;
+      try { Out.simIn.disconnect(); } catch {}
+      if (Out.chain) root.BeatSim?.dispose(Out.chain);
+      Out.chain = null;
+      if (root.BeatSim && Out.listen !== "normal") {
+        Out.chain = root.BeatSim.build(ac, Out.listen);
+        Out.simIn.connect(Out.chain.input);
+        Out.chain.output.connect(ac.destination);
+      } else Out.simIn.connect(ac.destination);
+    }
+    /** Dinleme simulatoru profili (yalniz dinleme). Calarken aninda gecer. */
+    function setListen(id) {
+      Out.listen = root.BeatSim?.PROFILES?.[id] ? id : "normal";
+      applyListen();
+      return Out.listen;
+    }
+    /** A/B: 'A' miks, 'B' referans. Ayni zaman konumunda 15 ms rampa ile anlik gecis. */
+    function setAB(mode) {
+      Out.ab = mode === "B" ? "B" : "A";
+      const ac = Eng.ctx;
+      if (ac && Out.mixOut) {
+        const t = ac.currentTime;
+        for (const [g, v] of [[Out.mixOut, Out.ab === "A" ? 1 : 0], [Out.refOut, Out.ab === "B" ? 1 : 0]]) {
+          g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(v, t + 0.015);
+        }
+      }
+      if (Out.ab === "B" && Eng.playing && Out.ref?.buf && !Out.refNodes.size) startRef(currentTime());
+      return Out.ab;
+    }
+    /** Referans: {path, gain_db, start} | null. Kaynak cozulur (uzunsa <audio> akisi); calarken yeniden baslar. */
+    async function setReference(r) {
+      if (!r || !r.path) { stopRef(); Out.ref = null; return false; }
+      const same = Out.ref && Out.ref.path === r.path;
+      Out.ref = Object.assign({}, r, { buf: same ? Out.ref.buf : null });
+      if (!Out.ref.buf) {
+        ctx();
+        const buf = await loadBuffer(r.path);
+        if (!Out.ref || Out.ref.path !== r.path) return false;
+        Out.ref.buf = buf;
+      }
+      if (Eng.playing) { stopRef(); startRef(currentTime()); }
+      return !!Out.ref.buf;
+    }
+    function setRefGain(db) {
+      if (!Out.ref) return;
+      Out.ref.gain_db = Number(db) || 0;
+      for (const n of Out.refNodes) if (n.__refGain) n.gain.value = dbToGain(Out.ref.gain_db);
+    }
+    function stopRef() {
+      for (const n of Out.refNodes) { try { n.stop?.(); } catch {} try { n.pause?.(); } catch {} try { n.disconnect?.(); } catch {} }
+      Out.refNodes = new Set();
+    }
+    /** Referans, zaman cizelgesi konumu t'ye denk gelen yerden (start + t, kendi uzunlugunda donerek) calar. */
+    function startRef(t) {
+      const ac = Eng.ctx, R = Out.ref;
+      if (!ac || !R?.buf) return;
+      const g = ac.createGain();
+      g.__refGain = true;
+      g.gain.value = dbToGain(R.gain_db);
+      g.connect(Out.refOut);
+      Out.refNodes.add(g);
+      if (R.buf.stream) {
+        const a = new Audio();
+        a.crossOrigin = "anonymous"; a.loop = true; a.src = R.buf.url;
+        const sn = ac.createMediaElementSource(a);
+        sn.connect(g);
+        const go = () => { try { a.currentTime = Math.max(0, (Number(R.start) || 0) + t) % Math.max(1, a.duration || 1e9); } catch {} a.play().catch(() => {}); };
+        if (a.readyState >= 1) go(); else a.addEventListener("loadedmetadata", go, { once: true });
+        Out.refNodes.add(sn); Out.refNodes.add(a);
+        return;
+      }
+      const src = ac.createBufferSource();
+      src.buffer = R.buf;
+      src.loop = true;
+      src.connect(g);
+      const dur = R.buf.duration || 1;
+      const at = Math.max(ac.currentTime, Eng.playing ? Eng.when : ac.currentTime);
+      const off = (((Number(R.start) || 0) + Math.max(0, t) + Math.max(0, ac.currentTime - at)) % dur + dur) % dur;
+      src.start(at, off);
+      Out.refNodes.add(src);
     }
     async function mediaUrl(path) {
       const r = await api()?.beat_media_url?.(path).catch(() => null);
@@ -1198,6 +1316,7 @@
       for (const t of Eng.timers) clearTimeout(t);
       for (const a of Eng.els) { try { a.pause(); a.removeAttribute("src"); a.load(); } catch {} }
       if (Eng.metroGain) { try { Eng.metroGain.disconnect(); } catch {} Eng.metroGain = null; }
+      stopRef();
       for (const w of WET.values()) { for (const n of w.nodes || []) { try { n.stop?.(); } catch {} try { n.disconnect?.(); } catch {} } w.nodes = new Set(); }
       Eng.nodes = new Set(); Eng.timers = []; Eng.els = []; Eng.segs = []; Eng.segNext = null; Eng.audible = [];
       Eng.dry = new Map(); Eng.dryLast = new Map(); Eng.audTr = new Set();
@@ -1247,7 +1366,13 @@
       const toCtx = (t) => seg.cs + (t - seg.ts);
       g.gain.setValueAtTime(env(pts[0]), toCtx(pts[0]));
       for (let i = 1; i < pts.length; i++) g.gain.linearRampToValueAtTime(env(pts[i]), toCtx(pts[i]));
-      g.connect(Eng.dry.get(tr.id) || Eng.bus.get(tr.id));
+      const dest = Eng.dry.get(tr.id) || Eng.bus.get(tr.id);
+      const cp = clamp(Number(c.pan) || 0, -1, 1);
+      if (cp && ac.createStereoPanner) {        // 2a: klip pan'i (Python stereo_pan ile ayni W3C formulu)
+        const pn = track(ac.createStereoPanner());
+        pn.pan.value = cp;
+        g.connect(pn); pn.connect(dest);
+      } else g.connect(dest);
       if (buf.stream) {
         // uzun kaynak: <audio> akisi (yaklasik senkron, onizleme icin)
         const a = new Audio();
@@ -1460,7 +1585,8 @@
           audible.push({ tr, c });
         }
       }
-      if (!audible.length && !o.force && !Metro.on) { opts.onStatus?.("Çalınacak klip yok (kanallar boş, sessiz veya çalma çizgisi sonda)."); return false; }
+      const refOnly = Out.ab === "B" && !!Out.ref?.buf;
+      if (!audible.length && !o.force && !Metro.on && !refOnly) { opts.onStatus?.("Çalınacak klip yok (kanallar boş, sessiz veya çalma çizgisi sonda)."); return false; }
       const paths = [...new Set(audible.map((a) => a.c.path))];
       const slow = paths.some((p) => !Eng.buffers.has(p));
       if (slow) opts.onStatus?.("Önizleme için sesler yükleniyor…");
@@ -1479,8 +1605,8 @@
         const g = track(ac.createGain());
         g.gain.value = dbToGain(tr.volume_db);
         const pan = ac.createStereoPanner ? ac.createStereoPanner() : null;
-        if (pan) { pan.pan.value = clamp(Number(tr.pan) || 0, -1, 1); g.connect(pan); pan.connect(ac.destination); track(pan); }
-        else g.connect(ac.destination);
+        if (pan) { pan.pan.value = clamp(Number(tr.pan) || 0, -1, 1); g.connect(pan); pan.connect(Out.mixOut); track(pan); }
+        else g.connect(Out.mixOut);
         Eng.bus.set(tr.id, g);
         const d = track(ac.createGain());       // R4: kuru klipler buradan; islak pencere boyunca 0
         d.gain.value = 1;
@@ -1490,6 +1616,7 @@
       Eng.metroGain = ac.createGain();                 // metronom yalniz cikisa (kulakliga) gider, kayda girmez
       Eng.metroGain.gain.value = Metro.vol;
       Eng.metroGain.connect(ac.destination);
+      if (Out.ref?.buf && !o.rec) startRef(start);      // 2a: referans ayni konumdan paralel calar (A'da sessiz)
       Eng.segs = [];
       Eng.segNext = { ts: start, te: effLoop ? effLoop.b : Infinity, cs: when, lap: 0 };
       Eng.metroH = when;
@@ -1524,7 +1651,7 @@
           if (x > sl + vw - 40) el.scroll.scrollLeft = x - 60;
           else if (x < sl) el.scroll.scrollLeft = Math.max(0, x - 60);
         }
-        if (!Eng.loop && !o.rec && S.playhead > endT + 0.25 && !opts.keepRolling?.()) { stopEngine(); return; }
+        if (!Eng.loop && !o.rec && S.playhead > endT + 0.25 && !opts.keepRolling?.() && !(Out.ab === "B" && Out.refNodes.size)) { stopEngine(); return; }
         Eng.raf = requestAnimationFrame(tick);
       };
       Eng.raf = requestAnimationFrame(tick);
@@ -1590,6 +1717,9 @@
       render, setZoom, zoomBy, fit, ensureVisible, setPlayhead, play, stop: stopEngine, toggle, restartIfPlaying,
       // R4: efektli onizleme katmani
       setWet, wetInfo, hasWet: (tid) => WET.has(tid),
+      // 2a: dinleme simulatoru + referans A/B
+      setListen, getListen: () => Out.listen, setAB, getAB: () => Out.ab, setReference, setRefGain,
+      hasReference: () => !!Out.ref?.buf,
       isPlaying: () => Eng.playing, getPlayhead: () => (Eng.playing ? currentTime() : S.playhead),
       selection: () => S.sel, clearSel, pruneSelection, select,
       splitSelected, duplicateSelected, deleteSelected, resetFadeSelected, toggleMuteSelected,
