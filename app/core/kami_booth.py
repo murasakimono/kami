@@ -237,7 +237,7 @@ class LatencyListener:
 
     def start(self, device_id: int | None = None, sr: int = 48000) -> dict[str, Any]:
         with self._lock:
-            if RECORDER.status().get("recording"):
+            if RECORDER._recording:
                 return {"ok": False, "error": "already_recording"}
             self._close()
             try:
