@@ -188,7 +188,7 @@ class Monitor:
               sr: int = 48000, reverb: bool = True, tune: bool = False, vst_plugins: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         with self._lock:
             if self._stream is not None:
-                return {"ok": False, "error": "already_running", **self.status()}
+                return {**self.status(), "ok": False, "error": "already_running"}
             self._error = ""
             self._xruns = 0
             blk = int(blocksize) if int(blocksize or 0) in BLOCK_CHOICES else DEFAULT_BLOCK
@@ -219,7 +219,7 @@ class Monitor:
             except Exception as exc:
                 self._error = "sounddevice_missing"
                 self._release()
-                return {"ok": False, "error": "sounddevice_missing", "detail": str(exc)[:120], **self.status()}
+                return {**self.status(), "ok": False, "error": "sounddevice_missing", "detail": str(exc)[:120]}
             dev_in = device_id if device_id is not None and device_id >= 0 else None
             dev_out = out_device if out_device is not None and out_device >= 0 else None
             try:
@@ -229,11 +229,11 @@ class Monitor:
             except Exception as exc:
                 self._error = str(exc)[:160] or "stream_failed"
                 self._release()
-                return {"ok": False, "error": "stream_failed", "detail": self._error, **self.status()}
+                return {**self.status(), "ok": False, "error": "stream_failed", "detail": self._error}
             self._stream = st
             self._device = dev_in
             self._latency = latency_ms(blk, self._sr, getattr(st, "latency", 0.0))
-            return {"ok": True, **self.status()}
+            return {**self.status(), "ok": True}
 
     def _release(self) -> None:
         for vp, plg in self._borrowed:
