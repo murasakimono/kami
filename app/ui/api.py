@@ -6943,6 +6943,18 @@ class Api(StudioMixin, EnhanceMixin):
                 "beat_meta": ld["project"].get("beat_meta")}
 
     # ---- Asama 1e-2: fikir rafi ----
+    def beat_drop_add(self, paths_list: list[str]) -> None:
+        """Kami Beat penceresine birakilan dosyalarin tam yollari (pywebview DOM drop) -> arayuz yoklar."""
+        with self._conv_lock:
+            cur = getattr(self, "_beat_drop_inbox", [])
+            self._beat_drop_inbox = (cur + [str(p) for p in (paths_list or []) if p and os.path.isfile(str(p))])[-20:]
+
+    def beat_drop_inbox(self) -> list[str]:
+        with self._conv_lock:
+            got = list(getattr(self, "_beat_drop_inbox", []))
+            self._beat_drop_inbox = []
+        return got
+
     def beat_ideas_list(self, query: str = "", tag: str = "", project: str = "") -> dict[str, Any]:
         from app.core import beat_ideas
         return beat_ideas.list_ideas(str(query or ""), str(tag or ""), str(project or ""))

@@ -724,6 +724,11 @@
       }
       return null;
     }
+    /** 1e: raftan / fikirlerden surukle-birak: birakilan kanal + izgaraya yapismis zaman (Alt: yapisma kapali). */
+    function dropAt(ev) {
+      const rc = el.content.getBoundingClientRect();
+      return { lane: laneAtY(ev.clientY), t: Math.max(0, snapT(x2t(ev.clientX - rc.left), ev)) };
+    }
 
     // R1: calma cizgisinin bas tutamaci (klip alaninin ustu): surukle; calarken sessiz konum degisimi, birakinca devam
     function startPlayheadDrag(ev) {
@@ -1599,6 +1604,8 @@
       setMetronome, getMetronome: () => ({ on: Metro.on, vol: Metro.vol }), anchor: () => Eng.anchor,
       uNow: () => (Eng.playing ? uNow() : null), loopRegion, setRecLive, recLap, animateTakeIn, findClip,
       toggleLoop, setLoop,
+      // 1e
+      dropAt,
       // 1c
       sectionAt, renameSection: startSecRename, splitSectionAt, mergeSectionPrev,
       openStackMenu: (id) => { const h = findClip(id); const card = el.content.querySelector(`.kb-clip[data-clip="${CSS.escape(id)}"]`); if (h && card) openStackMenu(card, h); },

@@ -81,6 +81,13 @@
           </select>
           <button type="button" class="btn" id="tlPunch" title="Punch-in: seçili klipte döngü bölgesini yeniden kaydet (ön-çalma ile)">Punch</button>
           <label class="kb-tl-pre" title="Punch ön-çalma süresi (sn)"><span>Ön</span><input type="number" id="tlPreroll" min="0" max="10" step="0.5" value="2"><span>sn</span></label>
+          <select id="tlLayer" class="kb-sel" title="Kayıt katmanı — Double/Chant: seçili ana vokal klibinin (veya döngü bölgesinin) üstüne ayrı kanala kaydeder, ana vokal kulaklıkta çalar; sonra otomatik hizalama önerilir">
+            <option value="main">Katman: Ana</option>
+            <option value="double">Katman: Double</option>
+            <option value="adlib">Katman: Adlib</option>
+            <option value="chant">Katman: Chant</option>
+          </select>
+          <button type="button" class="btn" id="tlAddTrack" title="Kanal ekle (vokal / beat / fx; ad ve renk seç). Başlığı sürükle: sırala · ada çift tıkla: yeniden adlandır">+ Kanal</button>
         </div>
         <div class="kb-tl-grp">
           <button type="button" class="btn ic" id="tlZoomOut" title="Uzaklaş (-)">−</button>
@@ -116,6 +123,18 @@
           <div class="kb-tl-content" id="tlContent"></div>
         </div>
         <div class="kb-hud-count kb-num" id="hudCount" hidden></div>
+        <div class="kb-pop kb-addtrack" id="addTrackPop" hidden role="dialog" aria-label="Kanal ekle">
+          <b>Kanal ekle</b>
+          <label><span>Rol</span><select id="atRole" class="kb-sel"><option value="vocal">Vokal</option><option value="beat">Beat / Altyapı</option><option value="fx">FX / Efekt</option></select></label>
+          <label><span>Ad</span><input type="text" id="atName" maxlength="40" placeholder="Örn: Back Vokal"></label>
+          <label><span>Renk</span><input type="color" id="atColor" value="#38BDF8"></label>
+          <div class="kb-pop-btns"><button type="button" class="btn ok" id="atOk">Ekle</button><button type="button" class="btn" id="atCancel">Vazgeç</button></div>
+        </div>
+        <div class="kb-align-bar" id="alignBar" hidden aria-live="polite">
+          <span class="kb-align-txt" id="alignTxt">Hizalama önerisi…</span>
+          <button type="button" class="btn ok" id="alignApply">Uygula</button>
+          <button type="button" class="btn" id="alignDismiss">Vazgeç</button>
+        </div>
         <div class="kb-prompter" id="prompter" hidden aria-live="polite">
           <div class="kb-pr-lines" id="prLines"></div>
           <div class="kb-pr-start" id="prStartHint">İlk satırı sürükle (cetveldeki pembe <b>SÖZ</b> bayrağı) veya N ile o anı sabitle</div>
@@ -221,6 +240,8 @@
         <button type="button" class="on" data-side="booth">🎙 Kabin</button>
         <button type="button" data-side="lyrics">📝 Söz &amp; Kafiye</button>
         <button type="button" data-side="vst">🔌 VST3 (<span id="vstCount">0</span>)</button>
+        <button type="button" data-side="shelf">🎚 Beat rafı</button>
+        <button type="button" data-side="ideas">💡 Fikirler</button>
       </nav>
 
       <div class="kb-side-pane" id="pane-booth">
@@ -237,6 +258,22 @@
           </label>
           <button type="button" class="btn pri full" id="pcRecBtn">🎙 Kayda Başla</button>
           <small class="kb-mut" id="pcRecSt">Hazır — seçili vokal kanalına, çalma çizgisinden itibaren kaydeder.</small>
+        </div>
+
+        <div class="kb-mod" id="monMod">
+          <div class="kb-mod-head">
+            <b>Kulaklıkta efektli dinleme</b>
+            <span class="kb-badge-em kb-num" id="monLat" hidden>— ms</span>
+          </div>
+          <label class="kb-chk" title="Mikrofon sesin hafif oda havasıyla kulaklığına geri verilir. Kayda HAM ses girer.">
+            <input type="checkbox" id="monOn"><span>Açık (kayda ham ses girer)</span>
+          </label>
+          <div class="kb-mon-opts">
+            <label class="kb-chk"><input type="checkbox" id="monRoom" checked><span>Oda havası</span></label>
+            <label class="kb-chk" title="VST3 listende gerçek zamanlı ton düzeltme eklentisi (Graillon, MAutoPitch, Auto-Tune…) varsa kullanılır"><input type="checkbox" id="monTune"><span>Ton düzeltme</span></label>
+            <select id="monBlock" class="kb-sel" title="Blok boyu: küçük = düşük gecikme, büyük = daha kararlı"><option value="128">128</option><option value="256">256</option></select>
+          </div>
+          <small class="kb-mut" id="monSt">Kapalı — kuru dinleme.</small>
         </div>
 
         <div class="kb-mod" id="micAssist">
@@ -304,6 +341,12 @@
             <span class="kb-badge-em">LAN</span>
           </div>
           <small class="kb-mut">Aynı Wi-Fi üzerinden kayıpsız 48 kHz WAV kayıt ve canlı Teleprompter akışı.</small>
+          <label class="kb-chk kb-booth-target"><span>Hedef</span>
+            <select id="boothTarget" class="kb-sel" title="iPhone'dan gelen kayıtlar nereye gitsin (telefonda da değiştirilebilir)">
+              <option value="track">Proje kanalı (seçili vokal)</option>
+              <option value="idea">💡 Fikir rafı</option>
+            </select>
+          </label>
           <button type="button" class="btn ok full" id="boothSrvBtn">Kablosuz Booth'u Başlat</button>
           <div class="kb-qr-box" id="boothQrBox" hidden>
             <img id="boothQrImg" alt="iPhone Booth QR Kodu">
@@ -354,8 +397,57 @@
           <div class="kb-vst-list" id="vstList"></div>
         </div>
       </div>
+
+      <div class="kb-side-pane" id="pane-shelf" hidden>
+        <div class="kb-mod full-h">
+          <div class="kb-mod-head"><b>Beat rafı</b><span class="kb-badge-em" id="shelfCount">0</span></div>
+          <div class="kb-shelf-add">
+            <input type="text" id="shelfUrl" placeholder="YouTube beat bağlantısı yapıştır…">
+            <button type="button" class="btn ok" id="shelfGet" title="Kami'nin indiricisiyle yalnız sesi indir, lisansı açıklamadan tahmin et">İndir</button>
+            <button type="button" class="btn ic" id="shelfFile" title="Diskteki bir beat dosyasını rafa ekle">📂</button>
+          </div>
+          <div class="kb-sec-prog" id="shelfProg" hidden><i id="shelfProgBar"></i><span id="shelfProgTxt">İndiriliyor…</span></div>
+          <div class="kb-shelf-filter">
+            <input type="search" id="shelfQ" placeholder="Ara: başlık, yapımcı, not…">
+            <input type="number" id="shelfBpmMin" class="kb-num" min="0" max="300" placeholder="BPM ≥" title="En düşük BPM">
+            <input type="number" id="shelfBpmMax" class="kb-num" min="0" max="300" placeholder="≤" title="En yüksek BPM">
+            <input type="text" id="shelfKey" maxlength="4" placeholder="Ton" title="Ton (ör. Am, F#m, C)">
+            <select id="shelfLic" class="kb-sel" title="Lisans süzgeci">
+              <option value="">Tüm lisanslar</option>
+              <option value="free_profit">Ücretsiz · ticari</option>
+              <option value="credit_required">Kredi zorunlu</option>
+              <option value="free_nonprofit">Yalnız kâr amacı gütmeyen</option>
+              <option value="lease_required">Lisans gerekli</option>
+              <option value="unknown">Bilinmiyor</option>
+            </select>
+          </div>
+          <small class="kb-mut">Lisans açıklamadan <b>tahmin</b> edilir — rozetine tıklayıp düzelt. Kartı zaman çizelgesine sürükle ya da “Projeye ekle”.</small>
+          <div class="kb-shelf-list" id="shelfList"></div>
+        </div>
+      </div>
+
+      <div class="kb-side-pane" id="pane-ideas" hidden>
+        <div class="kb-mod full-h">
+          <div class="kb-mod-head"><b>Fikirler</b><span class="kb-badge-em" id="ideaCount">0</span></div>
+          <button type="button" class="btn pri full" id="ideaRec" title="PC mikrofonundan hızlı sesli not (en fazla 30 sn)">🎙 Hızlı fikir kaydet</button>
+          <div class="kb-idea-drop" id="ideaDrop">Ses dosyasını buraya bırak · iPhone Booth'ta hedefi “Fikir rafı” yap</div>
+          <div class="kb-shelf-filter">
+            <input type="search" id="ideaQ" placeholder="Ara: ad, etiket, not…">
+            <select id="ideaTag" class="kb-sel" title="Etiket süzgeci"><option value="">Tüm etiketler</option></select>
+          </div>
+          <div class="kb-idea-list" id="ideaList"></div>
+        </div>
+      </div>
     </aside>
   </main>
+
+  <div class="kb-release" id="releaseBox" hidden role="alertdialog" aria-labelledby="releaseTitle">
+    <div class="kb-release-card">
+      <b id="releaseTitle">Yayın öncesi lisans kontrolü</b>
+      <div id="releaseList"></div>
+      <div class="kb-pop-btns"><button type="button" class="btn" id="releaseCopy" hidden>“prod. by …” kopyala</button><button type="button" class="btn ok" id="releaseOk">Anladım</button></div>
+    </div>
+  </div>
 
   <footer class="kb-status">
     <span id="stMsg">Kami Beat hazır.</span>
@@ -369,6 +461,7 @@
   <script src="beat-lyrics.js"></script>
   <script src="beat-timeline.js"></script>
   <script src="beat-fx.js"></script>
+  <script src="beat-library.js"></script>
   <script src="beat.js"></script>
 </body>
 </html>

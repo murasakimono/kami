@@ -629,9 +629,19 @@ def main() -> int:
                 w.events.closed += _on_closed
                 keep_warm(w, keep_if=(lambda: bool(getattr(api, "_thumb_playing", False))) if k == "music" else None)
                 if not selftest:
-                    def _on_mod_loaded(win_t=t, win_k=k, win_col=col, mod_fr=fr) -> None:
+                    def _on_mod_loaded(win_t=t, win_k=k, win_col=col, mod_fr=fr, win_w=w) -> None:
                         _set_hwnd_app_id(win_t, f"Murasakimono.Kami.{win_k.title()}")
                         _set_hwnd_icon(win_t, win_k, win_col)
+                        if win_k == "beat":   # 1e: Fikirler / Beat rafi icin birakilan dosyalarin tam yollari
+                            try:
+                                from webview.dom import DOMEventHandler
+
+                                def _beat_drop(e) -> None:
+                                    api.beat_drop_add([f.get("pywebviewFullPath") for f in (e.get("dataTransfer") or {}).get("files") or []
+                                                       if f.get("pywebviewFullPath")])
+                                win_w.dom.document.events.drop += DOMEventHandler(_beat_drop, True, False)
+                            except Exception:
+                                log.exception("Kami Beat surukle-birak baglanamadi")
                         if win_k == "music":
                             try:
                                 from app.core import taskbar

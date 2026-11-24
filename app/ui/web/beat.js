@@ -26,6 +26,11 @@
   let FX_LEVEL = "track";     // "track" | "clip"
   let FX_OPEN = null;         // acik parametre paneli: { level, tid, cid, idx }
   let PREV = null;            // BeatFx.createPreview
+  // ---- Asama 1d/1e ----
+  let LIB = null;             // BeatLibrary (beat rafi + fikirler)
+  let ALIGN = null;           // bekleyen hizalama onerisi { tid, cid, clips, before, label }
+  const PROTECTED_TRACKS = new Set(["beat", "vocal1"]);
+  const LAYER_LBL = { double: "Double", adlib: "Adlib", chant: "Chant" };
   // 1c: sonuk kafiye paleti (koyu temada goz yormaz); beat_studio.RHYME_PALETTE_SIZE ile ayni uzunluk
   const RHYME_COLORS = ["#B39DF0", "#73C9A2", "#D9B26A", "#D98BB0", "#7FB8D9", "#AFC97C", "#D99C80", "#9CA6DE"];
 
@@ -156,8 +161,23 @@
     }
     await refreshProjSelect();
     renderProject();
+    initLibrary();
   }
 
+  /** 1e: beat rafi + fikir rafi paneli. */
+  function initLibrary() {
+    if (!window.BeatLibrary || LIB) return;
+    LIB = BeatLibrary.init({
+      api, $, esc, getProj: () => PROJ, serverMutate, setStatus, playPath, drawWaveform, runJob,
+      playhead: () => (TL ? TL.getPlayhead() : 0),
+      selTrackId: () => recTrackId(),
+      micId: () => +$("#micSel").value,
+      isRecording: () => !!RECST,
+      lyricLines: () => (window.BeatLyrics ? BeatLyrics.parseLyrics(PROJ?.lyrics || "").lines.filter((l) => l.kind === "line").map((l) => ({ n: l.n, text: l.text })) : []),
+      onLinksChanged: () => renderLyrics(),
+      onBeatAdded: () => { if (!(PROJ?.sections || []).length) analyzeSections(true); },
+    });
+  }
   async function refreshProjSelect() {
     const lr = await api()?.beat_list_projects?.().catch(() => ({ projects: [] })) || { projects: [] };
     const sel = $("#projSelect");
@@ -175,6 +195,8 @@
     renderProject();
     if (!opts.keepView) { TL?.setPlayhead(0, false); TL?.fit(); }
     if (r.recovered) setStatus("⚠ Proje dosyası bozuktu — son otomatik kayıttan kurtarıldı.");
+    hideAlign();
+    LIB?.refreshIdeas();
     return true;
   }
 
@@ -463,18 +485,20 @@
     let vocalIdx = 0;
     $("#tlHeads").innerHTML = tracks.map((tr) => {
       const col = BeatTimeline.trackColor(tr, tr.role === "beat" ? 0 : vocalIdx++);
+      const lay = tr.layer && LAYER_LBL[tr.layer] ? `<span class="kb-layer-tag" title="${esc(LAYER_LBL[tr.layer])} katmanı → ${esc((tracks.find((x) => x.id === tr.layer_of) || {}).name || tr.layer_of || "")}${tr.chant_dev ? ` · ${tr.chant_dev.delay_ms} ms / ${tr.chant_dev.cents} cent` : ""}">${esc(LAYER_LBL[tr.layer][0])}</span>` : "";
       const takes = tr.takes || [];
       const presetOpts = (tr.preset === "custom" ? `<option value="custom" selected>Özel${PRESETS[tr.preset_base] ? ` (${esc(PRESETS[tr.preset_base].name)})` : ""}</option>` : "")
         + Object.entries(PRESETS).map(([k, v]) => `<option value="${esc(k)}" ${tr.preset === k ? "selected" : ""}>${esc(v.name)}</option>`).join("");
       const takeOpts = takes.map((t) => `<option value="${esc(t.id)}" ${tr.active_take === t.id ? "selected" : ""}>${esc(t.label)}</option>`).join("");
       return `
-        <div class="kb-head ${tr.id === SEL_TID ? "sel" : ""}" data-tid="${esc(tr.id)}" style="--tc:${col}">
+        <div class="kb-head ${tr.id === SEL_TID ? "sel" : ""}" data-tid="${esc(tr.id)}" style="--tc:${col}" title="Boş yerinden sürükle: kanal sırası">
           <div class="kb-ch">
             <span class="kb-role-bar"></span>
             <div class="kb-ch-top">
-              <b>${esc(tr.name)}</b>
+              ${lay}<b data-rename="${esc(tr.id)}" title="Çift tık: yeniden adlandır">${esc(tr.name)}</b>
               <button type="button" class="kb-ms ${tr.mute ? "m-on" : ""}" data-mute="${esc(tr.id)}" title="Sessize Al (Mute)">M</button>
               <button type="button" class="kb-ms ${tr.solo ? "s-on" : ""}" data-solo="${esc(tr.id)}" title="Tek Çal (Solo)">S</button>
+              ${PROTECTED_TRACKS.has(tr.id) ? "" : `<button type="button" class="kb-del" data-deltrack="${esc(tr.id)}" title="Kanalı sil (geri alınabilir)">×</button>`}
             </div>
             <div class="kb-ch-mid">
               <button type="button" class="btn" data-pick="${esc(tr.id)}" title="Ses dosyası ekle (kanal boşsa başa, değilse son klibin arkasına; belirli yere eklemek için şeride çift tıkla)">📂 Ses</button>
@@ -853,6 +877,7 @@
           <span class="kb-rhyme" style="background:${col || "rgba(157,107,255,.15)"}"></span>
           <span class="kb-lyr-bar kb-num ${tm?.anchored ? "anc" : ""}" title="${tm?.anchored ? "Elle sabitlendi" : "Tahmini bar"}">${barN ? barN + "." : "—"}</span>
           <span class="kb-lyr-txt">${rhymeTail(ln.text, col)}</span>
+          ${(LIB?.lineIdeas(ln.n) || []).map((it) => `<button type="button" class="kb-lyr-idea" data-ideaplay="${esc(it.file)}" data-ideaname="${esc(it.name)}" title="💡 ${esc(it.name)} — tıkla: çal">🎙</button>`).join("")}
           <button type="button" class="kb-lyr-sync ${tm?.anchored ? "on" : ""}" data-sync="${ln.n}" title="${tm?.anchored ? "Senkronu kaldır" : "Bu satırı çalma konumuna sabitle (şimdi)"}">${tm?.anchored ? "×" : "⏱"}</button>
         </div>`);
       }
@@ -892,6 +917,8 @@
   }
   $("#lyrBars").addEventListener("click", (e) => {
     if (!PROJ) return;
+    const ib = e.target.closest("[data-ideaplay]");
+    if (ib) { playPath(ib.dataset.ideaplay, `💡 ${ib.dataset.ideaname || ""}`); return; }
     const sb = e.target.closest("[data-sync]");
     if (sb) {
       const n = +sb.dataset.sync;
@@ -1083,7 +1110,9 @@
   document.querySelectorAll(".kb-side-tabs button").forEach((b) => {
     b.onclick = () => {
       document.querySelectorAll(".kb-side-tabs button").forEach((x) => x.classList.toggle("on", x === b));
-      ["booth", "lyrics", "vst"].forEach((k) => { $(`#pane-${k}`).hidden = b.dataset.side !== k; });
+      ["booth", "lyrics", "vst", "shelf", "ideas"].forEach((k) => { $(`#pane-${k}`).hidden = b.dataset.side !== k; });
+      if (b.dataset.side === "shelf") LIB?.refreshShelf();
+      if (b.dataset.side === "ideas") LIB?.refreshIdeas();
     };
   });
 
@@ -1110,8 +1139,108 @@
       edit("Mute", () => { const tr = PROJ.tracks.find((x) => x.id === b.dataset.mute); if (tr) tr.mute = !tr.mute; });
     } else if (b.dataset.solo) {
       edit("Solo", () => { const tr = PROJ.tracks.find((x) => x.id === b.dataset.solo); if (tr) tr.solo = !tr.solo; });
+    } else if (b.dataset.deltrack) {
+      const tr = PROJ.tracks.find((x) => x.id === b.dataset.deltrack);
+      if (!tr) return;
+      const nClips = (tr.clips || []).length;
+      if (nClips && !confirm(`“${tr.name}” kanalı ${nClips} klibiyle silinsin mi? (Ctrl+Z ile geri alınır; ham dosyalar silinmez)`)) return;
+      tracksOp("remove", { id: tr.id }, `Kanal silindi: ${tr.name} (Ctrl+Z geri alır)`);
     }
   });
+
+  // ---- 1d: kanal ekle / sil / sirala / yeniden adlandir (mantik Python'da: beat_tracks_op) ----
+  async function tracksOp(op, args, label) {
+    if (!PROJ) return null;
+    const r = await api()?.beat_tracks_op?.(PROJ.tracks, op, args).catch(() => null);
+    if (!r?.ok) {
+      setStatus({ protected_track: "Beat ve Ana Vokal kanalları silinemez.", too_many_tracks: "En fazla 24 kanal." }[r?.error] || ("Kanal işlemi başarısız: " + (r?.error || "?")));
+      return r;
+    }
+    edit(label, () => { PROJ.tracks = r.tracks; });
+    if (r.track_id) selectTrack(r.track_id);
+    return r;
+  }
+  $("#tlAddTrack").onclick = (e) => {
+    e.currentTarget.blur();
+    const pop = $("#addTrackPop");
+    pop.hidden = !pop.hidden;
+    if (!pop.hidden) {
+      const pal = ["#38BDF8", "#EC4899", "#A3E635", "#F97316", "#2DD4BF", "#E879F9", "#F59E0B", "#9D6BFF"];
+      const used = new Set((PROJ?.tracks || []).map((t) => String(t.color || "").toUpperCase()));
+      $("#atColor").value = pal.find((c) => !used.has(c.toUpperCase())) || pal[0];
+      $("#atName").value = "";
+      $("#atName").focus();
+    }
+  };
+  $("#atCancel").onclick = () => { $("#addTrackPop").hidden = true; };
+  async function addTrackFromPop() {
+    $("#addTrackPop").hidden = true;
+    const role = $("#atRole").value;
+    const r = await tracksOp("add", { role, name: $("#atName").value.trim(), color: $("#atColor").value }, "");
+    if (r?.ok) setStatus(`Kanal eklendi: ${(PROJ.tracks.find((t) => t.id === r.track_id) || {}).name || ""} — başlığı sürükleyerek sırala`);
+  }
+  $("#atOk").onclick = addTrackFromPop;
+  $("#atName").addEventListener("keydown", (e) => { if (e.key === "Enter") addTrackFromPop(); else if (e.key === "Escape") $("#addTrackPop").hidden = true; e.stopPropagation(); });
+  $("#tlHeads").addEventListener("dblclick", (e) => {
+    const b = e.target.closest("b[data-rename]");
+    if (!b || !PROJ) return;
+    const tid = b.dataset.rename;
+    const tr = PROJ.tracks.find((x) => x.id === tid);
+    const inp = document.createElement("input");
+    inp.className = "kb-rename"; inp.value = tr?.name || ""; inp.maxLength = 40;
+    b.replaceWith(inp); inp.focus(); inp.select();
+    let done = false;
+    const finish = (save) => {
+      if (done) return; done = true;
+      const nm = inp.value.trim();
+      if (save && nm && nm !== tr?.name) tracksOp("rename", { id: tid, name: nm }, `Kanal adı: ${nm}`);
+      else renderProject();
+    };
+    inp.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Enter") finish(true); else if (ev.key === "Escape") finish(false); });
+    inp.addEventListener("blur", () => finish(true));
+  });
+  // surukle-birak siralama
+  let HEAD_DRAG = "";
+  // yalniz bos yerden basilinca suruklenebilir (surgu / metin kutusu / dugmeler normal calissin)
+  $("#tlHeads").addEventListener("mousedown", (e) => {
+    const h = e.target.closest(".kb-head[data-tid]");
+    if (h) h.draggable = !e.target.closest("input,select,button,textarea");
+  });
+  const clearDropMarks = () => document.querySelectorAll(".kb-head.kb-drop-above,.kb-head.kb-drop-below").forEach((x) => x.classList.remove("kb-drop-above", "kb-drop-below"));
+  $("#tlHeads").addEventListener("dragstart", (e) => {
+    const h = e.target.closest(".kb-head[data-tid]");
+    if (!h || e.target.closest("input,select,button")) { if (h) e.preventDefault(); return; }
+    HEAD_DRAG = h.dataset.tid;
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", "kami-track:" + HEAD_DRAG); } catch {}
+  });
+  $("#tlHeads").addEventListener("dragover", (e) => {
+    if (!HEAD_DRAG) return;
+    const h = e.target.closest(".kb-head[data-tid]");
+    if (!h) return;
+    e.preventDefault();
+    clearDropMarks();
+    const r = h.getBoundingClientRect();
+    h.classList.add(e.clientY < r.top + r.height / 2 ? "kb-drop-above" : "kb-drop-below");
+  });
+  $("#tlHeads").addEventListener("dragleave", (e) => { if (!e.relatedTarget || !$("#tlHeads").contains(e.relatedTarget)) clearDropMarks(); });
+  $("#tlHeads").addEventListener("drop", (e) => {
+    const src = HEAD_DRAG;
+    HEAD_DRAG = "";
+    const h = e.target.closest(".kb-head[data-tid]");
+    clearDropMarks();
+    if (!src || !h || !PROJ) return;
+    e.preventDefault();
+    const ids = PROJ.tracks.map((t) => t.id).filter((x) => x !== src);
+    const r = h.getBoundingClientRect();
+    let idx = ids.indexOf(h.dataset.tid);
+    if (idx < 0) return;
+    if (e.clientY >= r.top + r.height / 2) idx += 1;
+    ids.splice(idx, 0, src);
+    if (ids.join() === PROJ.tracks.map((t) => t.id).join()) return;
+    tracksOp("reorder", { ids }, "Kanal sırası değişti");
+  });
+  $("#tlHeads").addEventListener("dragend", () => { HEAD_DRAG = ""; clearDropMarks(); });
 
   $("#tlHeads").addEventListener("change", (e) => {
     if (!PROJ) return;
@@ -1170,6 +1299,7 @@
     if (!el.dataset.before) el.dataset.before = snap();
     const tr = PROJ.tracks.find((x) => x.id === tid);
     if (!tr) return;
+    if (tr.layer) tr.auto_place = false;   // 1d: elle ayarlanan katman otomatik yerlesimden cikar
     if (el.dataset.vol) {
       tr.volume_db = +el.value;
       el.nextElementSibling.textContent = `${tr.volume_db > 0 ? "+" : ""}${tr.volume_db} dB`;
@@ -1341,12 +1471,16 @@
         setStatus("✓ Bounce hazır: " + r.path);
         $("#lufsMsg").textContent = `LUFS: ${r.lufs ?? "—"} · Peak: ${r.peak_db ?? "—"} dB`;
         await playPath(r.path, `${PROJ.name} (Mixdown)`);
+        showRelease(r.release_warnings);
       } else setStatus("Bounce hatası: " + (r?.error || "?"));
     } finally { btn.disabled = false; }
   };
 
   $("#toStudioBtn").onclick = async () => {
     if (!PROJ) return;
+    await flushSave();
+    const rc = await api()?.beat_release_check?.(PROJ.id).catch(() => null);   // 1e: disa aktarma oncesi lisans uyarisi
+    if (rc?.ok) showRelease(rc.warnings);
     setStatus("Kami Studio lirik video hazırlanıyor…");
     await flushSave();
     const r = await api()?.beat_export_lyric_video?.(PROJ.id, PROJ.name);
@@ -1382,6 +1516,7 @@
     const st = await api()?.booth_server_status?.().catch(() => null);
     if (!(st?.last_upload?.ts > BOOTH_LAST_TS)) return false;
     BOOTH_LAST_TS = st.last_upload.ts;
+    if (st.last_upload.target === "idea") { LIB?.ideasChanged(st.last_upload.idea); return true; }   // 1e-2: fikir rafina geldi
     const lr = await api()?.beat_load_project?.(PROJ.id).catch(() => null);
     if (!lr?.ok) return false;
     edit("✓ iPhone Booth'tan yeni take geldi!", () => {
@@ -1459,7 +1594,8 @@
     $("#recHud").hidden = false;
     $("#hudMode").textContent = plan.countIn ? "SAYIM" : plan.mode === "punch" ? "ÖN-ÇALMA" : plan.mode === "loop" ? "DÖNGÜ KAYDI" : "KAYIT";
     $("#hudTime").textContent = "0:00.0";
-    $("#hudTrack").textContent = "→ " + ((PROJ?.tracks || []).find((x) => x.id === plan.tid)?.name || plan.tid);
+    $("#hudTrack").textContent = "→ " + ((PROJ?.tracks || []).find((x) => x.id === plan.tid)?.name || plan.tid)
+      + (plan.layer ? ` · ${LAYER_LBL[plan.layer.kind]} (ana vokal kulaklıkta)` : "");
     hudLap(0);
     $("#pcRecBtn").classList.add("bad"); $("#pcRecBtn").classList.remove("pri"); $("#pcRecBtn").textContent = "⏹ Kaydı Durdur";
     $("#trRec").classList.add("on");
@@ -1528,6 +1664,11 @@
       const pre = Math.max(0, Number(RECSET.preroll) || 0);
       plan = { mode: "punch", tid: sel[0].tr.id, clipId: sel[0].clip.id, t0, t1, ustart: t0 - pre, keep_from: t0,
         loop: null, countIn: null, stopAtU: t1 + 0.3 };
+    } else if ($("#tlLayer").value !== "main") {
+      if (REC_PREP) return;
+      REC_PREP = true;
+      try { plan = await layerPlan($("#tlLayer").value, bpmv); } finally { REC_PREP = false; }
+      if (!plan || RECST) return;
     } else {
       const L = TL.loopRegion();
       const tid = recTrackId();
@@ -1551,6 +1692,121 @@
     });
     if (!ok && RECST === plan) { await recCancel(true); setStatus("Kayıt başlatılamadı (ses motoru açılamadı)."); }
   }
+
+  // ---------------- 1d: Double / Adlib / Chant katman kaydi ----------------
+  let REC_PREP = false;
+  /** Katman kaydinin plani: hedef kanal Python'da secilir/olusturulur (beat_layer_prepare), ana vokal kulaklikta calar.
+      Double/Chant: secili ana vokal klibi (ya da dongu bolgesi) uzerine; klip sonunda otomatik durur. */
+  async function layerPlan(kind, bpmv) {
+    const sel = [...TL.selection()].map((id) => TL.findClip(id)).filter(Boolean);
+    const selTr = selTrack();
+    let main = sel.length === 1 && sel[0].tr.role === "vocal" && !sel[0].tr.layer ? sel[0].tr
+      : selTr && selTr.role === "vocal" ? (selTr.layer ? PROJ.tracks.find((t) => t.id === selTr.layer_of) : selTr) : null;
+    main = main || PROJ.tracks.find((t) => t.id === "vocal1") || PROJ.tracks.find((t) => t.role === "vocal" && !t.layer);
+    if (!main) { setStatus("Ana vokal kanalı yok."); return null; }
+    const L = TL.loopRegion();
+    const mainClip = sel.length === 1 && sel[0].tr.id === main.id ? sel[0].clip : null;
+    let t0, t1;
+    if (L) { t0 = L.a; t1 = L.b; }
+    else if (mainClip) [t0, t1] = BeatClips.clipBounds(mainClip);
+    else if (kind === "adlib") { t0 = TL.getPlayhead(); t1 = t0 + 1; }
+    else { setStatus(`${LAYER_LBL[kind]} için önce ana vokal klibini seç (ya da cetvelde döngü bölgesi çiz).`); return null; }
+    const r = await api()?.beat_layer_prepare?.(PROJ.tracks, kind, main.id, t0, t1, PROJ.id).catch(() => null);
+    if (!r?.ok) { setStatus("Katman kanalı hazırlanamadı: " + ({ too_many_tracks: "en fazla 24 kanal" }[r?.error] || r?.error || "?")); return null; }
+    if (r.created) edit(`${LAYER_LBL[kind]} kanalı oluşturuldu: ${(r.tracks.find((t) => t.id === r.track_id) || {}).name || ""}`, () => { PROJ.tracks = r.tracks; });
+    if (main.mute) setStatus("Uyarı: ana vokal sessizde (M) — kulaklıkta duyulmaz.");
+    const layer = { kind, main: main.id };
+    const tid = r.track_id;
+    if (L) {
+      const cnt = BeatTransport.countInPlan(L.a, bpmv, RECSET.count);
+      return { mode: "loop", tid, a: L.a, b: L.b, ustart: cnt.transport_start, keep_from: cnt.rec_from, loop: L,
+        countIn: cnt.beats ? { origin: cnt.rec_from, ticks: cnt.ticks } : null, stopAtU: null, layer };
+    }
+    if (mainClip) {
+      const pre = Math.max(0, Number(RECSET.preroll) || 0);
+      const cnt = BeatTransport.countInPlan(t0, bpmv, RECSET.count);
+      const keep = Math.max(0, t0 - 0.5);   // yarim saniyelik nefes / giris payi kayda girer (hizalayiciya baglam)
+      return { mode: "linear", tid, ustart: Math.min(cnt.transport_start, t0 - pre), keep_from: keep, loop: null,
+        countIn: cnt.beats ? { origin: cnt.rec_from, ticks: cnt.ticks } : null, stopAtU: t1 + 0.3, layer };
+    }
+    const cnt = BeatTransport.countInPlan(t0, bpmv, RECSET.count);
+    return { mode: "linear", tid, ustart: cnt.transport_start, keep_from: cnt.rec_from, loop: null,
+      countIn: cnt.beats ? { origin: cnt.rec_from, ticks: cnt.ticks } : null, stopAtU: null, layer };
+  }
+
+  /** Katman kaydi bitti: yerlesim (pan/ses, chant sapmasi) + Double/Chant icin hizalama onerisi. */
+  async function afterLayerRecording(plan, ids) {
+    const kind = plan.layer.kind, mainId = plan.layer.main;
+    const tr = PROJ?.tracks.find((t) => t.id === plan.tid);
+    if (!tr || !ids.length) return;
+    const lr = await api()?.beat_layer_layout?.(PROJ.tracks, mainId, PROJ.id).catch(() => null);
+    const delay = kind === "chant" ? Number(((lr?.tracks || []).find((t) => t.id === plan.tid) || tr).chant_dev?.delay_ms || 0) : 0;
+    edit(`${LAYER_LBL[kind]} yerleştirildi${delay ? ` (+${delay} ms chant sapması)` : ""}`, () => {
+      if (lr?.ok) PROJ.tracks = lr.tracks;
+      if (delay) {
+        const t2 = PROJ.tracks.find((t) => t.id === plan.tid);
+        if (t2) t2.clips = t2.clips.map((c) => (ids.includes(c.id) ? BeatClips.normalize(Object.assign({}, c, { start: Math.max(0, c.start + delay / 1000) })) : c));
+      }
+    });
+    if (kind === "adlib") return;
+    const cid = ids[ids.length - 1];
+    const t3 = PROJ.tracks.find((t) => t.id === plan.tid);
+    const base = JSON.stringify(t3?.clips || []);
+    setStatus(`${LAYER_LBL[kind]} kaydedildi — ana vokale hizalanıyor…`);
+    const r = await runJob("beat_layer_align", [PROJ.id, plan.tid, cid, mainId, delay, PROJ]);
+    if (!r?.ok) {
+      setStatus(`${LAYER_LBL[kind]} hizalanamadı: ` + ({ no_signal: "sinyal yok", too_short: "kayıt çok kısa", no_main_vocal: "altında ana vokal yok" }[r?.error] || r?.error || "?"));
+      return;
+    }
+    showAlign(r, kind, base);
+  }
+
+  let ALIGN_DONE = -1, ALIGN_T = 0;
+  function hideAlign() { $("#alignBar").hidden = true; ALIGN = null; ALIGN_DONE = -1; clearTimeout(ALIGN_T); }
+  function showAlign(r, kind, base) {
+    const tr = PROJ?.tracks.find((t) => t.id === r.track_id);
+    if (!tr) return;
+    clearTimeout(ALIGN_T);
+    const off = Number(r.offset_ms) || 0;
+    const sh = (ms) => `${ms > 0 ? "−" : "+"}${Math.abs(ms).toFixed(1)} ms`;
+    const txt = r.split ? `${r.segments.length} parçaya bölünüp ayrı kaydırılır (${r.segments.map((x) => sh(x.offset_ms)).join(" / ")})`
+      : Math.abs(off) < 1 ? "zaten hizalı (±1 ms)" : `${sh(off)} kaydırılır`;
+    ALIGN = { tid: r.track_id, clips: r.clips, base, kind };
+    ALIGN_DONE = -1;
+    $("#alignTxt").innerHTML = `<b>${esc(LAYER_LBL[kind] || "Katman")} hizalama önerisi:</b> ${esc(txt)} · güven ${Math.round((r.confidence || 0) * 100)}%`;
+    $("#alignApply").textContent = "Uygula";
+    $("#alignApply").hidden = !r.split && Math.abs(off) < 1;
+    $("#alignDismiss").textContent = "Vazgeç";
+    $("#alignBar").hidden = false;
+    setStatus(`${LAYER_LBL[kind]} hizalama önerisi hazır — Uygula ya da Vazgeç`);
+  }
+  $("#alignApply").onclick = () => {
+    if (!PROJ) return;
+    if (!ALIGN) {   // uygulandiktan sonra: Geri al
+      if (ALIGN_DONE >= 0 && UNDO.length === ALIGN_DONE) undo();
+      hideAlign();
+      return;
+    }
+    const tr = PROJ.tracks.find((t) => t.id === ALIGN.tid);
+    if (!tr || JSON.stringify(tr.clips) !== ALIGN.base) { setStatus("Kanal o arada değişti — hizalama önerisi geçersiz, yeniden kaydet ya da elle kaydır."); hideAlign(); return; }
+    const kind = ALIGN.kind, clips = ALIGN.clips;
+    edit(`✓ ${LAYER_LBL[kind] || "Katman"} hizalandı (tek geri al)`, () => { tr.clips = clips; });
+    ALIGN = null;
+    ALIGN_DONE = UNDO.length;
+    $("#alignTxt").innerHTML = `<b>✓ Hizalama uygulandı</b>`;
+    $("#alignApply").textContent = "Geri al";
+    $("#alignApply").hidden = false;
+    $("#alignDismiss").textContent = "Kapat";
+    ALIGN_T = setTimeout(hideAlign, 8000);
+  };
+  $("#alignDismiss").onclick = () => { if (ALIGN) setStatus("Hizalama önerisi uygulanmadı."); hideAlign(); };
+  $("#tlLayer").onchange = (e) => {
+    e.target.classList.toggle("on", e.target.value !== "main");
+    e.target.blur();
+    const v = e.target.value;
+    setStatus(v === "main" ? "Katman: Ana — normal kayıt" : v === "adlib" ? "Katman: Adlib — çalma çizgisinden, dönüşümlü sol/sağ adlib kanalına"
+      : `Katman: ${LAYER_LBL[v]} — ana vokal klibini seç (ya da döngü çiz), kayda bas`);
+  };
 
   async function recStop() {
     if (!RECST) return;
@@ -1580,6 +1836,7 @@
       if (top && TL.findClip(top)) TL.select(top, false);
       TL.animateTakeIn([top]);
       TL.setPlayhead(plan.mode === "punch" ? plan.t0 : plan.keep_from, false);
+      if (plan.layer) afterLayerRecording(plan, ids);
     } else {
       const err = { no_complete_lap: "Tam tur tamamlanmadı — take oluşmadı (ham kayıt klasörde duruyor).",
         punch_too_short: "Punch kaydı çok kısa kaldı.", punch_clip_not_found: "Punch klibi bulunamadı (silinmiş olabilir).",
@@ -1912,7 +2169,7 @@
       return;
     }
     await flushSave();
-    const r = await api()?.booth_server_start?.(PROJ?.id || "", recTrackId());
+    const r = await api()?.booth_server_start?.(PROJ?.id || "", recTrackId(), $("#boothTarget").value);
     if (r?.ok) {
       BOOTH_RUNNING = true;
       btn.classList.remove("ok"); btn.classList.add("bad");
@@ -1931,6 +2188,101 @@
     const u = $("#boothUrl").textContent.trim();
     if (u) navigator.clipboard?.writeText(u).then(() => setStatus("Booth linki kopyalandı."));
   });
+
+  // ---- 1e-2: iPhone Booth hedefi (proje kanali / fikir rafi) ----
+  try { const bt = localStorage.getItem("kb.boothTarget"); if (bt === "idea" || bt === "track") $("#boothTarget").value = bt; } catch {}
+  $("#boothTarget").onchange = async (e) => {
+    const v = e.target.value;
+    try { localStorage.setItem("kb.boothTarget", v); } catch {}
+    if (BOOTH_RUNNING) await api()?.booth_server_target?.(PROJ?.id || "", recTrackId(), v).catch(() => null);
+    setStatus(v === "idea" ? "iPhone kayıtları fikir rafına gidecek." : "iPhone kayıtları seçili vokal kanalına gidecek.");
+  };
+
+  // ---- 1e-1: yayin oncesi lisans uyarisi ----
+  function showRelease(list) {
+    const items = (list || []).filter(Boolean);
+    if (!items.length) return;
+    if (!items.some((w) => w.level === "block" || w.level === "warn")) {   // yalniz bilgi: durum cubugunda
+      setStatus("ℹ " + items.map((w) => w.message).join(" · "));
+      return;
+    }
+    $("#releaseList").innerHTML = items.map((w) => `<div class="kb-rel-item ${esc(w.level)}"><b>${esc(w.title)}</b><br>${esc(w.message)}${w.credit_text ? `<br><code>${esc(w.credit_text)}</code>` : ""}</div>`).join("");
+    const cred = (items.find((w) => w.credit_text) || {}).credit_text || "";
+    $("#releaseCopy").hidden = !cred;
+    $("#releaseCopy").dataset.txt = cred;
+    $("#releaseCopy").textContent = `“${cred}” kopyala`;
+    $("#releaseBox").hidden = false;
+    $("#releaseOk").focus();
+  }
+  $("#releaseOk").onclick = () => { $("#releaseBox").hidden = true; };
+  $("#releaseCopy").onclick = (e) => {
+    const t = e.currentTarget.dataset.txt || "";
+    if (LIB) LIB.copyText(t); else navigator.clipboard?.writeText(t).then(() => setStatus("Kopyalandı: " + t));
+  };
+
+  // ---- 1e: raftan / fikirlerden zaman cizelgesine surukle-birak ----
+  $("#tlScroll").addEventListener("dragover", (e) => {
+    if (LIB?.dragKind(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }
+  });
+  $("#tlScroll").addEventListener("drop", (e) => {
+    if (!LIB?.dragKind(e) || !TL?.dropAt) return;
+    e.preventDefault();
+    LIB.dropOnTimeline(e, TL.dropAt(e));
+  });
+
+  // ---- 1d-2: kulaklikta efektli dinleme (varsayilan KAPALI; kayda ham ses) ----
+  const MONSET = Object.assign({ room: true, tune: false, block: 128 },
+    (() => { try { return JSON.parse(localStorage.getItem("kb.mon") || "{}"); } catch { return {}; } })());
+  $("#monRoom").checked = !!MONSET.room;
+  $("#monTune").checked = !!MONSET.tune;
+  $("#monBlock").value = String(MONSET.block === 256 ? 256 : 128);
+  const MON_ERR = { sounddevice_missing: "Ses akışı kurulamadı: sounddevice kurulu değil — özellik pasif.",
+    stream_failed: "Ses akışı kurulamadı", already_running: "Zaten açık." };
+  function syncMon(st, err) {
+    const on = !!st?.running;
+    $("#monOn").checked = on;
+    const lat = $("#monLat"), msg = $("#monSt");
+    lat.hidden = !on;
+    msg.classList.remove("warn", "bad");
+    if (err) { msg.textContent = err; msg.classList.add("bad"); return; }
+    if (!on) { msg.textContent = "Kapalı — kuru dinleme."; return; }
+    lat.textContent = `${Math.round(st.latency_ms)} ms`;
+    lat.classList.toggle("warn", !!st.warn);
+    const extra = [];
+    if (st.engine === "numpy") extra.push("pedalboard yok: basit oda havası");
+    if (st.engine === "dry") extra.push("efektsiz");
+    if ((st.notes || []).includes("tune_unavailable")) extra.push("ton düzeltme eklentisi bulunamadı (VST3: Graillon / MAutoPitch / Auto-Tune)");
+    msg.textContent = st.message + (extra.length ? ` · ${extra.join(" · ")}` : "");
+    if (st.warn) msg.classList.add("warn");
+  }
+  async function monStart() {
+    const r = await api()?.beat_monitor_start?.(+$("#micSel").value, -1, $("#monRoom").checked, $("#monTune").checked, +$("#monBlock").value).catch(() => null);
+    if (!r?.ok) {
+      syncMon(null, (MON_ERR[r?.error] || "Efektli dinleme açılamadı") + (r?.detail && r?.error !== "sounddevice_missing" ? `: ${r.detail}` : ""));
+      return false;
+    }
+    syncMon(r);
+    setStatus(r.message + (r.warn ? "" : " — kayda ham ses girer"));
+    return true;
+  }
+  async function monStop() {
+    const r = await api()?.beat_monitor_stop?.().catch(() => null);
+    if (r && !r.ok && r.error === "recording_active") { $("#monOn").checked = true; setStatus("Kayıt sürerken efektli dinleme kapatılamaz — önce kaydı durdur."); return false; }
+    syncMon(null);
+    return true;
+  }
+  $("#monOn").onchange = (e) => { if (e.target.checked) monStart(); else monStop(); };
+  async function monRestart() {
+    MONSET.room = $("#monRoom").checked; MONSET.tune = $("#monTune").checked; MONSET.block = +$("#monBlock").value;
+    try { localStorage.setItem("kb.mon", JSON.stringify(MONSET)); } catch {}
+    if (!$("#monOn").checked) return;
+    if (RECST) { setStatus("Ayar kayıttan sonra uygulanır."); return; }
+    if (await monStop()) monStart();
+  }
+  $("#monRoom").onchange = monRestart;
+  $("#monTune").onchange = monRestart;
+  $("#monBlock").onchange = monRestart;
+  $("#micSel").addEventListener("change", () => { if ($("#monOn").checked && !RECST) monRestart(); });
 
   // ---- Dual-Deck Mashup ----
   async function loadDeckWave(path, cvsId, color) {

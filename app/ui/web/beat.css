@@ -1128,3 +1128,101 @@ button.kb-fx-led:hover { outline: 2px solid color-mix(in srgb, var(--ok) 40%, tr
   content: attr(data-label); position: absolute; left: 4px; top: 2px; font: 600 10.5px/14px var(--mono); color: var(--ok);
 }
 .kb-ctx button[disabled] { opacity: .5; cursor: default; }
+
+/* ---------------- Asama 1d: kanal ekle / katman / hizalama ---------------- */
+.kb-head .kb-ch-top { cursor: grab; }
+.kb-head.kb-drop-above { box-shadow: inset 0 2px 0 var(--ac); }
+.kb-head.kb-drop-below { box-shadow: inset 0 -2px 0 var(--ac); }
+.kb-head .kb-ch-top .kb-del { margin-left: 2px; width: 20px; height: 20px; padding: 0; border: 1px solid transparent; border-radius: 3px;
+  background: transparent; color: var(--mut); font: 600 12px "Chakra Petch", system-ui, sans-serif; cursor: pointer; }
+.kb-head .kb-ch-top .kb-del:hover { border-color: rgba(255, 77, 106, .5); color: #FF9AAD; }
+.kb-layer-tag { padding: 0 4px; border-radius: 3px; font-size: 12px; font-weight: 600; background: rgba(157, 107, 255, .14); color: #C4B0FF; }
+.kb-head .kb-ch-top b[data-rename] { cursor: text; }
+.kb-head .kb-ch-top input.kb-rename { width: 110px; padding: 0 4px; border: 1px solid var(--line-hi); border-radius: 3px; background: var(--well);
+  color: var(--tx); font: 600 12px "Chakra Petch", system-ui, sans-serif; }
+#tlLayer.on { border-color: var(--amb); color: #E8BC6C; }
+
+.kb-pop {
+  position: absolute; z-index: 30; top: 44px; left: 220px; display: flex; flex-direction: column; gap: 8px; width: 240px; padding: 12px;
+  border: 1px solid var(--line-hi); border-radius: 4px; background: var(--elev);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 8px 24px rgba(0, 0, 0, .45);
+}
+.kb-pop label { display: grid; grid-template-columns: 48px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--mut); }
+.kb-pop input[type="text"] { padding: 4px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--well); color: var(--tx);
+  font: 500 13px "Chakra Petch", system-ui, sans-serif; }
+.kb-pop input[type="color"] { width: 48px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: none; }
+.kb-pop-btns { display: flex; gap: 8px; justify-content: flex-end; }
+
+.kb-align-bar {
+  position: absolute; z-index: 25; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border: 1px solid var(--line-hi); border-radius: 4px; background: rgba(21, 16, 33, .97);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 6px 18px rgba(0, 0, 0, .4); font-size: 12px; animation: kbAlignIn .18s var(--ease);
+}
+.kb-align-txt b { color: var(--tx); }
+@keyframes kbAlignIn { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ---------------- 1d-2: kulaklikta efektli dinleme ---------------- */
+.kb-mon-opts { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.kb-mon-opts .kb-sel { margin-left: auto; font-size: 12px; }
+#monLat.warn { background: rgba(245, 158, 11, .16); color: #E8BC6C; }
+#monSt.warn { color: #E8BC6C; }
+#monSt.bad { color: #FF9AAD; }
+.kb-booth-target { display: grid !important; grid-template-columns: 48px 1fr; align-items: center; gap: 8px; }
+
+/* ---------------- 1e: beat rafi + fikirler ---------------- */
+.kb-shelf-add, .kb-shelf-filter { display: flex; gap: 6px; align-items: center; }
+.kb-shelf-add input, .kb-shelf-filter input { min-width: 0; padding: 4px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--well);
+  color: var(--tx); font: 500 12px "Chakra Petch", system-ui, sans-serif; }
+.kb-shelf-add input { flex: 1; }
+.kb-shelf-filter input[type="search"] { flex: 1; }
+.kb-shelf-filter input[type="number"] { width: 58px; }
+.kb-shelf-filter input#shelfKey { width: 48px; }
+#shelfProg { position: relative; inset: auto; height: 24px; }
+.kb-shelf-list, .kb-idea-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.kb-card {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; background: #110D17;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03); transition: border-color .15s var(--ease);
+}
+.kb-card:hover { border-color: var(--line-hi); }
+.kb-card[draggable="true"] { cursor: grab; }
+.kb-card-top { display: flex; align-items: center; gap: 6px; }
+.kb-card-top b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.kb-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--mut); }
+.kb-card-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.kb-card-btns .btn { font-size: 12px; }
+.kb-card.missing { opacity: .6; }
+.kb-lic { padding: 1px 6px; border: 1px solid transparent; border-radius: 3px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.kb-lic.free_profit { background: rgba(20, 241, 149, .12); color: #7BE7B8; }
+.kb-lic.credit_required { background: rgba(56, 189, 248, .12); color: #8FD3F5; }
+.kb-lic.free_nonprofit { background: rgba(245, 158, 11, .12); color: #E8BC6C; }
+.kb-lic.lease_required { background: rgba(255, 77, 106, .14); color: #FF9AAD; }
+.kb-lic.unknown { background: rgba(142, 132, 168, .14); color: var(--mut); }
+.kb-lic.guess::after { content: " ?"; opacity: .7; }
+.kb-card-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.kb-card-edit input, .kb-card-edit select, .kb-card-edit textarea { min-width: 0; padding: 4px 6px; border: 1px solid var(--line); border-radius: 3px;
+  background: var(--well); color: var(--tx); font: 500 12px "Chakra Petch", system-ui, sans-serif; }
+.kb-card-edit .wide { grid-column: 1 / -1; }
+.kb-card-ev { font-size: 12px; color: #6E6588; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-idea-drop { padding: 12px 8px; border: 1px dashed var(--line-hi); border-radius: 4px; text-align: center; font-size: 12px; color: var(--mut);
+  transition: background .15s var(--ease), border-color .15s var(--ease); }
+.kb-idea-drop.over { border-color: var(--ac); background: rgba(157, 107, 255, .08); color: var(--tx); }
+.kb-idea-wave { width: 100%; height: 32px; display: block; cursor: pointer; border-radius: 3px; background: var(--well); }
+.kb-idea-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.kb-idea-tags span { padding: 0 6px; border-radius: 3px; font-size: 12px; background: rgba(157, 107, 255, .12); color: #C4B0FF; }
+#ideaRec.live { background: var(--bad); border-color: var(--bad); color: #fff; animation: kbRecPulse 1.2s ease-in-out infinite; }
+@keyframes kbRecPulse { 50% { box-shadow: 0 0 0 4px rgba(255, 77, 106, .18); } }
+.kb-lyr-idea { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 3px; background: rgba(245, 158, 11, .14); cursor: pointer; font-size: 12px; }
+.kb-lyr-idea:hover { background: rgba(245, 158, 11, .28); }
+
+.kb-release { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(4, 3, 7, .6); }
+.kb-release-card { display: flex; flex-direction: column; gap: 12px; width: min(460px, 92vw); padding: 16px; border: 1px solid var(--line-hi); border-radius: 4px;
+  background: var(--elev); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 12px 32px rgba(0, 0, 0, .5); }
+.kb-release-card > b { font-size: 14px; }
+.kb-rel-item { padding: 8px; border-left: 3px solid var(--mut); background: var(--well); border-radius: 0 3px 3px 0; font-size: 12px; line-height: 1.5; }
+.kb-rel-item.block { border-left-color: var(--bad); }
+.kb-rel-item.warn { border-left-color: var(--amb); }
+.kb-rel-item.info { border-left-color: #38BDF8; }
+.kb-rel-item code { font-family: var(--mono); color: var(--tx); }
+/* 1e: bes sekme dar yan panele sigsin (iki satira sarar) */
+.kb-side-tabs { flex-wrap: wrap; }
+.kb-side-tabs button { min-width: 33%; padding: 8px 4px; white-space: nowrap; }
