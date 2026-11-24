@@ -1023,6 +1023,28 @@ def prune_preview_cache(max_bytes: int = PREVIEW_MAX_BYTES, keep: str = "") -> i
     return removed
 
 
+_PREVIEW_SRC: dict[tuple, Any] = {}      # kaynak ses onbellegi (path, boyut, mtime) -> dizi; en fazla 3 dosya
+_PREVIEW_SRC_MAX = 3
+
+
+class _SrcCache(dict):
+    """render_track_audio icin: yol -> dizi; dosya degismediyse onceki onizlemelerden yeniden kullanilir."""
+
+    def get(self, path, default=None):
+        sig = tuple(_file_sig(path))
+        hit = _PREVIEW_SRC.get(sig)
+        if hit is not None:
+            _PREVIEW_SRC[sig] = _PREVIEW_SRC.pop(sig)     # LRU: sona al
+            return hit
+        return default
+
+    def __setitem__(self, path, arr):
+        sig = tuple(_file_sig(path))
+        _PREVIEW_SRC[sig] = arr
+        while len(_PREVIEW_SRC) > _PREVIEW_SRC_MAX:
+            _PREVIEW_SRC.pop(next(iter(_PREVIEW_SRC)))
+
+
 _PREVIEW_GEN: dict[tuple[str, str], int] = {}
 _PREVIEW_LOCK = threading.Lock()
 _PREVIEW_SEM = threading.BoundedSemaphore(2)
@@ -1072,7 +1094,7 @@ def preview_render(pid: str, track_id: str, start: float = 0.0, dur: float = 15.
         tm = time.monotonic()
         info: dict[str, Any] = {}
         try:
-            data = render_track_audio(tr, sr, None, t0, t1, PREVIEW_PREROLL, info)
+            data = render_track_audio(tr, sr, _SrcCache(), t0, t1, PREVIEW_PREROLL, info)
             tmp = out.with_suffix(".part.wav")
             _write_wav_np(str(tmp), data, sr)
             os.replace(tmp, out)

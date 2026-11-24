@@ -84,6 +84,7 @@ def bs(tmp_path, monkeypatch):
     monkeypatch.setattr(beat_studio, "projects_dir", lambda: (tmp_path / "proj").mkdir(exist_ok=True) or tmp_path / "proj")
     monkeypatch.setattr(beat_studio, "recordings_dir", lambda: (tmp_path / "rec").mkdir(exist_ok=True) or tmp_path / "rec")
     monkeypatch.setattr(beat_studio, "_GLOBAL_LATENCY_GETTER", None)
+    monkeypatch.setattr(beat_studio, "_PREVIEW_SRC", {})
     return beat_studio
 
 
@@ -394,6 +395,25 @@ def test_preview_supersedes_waiting_request(fx, bs, monkeypatch):
     t_old.join(5); t_new.join(5)
     assert res["old"] == {"ok": False, "error": "superseded"}
     assert res["new"]["ok"] and res["new"]["path"]
+
+
+def test_preview_source_cache_reuses_unchanged_file(fx, bs, monkeypatch, tmp_path):
+    monkeypatch.setattr(fx, "_PB_OVERRIDE", False)
+    p = tmp_path / "v.wav"
+    bs._write_wav_np(str(p), _ramp(SR), SR)
+    reads = []
+    orig = bs._read_audio_np
+    monkeypatch.setattr(bs, "_read_audio_np", lambda path, sr=SR: reads.append(path) or orig(path, sr))
+    tr = {"id": "v", "fx": [{"type": "gain", "gain_db": 1.0}], "clips": [_clip("a", str(p), 0.0, 0.0, 0.9)]}
+    assert bs.preview_render("p", "v", 0.0, 0.5, track=tr, loop={})["ok"]
+    tr["fx"][0]["gain_db"] = 2.0
+    assert bs.preview_render("p", "v", 0.0, 0.5, track=tr, loop={})["ok"]
+    assert len(reads) == 1                                  # ikinci render kaynagi yeniden okumadi
+    time.sleep(0.01)
+    bs._write_wav_np(str(p), _ramp(SR, 0.1), SR)            # dosya degisti -> yeniden okunur
+    tr["fx"][0]["gain_db"] = 3.0
+    assert bs.preview_render("p", "v", 0.0, 0.5, track=tr, loop={})["ok"]
+    assert len(reads) == 2
 
 
 def test_preview_cache_prune(bs):
