@@ -15,6 +15,10 @@
   };
   const newId = () => "c_" + Math.random().toString(16).slice(2, 10).padEnd(8, "0");
   const copy = (c) => Object.assign({}, c);
+  // R4: klip fx zincirinin derin kopyasi
+  const fxCopy = (fx) => (Array.isArray(fx) ? fx : []).filter((f) => f && typeof f === "object" && !Array.isArray(f))
+    .map((f) => { const d = Object.assign({}, f); if (d.params && typeof d.params === "object") d.params = Object.assign({}, d.params); return d; });
+  const withFx = (c) => { if (Array.isArray(c.fx)) c.fx = fxCopy(c.fx); return c; };
 
   const clipLen = (c) => r6(num(c.src_out) - num(c.src_in));
   function clipBounds(c) {
@@ -97,6 +101,8 @@
     right.src_in = cut;
     right.start = r6(t);
     right.fade_in = 0;
+    withFx(left);
+    withFx(right);   // R4: klip fx zinciri parcalar arasinda paylasilmaz (derin kopya)
     out[i] = clampFades(left);
     out.splice(i + 1, 0, clampFades(right));
     return out;
@@ -142,7 +148,7 @@
     const out = clips.map(copy);
     const i = find(out, clipId);
     if (i < 0) return out;
-    const c = copy(out[i]);
+    const c = withFx(copy(out[i]));
     c.id = newIdArg || newId();
     c.start = clipBounds(out[i])[1];
     out.splice(i + 1, 0, c);
@@ -224,6 +230,83 @@
     return out;
   }
 
+  // ---------------- Revize 4: klip / bolge efekti (beat_clips.py ile birebir) ----------------
+  const hasClipFx = (c) => (c.fx || []).some((f) => f && typeof f === "object" && !f.bypass) || !!c.skip_track_fx;
+
+  function regionSplit(clips, clipId, t0, t1, xfade = XFADE, ids = null, fx = null) {
+    let gen;
+    if (Array.isArray(ids)) { const pool = ids.slice(); gen = (k) => (pool.length ? pool.shift() : (k === "s" ? newStackId() : newId())); }
+    else gen = ids || ((k) => (k === "s" ? newStackId() : newId()));
+    const i = find(clips, clipId);
+    if (i < 0) return { clips: clips.map(copy), mid_id: "" };
+    const target = clips[i];
+    const sid = target.stack_id;
+    const members = sid ? clips.filter((c) => c.stack_id === sid) : [target];
+    const actId = sid ? stackActiveId(clips, sid) : target.id;
+    const act = members.find((c) => c.id === actId) || target;
+    const [s, e] = clipBounds(act);
+    t0 = Math.max(num(t0), s);
+    t1 = Math.min(num(t1), e);
+    if (t1 - t0 < MIN_LEN) return { clips: clips.map(copy), mid_id: "" };
+    const xf = Math.max(0, num(xfade));
+    const h = xf / 2;
+    const hasB = t0 - s >= MIN_LEN;
+    const hasA = e - t1 >= MIN_LEN;
+    let sb = "", sm = "", sa = "";
+    if (sid) {
+      sb = sid;
+      sm = hasB ? gen("s") : sid;
+      sa = hasA ? gen("s") : sid;
+    }
+    const befores = [], mids = [], afters = [];
+    let midId = "";
+    for (const m of members) {
+      const [ms, me] = clipBounds(m);
+      const isAct = m.id === actId;
+      const first = [m.id];
+      const nid = () => (first.length ? first.pop() : gen("c"));
+      if (hasB) {
+        const b = withFx(setFade(trimEnd(m, Math.min(me, t0 + h)), m.fade_in, xf));
+        b.id = nid();
+        if (sid) { b.stack_id = sb; b.stack_active = !!m.stack_active; }
+        befores.push(b);
+      }
+      let md = m;
+      if (hasA) md = trimEnd(md, Math.min(me, t1 + h));
+      if (hasB) md = trimStart(md, Math.max(ms, t0 - h));
+      md = withFx(setFade(md, hasB ? xf : m.fade_in, hasA ? xf : m.fade_out));
+      md.id = nid();
+      if (sid) { md.stack_id = sm; md.stack_active = !!m.stack_active; }
+      if (isAct) {
+        midId = md.id;
+        if (fx !== null && fx !== undefined) md.fx = fxCopy(fx);
+      }
+      mids.push(md);
+      if (hasA) {
+        const a = withFx(setFade(trimStart(m, Math.max(ms, t1 - h)), xf, m.fade_out));
+        a.id = nid();
+        if (sid) { a.stack_id = sa; a.stack_active = !!m.stack_active; }
+        afters.push(a);
+      }
+    }
+    const old = new Set(members.map((c) => c.id));
+    const firstI = Math.min(...members.map((c) => find(clips, c.id)));
+    const rest = clips.filter((c) => !old.has(c.id)).map(copy);
+    const out = rest.slice(0, firstI).concat(befores, mids, afters, rest.slice(firstI));
+    return { clips: dissolveSingletons(out), mid_id: midId };
+  }
+
+  function applyFxToStack(clips, clipId) {
+    const out = clips.map(copy);
+    const i = find(out, clipId);
+    if (i < 0 || !out[i].stack_id) return out;
+    const src = out[i];
+    for (const c of out) {
+      if (c.stack_id === src.stack_id && c.id !== src.id) { c.fx = fxCopy(src.fx); c.skip_track_fx = !!src.skip_track_fx; }
+    }
+    return out;
+  }
+
   root.BeatClips = {
     XFADE, newStackId, stackMembers, stackActiveId, stackSetActive, isAudibleMember, stackView, stackPush, stackRemove,
     stack_members: stackMembers, stack_active_id: stackActiveId, stack_set_active: stackSetActive,
@@ -233,5 +316,7 @@
     // Python adlariyla esdeger takma adlar (esdeger testi icin)
     clip_len: clipLen, clip_bounds: clipBounds, snap_time: snapTime, trim_start: trimStart,
     trim_end: trimEnd, set_fade: setFade, track_end: trackEnd,
+    // R4
+    hasClipFx, regionSplit, applyFxToStack, has_clip_fx: hasClipFx, region_split: regionSplit, apply_fx_to_stack: applyFxToStack,
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -7,13 +7,14 @@ import math
 import os
 import re
 import subprocess
+import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
 from app import paths
-from app.core import beat_clips, beat_transport, kami_beat
+from app.core import beat_clips, beat_fx, beat_transport, kami_beat
 
 log = logging.getLogger(__name__)
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -446,73 +447,17 @@ def waveform_tile(path: str, rate: int = 64, index: int = 0, size: int = 2048) -
 
 
 def apply_fx_chain(in_path: str, out_path: str, fx_list: list[dict[str, Any]], use_denoise: bool = False) -> dict[str, Any]:
-    """Ses dosyasina AI gurultu temizleme + pedalboard DSP + VST3 eklenti zinciri uygular."""
+    """Ses dosyasina gurultu temizleme + pedalboard DSP + VST3 eklenti zinciri uygular (R4: beat_fx.process;
+    pedalboard yoksa zarif yedek: yalniz birebir yapilabilen efektler, digerleri atlanir)."""
     if not in_path or not os.path.isfile(in_path):
         return {"ok": False, "error": "input_not_found"}
     try:
         data, sr = _read_audio_np(in_path, 48000)
-        if use_denoise:   # v2.5.3: noisereduce scipy ister (pakette yok) -> ffmpeg afftdn (spektral gurultu azaltma)
-            data = _ffmpeg_denoise(data, sr)
-
-        import pedalboard as pb
-        plugins: list[Any] = []
-        for fx in fx_list or []:
-            if fx.get("bypass"):
-                continue
-            t = str(fx.get("type") or "").lower()
-            try:
-                if t == "vst3":
-                    vp = str(fx.get("path") or "")
-                    if vp and os.path.exists(vp):
-                        plugins.append(pb.load_plugin(vp))
-                elif t == "noisegate":
-                    plugins.append(pb.NoiseGate(threshold_db=float(fx.get("threshold_db", -42)), ratio=float(fx.get("ratio", 6))))
-                elif t == "highpass":
-                    plugins.append(pb.HighpassFilter(cutoff_frequency_hz=float(fx.get("cutoff_hz", 90))))
-                elif t == "lowpass":
-                    plugins.append(pb.LowpassFilter(cutoff_frequency_hz=float(fx.get("cutoff_hz", 12000))))
-                elif t == "peak":
-                    plugins.append(pb.PeakFilter(cutoff_frequency_hz=float(fx.get("cutoff_hz", 1000)), gain_db=float(fx.get("gain_db", 0)), q=float(fx.get("q", 1.0))))
-                elif t == "deesser":
-                    plugins.append(pb.PeakFilter(cutoff_frequency_hz=float(fx.get("freq_hz", 6800)), gain_db=float(fx.get("gain_db", -4.0)), q=2.2))
-                elif t == "compressor":
-                    plugins.append(pb.Compressor(
-                        threshold_db=float(fx.get("threshold_db", -18)),
-                        ratio=float(fx.get("ratio", 4.0)),
-                        attack_ms=float(fx.get("attack_ms", 8.0)),
-                        release_ms=float(fx.get("release_ms", 85.0)),
-                    ))
-                elif t == "distortion":
-                    plugins.append(pb.Distortion(drive_db=float(fx.get("drive_db", 3.0))))
-                elif t == "delay":
-                    plugins.append(pb.Delay(
-                        delay_seconds=float(fx.get("delay_seconds", 0.25)),
-                        feedback=float(fx.get("feedback", 0.2)),
-                        mix=float(fx.get("mix", 0.15)),
-                    ))
-                elif t == "reverb":
-                    plugins.append(pb.Reverb(
-                        room_size=float(fx.get("room_size", 0.25)),
-                        wet_level=float(fx.get("wet_level", 0.12)),
-                        dry_level=float(fx.get("dry_level", 0.9)),
-                    ))
-                elif t == "gain":
-                    plugins.append(pb.Gain(gain_db=float(fx.get("gain_db", 0.0))))
-                elif t == "limiter":
-                    plugins.append(pb.Limiter(threshold_db=float(fx.get("threshold_db", -1.0))))
-            except Exception:
-                log.debug("FX dugumu eklenemedi: %s", fx, exc_info=True)
-
-        if plugins:
-            board = pb.Pedalboard(plugins)
-            # pedalboard (channels, samples) bekler
-            processed = board(data.T, sr).T
-        else:
-            processed = data
-
+        processed, info = beat_fx.process(data, sr, fx_list, denoise=use_denoise, denoise_fn=_ffmpeg_denoise)
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
         _write_wav_np(out_path, processed, sr)
-        return {"ok": True, "path": out_path, "fx_count": len(plugins)}
+        return {"ok": True, "path": out_path, "fx_count": info["applied"], "engine": info["engine"],
+                "skipped": info["skipped"]}
     except Exception as exc:
         log.exception("apply_fx_chain hatasi")
         return {"ok": False, "error": str(exc)[:160]}
@@ -888,6 +833,258 @@ def render_track_clips(clips: list[dict[str, Any]], sr: int = 48000, cache: dict
     return out
 
 
+# ---------------- Revize 4: tek kaynak kanal render'i (bounce + efektli onizleme) ----------------
+PREVIEW_PREROLL = 1.0            # sn: pencereli render'da durumlu efektler (kompresor/reverb) isinsin diye on-isleme
+PREVIEW_MAX_BYTES = 500 * 1024 * 1024
+PREVIEW_MAX_DUR = 120.0
+
+
+def _clip_env(c: dict[str, Any], n: int, sr: int):
+    """Klip zarfi (gain + dogrusal fade), render_track_clips ile birebir ayni."""
+    import numpy as np
+    g = 10.0 ** (float(c.get("gain_db") or 0.0) / 20.0)
+    env = np.full(n, g, dtype="float32")
+    fi = min(n, int(round(c["fade_in"] * sr)))
+    fo = min(n - fi, int(round(c["fade_out"] * sr)))
+    if fi > 0:
+        env[:fi] *= np.linspace(0.0, 1.0, fi, endpoint=False, dtype="float32")
+    if fo > 0:
+        env[n - fo:] *= np.linspace(1.0, 0.0, fo, endpoint=True, dtype="float32")
+    return env
+
+
+def track_has_fx(tr: dict[str, Any], t0: float = 0.0, t1: float | None = None) -> bool:
+    """Kanalda (ya da [t0, t1) araligindaki kliplerde) duyulan bir efekt var mi."""
+    if beat_fx.active_fx(tr.get("fx")) or tr.get("denoise"):
+        return True
+    for raw in beat_clips.stack_view(list(tr.get("clips") or [])):
+        s, e = beat_clips.clip_bounds(raw)
+        if e <= t0 or (t1 is not None and s >= t1) or raw.get("muted"):
+            continue
+        if beat_fx.active_fx(raw.get("fx")):
+            return True
+    return False
+
+
+def render_track_audio(tr: dict[str, Any], sr: int = 48000, cache: dict[str, Any] | None = None,
+                       t0: float = 0.0, t1: float | None = None, preroll: float | None = None,
+                       info: dict[str, Any] | None = None):
+    """Kanalin TEK render yolu (bounce ve efektli onizleme ayni fonksiyonu kullanir -> ayni duyulur).
+    Sira: klip kaynagi -> klip fx (klibin kendi zinciri) -> klip zarfi (gain + fade) -> klipler toplanir
+    -> kanal fx (+ denoise; 'skip_track_fx' klipler bu adimi atlar) . Ses seviyesi/pan/master cagiranda.
+    Pencere [t0, t1): t1 None ise kanalin sonuna kadar. Pencereli render'da efektler pencereden `preroll`
+    sn once baslatilip kirpilir (durumlu efektler isinsin). Dondurur: (N,2) float32, N = pencere uzunlugu."""
+    import numpy as np
+    cache = {} if cache is None else cache
+    info = {} if info is None else info
+    info.setdefault("skipped", [])
+    info.setdefault("engine", "none")
+    windowed = t0 > 0 or t1 is not None
+    pre = int(round((PREVIEW_PREROLL if preroll is None else max(0.0, float(preroll))) * sr)) if windowed else 0
+    w0 = max(0, int(round(max(0.0, float(t0)) * sr)))
+    p0 = max(0, w0 - pre)
+    w1 = None if t1 is None else max(w0, int(round(float(t1) * sr)))
+    items = []
+    for raw in beat_clips.stack_view(list(tr.get("clips") or [])):   # 1b: destede yalniz aktif take duyulur
+        c = beat_clips.normalize(raw)
+        if c.get("muted") or not c["path"]:
+            continue
+        src = cache.get(c["path"])
+        if src is None:
+            if not os.path.isfile(c["path"]):
+                continue
+            try:
+                src, _ = _read_audio_np(c["path"], sr)
+            except Exception:
+                log.warning("Beat: klip kaynagi okunamadi: %s", c["path"], exc_info=True)
+                continue
+            cache[c["path"]] = src
+        a = int(round(c["src_in"] * sr))
+        b = min(int(round(c["src_out"] * sr)), len(src))
+        if b <= a:
+            continue
+        items.append((c, src, a, b - a, int(round(c["start"] * sr))))
+    end = max([off + n for _, _, _, n, off in items] or [0])
+    if w1 is None:
+        w1 = max(end, w0)
+    length = w1 - p0
+    through = np.zeros((max(0, length), 2), dtype="float32")
+    skip = None
+    for c, src, a, n, off in items:
+        lo, hi = max(off, p0), min(off + n, w1)
+        if hi <= lo:
+            continue
+        cfx = beat_fx.active_fx(c.get("fx"))
+        if cfx:
+            plo = max(off, lo - pre) if windowed else off
+            seg = src[a + (plo - off): a + (hi - off)].astype("float32", copy=True)
+            seg, ci = beat_fx.process(seg, sr, cfx)
+            info["skipped"] += ci["skipped"]
+            if ci["engine"] != "none":
+                info["engine"] = ci["engine"]
+            seg = seg[lo - plo:]
+        else:
+            seg = src[a + (lo - off): a + (hi - off)].astype("float32", copy=True)
+        seg *= _clip_env(c, n, sr)[lo - off: hi - off, None]
+        if c.get("skip_track_fx"):
+            if skip is None:
+                skip = np.zeros_like(through)
+            skip[lo - p0: hi - p0] += seg
+        else:
+            through[lo - p0: hi - p0] += seg
+    tfx = tr.get("fx") or []
+    if (beat_fx.active_fx(tfx) or tr.get("denoise")) and len(through):
+        through, ti = beat_fx.process(through, sr, tfx, denoise=bool(tr.get("denoise")), denoise_fn=_ffmpeg_denoise)
+        info["skipped"] += ti["skipped"]
+        if ti["engine"] != "none":
+            info["engine"] = ti["engine"]
+    if skip is not None:
+        through = through + skip
+    return np.ascontiguousarray(through[w0 - p0:], dtype="float32")
+
+
+def preview_dir() -> Path:
+    d = recordings_dir() / "_mix_tmp" / "preview"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _file_sig(path: str) -> list[Any]:
+    try:
+        st = os.stat(path)
+        return [path, int(st.st_size), round(st.st_mtime, 3)]
+    except OSError:
+        return [path, 0, 0]
+
+
+def preview_window(start: float, dur: float, clip: dict[str, Any] | None = None,
+                   loop: dict[str, Any] | None = None) -> tuple[float, float]:
+    """Onizleme penceresi: calma konumundan dur sn; dongu aciksa ve konum dongu icindeyse dongu bolgesi
+    (konum dongu oncesindeyse konumdan dongu sonuna); klip verilirse klibin araligiyla kesisim."""
+    t0 = max(0.0, float(start or 0.0))
+    d = max(0.5, min(PREVIEW_MAX_DUR, float(dur or 15.0)))
+    t1 = t0 + d
+    if loop and loop.get("on"):
+        a, b = float(loop.get("start") or 0.0), float(loop.get("end") or 0.0)
+        if b - a >= 0.05 and t0 < b:
+            if t0 >= a:                      # konum dongu icinde: tum dongu bolgesi (motor a..b'yi doner)
+                t0 = a
+            t1 = min(b, t0 + PREVIEW_MAX_DUR)
+    if clip:
+        s, e = beat_clips.clip_bounds(clip)
+        if t1 <= s or t0 >= e:
+            t0, t1 = s, min(e, s + d)
+        else:
+            t0, t1 = max(t0, s), min(t1, e)
+    return round(t0, 6), round(max(t0 + 0.05, t1), 6)
+
+
+def preview_key(tr: dict[str, Any], t0: float, t1: float, sr: int = 48000, preroll: float = PREVIEW_PREROLL) -> str:
+    """Onbellek anahtari: pencereye (on-isleme dahil) dokunan kliplerin kaynak dosyasi (boyut/mtime),
+    src_in/out, konum, zarf, klip fx ozeti + kanal fx zinciri ozeti + pencere."""
+    import hashlib
+    lo = t0 - preroll
+    parts = []
+    for raw in beat_clips.stack_view(list(tr.get("clips") or [])):
+        c = beat_clips.normalize(raw)
+        s, e = beat_clips.clip_bounds(c)
+        if c.get("muted") or not c["path"] or e <= lo or s >= t1:
+            continue
+        parts.append([_file_sig(c["path"]), c["src_in"], c["src_out"], c["start"], c["gain_db"], c["fade_in"],
+                      c["fade_out"], beat_fx.chain_hash(c.get("fx")), bool(c.get("skip_track_fx"))])
+    raw_key = json.dumps({"c": parts, "fx": beat_fx.chain_hash(tr.get("fx"), bool(tr.get("denoise"))),
+                          "w": [round(t0, 3), round(t1, 3)], "sr": sr, "pre": preroll}, sort_keys=True, default=str)
+    return hashlib.sha1(raw_key.encode("utf-8")).hexdigest()[:20]
+
+
+def prune_preview_cache(max_bytes: int = PREVIEW_MAX_BYTES, keep: str = "") -> int:
+    """Onizleme onbellegi boyut siniri: en eski (mtime) dosyalar silinir. Silinen dosya sayisi."""
+    d = preview_dir()
+    files = []
+    for f in d.glob("*.wav"):
+        try:
+            st = f.stat()
+            files.append((st.st_mtime, st.st_size, f))
+        except OSError:
+            continue
+    total = sum(sz for _, sz, _ in files)
+    removed = 0
+    for _, sz, f in sorted(files, key=lambda x: x[0]):
+        if total <= max_bytes:
+            break
+        if f.name == keep:
+            continue
+        try:
+            f.unlink()
+            total -= sz
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+_PREVIEW_GEN: dict[tuple[str, str], int] = {}
+_PREVIEW_LOCK = threading.Lock()
+_PREVIEW_SEM = threading.BoundedSemaphore(2)
+
+
+def preview_render(pid: str, track_id: str, start: float = 0.0, dur: float = 15.0, clip_id: str = "",
+                   track: dict[str, Any] | None = None, loop: dict[str, Any] | None = None,
+                   sr: int = 48000) -> dict[str, Any]:
+    """Efektli onizleme: kanalin (veya klibin) penceresini bounce ile AYNI render yoluyla isleyip gecici WAV
+    dondurur. track verilirse (arayuzun kaydedilmemis guncel hali) o kullanilir, yoksa projeden okunur.
+    Ayni kanal icin daha yeni istek geldiyse sirada bekleyen eski istek islenmeden 'superseded' doner."""
+    tr = track if isinstance(track, dict) else None
+    if tr is None or loop is None:
+        ld = load_project(pid) if pid else {"ok": False}
+        if tr is None:
+            if not ld.get("ok"):
+                return ld if ld.get("error") else {"ok": False, "error": "project_not_found"}
+            tr = next((t for t in ld["project"].get("tracks", []) if t.get("id") == track_id), None)
+            if tr is None:
+                return {"ok": False, "error": "track_not_found"}
+        if loop is None and ld.get("ok"):
+            loop = ld["project"].get("loop")
+    clip = None
+    if clip_id:
+        clip = next((c for c in tr.get("clips") or [] if c.get("id") == clip_id), None)
+        if clip is None:
+            return {"ok": False, "error": "clip_not_found"}
+    t0, t1 = preview_window(start, dur, clip, loop)
+    if not track_has_fx(tr, t0 - PREVIEW_PREROLL, t1):
+        return {"ok": True, "dry": True, "t0": t0, "t1": t1}
+    key = preview_key(tr, t0, t1, sr)
+    out = preview_dir() / f"{key}.wav"
+    if out.is_file():
+        try:
+            os.utime(out, None)
+        except OSError:
+            pass
+        return {"ok": True, "path": str(out), "t0": t0, "t1": t1, "sr": sr, "cached": True, "key": key}
+    gk = (str(pid or ""), str(track_id or ""))
+    with _PREVIEW_LOCK:
+        gen = _PREVIEW_GEN.get(gk, 0) + 1
+        _PREVIEW_GEN[gk] = gen
+    with _PREVIEW_SEM:
+        with _PREVIEW_LOCK:
+            if _PREVIEW_GEN.get(gk) != gen:
+                return {"ok": False, "error": "superseded"}
+        tm = time.monotonic()
+        info: dict[str, Any] = {}
+        try:
+            data = render_track_audio(tr, sr, None, t0, t1, PREVIEW_PREROLL, info)
+            tmp = out.with_suffix(".part.wav")
+            _write_wav_np(str(tmp), data, sr)
+            os.replace(tmp, out)
+        except Exception as exc:
+            log.warning("Onizleme render hatasi", exc_info=True)
+            return {"ok": False, "error": str(exc)[:160]}
+    prune_preview_cache(keep=out.name)
+    return {"ok": True, "path": str(out), "t0": t0, "t1": t1, "sr": sr, "cached": False, "key": key,
+            "engine": info.get("engine"), "skipped": sorted(set(info.get("skipped") or [])),
+            "ms": int((time.monotonic() - tm) * 1000), "fx_available": beat_fx.available()}
+
+
 # Revize R2: genel (kalici) gecikme ayari. Api, settings.beat_latency_ms okuyan bir fonksiyon baglar;
 # bagli degilse (testler, MCP) 0 kabul edilir.
 _GLOBAL_LATENCY_GETTER = None
@@ -1035,6 +1232,7 @@ def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> 
     tmp_dir = recordings_dir() / "_mix_tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     src_cache: dict[str, Any] = {}
+    fx_info: dict[str, Any] = {}
 
     for tr in tracks:
         if tr.get("mute") or (has_solo and not tr.get("solo")):
@@ -1042,17 +1240,10 @@ def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> 
         fx = tr.get("fx") or []
         denoise = bool(tr.get("denoise"))
         if isinstance(tr.get("clips"), list):
-            # v2: klip tabanli - once klipler birlestirilir, FX zinciri kanal basina BIR kez calisir
-            data = render_track_clips(tr["clips"], sr, src_cache)
+            # R4: klip fx -> klipler birlestirilir -> kanal fx (onizleme ile ayni tek render yolu)
+            data = render_track_audio(tr, sr, src_cache, info=fx_info)
             if not len(data):
                 continue
-            if fx or denoise:
-                raw_p = str(tmp_dir / f"{pid}_{tr['id']}_clips.wav")
-                proc_p = str(tmp_dir / f"{pid}_{tr['id']}.wav")
-                _write_wav_np(raw_p, data, sr)
-                res = apply_fx_chain(raw_p, proc_p, fx, use_denoise=denoise)
-                if res.get("ok"):
-                    data, _ = _read_audio_np(proc_p, sr)
             max_len = max(max_len, len(data))
             rendered_tracks.append((data, {"offset": 0, "tr": tr}))
             continue
@@ -1124,7 +1315,8 @@ def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> 
     proj["last_mixdown"] = out_path
     save_project(proj)
     lufs_info = measure_lufs(out_path)
-    return {"ok": True, "path": out_path, "lufs": lufs_info.get("lufs"), "peak_db": lufs_info.get("peak_db"), "duration": lufs_info.get("duration")}
+    return {"ok": True, "path": out_path, "lufs": lufs_info.get("lufs"), "peak_db": lufs_info.get("peak_db"), "duration": lufs_info.get("duration"),
+            "fx_skipped": sorted(set(fx_info.get("skipped") or []))}
 
 
 def bounce(pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:

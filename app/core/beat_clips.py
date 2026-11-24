@@ -139,6 +139,8 @@ def split(clips: list[dict[str, Any]], clip_id: str, t: float, new_id: str | Non
     right["src_in"] = cut
     right["start"] = r6(t)
     right["fade_in"] = 0.0
+    _with_fx(left)
+    _with_fx(right)   # R4: klip fx zinciri parcalar arasinda paylasilmaz (derin kopya)
     out[i] = _clamp_fades(left)
     out.insert(i + 1, _clamp_fades(right))
     return out
@@ -191,7 +193,7 @@ def duplicate(clips: list[dict[str, Any]], clip_id: str, new_id: str | None = No
     i = _find(out, clip_id)
     if i < 0:
         return out
-    c = dict(out[i])
+    c = _with_fx(dict(out[i]))
     c["id"] = new_id or _new_id()
     c["start"] = clip_bounds(out[i])[1]
     out.insert(i + 1, c)
@@ -385,3 +387,121 @@ def punch_in(clips: list[dict[str, Any]], clip_id: str, t0: float, t1: float, pu
     rest = [dict(c) for c in clips if c.get("id") not in ids_old]
     out = rest[:first] + befores + mids + afters + rest[first:]
     return _dissolve_singletons(out)
+
+
+# ---------------- Revize 4: klip / bolge efekti ----------------
+def _fx_copy(fx: Any) -> list[dict[str, Any]]:
+    """Klip fx zincirinin derin kopyasi (bolunen parcalar ayni listeyi paylasmasin)."""
+    out = []
+    for f in fx or []:
+        if isinstance(f, dict):
+            d = dict(f)
+            if isinstance(d.get("params"), dict):
+                d["params"] = dict(d["params"])
+            out.append(d)
+    return out
+
+
+def _with_fx(c: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(c.get("fx"), list):
+        c["fx"] = _fx_copy(c["fx"])
+    return c
+
+
+def has_clip_fx(clip: dict[str, Any]) -> bool:
+    """Klibin duyulan (bypass'siz) kendi efekti var mi ya da kanal efektini atliyor mu (rozet)."""
+    return any(isinstance(f, dict) and not f.get("bypass") for f in (clip.get("fx") or [])) or bool(clip.get("skip_track_fx"))
+
+
+def region_split(clips: list[dict[str, Any]], clip_id: str, t0: float, t1: float, xfade: float = XFADE,
+                 ids: Any = None, fx: Any = None) -> dict[str, Any]:
+    """'Bu bolgeye efekt': hedef klip (destesiyse tum uyeleri) t0/t1'den once / orta / sonra olarak bolunur.
+    Sinirlarda xfade capraz gecis (punch_in ile ayni geometri: onceki parca t0+xf/2'ye uzar ve fade-out alir,
+    orta parca t0-xf/2'den baslar ve fade-in alir; t1 simetrik). Ayni kaynak sesin dogrusal capraz gecisi
+    toplamda birim kazanc oldugundan efektsiz halde duyulan ses degismez.
+    Tum parcalar ozgun klibin fx zincirini (derin kopya) tasir; fx verilirse ortadaki AKTIF parcaya o atanir.
+    ids: liste (sirayla tuketilir) ya da cagrilabilir(kind) -> belirlenebilir kimlik (JS esdegerlik testi).
+    Dondurur: {clips, mid_id} (bolunemediyse mid_id = '')."""
+    if isinstance(ids, list):
+        pool = list(ids)
+
+        def gen(kind):
+            return pool.pop(0) if pool else (new_stack_id() if kind == "s" else _new_id())
+    else:
+        gen = ids or (lambda kind: (new_stack_id() if kind == "s" else _new_id()))
+    i = _find(clips, clip_id)
+    if i < 0:
+        return {"clips": [dict(c) for c in clips], "mid_id": ""}
+    target = clips[i]
+    sid = target.get("stack_id")
+    members = [c for c in clips if c.get("stack_id") == sid] if sid else [target]
+    act_id = stack_active_id(clips, sid) if sid else target.get("id")
+    act = next((c for c in members if c.get("id") == act_id), target)
+    s, e = clip_bounds(act)
+    t0 = max(_num(t0), s)
+    t1 = min(_num(t1), e)
+    if t1 - t0 < MIN_LEN:
+        return {"clips": [dict(c) for c in clips], "mid_id": ""}
+    xf = max(0.0, _num(xfade))
+    h = xf / 2.0
+    has_b = t0 - s >= MIN_LEN
+    has_a = e - t1 >= MIN_LEN
+    sb = sm = sa = ""
+    if sid:
+        sb = sid
+        sm = gen("s") if has_b else sid
+        sa = gen("s") if has_a else sid
+    befores, mids, afters = [], [], []
+    mid_id = ""
+    for m in members:
+        ms, me = clip_bounds(m)
+        is_act = m.get("id") == act_id
+        first = [m.get("id")]
+
+        def nid():
+            return first.pop() if first else gen("c")
+        if has_b:
+            b = _with_fx(set_fade(trim_end(m, min(me, t0 + h)), m.get("fade_in"), xf))
+            b["id"] = nid()
+            if sid:
+                b["stack_id"], b["stack_active"] = sb, bool(m.get("stack_active"))
+            befores.append(b)
+        md = m
+        if has_a:
+            md = trim_end(md, min(me, t1 + h))
+        if has_b:
+            md = trim_start(md, max(ms, t0 - h))
+        md = _with_fx(set_fade(md, xf if has_b else m.get("fade_in"), xf if has_a else m.get("fade_out")))
+        md["id"] = nid()
+        if sid:
+            md["stack_id"], md["stack_active"] = sm, bool(m.get("stack_active"))
+        if is_act:
+            mid_id = md["id"]
+            if fx is not None:
+                md["fx"] = _fx_copy(fx)
+        mids.append(md)
+        if has_a:
+            a = _with_fx(set_fade(trim_start(m, max(ms, t1 - h)), xf, m.get("fade_out")))
+            a["id"] = nid()
+            if sid:
+                a["stack_id"], a["stack_active"] = sa, bool(m.get("stack_active"))
+            afters.append(a)
+    ids_old = {c.get("id") for c in members}
+    first_i = min(_find(clips, c.get("id")) for c in members)
+    rest = [dict(c) for c in clips if c.get("id") not in ids_old]
+    out = rest[:first_i] + befores + mids + afters + rest[first_i:]
+    return {"clips": _dissolve_singletons(out), "mid_id": mid_id}
+
+
+def apply_fx_to_stack(clips: list[dict[str, Any]], clip_id: str) -> list[dict[str, Any]]:
+    """'Tum desteye uygula': klibin fx zinciri + skip_track_fx destedeki tum take'lere kopyalanir."""
+    out = [dict(c) for c in clips]
+    i = _find(out, clip_id)
+    if i < 0 or not out[i].get("stack_id"):
+        return out
+    src = out[i]
+    for c in out:
+        if c.get("stack_id") == src.get("stack_id") and c.get("id") != src.get("id"):
+            c["fx"] = _fx_copy(src.get("fx"))
+            c["skip_track_fx"] = bool(src.get("skip_track_fx"))
+    return out
