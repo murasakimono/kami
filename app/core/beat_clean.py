@@ -588,8 +588,51 @@ def detect_clicks(data, sr: int = SR, strength: float = 50.0) -> list[tuple[int,
     return [(max(2, s0 - 2), min(n - 2, e0 + 2)) for s0, e0 in out if e0 - s0 <= maxlen and min(n - 2, e0 + 2) > max(2, s0 - 2)]
 
 
+AR_ORDER = 32
+AR_CTX = 768
+
+
+def _ar_predict(ctx, order: int, steps: int):
+    """ctx'e (en yeni ornek sonda) AR(order) uydurup steps ornek ileri tahmin. Uydurulamazsa None."""
+    import numpy as np
+    x = np.asarray(ctx, dtype="float64")
+    if len(x) < order * 3 or steps <= 0:
+        return None
+    A = np.lib.stride_tricks.sliding_window_view(x[:-1], order)[:, ::-1]
+    y = x[order:]
+    try:
+        coef, *_ = np.linalg.lstsq(A, y, rcond=None)
+    except Exception:
+        return None
+    hist = list(x[-order:][::-1])
+    out = np.empty(steps)
+    for i in range(steps):
+        v = float(np.dot(coef, hist))
+        out[i] = v
+        hist.insert(0, v)
+        hist.pop()
+    peak = float(np.max(np.abs(x))) * 1.5 + 1e-6
+    return np.clip(out, -peak, peak)
+
+
+def _ar_fill(col, p0: int, p1: int):
+    """[p0+1, p1) boslugunu sol baglamdan ileri ve sag baglamdan geri AR tahmini ile, kosinus gecisle doldurur."""
+    import numpy as np
+    L = p1 - p0 - 1
+    left = col[max(0, p0 + 1 - AR_CTX):p0 + 1]
+    right = col[p1:p1 + AR_CTX][::-1]
+    order = min(AR_ORDER, max(4, min(len(left), len(right)) // 4))
+    f = _ar_predict(left, order, L)
+    b = _ar_predict(right, order, L)
+    if f is None or b is None:
+        return None
+    w = 0.5 - 0.5 * np.cos(np.pi * (np.arange(1, L + 1) / (L + 1)))
+    return (f * (1.0 - w) + b[::-1] * w).astype("float32")
+
+
 def declick(data, sr: int = SR, strength: float = 50.0, events: list[tuple[int, int]] | None = None):
-    """Tik araliklarini kubik Hermite ile doldurur (uc noktalar + egimler korunur). Diger ornekler birebir."""
+    """Tik araliklarini doldurur: kisa olanlar kubik Hermite (uc noktalar + egimler), 16 ornekten uzunlar
+    (smack) AR tahmini (ileri + geri, kosinus gecis; olmazsa Hermite). Diger ornekler birebir."""
     import numpy as np
     a = np.array(data, dtype="float32", copy=True)
     two = a.ndim == 2
@@ -600,6 +643,12 @@ def declick(data, sr: int = SR, strength: float = 50.0, events: list[tuple[int, 
     for s0, e0 in ev:
         p0, p1 = s0 - 1, e0                     # degismeyen uc ornekler
         L = p1 - p0
+        if L > 16:
+            fills = [_ar_fill(a[:, ch], p0, p1) for ch in range(a.shape[1])]
+            if all(fl is not None for fl in fills):
+                for ch, fl in enumerate(fills):
+                    a[p0 + 1:p1, ch] = fl
+                continue
         q = max(1, min(16, L // 8))             # egim, uc noktanin q ornek komsulugundan (uzun boslukta tiz buyumesin)
         if p0 < q or p1 > n - 1 - q:
             continue

@@ -129,6 +129,7 @@ class Api(StudioMixin, EnhanceMixin):
         "kasa_index_media", "lyrics_word_sync",
         "mpv_install", "mix_autodj", "music_tag_fetch_cover", "music_tag_auto_apply", "player_replaygain",
         "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_analyze_sections", "beat_mic_test", "beat_find_lyric_start", "beat_apply_fx", "beat_preview_render", "beat_vst_editor", "beat_vst_params", "beat_reference_analyze", "beat_style_resolve", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
+        "beat_clean_analyze", "beat_clean_apply", "beat_clean_model_install", "beat_buses_default",  # Kami Beat 2b
         "enhance_preview_split", "enhance_batch_start", "pic_tarif_run",
         "games_hltb_real", "games_pcgamingwiki", "games_mod_install", "games_ocr_translate",
         "oracle_relay_ping", "oracle_relay_pull",
@@ -6716,13 +6717,50 @@ class Api(StudioMixin, EnhanceMixin):
                 "vst_top": beat_fx.VST_PARAM_TOP}
 
     def beat_preview_render(self, pid: str, track_id: str, start: float = 0.0, dur: float = 15.0,
-                            clip_id: str = "", track: dict | None = None, loop: dict | None = None) -> dict[str, Any]:
+                            clip_id: str = "", track: dict | None = None, loop: dict | None = None,
+                            ctx: dict | None = None) -> dict[str, Any]:
         """Efektli onizleme penceresi (bounce ile ayni render yolu). pywebview her cagriyi ayri is parcaciginda
-        calistirdigi icin arayuz beklemez; job_start ile de cagrilabilir. Donen WAV beat_media_url ile acilir."""
+        calistirdigi icin arayuz beklemez; job_start ile de cagrilabilir. Donen WAV beat_media_url ile acilir.
+        2b: ctx = {tracks, buses, bpm} (send'li kanalda bus katkisi bus_path; beat'te vokale yer acma)."""
         from app.core import beat_studio
         return beat_studio.preview_render(str(pid or ""), str(track_id or ""), float(start or 0.0), float(dur or 15.0),
                                           str(clip_id or ""), track if isinstance(track, dict) else None,
-                                          loop if isinstance(loop, dict) else None)
+                                          loop if isinstance(loop, dict) else None,
+                                          ctx=ctx if isinstance(ctx, dict) else None)
+
+    # ---- Asama 2b: otomatik temizlik, bus'lar ----
+    def beat_clean_analyze(self, path: str) -> dict[str, Any]:
+        """Temizlik onerisi (gurultu tabani, nefes bolgeleri, tik sayisi) — arka plan isi."""
+        from app.core import beat_clean
+        return beat_clean.analyze(str(path or ""))
+
+    def beat_clean_apply(self, path: str, settings: dict | None = None) -> dict[str, Any]:
+        """Temizlik dosyasini uretir (_clean/ altinda; ham dosya degismez) — arka plan isi, ilerleme
+        beat_clean_progress ile."""
+        from app.core import beat_clean
+        res = beat_clean.apply(str(path or ""), settings if isinstance(settings, dict) else {})
+        if res.get("ok"):
+            res["clean"] = beat_clean.clip_clean_field(str(path or ""), res.get("settings") or {}, res)
+        return res
+
+    def beat_clean_progress(self) -> dict[str, Any]:
+        from app.core import beat_clean
+        return beat_clean.progress()
+
+    def beat_clean_model_info(self) -> dict[str, Any]:
+        """Gelismis temizlik modeli (resemble-enhance): boyut, kaynak, lisans, kurulu mu."""
+        from app.core import beat_clean
+        return beat_clean.model_info()
+
+    def beat_clean_model_install(self, confirm: bool = False) -> dict[str, Any]:
+        """YALNIZ kullanicinin "Gelismis temizlik modelini indir" dugmesiyle (confirm=True) — arka plan isi."""
+        from app.core import beat_clean
+        return beat_clean.install_model(bool(confirm))
+
+    def beat_buses_default(self, bpm: float = 0.0) -> dict[str, Any]:
+        """Varsayilan Reverb/Delay bus'lari (kurulu Supermassive / MDelay tercih, yoksa yerlesik)."""
+        from app.core import beat_mixbus
+        return {"ok": True, "buses": beat_mixbus.default_buses(self._beat_plugins(), float(bpm or 0.0))}
 
     def beat_vst_params(self, path: str, query: str = "", limit: int = 24, refresh: bool = False) -> dict[str, Any]:
         from app.core import beat_fx
@@ -6750,9 +6788,10 @@ class Api(StudioMixin, EnhanceMixin):
         return beat_style.list_presets(self._beat_plugins())
 
     def beat_style_resolve(self, preset_id: str, intensity: float = 50.0, use_vst: bool = True,
-                           bpm: float = 0.0) -> dict[str, Any]:
+                           bpm: float = 0.0, use_sends: bool = False) -> dict[str, Any]:
         from app.core import beat_style
-        return beat_style.resolve(str(preset_id or ""), self._beat_plugins(), float(intensity), bool(use_vst), float(bpm or 0.0))
+        return beat_style.resolve(str(preset_id or ""), self._beat_plugins(), float(intensity), bool(use_vst),
+                                  float(bpm or 0.0), use_sends=bool(use_sends))
 
     def beat_style_suggest(self, tracks: list, main_tid: str, preset_id: str) -> dict[str, Any]:
         from app.core import beat_style

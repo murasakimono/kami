@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from app import paths
-from app.core import beat_clips, beat_fx, beat_transport, kami_beat
+from app.core import beat_clean, beat_clips, beat_fx, beat_mixbus, beat_transport, kami_beat
 
 log = logging.getLogger(__name__)
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -516,6 +516,8 @@ def _default_project(name: str = "Yeni Parça") -> dict[str, Any]:
         "latency_ms": 0.0,
         "sections": [],                                      # 1c: [{id, name, start, end, bars_per_line?}]
         "lyric_times": {"bars_per_line": 1, "anchors": []},  # 1c: teleprompter; anchors=[{line, t, text}]
+        "buses": beat_mixbus.default_buses(None, 120.0),    # 2b: send/bus (api eklenti taramasiyla yeniler)
+        "buses_auto": True,
         "tracks": [
             {
                 "id": "beat",
@@ -722,6 +724,10 @@ def migrate_project(proj: dict[str, Any]) -> bool:
     if not isinstance(proj.get("reference"), dict) and proj.get("reference_path"):   # 2a: eski tek alanli referans
         proj["reference"] = {"path": str(proj["reference_path"]), "gain_db": 0.0, "start": 0.0}
         changed = True
+    if not isinstance(proj.get("buses"), list):          # 2b: varsayilan Reverb/Delay bus'lari (yerlesik)
+        proj["buses"] = beat_mixbus.default_buses(None, float(proj.get("bpm") or 120.0))
+        proj["buses_auto"] = True                         # arayuz eklenti taramasiyla (Supermassive/MDelay) yeniler
+        changed = True
     return changed
 
 
@@ -840,16 +846,17 @@ def render_track_clips(clips: list[dict[str, Any]], sr: int = 48000, cache: dict
         c = beat_clips.normalize(raw)
         if c.get("muted") or not c["path"]:
             continue
-        src = cache.get(c["path"])
+        sp = beat_clean.source_path(c)          # 2b: gecerli temizlik dosyasi varsa o (ham dosya degismez)
+        src = cache.get(sp)
         if src is None:
-            if not os.path.isfile(c["path"]):
+            if not os.path.isfile(sp):
                 continue
             try:
-                src, _ = _read_audio_np(c["path"], sr)
+                src, _ = _read_audio_np(sp, sr)
             except Exception:
-                log.warning("Beat: klip kaynagi okunamadi: %s", c["path"], exc_info=True)
+                log.warning("Beat: klip kaynagi okunamadi: %s", sp, exc_info=True)
                 continue
-            cache[c["path"]] = src
+            cache[sp] = src
         a = int(round(c["src_in"] * sr))
         b = min(int(round(c["src_out"] * sr)), len(src))
         if b <= a:
@@ -963,16 +970,17 @@ def render_track_audio(tr: dict[str, Any], sr: int = 48000, cache: dict[str, Any
         c = beat_clips.normalize(raw)
         if c.get("muted") or not c["path"]:
             continue
-        src = cache.get(c["path"])
+        sp = beat_clean.source_path(c)          # 2b: gecerli temizlik dosyasi varsa o (ham dosya degismez)
+        src = cache.get(sp)
         if src is None:
-            if not os.path.isfile(c["path"]):
+            if not os.path.isfile(sp):
                 continue
             try:
-                src, _ = _read_audio_np(c["path"], sr)
+                src, _ = _read_audio_np(sp, sr)
             except Exception:
-                log.warning("Beat: klip kaynagi okunamadi: %s", c["path"], exc_info=True)
+                log.warning("Beat: klip kaynagi okunamadi: %s", sp, exc_info=True)
                 continue
-            cache[c["path"]] = src
+            cache[sp] = src
         a = int(round(c["src_in"] * sr))
         b = min(int(round(c["src_out"] * sr)), len(src))
         if b <= a:
@@ -1082,7 +1090,7 @@ def preview_key(tr: dict[str, Any], t0: float, t1: float, sr: int = 48000, prero
         s, e = clip_fx_span(c)
         if c.get("muted") or not c["path"] or e <= lo or s >= t1:
             continue
-        parts.append([_file_sig(c["path"]), c["src_in"], c["src_out"], c["start"], c["gain_db"], c["fade_in"],
+        parts.append([_file_sig(beat_clean.source_path(c)), c["src_in"], c["src_out"], c["start"], c["gain_db"], c["fade_in"],
                       c["fade_out"], beat_fx.chain_hash(c.get("fx")), bool(c.get("skip_track_fx")),
                       c.get("pan", 0.0), c.get("tail_sec", 0.0), c.get("head_sec", 0.0)])
     raw_key = json.dumps({"c": parts, "fx": beat_fx.chain_hash(tr.get("fx"), bool(tr.get("denoise"))),
@@ -1143,39 +1151,126 @@ _PREVIEW_LOCK = threading.Lock()
 _PREVIEW_SEM = threading.BoundedSemaphore(2)
 
 
+def _preview_ctx_sig(tr: dict[str, Any], ctx: dict[str, Any], t0: float, t1: float, sr: int) -> list[Any]:
+    """2b: onizlemeyi etkileyen kanal disi durum: post-fader send'ler (surgu + ses otomasyonu, bus fx/ses/mute,
+    BPM) ve vokale yer acma (vokal kanallarinin pencere imzasi + surgu/otomasyon)."""
+    out: list[Any] = []
+    buses = ctx.get("buses") or []
+    sends = beat_mixbus.active_sends(tr, buses)
+    if sends:
+        bl = [b for b in beat_mixbus.normalize_buses(buses) if b["id"] in sends]
+        out.append(["s", sorted((k, round(v, 6)) for k, v in sends.items()), tr.get("volume_db"),
+                    beat_mixbus.normalize_automation(tr.get("automation"))["volume"],
+                    [[b["id"], beat_fx.chain_hash(b["fx"]), b["volume_db"]] for b in bl], float(ctx.get("bpm") or 120.0)])
+    if beat_mixbus.make_room_active(tr):
+        keys = [[k.get("id"), preview_key(k, max(0.0, t0 - beat_mixbus.DUCK_PAD), t1, sr), k.get("volume_db"),
+                 beat_mixbus.normalize_automation(k.get("automation"))["volume"]]
+                for k in vocal_key_tracks(ctx.get("tracks") or [])]
+        out.append(["m", beat_mixbus.normalize_make_room(tr.get("make_room")), keys])
+    return out
+
+
+def preview_needs_render(tr: dict[str, Any], ctx: dict[str, Any] | None, t0: float, t1: float) -> bool:
+    ctx = ctx or {}
+    if track_has_fx(tr, t0 - PREVIEW_PREROLL, t1):
+        return True
+    if beat_mixbus.active_sends(tr, ctx.get("buses") or []):
+        return True
+    return beat_mixbus.make_room_active(tr) and bool(vocal_key_tracks(ctx.get("tracks") or []))
+
+
+def render_track_preview(tr: dict[str, Any], ctx: dict[str, Any], t0: float, t1: float, sr: int = 48000,
+                         cache: dict[str, Any] | None = None, info: dict[str, Any] | None = None):
+    """Efektli onizleme penceresi (bounce ile ayni yollar). Dondurur (ana, bus_donusu|None):
+    ana = kanal render'i (+ vokale yer acma), surgu/pan YOK (Web Audio uygular);
+    bus_donusu = bu kanalin send'lerinin bus fx'ten gecmis katkisi (post-fader, bus ses/mute dahil) -> master."""
+    import numpy as np
+    cache = {} if cache is None else cache
+    info = {} if info is None else info
+    buses = ctx.get("buses") or []
+    sends = beat_mixbus.active_sends(tr, buses)
+    mroom = beat_mixbus.make_room_active(tr)
+    ext = beat_mixbus.BUS_PREROLL if sends else (beat_mixbus.DUCK_PAD if mroom else 0.0)
+    e0 = max(0.0, t0 - ext)
+    e1 = t1 + (beat_mixbus.DUCK_PAD if mroom else 0.0)      # STFT pencere sonu kenari icin
+    data = render_track_audio(tr, sr, cache, e0, e1, PREVIEW_PREROLL, info)
+    a0 = int(round(e0 * sr))
+    if mroom:
+        keys = vocal_key_tracks(ctx.get("tracks") or [])
+        k0 = max(0.0, e0 - PREVIEW_PREROLL)
+        ka = int(round(k0 * sr))
+        key = np.zeros((int(round(e1 * sr)) - ka, 2), dtype="float32")
+        for k in keys:
+            kd = render_track_audio(k, sr, cache, k0, e1, PREVIEW_PREROLL, info)
+            n = min(len(kd), len(key))
+            key[:n] += beat_mixbus.post_fader(kd[:n], k, sr, ka)
+        data = beat_mixbus.duck(data, key, sr, tr.get("make_room"), abs_start=a0, key_abs_start=ka)
+    w = int(round(t0 * sr)) - a0
+    main = np.ascontiguousarray(data[w:w + int(round(t1 * sr)) - int(round(t0 * sr))], dtype="float32")
+    bus_ret = None
+    if sends:
+        acc = {}
+        src = beat_mixbus.post_fader(data, tr, sr, a0)
+        for bid, g in sends.items():
+            acc[bid] = (src * g).astype("float32")
+        out = beat_mixbus.render_buses(acc, buses, sr, float(ctx.get("bpm") or 120.0), info)
+        if out is not None:
+            bus_ret = np.ascontiguousarray(out[w:w + len(main)], dtype="float32")
+    return main, bus_ret
+
+
 def preview_render(pid: str, track_id: str, start: float = 0.0, dur: float = 15.0, clip_id: str = "",
                    track: dict[str, Any] | None = None, loop: dict[str, Any] | None = None,
-                   sr: int = 48000) -> dict[str, Any]:
+                   sr: int = 48000, ctx: dict[str, Any] | None = None) -> dict[str, Any]:
     """Efektli onizleme: kanalin (veya klibin) penceresini bounce ile AYNI render yoluyla isleyip gecici WAV
     dondurur. track verilirse (arayuzun kaydedilmemis guncel hali) o kullanilir, yoksa projeden okunur.
+    2b: ctx = {tracks, buses, bpm} (arayuzun guncel hali; yoksa projeden): send'li kanalda bus katkisi ayri
+    dosya (bus_path), make_room'lu beat'te vokal kanallarinin o penceresine bakilir.
     Ayni kanal icin daha yeni istek geldiyse sirada bekleyen eski istek islenmeden 'superseded' doner."""
     tr = track if isinstance(track, dict) else None
-    if tr is None or loop is None:
-        ld = load_project(pid) if pid else {"ok": False}
+    need_proj = tr is None or loop is None or not isinstance(ctx, dict)
+    ld = load_project(pid) if (pid and need_proj) else {"ok": False}
+    if tr is None:
+        if not ld.get("ok"):
+            return ld if ld.get("error") else {"ok": False, "error": "project_not_found"}
+        tr = next((t for t in ld["project"].get("tracks", []) if t.get("id") == track_id), None)
         if tr is None:
-            if not ld.get("ok"):
-                return ld if ld.get("error") else {"ok": False, "error": "project_not_found"}
-            tr = next((t for t in ld["project"].get("tracks", []) if t.get("id") == track_id), None)
-            if tr is None:
-                return {"ok": False, "error": "track_not_found"}
-        if loop is None and ld.get("ok"):
-            loop = ld["project"].get("loop")
+            return {"ok": False, "error": "track_not_found"}
+    if loop is None and ld.get("ok"):
+        loop = ld["project"].get("loop")
+    if not isinstance(ctx, dict):
+        P = ld["project"] if ld.get("ok") else {}
+        ctx = {"tracks": P.get("tracks") or [], "buses": P.get("buses") or [], "bpm": P.get("bpm") or 120.0}
+    ctx = {"tracks": [t for t in ctx.get("tracks") or [] if isinstance(t, dict) and t.get("id") != track_id],
+           "buses": ctx.get("buses") if isinstance(ctx.get("buses"), list) else [],
+           "bpm": float(ctx.get("bpm") or 120.0)}
     clip = None
     if clip_id:
         clip = next((c for c in tr.get("clips") or [] if c.get("id") == clip_id), None)
         if clip is None:
             return {"ok": False, "error": "clip_not_found"}
     t0, t1 = preview_window(start, dur, clip, loop)
-    if not track_has_fx(tr, t0 - PREVIEW_PREROLL, t1):
+    if not preview_needs_render(tr, ctx, t0, t1):
         return {"ok": True, "dry": True, "t0": t0, "t1": t1}
-    key = preview_key(tr, t0, t1, sr)
+    import hashlib
+    base_key = preview_key(tr, t0, t1, sr)
+    extra = _preview_ctx_sig(tr, ctx, t0, t1, sr)
+    key = base_key if not extra else hashlib.sha1(
+        json.dumps([base_key, extra], sort_keys=True, default=str).encode("utf-8")).hexdigest()[:20]
     out = preview_dir() / f"{key}.wav"
-    if out.is_file():
-        try:
-            os.utime(out, None)
-        except OSError:
-            pass
-        return {"ok": True, "path": str(out), "t0": t0, "t1": t1, "sr": sr, "cached": True, "key": key}
+    bus_out = preview_dir() / f"{key}_bus.wav"
+    has_sends = bool(beat_mixbus.active_sends(tr, ctx["buses"]))
+    if out.is_file() and (not has_sends or bus_out.is_file()):
+        for f in (out, bus_out):
+            try:
+                if f.is_file():
+                    os.utime(f, None)
+            except OSError:
+                pass
+        res = {"ok": True, "path": str(out), "t0": t0, "t1": t1, "sr": sr, "cached": True, "key": key}
+        if has_sends:
+            res["bus_path"] = str(bus_out)
+        return res
     gk = (str(pid or ""), str(track_id or ""))
     with _PREVIEW_LOCK:
         gen = _PREVIEW_GEN.get(gk, 0) + 1
@@ -1187,7 +1282,14 @@ def preview_render(pid: str, track_id: str, start: float = 0.0, dur: float = 15.
         tm = time.monotonic()
         info: dict[str, Any] = {}
         try:
-            data = render_track_audio(tr, sr, _SrcCache(), t0, t1, PREVIEW_PREROLL, info)
+            data, bus = render_track_preview(tr, ctx, t0, t1, sr, _SrcCache(), info)
+            if has_sends:
+                import numpy as np
+                if bus is None:
+                    bus = np.zeros_like(data)
+                tmpb = bus_out.with_suffix(".part.wav")
+                _write_wav_np(str(tmpb), bus, sr)
+                os.replace(tmpb, bus_out)
             tmp = out.with_suffix(".part.wav")
             _write_wav_np(str(tmp), data, sr)
             os.replace(tmp, out)
@@ -1195,9 +1297,12 @@ def preview_render(pid: str, track_id: str, start: float = 0.0, dur: float = 15.
             log.warning("Onizleme render hatasi", exc_info=True)
             return {"ok": False, "error": str(exc)[:160]}
     prune_preview_cache(keep=out.name)
-    return {"ok": True, "path": str(out), "t0": t0, "t1": t1, "sr": sr, "cached": False, "key": key,
-            "engine": info.get("engine"), "skipped": sorted(set(info.get("skipped") or [])),
-            "ms": int((time.monotonic() - tm) * 1000), "fx_available": beat_fx.available()}
+    res = {"ok": True, "path": str(out), "t0": t0, "t1": t1, "sr": sr, "cached": False, "key": key,
+           "engine": info.get("engine"), "skipped": sorted(set(info.get("skipped") or [])),
+           "ms": int((time.monotonic() - tm) * 1000), "fx_available": beat_fx.available()}
+    if has_sends:
+        res["bus_path"] = str(bus_out)
+    return res
 
 
 # Revize R2: genel (kalici) gecikme ayari. Api, settings.beat_latency_ms okuyan bir fonksiyon baglar;
@@ -1382,18 +1487,54 @@ def mix_array(proj: dict[str, Any], sr: int = 48000, fx_info: dict[str, Any] | N
     if not rendered_tracks or max_len == 0:
         return None
 
-    mix = np.zeros((max_len, 2), dtype="float32")
+    # 2b: beat'te vokale yer acma (anahtar = vokal kanallarinin post-fader toplami)
+    rendered_tracks = [(apply_make_room(data, meta["tr"], rendered_tracks, sr, meta["offset"]), meta)
+                       for data, meta in rendered_tracks]
+    buses = proj.get("buses") if isinstance(proj.get("buses"), list) else []
+    sends_any = any(beat_mixbus.active_sends(meta["tr"], buses) for _, meta in rendered_tracks)
+    total_len = max_len + (int(beat_mixbus.BUS_TAIL * sr) if sends_any else 0)
+    mix = np.zeros((total_len, 2), dtype="float32")
+    acc: dict[str, Any] = {}
     for data, meta in rendered_tracks:
         tr = meta["tr"]
         off = meta["offset"]
-        gain = 10.0 ** (float(tr.get("volume_db") or 0.0) / 20.0)
-        pan = max(-1.0, min(1.0, float(tr.get("pan") or 0.0)))
-        l_gain = gain * math.sqrt(0.5 * (1.0 - pan))
-        r_gain = gain * math.sqrt(0.5 * (1.0 + pan))
         end = off + len(data)
-        mix[off:end, 0] += data[:, 0] * l_gain
-        mix[off:end, 1] += data[:, 1] * r_gain
+        # 2b: surgu + pan (+ ses/pan otomasyonu, ornek duzeyinde zarf); otomasyonsuz kanal eskisiyle birebir
+        mix[off:end] += beat_mixbus.apply_fader(data, tr, sr, off)
+        for bid, g in beat_mixbus.active_sends(tr, buses).items():     # post-fader send'ler bus'a toplanir
+            a = acc.get(bid)
+            if a is None:
+                a = acc[bid] = np.zeros((total_len, 2), dtype="float32")
+            a[off:end] += beat_mixbus.post_fader(data, tr, sr, off) * g
+    if acc:
+        bus_out = beat_mixbus.render_buses(acc, buses, sr, float(proj.get("bpm") or 120.0), fx_info)
+        if bus_out is not None:
+            mix[:len(bus_out)] += bus_out[:len(mix)]
+        nz = np.flatnonzero(np.max(np.abs(mix[max_len:]), axis=1) > 1e-5) if len(mix) > max_len else []
+        mix = mix[:max_len + (int(nz[-1]) + 1 if len(nz) else 0)]      # sessiz kuyruk kirpilir
     return mix
+
+
+def vocal_key_tracks(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Vokale yer acma anahtari: duyulan (mute/solo kurali) vokal rolundeki kanallar."""
+    has_solo = any(t.get("solo") for t in tracks)
+    return [t for t in tracks if str(t.get("role") or "") == "vocal" and not t.get("mute")
+            and not (has_solo and not t.get("solo"))]
+
+
+def apply_make_room(data, tr: dict[str, Any], rendered: list[tuple[Any, dict[str, Any]]], sr: int, off: int = 0):
+    """mix_array icin: kanal make_room aciksa, ayni render'daki vokal kanallarinin post-fader toplamiyla duck."""
+    import numpy as np
+    if not beat_mixbus.make_room_active(tr) or not len(data):
+        return data
+    keys = [(d, m) for d, m in rendered if str(m["tr"].get("role") or "") == "vocal"]   # zaten mute/solo suzulu
+    if not keys:
+        return data
+    n = max(m["offset"] + len(d) for d, m in keys)
+    key = np.zeros((n, 2), dtype="float32")
+    for d, m in keys:
+        key[m["offset"]:m["offset"] + len(d)] += beat_mixbus.post_fader(d, m["tr"], sr, m["offset"])
+    return beat_mixbus.duck(data, key, sr, tr.get("make_room"), abs_start=off, key_abs_start=0)
 
 
 def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:

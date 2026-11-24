@@ -487,8 +487,10 @@ def list_presets(plugins: list[dict[str, Any]] | None = None) -> dict[str, Any]:
 
 
 def resolve(preset_id: str, plugins: list[dict[str, Any]] | None = None, intensity: float = DEFAULT_INTENSITY,
-            use_vst: bool = True, bpm: float = 0.0, param_lookup=None) -> dict[str, Any]:
-    """Onayar kimligi ('hard', 'hard:double', 'u_ab12cd34') -> {fx, steps, name, ...}. Yogunluk en son uygulanir."""
+            use_vst: bool = True, bpm: float = 0.0, param_lookup=None, use_sends: bool = False) -> dict[str, Any]:
+    """Onayar kimligi ('hard', 'hard:double', 'u_ab12cd34') -> {fx, steps, name, ...}. Yogunluk en son uygulanir.
+    2b: use_sends=True ise kanal sonundaki reverb/delay adimlari zincirden cikar, Reverb/Delay bus send'ine
+    (dB) donusur -> sonucta 'sends'."""
     base, kind = _split_id(preset_id)
     user = next((u for u in load_user_presets() if u["id"] == base), None) if base.startswith("u_") else None
     if user is None and base not in _BY_ID:
@@ -507,9 +509,17 @@ def resolve(preset_id: str, plugins: list[dict[str, Any]] | None = None, intensi
         name = f"{name} {KIND_NAMES[kind]}"
     fx = scale_chain(fx, intensity)
     notes = [f"{s['label']}: {s['note']}" for s in res["steps"] if s.get("note")]
+    sends: dict[str, float] = {}
+    if use_sends:
+        from app.core import beat_mixbus
+        fx, sends = beat_mixbus.chain_to_sends(fx)
+        if sends:
+            notes.append("Reverb/Delay kanal sonunda değil, bus send'i olarak: " + ", ".join(
+                f"{'Reverb' if k == 'reverb' else 'Delay'} {v:+.0f} dB" for k, v in sends.items()))
     return {"ok": True, "id": preset_id, "base": base, "kind": kind, "name": name, "why": why, "fx": fx,
             "denoise": denoise, "steps": res["steps"], "vst_total": res["vst_total"],
-            "vst_installed": res["vst_installed"], "notes": notes, "intensity": float(intensity), "use_vst": bool(use_vst)}
+            "vst_installed": res["vst_installed"], "notes": notes, "intensity": float(intensity), "use_vst": bool(use_vst),
+            "use_sends": bool(use_sends), "sends": sends}
 
 
 def layer_suggestions(tracks: list[dict[str, Any]], main_tid: str, preset_id: str) -> list[dict[str, Any]]:
