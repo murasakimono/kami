@@ -22,6 +22,7 @@
   const dbToGain = (db) => Math.pow(10, (Number(db) || 0) / 20);
 
   function trackColor(tr, idx) {
+    if (/^#[0-9a-fA-F]{6}$/.test(String(tr.color || ""))) return tr.color;   // 1d: kanal rengi (Kanal ekle)
     if (tr.role === "beat") return "#14F195";
     const vocals = ["#9D6BFF", "#F59E0B", "#38BDF8", "#EC4899", "#A3E635"];
     return vocals[idx % vocals.length];

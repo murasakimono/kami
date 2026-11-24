@@ -81,6 +81,43 @@ VOCAL_PRESETS: dict[str, dict[str, Any]] = {
             {"type": "limiter", "threshold_db": -1.0},
         ],
     },
+    # 1d: katman onayarlari (ana vokalden hafif farkli: double daha ince/kuru, adlib telefonumsu + delay, chant genis)
+    "double_layer": {
+        "name": "Double Katmanı (İnce & Sıkı)",
+        "desc": "HPF 140Hz -> Sıkı Kompresör -> De-Esser -> 11 kHz Lowpass -> Az Reverb",
+        "denoise": False,
+        "fx": [
+            {"type": "highpass", "cutoff_hz": 140.0},
+            {"type": "compressor", "threshold_db": -22.0, "ratio": 6.0, "attack_ms": 4.0, "release_ms": 70.0},
+            {"type": "deesser", "freq_hz": 6800.0, "gain_db": -6.0},
+            {"type": "lowpass", "cutoff_hz": 11000.0},
+            {"type": "reverb", "room_size": 0.2, "wet_level": 0.06, "dry_level": 0.95},
+        ],
+    },
+    "adlib_layer": {
+        "name": "Adlib Katmanı (Bant & Delay)",
+        "desc": "HPF 220Hz -> 8 kHz Lowpass -> Kompresör -> Saturasyon -> Delay -> Reverb",
+        "denoise": False,
+        "fx": [
+            {"type": "highpass", "cutoff_hz": 220.0},
+            {"type": "lowpass", "cutoff_hz": 8000.0},
+            {"type": "compressor", "threshold_db": -20.0, "ratio": 5.0, "attack_ms": 6.0, "release_ms": 80.0},
+            {"type": "distortion", "drive_db": 5.0},
+            {"type": "delay", "delay_seconds": 0.25, "feedback": 0.25, "mix": 0.2},
+            {"type": "reverb", "room_size": 0.45, "wet_level": 0.18, "dry_level": 0.9},
+        ],
+    },
+    "chant_layer": {
+        "name": "Chant Katmanı (Geniş Grup)",
+        "desc": "HPF 160Hz -> Kompresör -> Chorus -> Geniş Reverb",
+        "denoise": False,
+        "fx": [
+            {"type": "highpass", "cutoff_hz": 160.0},
+            {"type": "compressor", "threshold_db": -20.0, "ratio": 4.0, "attack_ms": 8.0, "release_ms": 90.0},
+            {"type": "chorus", "rate_hz": 0.8, "depth": 0.2, "mix": 0.25},
+            {"type": "reverb", "room_size": 0.6, "wet_level": 0.22, "dry_level": 0.85},
+        ],
+    },
 }
 
 
