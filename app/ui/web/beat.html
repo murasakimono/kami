@@ -92,6 +92,14 @@
       </div>
 
       <div class="kb-tl" id="kbTimeline">
+        <div class="kb-tl-corner kb-sec-corner">
+          <span>BÖLÜMLER</span>
+          <button type="button" class="btn" id="secAnalyze" title="Beat'i analiz et: BPM, ton ve bölüm haritası (tahmini)">Analiz et</button>
+        </div>
+        <div class="kb-tl-sec-wrap" aria-label="Bölüm şeridi">
+          <div class="kb-tl-secs" id="tlSections"></div>
+          <div class="kb-sec-prog" id="secProg" hidden><i id="secProgBar"></i><span id="secProgTxt">Analiz ediliyor…</span></div>
+        </div>
         <div class="kb-tl-corner">KANALLAR</div>
         <div class="kb-tl-ruler-wrap"><canvas id="tlRuler" class="kb-tl-ruler" title="Tıkla / sürükle: konum"></canvas></div>
         <div class="kb-tl-heads" id="tlHeads"></div>
@@ -99,6 +107,15 @@
           <div class="kb-tl-content" id="tlContent"></div>
         </div>
         <div class="kb-hud-count kb-num" id="hudCount" hidden></div>
+        <div class="kb-prompter" id="prompter" hidden aria-live="polite">
+          <div class="kb-pr-lines" id="prLines"></div>
+          <div class="kb-pr-bar">
+            <span class="kb-pr-tag">TELEPROMPTER</span>
+            <span class="kb-pr-hint" id="prHint">Satıra tıkla, doğru anda "Şimdi"ye bas (N) — o satır çalma konumuna sabitlenir</span>
+            <button type="button" class="btn" id="prNow" title="Seçili (yoksa sıradaki) satırı şu ana sabitle (N)">Şimdi <kbd>N</kbd></button>
+            <button type="button" class="btn ic" id="prClose" title="Teleprompter'ı gizle">✕</button>
+          </div>
+        </div>
         <div class="kb-rec-hud" id="recHud" hidden aria-live="polite">
           <div class="kb-hud-row">
             <span class="kb-hud-dot"></span>
@@ -111,7 +128,8 @@
             <span class="kb-num" id="hudDb">−∞ dB</span>
             <span id="hudTrack"></span>
           </div>
-          <div class="kb-hud-keys">R / Boşluk: bitir · Esc: iptal (take atılmaz)</div>
+          <div class="kb-hud-warn" id="hudWarn" hidden>Ses patlıyor — kazancı düşür / biraz uzaklaş</div>
+          <div class="kb-hud-keys">R / Boşluk: bitir · Esc: iptal (take atılmaz) · N: söz senkronu</div>
         </div>
       </div>
 
@@ -202,6 +220,21 @@
           <small class="kb-mut" id="pcRecSt">Hazır — seçili vokal kanalına, çalma çizgisinden itibaren kaydeder.</small>
         </div>
 
+        <div class="kb-mod" id="micAssist">
+          <div class="kb-mod-head">
+            <b>Mikrofon Asistanı</b>
+            <span class="kb-badge-em">5 + 5 sn</span>
+          </div>
+          <small class="kb-mut">Önce 5 sn sessiz kal (ortam gürültüsü), sonra 5 sn normal sesinle oku. Seviye kartı ve mikrofon yeri önerisi çıkar.</small>
+          <button type="button" class="btn full" id="micTestBtn">Mikrofonu test et</button>
+          <div class="kb-mic-run" id="micTestRun" hidden>
+            <div class="kb-mic-phase" id="micTestPhase">1/2 · Sessiz kal</div>
+            <div class="kb-mic-read" id="micTestRead" hidden></div>
+            <div class="kb-vu"><i id="micTestVu"></i></div>
+          </div>
+          <div class="kb-mic-card" id="micCard" hidden></div>
+        </div>
+
         <div class="kb-mod">
           <div class="kb-mod-head">
             <b>Kayıt Gecikmesi (alkış testi)</b>
@@ -236,7 +269,20 @@
             <b>Söz Defteri (Hece &amp; Kafiye)</b>
             <span class="kb-badge-em" id="lyrStats">0 satır · 0 hece</span>
           </div>
-          <textarea class="kb-lyr-edit" id="lyrInput" placeholder="Satırlarını yaz — heceler ve kafiye grupları otomatik analiz edilir, iPhone Booth teleprompter'a canlı akar…"></textarea>
+          <textarea class="kb-lyr-edit" id="lyrInput" placeholder="Satırlarını yaz ya da BandLab'den yapıştır — [Nakarat], [Verse 2] gibi başlıklar bölümlere bağlanır; heceler ve kafiyeler otomatik analiz edilir…"></textarea>
+          <div class="kb-lyr-tools">
+            <label title="Teleprompter zamanlaması: her satır kaç bar sürer (başlık satırındaki seçim o bölüm için ezer)">
+              <span>Satır</span>
+              <select id="lyrBpl" class="kb-sel">
+                <option value="0.5">½ bar</option>
+                <option value="1" selected>1 bar</option>
+                <option value="2">2 bar</option>
+                <option value="4">4 bar</option>
+              </select>
+            </label>
+            <button type="button" class="btn" id="lyrPrompt" title="Teleprompter'ı aç/kapa (kayıt modunda kendiliğinden açılır)">Teleprompter</button>
+            <button type="button" class="btn" id="lyrResetSync" title="Elle yapılan tüm satır senkronlarını kaldır">Senkronu sıfırla</button>
+          </div>
           <div class="kb-lyr-bars" id="lyrBars"></div>
         </div>
       </div>
@@ -263,6 +309,7 @@
   <audio id="audPreview" preload="metadata"></audio>
   <script src="beat-clips.js"></script>
   <script src="beat-transport.js"></script>
+  <script src="beat-lyrics.js"></script>
   <script src="beat-timeline.js"></script>
   <script src="beat.js"></script>
 </body>

@@ -492,7 +492,7 @@ input[type="range"]::-webkit-slider-thumb {
   min-height: 0;
   display: grid;
   grid-template-columns: var(--head-w) minmax(0, 1fr);
-  grid-template-rows: 28px minmax(0, 1fr);
+  grid-template-rows: 28px 28px minmax(0, 1fr);   /* 1c: bolum seridi + cetvel + seritler */
   background: var(--bg);
 }
 .kb-tl-corner {
@@ -789,7 +789,7 @@ body.kb-recmode .kb-tl-bar > :not(.kb-rec-grp) { opacity: .35; pointer-events: n
 .kb-rec-hud {
   position: absolute;
   right: 16px;
-  top: 40px;
+  top: 68px;      /* 1c: bolum seridi + cetvelin altinda */
   z-index: 20;
   width: 320px;
   padding: 12px 16px;
@@ -834,3 +834,175 @@ body.kb-recmode .kb-tl-bar > :not(.kb-rec-grp) { opacity: .35; pointer-events: n
 }
 .kb-hud-count.beat { animation: kb-count-beat .3s var(--ease); }
 @keyframes kb-count-beat { from { opacity: .4; transform: translate(-50%, -50%) scale(1.12); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+/* ============ Asama 1c: bolum seridi, soz paneli, teleprompter, mikrofon asistani ============ */
+.kb-sec-corner { justify-content: space-between; gap: 8px; }
+.kb-sec-corner .btn { height: 22px; padding: 0 8px; font-size: 12px; }
+.kb-tl-sec-wrap { position: relative; overflow: hidden; min-width: 0; background: #0A0710; border-bottom: 1px solid var(--line); }
+.kb-tl-secs { position: absolute; left: 0; top: 0; bottom: 0; will-change: transform; }
+.kb-sec {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--sc) 40%, transparent);
+  border-left: 2px solid var(--sc);
+  background: color-mix(in srgb, var(--sc) 14%, #110D17);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
+  color: var(--tx);
+  font: 600 12px/1 "Chakra Petch", system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s var(--ease), border-color .15s var(--ease);
+}
+.kb-sec span { overflow: hidden; text-overflow: ellipsis; }
+.kb-sec:hover { background: color-mix(in srgb, var(--sc) 24%, #110D17); }
+.kb-sec.cur { border-color: color-mix(in srgb, var(--sc) 75%, transparent); background: color-mix(in srgb, var(--sc) 22%, #110D17); }
+.kb-sec-in {
+  width: 100%;
+  min-width: 60px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--line-hi);
+  border-radius: 3px;
+  background: var(--well);
+  color: var(--tx);
+  font: 600 12px "Chakra Petch", system-ui, sans-serif;
+}
+.kb-sec-empty { position: absolute; left: 12px; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; color: #6E6588; white-space: nowrap; }
+.kb-sec-prog {
+  position: absolute;
+  inset: 4px 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: rgba(15, 11, 22, .94);
+  font-size: 12px;
+  color: var(--mut);
+  overflow: hidden;
+}
+.kb-sec-prog i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(157, 107, 255, .16); transition: width .2s var(--ease); }
+.kb-sec-prog span { position: relative; }
+body.kb-recmode .kb-tl-secs, body.kb-recmode .kb-sec-corner .btn { pointer-events: none; opacity: .6; }
+
+/* Soz paneli */
+.kb-lyr-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kb-lyr-tools label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mut); }
+.kb-lyr-tools .btn, .kb-lyr-tools select { height: 28px; font-size: 12px; }
+.kb-lyr-tools .btn.on { color: var(--amb); border-color: rgba(245, 158, 11, .6); background: rgba(245, 158, 11, .10); }
+.kb-lyr-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--ac);
+  border-radius: 0 4px 4px 0;
+  background: rgba(157, 107, 255, .07);
+  font-size: 12px;
+}
+.kb-lyr-head.none { border-left-color: var(--mut); }
+.kb-lyr-head b { color: #C4B5FD; }
+.kb-lyr-map { flex: 1; min-width: 0; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-lyr-head select { height: 24px; padding: 0 20px 0 6px; font-size: 12px; }
+.kb-lyr-line { cursor: pointer; }
+.kb-lyr-line:hover { background: #0C0914; }
+.kb-lyr-bar { min-width: 34px; text-align: right; font-size: 12px; color: #6E6588; }
+.kb-lyr-bar.anc { color: var(--ok); }
+.kb-lyr-txt { flex: 1; min-width: 0; }
+.kb-rhy { font-weight: 600; }
+.kb-lyr-sync {
+  width: 24px;
+  height: 22px;
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #6E6588;
+  font-size: 12px;
+  cursor: pointer;
+}
+.kb-lyr-sync:hover { border-color: var(--line); color: var(--tx); }
+.kb-lyr-sync.on { color: var(--ok); }
+.kb-lyr-empty { padding: 8px; font-size: 12px; }
+
+/* Teleprompter */
+.kb-prompter {
+  position: absolute;
+  left: calc(var(--head-w) + 24px);
+  right: 24px;
+  bottom: 24px;
+  z-index: 19;
+  max-width: 880px;
+  padding: 12px 16px 8px;
+  background: rgba(12, 9, 19, .94);
+  border: 1px solid var(--line-hi);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 8px 24px rgba(0, 0, 0, .45);
+}
+.kb-prompter.rec { right: 360px; border-color: rgba(255, 77, 106, .35); }
+.kb-pr-lines { display: flex; flex-direction: column; gap: 4px; }
+.kb-pr-l {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .18s var(--ease), opacity .18s var(--ease);
+}
+.kb-pr-l.prev { font-size: 16px; color: var(--mut); opacity: .55; }
+.kb-pr-l.cur { font-size: 32px; font-weight: 600; color: #fff; line-height: 1.25; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.kb-pr-l.next { font-size: 22px; color: #B8AFCF; opacity: .7; }
+.kb-pr-l.next2 { font-size: 16px; color: var(--mut); opacity: .4; }
+.kb-pr-l.blank { cursor: default; }
+.kb-pr-l.sel { border-color: rgba(20, 241, 149, .55); background: rgba(20, 241, 149, .06); }
+.kb-pr-l:not(.blank):hover { border-color: var(--line); }
+.kb-pr-anc { margin-left: 8px; font-style: normal; font-size: 12px; color: var(--ok); vertical-align: middle; }
+.kb-pr-empty { font-size: 16px !important; color: var(--mut) !important; }
+.kb-prompter.rec .kb-pr-l.cur { font-size: 36px; }
+.kb-pr-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.kb-pr-tag { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--mut); }
+.kb-pr-hint { flex: 1; min-width: 0; font-size: 12px; color: #6E6588; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-pr-bar .btn { height: 28px; font-size: 12px; }
+.kb-pr-bar .btn.ic { width: 28px; padding: 0; }
+.kb-pr-bar kbd { font-family: var(--mono); font-size: 12px; color: var(--mut); margin-left: 4px; }
+
+/* Kayit HUD: canli patlama uyarisi */
+.kb-hud-warn {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(255, 77, 106, .16);
+  border: 1px solid rgba(255, 77, 106, .5);
+  color: #FFD3DB;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Mikrofon asistani */
+.kb-mic-run { display: flex; flex-direction: column; gap: 6px; }
+.kb-mic-phase { font-size: 12px; font-weight: 600; color: var(--mut); }
+.kb-mic-phase.speak { color: var(--ok); }
+.kb-mic-read { padding: 6px 8px; border-radius: 4px; background: var(--well); font-size: 14px; color: var(--tx); }
+.kb-mic-card { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--well); }
+.kb-mic-row { display: grid; grid-template-columns: 1fr auto 64px; align-items: center; gap: 8px; font-size: 12px; }
+.kb-mic-row span { color: var(--mut); }
+.kb-mic-row i { font-style: normal; color: #6E6588; }
+.kb-mic-row b { color: var(--tx); font-weight: 600; }
+.kb-chip { justify-self: end; padding: 1px 6px; border-radius: 3px; font-size: 12px; font-weight: 600; background: rgba(142, 132, 168, .14); color: var(--mut); }
+.kb-chip.ok { background: rgba(20, 241, 149, .12); color: #7BE7B8; }
+.kb-chip.mid { background: rgba(245, 158, 11, .12); color: #E8BC6C; }
+.kb-chip.bad { background: rgba(255, 77, 106, .14); color: #FF9AAD; }
+.kb-mic-tips { margin-top: 4px; font-size: 12px; }
+.kb-mic-tips b { color: var(--tx); }
+.kb-mic-tips ul { margin: 4px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; color: #C9C2DB; line-height: 1.45; }

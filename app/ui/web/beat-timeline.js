@@ -88,9 +88,137 @@
       el.playhead = el.content.querySelector("#tlPlayhead");
       drawLoopBand();
       if (REC) setRecLive(REC);
+      drawSections();
       drawPlayhead();
       drawRuler();
       scheduleWaves();
+    }
+
+    // ---------------- 1c: bolum seridi ----------------
+    const SEC_COL = { intro: "#8E84A8", verse: "#9D6BFF", nakarat: "#F59E0B", "köprü": "#38BDF8", outro: "#6E6588", "ön nakarat": "#EC4899" };
+    const secBase = (n) => (root.BeatLyrics ? root.BeatLyrics.sectionBase(n) : String(n || "").toLowerCase());
+    const secColor = (n) => SEC_COL[secBase(n)] || "#A3E635";
+    function sections() { const a = proj()?.sections; return Array.isArray(a) ? a : []; }
+    function drawSections() {
+      if (!el.secs) return;
+      const secs = sections();
+      el.secs.style.width = contentWidth() + "px";
+      el.secs.innerHTML = secs.map((sc) => {
+        const st = Number(sc.start) || 0, en = Number(sc.end) || 0;
+        const bpl = Number(sc.bars_per_line) > 0 ? ` · ${sc.bars_per_line} bar/satır` : "";
+        return `<div class="kb-sec" data-sec="${esc(sc.id)}" style="left:${t2x(st)}px;width:${Math.max(2, t2x(en - st))}px;--sc:${secColor(sc.name)}"
+          title="${esc(sc.name)}${bpl} — tıkla: döngü bölgesi yap · çift tık: yeniden adlandır · sağ tık: böl / birleştir"><span>${esc(sc.name)}</span></div>`;
+      }).join("") || `<div class="kb-sec-empty">Bölüm yok — Beat kanalına ses ekleyince otomatik çıkar ya da "Analiz et"e bas</div>`;
+      S.curSec = undefined;
+      markCurSec();
+      syncSecScroll();
+    }
+    function syncSecScroll() { if (el.secs) el.secs.style.transform = `translateX(${-el.scroll.scrollLeft}px)`; }
+    function sectionAt(t) { return sections().find((sc) => t >= Number(sc.start) && t < Number(sc.end)) || null; }
+    function markCurSec() {
+      if (!el.secs) return;
+      const cur = sectionAt(S.playhead)?.id || "";
+      if (cur === S.curSec) return;
+      S.curSec = cur;
+      el.secs.querySelectorAll(".kb-sec").forEach((d) => d.classList.toggle("cur", d.dataset.sec === cur));
+    }
+    function startSecRename(id) {
+      const d = el.secs?.querySelector(`.kb-sec[data-sec="${CSS.escape(id)}"]`);
+      const sc = sections().find((x) => x.id === id);
+      if (!d || !sc || d.querySelector("input")) return;
+      const inp = document.createElement("input");
+      inp.className = "kb-sec-in";
+      inp.value = sc.name || "";
+      inp.maxLength = 32;
+      d.querySelector("span").replaceWith(inp);
+      inp.focus(); inp.select();
+      let done = false;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        const name = inp.value.trim();
+        if (ok && name && name !== sc.name) opts.edit(`Bölüm adı: ${name}`, () => { const x = sections().find((q) => q.id === id); if (x) x.name = name; });
+        else drawSections();
+      };
+      inp.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+      });
+      inp.addEventListener("blur", () => finish(true));
+      inp.addEventListener("pointerdown", (e) => e.stopPropagation());
+    }
+    function splitSectionAt(id, t) {
+      const sc = sections().find((x) => x.id === id);
+      if (!sc) return false;
+      const bar = 240 / bpm();
+      const tb = Math.round(t / bar) * bar;
+      if (tb <= Number(sc.start) + 1e-6 || tb >= Number(sc.end) - 1e-6) { opts.onStatus?.("Bölmek için çalma çizgisini bölümün içine (bar sınırına) getir."); return false; }
+      opts.edit(`Bölüm bölündü: ${sc.name}`, () => {
+        const arr = proj().sections;
+        const i = arr.findIndex((x) => x.id === id);
+        const a = arr[i];
+        const b = Object.assign({}, a, { id: "s_" + Math.random().toString(16).slice(2, 10), start: BC.r6(tb) });
+        a.end = BC.r6(tb);
+        arr.splice(i + 1, 0, b);
+      });
+      return true;
+    }
+    function mergeSectionPrev(id) {
+      const arr = sections();
+      const i = arr.findIndex((x) => x.id === id);
+      if (i <= 0) { opts.onStatus?.("İlk bölümün öncesi yok."); return; }
+      opts.edit(`Bölüm birleştirildi: ${arr[i - 1].name}`, () => {
+        const a2 = proj().sections;
+        a2[i - 1].end = a2[i].end;
+        a2.splice(i, 1);
+      });
+    }
+    if (el.secs) {
+      // tek tik kisa gecikmeyle: cift tik (yeniden adlandir) dongu bolgesini yerinden oynatmasin
+      let secClickT = 0;
+      el.secs.addEventListener("click", (ev) => {
+        const d = ev.target.closest(".kb-sec");
+        if (!d || ev.target.tagName === "INPUT") return;
+        clearTimeout(secClickT);
+        if (ev.detail > 1) return;
+        const id = d.dataset.sec;
+        secClickT = setTimeout(() => opts.onSectionClick?.(sections().find((x) => x.id === id) || null), 220);
+      });
+      el.secs.addEventListener("dblclick", (ev) => {
+        const d = ev.target.closest(".kb-sec");
+        clearTimeout(secClickT);
+        if (d) { ev.preventDefault(); startSecRename(d.dataset.sec); }
+      });
+      el.secs.addEventListener("contextmenu", (ev) => {
+        const d = ev.target.closest(".kb-sec");
+        if (!d) return;
+        ev.preventDefault();
+        const id = d.dataset.sec;
+        const sc = sections().find((x) => x.id === id);
+        hideMenu();
+        menu = document.createElement("div");
+        menu.className = "kb-ctx";
+        const inside = sc && S.playhead > Number(sc.start) && S.playhead < Number(sc.end);
+        menu.innerHTML = `
+          <button data-act="ren">Yeniden adlandır<kbd>çift tık</kbd></button>
+          <button data-act="loop">Döngü bölgesi yap<kbd>tık</kbd></button>
+          <hr>
+          <button data-act="split" ${inside ? "" : "disabled"}>Çalma çizgisinden böl</button>
+          <button data-act="merge">Öncekiyle birleştir</button>`;
+        document.body.appendChild(menu);
+        const mw = menu.offsetWidth, mh = menu.offsetHeight;
+        menu.style.left = Math.min(ev.clientX, window.innerWidth - mw - 8) + "px";
+        menu.style.top = Math.min(ev.clientY, window.innerHeight - mh - 8) + "px";
+        menu.addEventListener("click", (e) => {
+          const b = e.target.closest("button");
+          if (!b || b.disabled) return;
+          hideMenu();
+          if (b.dataset.act === "ren") startSecRename(id);
+          else if (b.dataset.act === "loop") opts.onSectionClick?.(sc || null);
+          else if (b.dataset.act === "split") splitSectionAt(id, S.playhead);
+          else if (b.dataset.act === "merge") mergeSectionPrev(id);
+        });
+      });
     }
 
     function clipHtml(tr, c, col, all) {
@@ -125,6 +253,7 @@
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, w, h);
       const sl = el.scroll.scrollLeft;
+      syncSecScroll();
       const barSec = 240 / bpm();
       const barPx = t2x(barSec);
       let every = 1;
@@ -208,6 +337,7 @@
 
     function drawPlayhead() {
       if (el.playhead) el.playhead.style.transform = `translateX(${t2x(S.playhead)}px)`;
+      markCurSec();
       opts.onTime?.(S.playhead);
     }
 
@@ -1134,6 +1264,8 @@
       setMetronome, getMetronome: () => ({ on: Metro.on, vol: Metro.vol }), anchor: () => Eng.anchor,
       uNow: () => (Eng.playing ? uNow() : null), loopRegion, setRecLive, recLap, animateTakeIn, findClip,
       toggleLoop, setLoop,
+      // 1c
+      sectionAt, renameSection: startSecRename, splitSectionAt, mergeSectionPrev,
       openStackMenu: (id) => { const h = findClip(id); const card = el.content.querySelector(`.kb-clip[data-clip="${CSS.escape(id)}"]`); if (h && card) openStackMenu(card, h); },
     };
   }
