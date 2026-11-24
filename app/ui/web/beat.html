@@ -89,7 +89,14 @@
           <button type="button" class="btn" id="tlFit" title="Tüm parçayı sığdır">Sığdır</button>
         </div>
         <label class="kb-chk kb-tl-follow"><input type="checkbox" id="tlFollow" checked><span>Takip et</span></label>
-        <span class="kb-tl-note" title="Efektleri duymak için Bounce al">Önizleme: efektsiz</span>
+        <div class="kb-tl-grp kb-fxprev" aria-label="Efektli önizleme">
+          <button type="button" class="btn" id="fxPreviewToggle" title="Efektli önizleme aç/kapa — açıkken efekt/parametre değişikliği ~1 sn içinde efektli duyulur (bounce ile aynı işleme); kapalıyken hızlı kuru önizleme">FX ▶</button>
+          <select id="fxPreviewScope" class="kb-sel" title="Efektli önizlenecek kanallar">
+            <option value="sel">Seçili kanal</option>
+            <option value="all">Tüm kanallar</option>
+          </select>
+          <span class="kb-tl-note" id="fxPreviewNote" title="Efektli önizleme durumu">Önizleme: efektsiz</span>
+        </div>
         <span class="kb-tl-hint" id="selTrackHint">Ana Vokal seçili</span>
       </div>
 
@@ -145,10 +152,19 @@
         <div class="kb-rack">
           <div class="kb-rack-head">
             <span>FX ZİNCİRİ</span>
-            <b id="fxTargetName">Ana Vokal</b>
-            <small>Modüle tıklayarak bypass et, sağdaki VST3 sekmesinden eklenti ekle</small>
+            <div class="kb-fx-levels" id="fxLevelTabs" role="tablist" aria-label="Düzenlenen seviye"></div>
+            <b id="fxTargetName" hidden>Ana Vokal</b>
+            <select id="fxAddSel" class="kb-sel" title="Zincire yerleşik efekt ekle (VST3 için sağdaki VST3 sekmesi)"><option value="">+ Efekt…</option></select>
+            <select id="fxPresetSel" class="kb-sel" title="Bu seviyeye (kanal/klip) vokal şablonu uygula"><option value="">Şablon…</option></select>
+            <small>Modüle tıkla: parametreler · LED: bypass · sürükle: sırala</small>
+          </div>
+          <div class="kb-fx-clipopts" id="fxClipOpts" hidden>
+            <label class="kb-chk" title="Bu klip kanalın efekt zincirinden geçmez (yalnız kendi efektleri)"><input type="checkbox" id="fxSkipTrack"><span>Kanal efektini atla</span></label>
+            <button type="button" class="btn" id="fxStackAll" hidden title="Bu klibin efekt zincirini destedeki tüm take'lere kopyala">Tüm desteye uygula</button>
+            <span class="kb-mut" id="fxClipInfo"></span>
           </div>
           <div class="kb-fx-strip" id="fxRack"></div>
+          <div class="kb-fx-panel" id="fxPanel" hidden></div>
         </div>
       </section>
     </section>
@@ -352,6 +368,7 @@
   <script src="beat-transport.js"></script>
   <script src="beat-lyrics.js"></script>
   <script src="beat-timeline.js"></script>
+  <script src="beat-fx.js"></script>
   <script src="beat.js"></script>
 </body>
 </html>

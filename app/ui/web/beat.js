@@ -22,6 +22,10 @@
   let SAVE_DIRTY = false;
   let LAT_RESULT = null;
   let TL = null;
+  // ---- Revize 4: efekt duzenleme seviyesi + parametre paneli + efektli onizleme ----
+  let FX_LEVEL = "track";     // "track" | "clip"
+  let FX_OPEN = null;         // acik parametre paneli: { level, tid, cid, idx }
+  let PREV = null;            // BeatFx.createPreview
   // 1c: sonuk kafiye paleti (koyu temada goz yormaz); beat_studio.RHYME_PALETTE_SIZE ile ayni uzunluk
   const RHYME_COLORS = ["#B39DF0", "#73C9A2", "#D9B26A", "#D98BB0", "#7FB8D9", "#AFC97C", "#D99C80", "#9CA6DE"];
 
@@ -36,6 +40,7 @@
   }
 
   function fxLabel(fx) {
+    if (window.BeatFx && Object.keys(BeatFx.schema()).length) return BeatFx.label(fx);
     if (fx?.name) return fx.name;
     const map = {
       highpass: "Highpass", lowpass: "Lowpass", peak: "Parametric EQ",
@@ -46,6 +51,7 @@
   }
 
   function fxParamSummary(fx) {
+    if (window.BeatFx && Object.keys(BeatFx.schema()).length) return BeatFx.summary(fx);
     if (!fx) return "";
     const p = [];
     if (fx.cutoff_hz != null) p.push(`${Math.round(fx.cutoff_hz)} Hz`);
@@ -118,6 +124,9 @@
     ]);
     PRESETS = pr?.presets || {};
     VSTS = vr?.plugins || [];
+    const fs = await api()?.beat_fx_schema?.().catch(() => null);
+    if (fs?.ok && window.BeatFx) BeatFx.setSchema(fs);
+    fillFxSelects();
     renderVsts();
     renderMics(dr?.devices || []);
 
@@ -230,6 +239,7 @@
     renderProject();
     scheduleSave();
     TL?.restartIfPlaying();
+    PREV?.refresh();
     if (label) setStatus(label);
   }
   function undo() {
@@ -307,25 +317,135 @@
       : '<option value="-1">Varsayılan Mikrofon</option>';
   }
 
-  function renderFxRack() {
+  // ---------------- R4: FX rafi (kanal / klip seviyesi, parametre paneli, surukle-birak) ----------------
+  /** Secili kanalda tek secili klip ({tr, clip}) ya da null. */
+  function selClipHit() {
+    const sel = [...(TL?.selection() || [])];
+    if (sel.length !== 1) return null;
+    const h = TL.findClip(sel[0]);
+    return h && h.tr.id === selTrack()?.id ? h : null;
+  }
+  /** Duzenlenen zincir: { tr, clip, level, chain, owner } — owner.fx zincirin sahibi (kanal ya da klip). */
+  function fxCtx() {
     const tr = selTrack();
+    const h = selClipHit();
+    const level = FX_LEVEL === "clip" && h ? "clip" : "track";
+    const owner = level === "clip" ? h.clip : tr;
+    return { tr, clip: h?.clip || null, level, owner, chain: owner?.fx || [] };
+  }
+  function clipName(tr, c) {
+    const tk = (tr.takes || []).find((t) => t.id === c.take_id);
+    const [s, e] = BeatClips.clipBounds(c);
+    return `${tk?.label || (c.path || "").split(/[\\/]/).pop() || "Klip"} (${s.toFixed(1)}–${e.toFixed(1)} sn)`;
+  }
+  /** Kanal zinciri degisince: onayar korunur ama "Ozel" olur (preset_base = cikis noktasi). */
+  function markCustom(tr) {
+    if (!tr || !tr.preset || tr.preset === "custom") return;
+    const p = PRESETS[tr.preset];
+    if (p && window.BeatFx && BeatFx.chainEquals(p.fx, tr.fx)) return;
+    tr.preset_base = tr.preset;
+    tr.preset = "custom";
+  }
+  /** Efekt duzenlemesi: geri al adimi + kayit, calmayi YENIDEN BASLATMADAN (efektli onizleme kendisi gecer). */
+  function fxCommit(label, before) {
+    if (!PROJ || snap() === before) return;
+    const c = fxCtx();
+    if (c.level === "track") markCustom(c.tr);
+    pushUndo(before);
+    renderProject();
+    scheduleSave();
+    PREV?.refresh();
+    if (label) setStatus(label);
+  }
+  function fxEdit(label, fn) {
+    if (!PROJ) return;
+    const before = snap();
+    fn(fxCtx());
+    fxCommit(label, before);
+  }
+  function ownerChain(c) { if (!Array.isArray(c.owner.fx)) c.owner.fx = []; return c.owner.fx; }
+
+  function fillFxSelects() {
+    const sc = window.BeatFx ? BeatFx.schema() : {};
+    const groups = {};
+    for (const [k, v] of Object.entries(sc)) (groups[v.group] = groups[v.group] || []).push([k, v.label]);
+    $("#fxAddSel").innerHTML = '<option value="">+ Efekt…</option>' + Object.entries(groups).map(([g, items]) =>
+      `<optgroup label="${esc(g)}">${items.map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("")}</optgroup>`).join("")
+      + '<option value="__vst">VST3 eklentisi… (sağ panel)</option>';
+    $("#fxPresetSel").innerHTML = '<option value="">Şablon…</option>' + Object.entries(PRESETS)
+      .map(([k, v]) => `<option value="${esc(k)}">${esc(v.name)}</option>`).join("");
+  }
+
+  function renderFxRack() {
+    const c = fxCtx();
+    const tr = c.tr;
     $("#fxTargetName").textContent = tr ? tr.name : "—";
     $("#selTrackHint").textContent = tr ? `${tr.name} seçili` : "";
-    $("#vstTargetInfo").textContent = `Hedef kanal: ${tr ? tr.name : "Ana Vokal"}`;
-    const fx = tr?.fx || [];
-    if (!fx.length) {
-      $("#fxRack").innerHTML = `<div class="kb-mut" style="display:grid;place-items:center;padding:8px">Bu kanalda FX yok — sağdaki VST3 sekmesinden ekle veya kanaldan şablon seç.</div>`;
-      return;
+    $("#vstTargetInfo").textContent = c.level === "clip" ? `Hedef: Klip · ${clipName(tr, c.clip)}` : `Hedef kanal: ${tr ? tr.name : "Ana Vokal"}`;
+    // seviye sekmeleri: Kanal / Klip
+    const h = selClipHit();
+    $("#fxLevelTabs").innerHTML = `<button type="button" class="kb-fx-lv ${c.level === "track" ? "on" : ""}" data-lv="track" role="tab" title="Kanalın efekt zinciri (tüm kliplere, klip efektlerinden sonra)">Kanal: ${esc(tr?.name || "—")}</button>`
+      + (h ? `<button type="button" class="kb-fx-lv ${c.level === "clip" ? "on" : ""}" data-lv="clip" role="tab" title="Yalnız bu klibin efektleri (kanal zincirinden ÖNCE uygulanır)">Klip: ${esc(clipName(h.tr, h.clip))}${BeatClips.hasClipFx(h.clip) ? " ●" : ""}</button>` : "");
+    $("#fxClipOpts").hidden = c.level !== "clip";
+    if (c.level === "clip") {
+      $("#fxSkipTrack").checked = !!c.clip.skip_track_fx;
+      $("#fxStackAll").hidden = !c.clip.stack_id;
+      $("#fxClipInfo").textContent = c.clip.stack_id ? "Destede efekt aktif take'e ait" : "";
     }
-    $("#fxRack").innerHTML = fx.map((f, idx) => `
-      <div class="kb-fx-mod ${f.bypass ? "off" : ""}" data-togglefx="${esc(tr.id)}:${idx}" title="Bypass aç/kapat">
-        <div class="kb-fx-top">
-          <span class="kb-fx-led"></span>
-          <span class="kb-fx-name">${esc(fxLabel(f))}</span>
-          <button type="button" class="kb-fx-del" data-delfx="${esc(tr.id)}:${idx}" title="Kaldır">✕</button>
-        </div>
-        <div class="kb-fx-param">${esc(fxParamSummary(f))}</div>
-      </div>`).join("");
+    const fx = c.chain;
+    const scope = c.level === "clip" ? `${esc(tr.id)}:${esc(c.clip.id)}` : esc(tr?.id || "");
+    if (!fx.length) {
+      $("#fxRack").innerHTML = `<div class="kb-mut" style="display:grid;place-items:center;padding:8px">${c.level === "clip"
+        ? "Bu klipte efekt yok — “+ Efekt…” ile ekle (kanal zincirinden önce uygulanır)."
+        : "Bu kanalda FX yok — “+ Efekt…”, sağdaki VST3 sekmesi veya şablon ile ekle."}</div>`;
+    } else {
+      $("#fxRack").innerHTML = fx.map((f, idx) => `
+        <div class="kb-fx-mod ${f.bypass ? "off" : ""} ${FX_OPEN && FX_OPEN.idx === idx && FX_OPEN.level === c.level ? "open" : ""}" data-fxi="${idx}" draggable="true" title="Tıkla: parametreler · sürükle: sırala">
+          <div class="kb-fx-top">
+            <button type="button" class="kb-fx-led" data-fxbyp="${idx}" title="Bypass aç/kapat"></button>
+            <span class="kb-fx-name">${esc(fxLabel(f))}</span>
+            <button type="button" class="kb-fx-del" data-fxcopy="${idx}" title="Kopyala">⧉</button>
+            <button type="button" class="kb-fx-del" data-delfx="${scope}:${idx}" data-fxdel="${idx}" title="Kaldır">✕</button>
+          </div>
+          <div class="kb-fx-param">${esc(fxParamSummary(f))}</div>
+        </div>`).join("");
+    }
+    syncFxPanel(c);
+  }
+
+  /** Acik paneli (varsa) gecerli zincirdeki module yeniden baglar; modul yoksa kapatir. */
+  function syncFxPanel(c) {
+    c = c || fxCtx();
+    const P = $("#fxPanel");
+    if (!FX_OPEN || !window.BeatFx) { if (!P.hidden) BeatFx?.closePanel(P); return; }
+    const sameOwner = FX_OPEN.level === c.level && FX_OPEN.tid === c.tr?.id && (c.level === "track" || FX_OPEN.cid === c.clip?.id);
+    const fx = sameOwner ? c.chain[FX_OPEN.idx] : null;
+    if (!fx) { FX_OPEN = null; BeatFx.closePanel(P); return; }
+    if (P.__fx === fx && !P.hidden) return;      // ayni nesne: surgu suruklenirken yeniden kurma
+    openFxPanel(FX_OPEN.idx);
+  }
+  function openFxPanel(idx) {
+    const c = fxCtx();
+    const fx = c.chain[idx];
+    if (!fx || !window.BeatFx) return;
+    FX_OPEN = { level: c.level, tid: c.tr.id, cid: c.clip?.id || "", idx };
+    const P = $("#fxPanel");
+    P.__fx = fx;
+    BeatFx.openPanel({
+      el: P, fx, api, runJob,
+      title: `${fxLabel(fx)} · ${c.level === "clip" ? "Klip" : c.tr.name}`,
+      snap,
+      onInput: () => {
+        const card = $(`#fxRack [data-fxi="${idx}"] .kb-fx-param`);
+        if (card) card.textContent = fxParamSummary(fx);
+        PREV?.refresh();
+      },
+      onCommit: (label, before) => fxCommit(label, before),
+      onStatus: setStatus,
+      onClose: () => { FX_OPEN = null; renderFxRack(); },
+      reopen: () => { P.__fx = null; syncFxPanel(); },
+    });
+    document.querySelectorAll("#fxRack .kb-fx-mod").forEach((m) => m.classList.toggle("open", +m.dataset.fxi === idx));
   }
 
   function renderProject() {
@@ -344,7 +464,8 @@
     $("#tlHeads").innerHTML = tracks.map((tr) => {
       const col = BeatTimeline.trackColor(tr, tr.role === "beat" ? 0 : vocalIdx++);
       const takes = tr.takes || [];
-      const presetOpts = Object.entries(PRESETS).map(([k, v]) => `<option value="${esc(k)}" ${tr.preset === k ? "selected" : ""}>${esc(v.name)}</option>`).join("");
+      const presetOpts = (tr.preset === "custom" ? `<option value="custom" selected>Özel${PRESETS[tr.preset_base] ? ` (${esc(PRESETS[tr.preset_base].name)})` : ""}</option>` : "")
+        + Object.entries(PRESETS).map(([k, v]) => `<option value="${esc(k)}" ${tr.preset === k ? "selected" : ""}>${esc(v.name)}</option>`).join("");
       const takeOpts = takes.map((t) => `<option value="${esc(t.id)}" ${tr.active_take === t.id ? "selected" : ""}>${esc(t.label)}</option>`).join("");
       return `
         <div class="kb-head ${tr.id === SEL_TID ? "sel" : ""}" data-tid="${esc(tr.id)}" style="--tc:${col}">
@@ -477,10 +598,43 @@
       keepRolling: () => PC_REC,
       onLoopChange: () => { syncLoopUi(); scheduleSave(); },
       onSectionClick: (sec) => sectionToLoop(sec),
+      // R4
+      onSelection: () => { if (FX_OPEN?.level === "clip") FX_OPEN = null; autoClipLevel(); renderFxRack(); },
+      onClipFx: (tid, cid) => clipFx(tid, cid),
+      onRegionFx: (tid, cid, a, b) => regionFx(tid, cid, a, b),
+      onPlayStart: () => PREV?.refresh(true),
     });
     TL.setSnap(gridMode());
+    initPreview();
     syncGridLabel();
     applyRecSetUi();
+  }
+
+  /** Efektli onizleme yoneticisi + arac cubugu denetimleri. */
+  function initPreview() {
+    if (!window.BeatFx || !TL) return;
+    PREV = BeatFx.createPreview({
+      api, tl: () => TL, getProj: () => PROJ, selTid: () => SEL_TID,
+      onState: (s) => {
+        const n = $("#fxPreviewNote");
+        n.textContent = s.text;
+        n.title = s.title || "";
+        n.dataset.kind = s.kind || "";
+        $("#fxPreviewToggle").classList.toggle("on", s.enabled);
+        $("#fxPreviewToggle").textContent = s.enabled ? "FX ▶ Açık" : "FX ▶ Kapalı";
+        $("#fxPreviewScope").disabled = !s.enabled;
+        $("#fxPreviewScope").value = s.scope;
+      },
+    });
+    $("#fxPreviewToggle").onclick = (e) => { e.currentTarget.blur(); PREV.setEnabled(!PREV.state().enabled); };
+    $("#fxPreviewScope").onchange = (e) => PREV.setScope(e.target.value);
+    PREV.syncState();
+  }
+  /** Kendi efekti olan tek klip secilince raf klip seviyesine gecer; secim kalkinca kanala doner. */
+  function autoClipLevel() {
+    const h = selClipHit();
+    if (!h) { FX_LEVEL = "track"; return; }
+    if (BeatClips.hasClipFx(h.clip)) FX_LEVEL = "clip";
   }
 
   function selectTrack(tid) {
@@ -488,7 +642,9 @@
     SEL_TID = tid;
     document.querySelectorAll(".kb-head").forEach((x) => x.classList.toggle("sel", x.dataset.tid === SEL_TID));
     document.querySelectorAll(".kb-tl-lane").forEach((x) => x.classList.toggle("sel", x.dataset.lane === SEL_TID));
+    FX_OPEN = null;
     renderFxRack();
+    PREV?.refresh(true);
   }
 
   async function pickAudioFor(tid, startSec) {
@@ -964,9 +1120,10 @@
       const p = PRESETS[el.value];
       if (!p) return;
       SEL_TID = el.dataset.preset;
+      FX_OPEN = null;
       edit(`${p.name} uygulandı.`, () => {
         const tr = PROJ.tracks.find((x) => x.id === el.dataset.preset);
-        if (tr) { tr.preset = el.value; tr.denoise = !!p.denoise; tr.fx = JSON.parse(JSON.stringify(p.fx)); }
+        if (tr) { tr.preset = el.value; tr.denoise = !!p.denoise; tr.fx = JSON.parse(JSON.stringify(p.fx)); delete tr.preset_base; }
       });
     } else if (el.dataset.take) {
       // Take comping: secili klipler (yoksa aktif take'ten gelen klipler) ayni zamanlamayla yeni take'e gecer
@@ -1019,29 +1176,140 @@
     } else tr.pan = +el.value;
   });
 
-  // ---- Bottom FX Rack Interactions ----
-  $("#fxRack").addEventListener("click", async (e) => {
+  // ---- Bottom FX Rack Interactions (R4: tikla = parametre paneli, LED = bypass, surukle = sirala) ----
+  $("#fxRack").addEventListener("click", (e) => {
     if (!PROJ) return;
-    const delBtn = e.target.closest("[data-delfx]");
-    if (delBtn) {
+    const del = e.target.closest("[data-fxdel]");
+    const cp = e.target.closest("[data-fxcopy]");
+    const byp = e.target.closest("[data-fxbyp]");
+    if (del || cp || byp) {
       e.stopPropagation();
-      const [tid, idx] = delBtn.dataset.delfx.split(":");
-      edit("FX kaldırıldı", () => { const tr = PROJ.tracks.find((x) => x.id === tid); if (tr) tr.fx.splice(+idx, 1); });
+      const i = +(del || cp || byp).dataset[del ? "fxdel" : cp ? "fxcopy" : "fxbyp"];
+      if (del) {
+        if (FX_OPEN?.idx === i) FX_OPEN = null;
+        else if (FX_OPEN && FX_OPEN.idx > i) FX_OPEN.idx--;
+        fxEdit("FX kaldırıldı", (c) => ownerChain(c).splice(i, 1));
+      } else if (cp) fxEdit("FX kopyalandı", (c) => { const ch = ownerChain(c); ch.splice(i + 1, 0, JSON.parse(JSON.stringify(ch[i]))); });
+      else fxEdit("FX bypass", (c) => { const f = ownerChain(c)[i]; if (f) f.bypass = !f.bypass; });
       return;
     }
-    const mod = e.target.closest("[data-togglefx]");
-    if (mod) {
-      const [tid, idx] = mod.dataset.togglefx.split(":");
-      edit("FX bypass", () => { const fx = PROJ.tracks.find((x) => x.id === tid)?.fx?.[+idx]; if (fx) fx.bypass = !fx.bypass; });
-    }
+    const mod = e.target.closest("[data-fxi]");
+    if (!mod) return;
+    const i = +mod.dataset.fxi;
+    if (FX_OPEN && FX_OPEN.idx === i && !$("#fxPanel").hidden) { FX_OPEN = null; BeatFx.closePanel($("#fxPanel")); renderFxRack(); return; }
+    openFxPanel(i);
   });
+  $("#fxRack").addEventListener("dblclick", (e) => { const m = e.target.closest("[data-fxi]"); if (m && !e.target.closest("button")) openFxPanel(+m.dataset.fxi); });
+  // surukle-birak ile siralama
+  let FX_DRAG = -1;
+  $("#fxRack").addEventListener("dragstart", (e) => {
+    const m = e.target.closest("[data-fxi]");
+    if (!m) return;
+    FX_DRAG = +m.dataset.fxi;
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", String(FX_DRAG)); } catch {}
+    m.classList.add("drag");
+  });
+  $("#fxRack").addEventListener("dragover", (e) => {
+    if (FX_DRAG < 0) return;
+    e.preventDefault();
+    const m = e.target.closest("[data-fxi]");
+    document.querySelectorAll("#fxRack .kb-fx-mod").forEach((x) => x.classList.toggle("drop", x === m && +x.dataset.fxi !== FX_DRAG));
+  });
+  $("#fxRack").addEventListener("dragend", () => { FX_DRAG = -1; document.querySelectorAll("#fxRack .kb-fx-mod").forEach((x) => x.classList.remove("drag", "drop")); });
+  $("#fxRack").addEventListener("drop", (e) => {
+    if (FX_DRAG < 0) return;
+    e.preventDefault();
+    const m = e.target.closest("[data-fxi]");
+    const from = FX_DRAG;
+    FX_DRAG = -1;
+    const c0 = fxCtx();
+    const to = m ? +m.dataset.fxi : c0.chain.length - 1;
+    if (to === from) { renderFxRack(); return; }
+    const openFx = FX_OPEN ? c0.chain[FX_OPEN.idx] : null;
+    fxEdit("FX sırası değişti", (c) => { const ch = ownerChain(c); const [x] = ch.splice(from, 1); ch.splice(to, 0, x); });
+    if (openFx) { const i = fxCtx().chain.indexOf(openFx); if (i >= 0) { FX_OPEN.idx = i; renderFxRack(); } }
+  });
+  $("#fxLevelTabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-lv]");
+    if (!b) return;
+    FX_LEVEL = b.dataset.lv;
+    FX_OPEN = null;
+    renderFxRack();
+  });
+  $("#fxAddSel").addEventListener("change", (e) => {
+    const v = e.target.value;
+    e.target.value = "";
+    if (!v || !PROJ) return;
+    if (v === "__vst") { document.querySelector('.kb-side-tabs [data-side="vst"]')?.click(); return; }
+    const f = BeatFx.defaultFx(v);
+    if (!f) return;
+    let at = -1;
+    fxEdit(`${BeatFx.label(f)} eklendi`, (c) => { const ch = ownerChain(c); ch.push(f); at = ch.length - 1; });
+    if (at >= 0) openFxPanel(at);
+  });
+  $("#fxPresetSel").addEventListener("change", (e) => {
+    const k = e.target.value;
+    e.target.value = "";
+    const p = PRESETS[k];
+    if (!p || !PROJ) return;
+    FX_OPEN = null;
+    fxEdit(`${p.name} uygulandı.`, (c) => {
+      c.owner.fx = JSON.parse(JSON.stringify(p.fx));
+      if (c.level === "track") { c.tr.preset = k; c.tr.denoise = !!p.denoise; delete c.tr.preset_base; }
+    });
+  });
+  $("#fxSkipTrack").addEventListener("change", (e) => {
+    const on = e.target.checked;
+    fxEdit(on ? "Klip kanal efektini atlıyor" : "Klip kanal efektinden geçiyor", (c) => { if (c.clip) c.clip.skip_track_fx = on; });
+  });
+  $("#fxStackAll").addEventListener("click", () => {
+    const c = fxCtx();
+    if (!c.clip?.stack_id) return;
+    const n = BeatClips.stackMembers(c.tr.clips, c.clip.stack_id).length;
+    fxEdit(`Klip efekti destedeki ${n} take'e uygulandı`, (cc) => { cc.tr.clips = BeatClips.applyFxToStack(cc.tr.clips, cc.clip.id); });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && FX_OPEN && !$("#fxPanel").hidden && !RECST) { FX_OPEN = null; BeatFx.closePanel($("#fxPanel")); renderFxRack(); }
+  });
+
+  /** R4: 'Bu bolgeye efekt' -> klip aralikta bolunur (10 ms capraz gecis), ortadaki parca kendi zincirini alir. */
+  function regionFx(tid, cid, t0, t1) {
+    const tr = PROJ?.tracks.find((x) => x.id === tid);
+    if (!tr) return;
+    let mid = "";
+    edit(`Bölgeye efekt: ${t0.toFixed(2)}–${t1.toFixed(2)} sn (klip bölündü)`, () => {
+      const r = BeatClips.regionSplit(tr.clips, cid, t0, t1, BeatClips.XFADE, null, []);
+      tr.clips = r.clips;
+      mid = r.mid_id;
+    });
+    if (!mid) { setStatus("Bölge çok kısa ya da klibin dışında."); return; }
+    SEL_TID = tid;
+    TL?.select(mid, false);
+    FX_LEVEL = "clip";
+    FX_OPEN = null;
+    renderProject();
+    setStatus("Bölge ayrı klip oldu — “+ Efekt…” veya şablonla bu bölgeye efekt ekle (kanal zincirinden önce).");
+  }
+  function clipFx(tid, cid) {
+    if (tid !== SEL_TID) selectTrack(tid);
+    TL?.select(cid, false);
+    FX_LEVEL = "clip";
+    FX_OPEN = null;
+    renderFxRack();
+  }
 
   $("#vstList").addEventListener("click", async (e) => {
     const b = e.target.closest("[data-addvst]"); if (!b || !PROJ) return;
-    const tr = selTrack();
-    if (tr) edit(`${b.dataset.vstname} → ${tr.name} zincirine eklendi.`, () => {
-      tr.fx.push({ type: "vst3", name: b.dataset.vstname, path: b.dataset.addvst });
+    const c = fxCtx();
+    if (!c.tr) return;
+    let at = -1;
+    fxEdit(`${b.dataset.vstname} → ${c.level === "clip" ? "klip" : c.tr.name} zincirine eklendi.`, (cc) => {
+      const ch = ownerChain(cc);
+      ch.push({ type: "vst3", name: b.dataset.vstname, path: b.dataset.addvst });
+      at = ch.length - 1;
     });
+    if (at >= 0) openFxPanel(at);
   });
 
   $("#vstScanBtn").onclick = async () => {
