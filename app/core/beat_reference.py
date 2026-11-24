@@ -23,6 +23,8 @@ FRAME = 4096
 MAX_FRAMES = 360            # ~30 sn esdegeri; uzun dosyada esit aralikli cerceveler
 MATCH_LIMIT_DB = 24.0
 DIFF_THRESHOLD_DB = 1.5
+QUIET_BAND_DB = -40.0       # bant enerjisi toplamin bu kadar altindaysa (iki tarafta da) karsilastirilmaz
+FLOOR_DB = -50.0
 
 # (anahtar, ad, alt Hz, ust Hz, referans fazla ifadesi, miks fazla ifadesi)
 BANDS: list[tuple[str, str, float, float, str, str]] = [
@@ -80,7 +82,9 @@ def compare_spectra(ref: dict[str, float], mix: dict[str, float], threshold: flo
     for key, name, lo, hi, more, less in BANDS:
         if key not in ref or key not in mix:
             continue
-        d = round(float(ref[key]) - float(mix[key]), 1)
+        if max(float(ref[key]), float(mix[key])) < QUIET_BAND_DB:
+            continue                      # iki tarafta da neredeyse bos bant: fark gurultu tabanindan ibaret
+        d = round(max(float(ref[key]), FLOOR_DB) - max(float(mix[key]), FLOOR_DB), 1)
         if abs(d) >= threshold:
             diffs.append({"band": key, "name": name, "range": band_range(lo, hi), "diff_db": d,
                           "text": f"{more if d > 0 else less} ({d:+.1f} dB {band_range(lo, hi)})"})
