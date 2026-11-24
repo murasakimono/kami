@@ -6758,9 +6758,15 @@ class Api(StudioMixin, EnhanceMixin):
         return kami_booth.RECORDER.start(pid, track_id, None if device_id < 0 else int(device_id),
                                          timeline_start=None if start_sec is None or float(start_sec) < 0 else float(start_sec))
 
-    def booth_rec_stop(self, ai_clean: bool = True) -> dict[str, Any]:
+    def booth_rec_stop(self, ai_clean: bool = True, plan: dict | None = None) -> dict[str, Any]:
+        """plan (1b): {mode: linear|loop|punch, anchor_u, anchor_wall, keep_from, loop_a, loop_b, clip_id, t0, t1, track_id}."""
         from app.core import kami_booth
-        return kami_booth.RECORDER.stop(ai_clean=bool(ai_clean))
+        return kami_booth.RECORDER.stop(ai_clean=bool(ai_clean), plan=plan if isinstance(plan, dict) else None)
+
+    def booth_rec_cancel(self) -> dict[str, Any]:
+        """1b: Esc ile iptal - take eklenmez, ham ses '_iptal_' onekiyle saklanir."""
+        from app.core import kami_booth
+        return kami_booth.RECORDER.cancel()
 
     def booth_rec_status(self) -> dict[str, Any]:
         from app.core import kami_booth

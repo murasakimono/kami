@@ -1,5 +1,5 @@
 "use strict";
-/* Kami Beat Asama 1a: saf klip islemleri (window.BeatClips).
+/* Kami Beat Asama 1a/1b: saf klip islemleri + take destesi (window.BeatClips).
    app/core/beat_clips.py ile BIREBIR ayni semantik; aritmetik ayni sirada, sonuclar r6 ile
    mikro-saniyeye yuvarlanir. tests/test_beat_1a.py node ile iki uygulamayi karsilastirir.
    Sureler SANIYE. Fonksiyonlar girdiyi degistirmez, yeni nesne/dizi dondurur. */
@@ -59,6 +59,13 @@
     c.muted = !!c.muted;
     c.fade_in = num(c.fade_in);
     c.fade_out = num(c.fade_out);
+    if (c.stack_id) {                 // 1b: take destesi (alan yoksa tek klip = deste yok)
+      c.stack_id = String(c.stack_id);
+      c.stack_active = !!c.stack_active;
+    } else {
+      delete c.stack_id;
+      delete c.stack_active;
+    }
     return clampFades(c);
   }
 
@@ -153,7 +160,74 @@
 
   const trackEnd = (clips) => clips.reduce((m, c) => Math.max(m, clipBounds(c)[1]), 0);
 
+  // ---------------- 1b: take destesi (beat_clips.py ile birebir) ----------------
+  const XFADE = 0.01;
+  const newStackId = () => "s_" + Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+  function stackMembers(clips, stackId) {
+    if (!stackId) return [];
+    return clips.filter((c) => c.stack_id === stackId).map(copy);
+  }
+  function stackActiveId(clips, stackId) {
+    const mem = clips.filter((c) => stackId && c.stack_id === stackId);
+    if (!mem.length) return "";
+    const a = mem.find((c) => c.stack_active);
+    return String((a || mem[mem.length - 1]).id);
+  }
+  function stackSetActive(clips, stackId, clipId) {
+    const out = clips.map(copy);
+    if (!stackId || !out.some((c) => c.stack_id === stackId && c.id === clipId)) return out;
+    for (const c of out) if (c.stack_id === stackId) c.stack_active = c.id === clipId;
+    return out;
+  }
+  function isAudibleMember(clips, clip) {
+    return !clip.stack_id || stackActiveId(clips, clip.stack_id) === clip.id;
+  }
+  function stackView(clips) {
+    const act = new Map();
+    const out = [];
+    for (const c of clips) {
+      const sid = c.stack_id;
+      if (sid) {
+        if (!act.has(sid)) act.set(sid, stackActiveId(clips, sid));
+        if (act.get(sid) !== c.id) continue;
+      }
+      out.push(copy(c));
+    }
+    return out;
+  }
+  function dissolveSingletons(out) {
+    const counts = new Map();
+    for (const c of out) if (c.stack_id) counts.set(c.stack_id, (counts.get(c.stack_id) || 0) + 1);
+    for (const c of out) if (c.stack_id && counts.get(c.stack_id) < 2) { delete c.stack_id; delete c.stack_active; }
+    return out;
+  }
+  function stackPush(clips, stackId, clip) {
+    const out = clips.map(copy);
+    const nc = copy(clip);
+    nc.stack_id = stackId;
+    nc.stack_active = true;
+    let last = -1;
+    out.forEach((c, i) => { if (c.stack_id === stackId) { c.stack_active = false; last = i; } });
+    if (last < 0) out.push(nc); else out.splice(last + 1, 0, nc);
+    return out;
+  }
+  function stackRemove(clips, clipId) {
+    const i = find(clips, clipId);
+    if (i < 0) return clips.map(copy);
+    const sid = clips[i].stack_id;
+    let out = clips.filter((c) => c.id !== clipId).map(copy);
+    if (sid) {
+      const mem = out.filter((c) => c.stack_id === sid);
+      if (mem.length && !mem.some((c) => c.stack_active)) mem[mem.length - 1].stack_active = true;
+      out = dissolveSingletons(out);
+    }
+    return out;
+  }
+
   root.BeatClips = {
+    XFADE, newStackId, stackMembers, stackActiveId, stackSetActive, isAudibleMember, stackView, stackPush, stackRemove,
+    stack_members: stackMembers, stack_active_id: stackActiveId, stack_set_active: stackSetActive,
+    is_audible_member: isAudibleMember, stack_view: stackView, stack_push: stackPush, stack_remove: stackRemove,
     MIN_LEN, DIVISIONS, r6, newId, clipLen, clipBounds, overlaps, normalize, snapTime,
     split, trimStart, trimEnd, move, duplicate, delete: del, setFade, trackEnd,
     // Python adlariyla esdeger takma adlar (esdeger testi icin)

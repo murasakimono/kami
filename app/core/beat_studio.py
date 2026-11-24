@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from app import paths
-from app.core import beat_clips, kami_beat
+from app.core import beat_clips, beat_transport, kami_beat
 
 log = logging.getLogger(__name__)
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -811,7 +811,7 @@ def render_track_clips(clips: list[dict[str, Any]], sr: int = 48000, cache: dict
     cache = {} if cache is None else cache
     parts = []
     total = 0
-    for raw in clips or []:
+    for raw in beat_clips.stack_view(list(clips or [])):   # 1b: destede yalniz aktif take duyulur
         c = beat_clips.normalize(raw)
         if c.get("muted") or not c["path"]:
             continue
@@ -847,6 +847,105 @@ def render_track_clips(clips: list[dict[str, Any]], sr: int = 48000, cache: dict
     for off, seg in parts:
         out[off:off + len(seg)] += seg
     return out
+
+
+def _recording_latency_s(proj: dict[str, Any], tr: dict[str, Any]) -> float:
+    return (float(proj.get("latency_ms") or 0.0) + float(tr.get("latency_ms") or 0.0)) / 1000.0
+
+
+def _same_span(c: dict[str, Any], start: float, length: float) -> bool:
+    s, e = beat_clips.clip_bounds(c)
+    return abs(s - start) < 0.002 and abs((e - s) - length) < 0.002
+
+
+def apply_recording(pid: str, track_id: str, audio_path: str, plan: dict[str, Any], rec_epoch0: float,
+                    label: str = "PC Mic") -> dict[str, Any]:
+    """Asama 1b: kayit planina gore klip(ler) yerlestirir. Ham dosya yalniz okunur (src_in/src_out ile kesilir).
+    plan: {mode: linear|loop|punch, anchor_u, anchor_wall (epoch sn), keep_from, loop_a, loop_b,
+           clip_id, t0, t1, xfade}
+      linear: tek klip keep_from'dan (sayim sonrasi) itibaren.
+      loop  : her tam tur ayri take; hepsi ayni konumda tek destede (ayni araliktaki mevcut desteye eklenir),
+              son tur aktif.
+      punch : hedef klip once / punch destesi / sonra olarak bolunur (beat_clips.punch_in)."""
+    loaded = load_project(pid)
+    if not loaded.get("ok"):
+        return loaded
+    proj = loaded["project"]
+    tr = next((t for t in proj.get("tracks", []) if t.get("id") == track_id), None)
+    if tr is None:
+        return {"ok": False, "error": "track_not_found"}
+    rec_len = audio_duration(audio_path)
+    if rec_len <= 0:
+        return {"ok": False, "error": "empty_recording"}
+    mode = str(plan.get("mode") or "linear")
+    u0e = beat_transport.recording_origin(plan.get("anchor_u", 0.0), plan.get("anchor_wall", rec_epoch0), rec_epoch0,
+                                          _recording_latency_s(proj, tr))
+    clips = list(tr.get("clips") or [])
+    takes = tr.setdefault("takes", [])
+    new_takes: list[dict[str, Any]] = []
+    new_ids: list[str] = []
+
+    def mk_take(lbl: str) -> dict[str, Any]:
+        tk = {"id": f"take_{uuid.uuid4().hex[:6]}", "label": lbl, "path": audio_path, "created_at": time.time()}
+        takes.append(tk)
+        new_takes.append(tk)
+        return tk
+
+    def mk_clip(spec: dict[str, Any], take_id: str) -> dict[str, Any]:
+        c = beat_clips.normalize({"id": "c_" + uuid.uuid4().hex[:8], "take_id": take_id, "path": audio_path,
+                                  "src_in": spec["src_in"], "src_out": spec["src_out"], "start": spec["start"],
+                                  "src_len": rec_len, "gain_db": 0.0, "fade_in": 0.0, "fade_out": 0.0, "muted": False})
+        new_ids.append(c["id"])
+        return c
+
+    n_take = len(takes)
+    if mode == "loop":
+        a, b = float(plan.get("loop_a") or 0.0), float(plan.get("loop_b") or 0.0)
+        laps = beat_transport.loop_laps(u0e, rec_len, a, b)
+        if not laps:
+            return {"ok": False, "error": "no_complete_lap"}
+        xf = beat_clips.XFADE
+        sid = ""
+        for c in beat_clips.stack_view(clips):
+            if _same_span(c, laps[0]["start"], laps[0]["src_out"] - laps[0]["src_in"]):
+                sid = c.get("stack_id") or ""
+                if not sid:                         # ayni araliktaki tek klip desteye donusur
+                    sid = beat_clips.new_stack_id()
+                    clips = [dict(x, stack_id=sid, stack_active=True) if x.get("id") == c.get("id") else x for x in clips]
+                break
+        sid = sid or beat_clips.new_stack_id()
+        for lap in laps:
+            n_take += 1
+            tk = mk_take(f"Tur {lap['lap'] + 1} · Take {n_take}")
+            c = beat_clips.set_fade(mk_clip(lap, tk["id"]), min(xf, 0.005), min(xf, 0.005))   # tur kenarinda tik olmasin
+            clips = beat_clips.stack_push(clips, sid, c)
+        clips = beat_clips._dissolve_singletons(clips)
+    elif mode == "punch":
+        cid = str(plan.get("clip_id") or "")
+        if beat_clips._find(clips, cid) < 0:
+            return {"ok": False, "error": "punch_clip_not_found"}
+        t0, t1 = float(plan.get("t0") or 0.0), float(plan.get("t1") or 0.0)
+        xf = float(plan.get("xfade", beat_clips.XFADE))
+        pw = beat_transport.punch_window(u0e, rec_len, t0, t1, xf)
+        if not pw:
+            return {"ok": False, "error": "punch_too_short"}
+        # kayit erken durdurulduysa punch araligi kaydin bittigi yere kadar
+        t1 = min(t1, pw["start"] + (pw["src_out"] - pw["src_in"]) - xf / 2.0)
+        tk = mk_take(f"Punch · Take {n_take + 1}")
+        pc = mk_clip(pw, tk["id"])
+        clips = beat_clips.punch_in(clips, cid, t0, t1, pc, xf)
+    else:
+        spec = beat_transport.linear_take(u0e, rec_len, float(plan.get("keep_from") or 0.0))
+        if not spec:
+            return {"ok": False, "error": "empty_recording"}
+        tk = mk_take(f"{label} Take {n_take + 1}")
+        clips.append(mk_clip(spec, tk["id"]))
+    tr["clips"] = clips
+    tr["active_take"] = new_takes[-1]["id"]
+    tr["path"] = audio_path
+    save_project(proj)
+    return {"ok": True, "project": proj, "take": new_takes[-1], "takes": new_takes, "new_clip_ids": new_ids,
+            "mode": mode, "u0e": u0e}
 
 
 def render_mixdown(pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str, Any]:

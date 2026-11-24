@@ -1,4 +1,4 @@
-"""Kami Beat Asama 1a: saf klip islemleri (yan etkisiz, her zaman yeni nesne/liste dondurur).
+"""Kami Beat Asama 1a/1b: saf klip islemleri + take destesi (yan etkisiz, her zaman yeni nesne/liste dondurur).
 
 Klip semasi (sureler SANIYE, float):
     {id, take_id, path, src_in, src_out, start, gain_db, fade_in, fade_out, muted, [src_len]}
@@ -89,6 +89,12 @@ def normalize(clip: dict[str, Any]) -> dict[str, Any]:
     c["muted"] = bool(c.get("muted"))
     c["fade_in"] = _num(c.get("fade_in"))
     c["fade_out"] = _num(c.get("fade_out"))
+    if c.get("stack_id"):              # 1b: take destesi (alan yoksa tek klip = deste yok)
+        c["stack_id"] = str(c["stack_id"])
+        c["stack_active"] = bool(c.get("stack_active"))
+    else:
+        c.pop("stack_id", None)
+        c.pop("stack_active", None)
     return _clamp_fades(c)
 
 
@@ -206,3 +212,176 @@ def set_fade(clip: dict[str, Any], fade_in: float, fade_out: float) -> dict[str,
 def track_end(clips: list[dict[str, Any]]) -> float:
     """Kanaldaki son klibin bitisi (bos ise 0)."""
     return max([clip_bounds(c)[1] for c in clips] or [0.0])
+
+
+# ---------------- 1b: take destesi (stack) ----------------
+# Ayni destedeki klipler ortak "stack_id" tasir; "stack_active" True olan uye duyulur ve cizilir.
+# Hicbir uye aktif isaretli degilse (bozuk veri) listedeki SON uye aktif sayilir.
+# Alan yoksa klip tek basinadir (goc gerekmez).
+XFADE = 0.01              # punch kenarlarinda capraz gecis (10 ms)
+
+
+def new_stack_id() -> str:
+    return "s_" + uuid.uuid4().hex[:8]
+
+
+def stack_members(clips: list[dict[str, Any]], stack_id: str) -> list[dict[str, Any]]:
+    """Destenin uyeleri (liste sirasiyla, kopya). stack_id bossa []."""
+    if not stack_id:
+        return []
+    return [dict(c) for c in clips if c.get("stack_id") == stack_id]
+
+
+def stack_active_id(clips: list[dict[str, Any]], stack_id: str) -> str:
+    mem = [c for c in clips if stack_id and c.get("stack_id") == stack_id]
+    if not mem:
+        return ""
+    for c in mem:
+        if c.get("stack_active"):
+            return str(c.get("id"))
+    return str(mem[-1].get("id"))
+
+
+def stack_set_active(clips: list[dict[str, Any]], stack_id: str, clip_id: str) -> list[dict[str, Any]]:
+    """clip_id destenin aktif uyesi olur, digerleri pasif. clip_id uye degilse degisiklik yok."""
+    out = [dict(c) for c in clips]
+    if not stack_id or not any(c.get("stack_id") == stack_id and c.get("id") == clip_id for c in out):
+        return out
+    for c in out:
+        if c.get("stack_id") == stack_id:
+            c["stack_active"] = c.get("id") == clip_id
+    return out
+
+
+def is_audible_member(clips: list[dict[str, Any]], clip: dict[str, Any]) -> bool:
+    sid = clip.get("stack_id")
+    return not sid or stack_active_id(clips, sid) == clip.get("id")
+
+
+def stack_view(clips: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Duyulan/cizilen klipler: destesiz klipler + her destenin aktif uyesi (liste sirasi korunur)."""
+    act: dict[str, str] = {}
+    out = []
+    for c in clips:
+        sid = c.get("stack_id")
+        if sid:
+            if sid not in act:
+                act[sid] = stack_active_id(clips, sid)
+            if act[sid] != c.get("id"):
+                continue
+        out.append(dict(c))
+    return out
+
+
+def _dissolve_singletons(out: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for c in out:
+        if c.get("stack_id"):
+            counts[c["stack_id"]] = counts.get(c["stack_id"], 0) + 1
+    for c in out:
+        if c.get("stack_id") and counts[c["stack_id"]] < 2:
+            c.pop("stack_id", None)
+            c.pop("stack_active", None)
+    return out
+
+
+def stack_push(clips: list[dict[str, Any]], stack_id: str, clip: dict[str, Any]) -> list[dict[str, Any]]:
+    """clip'i destenin ustune (aktif) koyar; destenin son uyesinin hemen arkasina eklenir."""
+    out = [dict(c) for c in clips]
+    nc = dict(clip)
+    nc["stack_id"] = stack_id
+    nc["stack_active"] = True
+    last = -1
+    for i, c in enumerate(out):
+        if c.get("stack_id") == stack_id:
+            c["stack_active"] = False
+            last = i
+    if last < 0:
+        out.append(nc)
+    else:
+        out.insert(last + 1, nc)
+    return out
+
+
+def stack_remove(clips: list[dict[str, Any]], clip_id: str) -> list[dict[str, Any]]:
+    """Desteden bir take'i siler. Aktif olan silinirse kalan son uye aktif olur; tek uye kalirsa deste cozulur."""
+    i = _find(clips, clip_id)
+    if i < 0:
+        return [dict(c) for c in clips]
+    sid = clips[i].get("stack_id")
+    out = [dict(c) for c in clips if c.get("id") != clip_id]
+    if sid:
+        mem = [c for c in out if c.get("stack_id") == sid]
+        if mem and not any(c.get("stack_active") for c in mem):
+            mem[-1]["stack_active"] = True
+        out = _dissolve_singletons(out)
+    return out
+
+
+def punch_in(clips: list[dict[str, Any]], clip_id: str, t0: float, t1: float, punch_clip: dict[str, Any],
+             xfade: float = XFADE, ids: Any = None) -> list[dict[str, Any]]:
+    """Punch-in sonucu: hedef klip (destesiyse tum uyeleri) t0/t1'den bolunur -> once / punch destesi / sonra.
+    Orta parcalar + punch_clip yeni bir destede toplanir (punch aktif). Kenarlarda xfade uzunlugunda capraz
+    gecis: onceki parca t0+xf/2'ye kadar uzar ve fade-out alir, punch t0-xf/2'den baslar ve fade-in alir
+    (t1 kenari simetrik). punch_clip'in start/src_in/src_out'u cagiran tarafca t0-xf/2..t1+xf/2'ye gore verilir.
+    ids: yeni kimlik ureten cagrilabilir (test icin belirlenebilir); yoksa rastgele."""
+    gen = ids or (lambda kind: (new_stack_id() if kind == "s" else _new_id()))
+    i = _find(clips, clip_id)
+    if i < 0:
+        return [dict(c) for c in clips]
+    target = clips[i]
+    sid = target.get("stack_id")
+    members = [c for c in clips if c.get("stack_id") == sid] if sid else [target]
+    act_id = stack_active_id(clips, sid) if sid else target.get("id")
+    act = next(c for c in members if c.get("id") == act_id)
+    s, e = clip_bounds(act)
+    t0 = max(_num(t0), s)
+    t1 = min(_num(t1), e)
+    if t1 - t0 < MIN_LEN:
+        return [dict(c) for c in clips]
+    xf = max(0.0, _num(xfade))
+    h = xf / 2.0
+    sb, sm, sa = gen("s"), gen("s"), gen("s")
+    befores, mids, afters = [], [], []
+    has_b = has_a = False
+    for m in members:
+        ms, me = clip_bounds(m)
+        is_act = m.get("id") == act_id
+        first_id = [m.get("id")]
+
+        def take_id():
+            if first_id:
+                return first_id.pop()
+            return gen("c")
+        b = a = None
+        if t0 - ms >= MIN_LEN:
+            b = trim_end(m, min(me, t0 + h))
+            b["id"] = take_id()
+            b = set_fade(b, b.get("fade_in"), xf)
+            b["stack_id"], b["stack_active"] = sb, is_act
+            befores.append(b)
+        if t1 > ms and t0 < me:
+            md = trim_start(trim_end(m, min(me, t1 + h)), max(ms, t0 - h))
+            md["id"] = take_id()
+            fi = xf if t0 - ms >= MIN_LEN else _num(m.get("fade_in"))
+            fo = xf if me - t1 >= MIN_LEN else _num(m.get("fade_out"))
+            md = set_fade(md, fi, fo)
+            md["stack_id"], md["stack_active"] = sm, False
+            mids.append(md)
+        if me - t1 >= MIN_LEN:
+            a = trim_start(m, max(ms, t1 - h))
+            a["id"] = take_id()
+            a = set_fade(a, xf, a.get("fade_out"))
+            a["stack_id"], a["stack_active"] = sa, is_act
+            afters.append(a)
+        if is_act:
+            has_b, has_a = b is not None, a is not None
+    p = normalize(punch_clip)
+    p = set_fade(p, xf if has_b else 0.0, xf if has_a else 0.0)
+    p["stack_id"], p["stack_active"] = sm, True
+    mids.append(p)
+    ids_old = {c.get("id") for c in members}
+    first = min(_find(clips, c.get("id")) for c in members)
+    rest = [dict(c) for c in clips if c.get("id") not in ids_old]
+    out = rest[:first] + befores + mids + afters + rest[first:]
+    return _dissolve_singletons(out)

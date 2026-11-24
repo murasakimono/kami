@@ -5,6 +5,7 @@ import base64
 import hmac
 import json
 import logging
+import math
 import os
 import secrets
 import socket
@@ -69,12 +70,35 @@ class PcRecorder:
         self._track_id = "vocal1"
         self._started_at = 0.0
         self._timeline_start: float | None = None
+        self._epoch0: float | None = None     # 1b: kaydin 0. orneginin duvar saati (time.time)
+        self._frames = 0
+        self._level = 0.0                     # son status okumasindan beri tepe (0..1)
+
+    def _on_block(self, indata, frames: int) -> None:
+        """Ses geri cagrisi: parcayi sakla, ilk blokta zaman capasini kur, tepe seviyesini guncelle."""
+        if self._epoch0 is None:
+            self._epoch0 = time.time() - frames / float(self._sr or 48000)
+        self._chunks.append(indata.copy())
+        self._frames += int(frames)
+        try:
+            pk = float(abs(indata).max()) if frames else 0.0
+        except Exception:
+            pk = 0.0
+        if pk > self._level:
+            self._level = pk
 
     def status(self) -> dict[str, Any]:
+        lvl = self._level
+        self._level = 0.0
+        db = round(20.0 * math.log10(lvl), 1) if lvl > 1e-6 else -120.0
         return {
             "ok": True,
             "recording": self._recording,
             "elapsed": round(time.time() - self._started_at, 1) if self._recording else 0.0,
+            "rec_sec": round(self._frames / float(self._sr or 48000), 2) if self._recording else 0.0,
+            "level": round(min(1.0, lvl), 4),
+            "level_db": db,
+            "clip": lvl >= 0.999,
             "project_id": self._project_id,
             "track_id": self._track_id,
         }
@@ -91,9 +115,12 @@ class PcRecorder:
                 self._project_id = project_id
                 self._track_id = track_id or "vocal1"
                 self._timeline_start = timeline_start   # Kami Beat 1a: kayit zaman cizelgesinde nereden basladi
+                self._epoch0 = None
+                self._frames = 0
+                self._level = 0.0
 
                 def _cb(indata, frames, time_info, status):
-                    self._chunks.append(indata.copy())
+                    self._on_block(indata, frames)
 
                 self._stream = sd.InputStream(
                     samplerate=self._sr,
@@ -111,30 +138,51 @@ class PcRecorder:
                 self._recording = False
                 return {"ok": False, "error": str(exc)[:140]}
 
-    def stop(self, ai_clean: bool = True) -> dict[str, Any]:
+    def _close_stream(self) -> None:
+        try:
+            if self._stream is not None:
+                self._stream.stop()
+                self._stream.close()
+        finally:
+            self._stream = None
+            self._recording = False
+
+    def _write_raw(self, prefix: str = "") -> tuple[str, int] | None:
+        if not self._chunks:
+            return None
+        import numpy as np
+        mono = np.concatenate(self._chunks, axis=0)
+        stereo = np.repeat(mono, 2, axis=1).astype("float32")
+        fname = f"{prefix}pc_mic_{int(time.time())}_{uuid.uuid4().hex[:4]}.wav"
+        out_path = str(beat_studio.recordings_dir() / fname)
+        beat_studio._write_wav_np(out_path, stereo, self._sr)
+        return out_path, len(stereo)
+
+    def cancel(self) -> dict[str, Any]:
+        """1b (Esc): kayit iptal - take/klip eklenmez, ham ses '_iptal' onekiyle saklanir."""
         with self._lock:
             if not self._recording:
                 return {"ok": False, "error": "not_recording"}
-            try:
-                if self._stream is not None:
-                    self._stream.stop()
-                    self._stream.close()
-            finally:
-                self._stream = None
-                self._recording = False
+            self._close_stream()
+            w = self._write_raw("_iptal_")
+            self._chunks = []
+            return {"ok": True, "cancelled": True, "path": w[0] if w else ""}
 
-            if not self._chunks:
+    def stop(self, ai_clean: bool = True, plan: dict[str, Any] | None = None) -> dict[str, Any]:
+        with self._lock:
+            if not self._recording:
+                return {"ok": False, "error": "not_recording"}
+            self._close_stream()
+
+            w = self._write_raw()
+            self._chunks = []
+            if not w:
                 return {"ok": False, "error": "empty_recording"}
-
-            import numpy as np
-            mono = np.concatenate(self._chunks, axis=0)
-            stereo = np.repeat(mono, 2, axis=1).astype("float32")
-            fname = f"pc_mic_{int(time.time())}_{uuid.uuid4().hex[:4]}.wav"
-            out_path = str(beat_studio.recordings_dir() / fname)
-            beat_studio._write_wav_np(out_path, stereo, self._sr)
+            out_path, n_frames = w
+            raw_path = out_path
 
             if ai_clean:
-                clean_path = str(beat_studio.recordings_dir() / f"clean_{fname}")
+                clean_path = str(beat_studio.recordings_dir() / f"clean_{os.path.basename(raw_path)}")
                 res = beat_studio.apply_fx_chain(
                     out_path,
                     clean_path,
@@ -145,11 +193,22 @@ class PcRecorder:
                     out_path = clean_path
 
             take = None
+            res: dict[str, Any] = {"ok": True, "path": out_path, "raw_path": raw_path, "duration": round(n_frames / self._sr, 2)}
+            if self._project_id and plan and isinstance(plan, dict) and self._epoch0 is not None:
+                # 1b: sayim / dongu / punch yerlesimi (zaman capasi ile)
+                tid = str(plan.get("track_id") or self._track_id)
+                ar = beat_studio.apply_recording(self._project_id, tid, out_path, plan, self._epoch0)
+                if not ar.get("ok"):
+                    res.update(ok=False, error=ar.get("error", "apply_failed"))
+                    return res
+                res.update({k: ar[k] for k in ("project", "take", "takes", "new_clip_ids", "mode") if k in ar})
+                return res
             if self._project_id:
                 tr_res = beat_studio.add_take_to_track(self._project_id, self._track_id, out_path, label="PC Mic Take",
                                                        start=self._timeline_start, from_recording=self._timeline_start is not None)
                 take = tr_res.get("take")
-            return {"ok": True, "path": out_path, "take": take, "duration": round(len(stereo) / self._sr, 2)}
+            res["take"] = take
+            return res
 
 
 RECORDER = PcRecorder()
