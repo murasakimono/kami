@@ -190,6 +190,7 @@
                 <span>Yoğunluk</span><input type="range" id="styInt" min="0" max="100" step="1" value="50"><b class="kb-num" id="styIntVal">50</b>
               </label>
               <label class="kb-chk" title="Kapalıysa tüm zincir yerleşik efektlerle (birebir ayarlı) kurulur"><input type="checkbox" id="styVst" checked><span>Kurulu eklentileri kullan</span></label>
+              <label class="kb-chk" title="Açıksa önayarın reverb/delay adımları kanal sonuna değil Reverb/Delay bus send'ine çevrilir"><input type="checkbox" id="stySends" checked><span>Send kullan</span></label>
               <button type="button" class="btn" id="stySave" title="Bu kanalın zincirini kendi önayarın olarak kaydet (listenin başına gelir)">Önayar olarak kaydet</button>
               <span class="kb-sty-savebox" id="stySaveBox" hidden><input type="text" id="stySaveName" maxlength="60" placeholder="Önayar adı"><button type="button" class="btn ok" id="stySaveOk">Kaydet</button></span>
             </div>
@@ -207,6 +208,13 @@
             <button type="button" class="btn" data-adlib="echo_tail" title="Her klibin son vuruşuna BPM'e kilitli delay atar, yankı klip sonrasına taşar">Yankı kuyruğu</button>
             <select id="adlibNote" class="kb-sel" title="Delay zamanı (proje BPM'ine kilitli)"><option value="1/4">1/4</option><option value="1/8">1/8</option><option value="1/8d" selected>nokta 1/8</option></select>
           </div>
+          <div class="kb-mixrow" id="mixRow" aria-label="Send, vokale yer açma, temizlik">
+            <span class="kb-mix-lbl" title="Post-fader send: kanal sesi (sürgü + ses otomasyonu) bus'a gider; bus efekti %100 ıslak, master'a eklenir">SEND</span>
+            <span class="kb-sends" id="sendBox"></span>
+            <span class="kb-room" id="roomBox" hidden></span>
+            <button type="button" class="btn" id="cleanOpen" title="Gürültü / nefes / ağız sesi temizliği (öner → onayla; ham kayıt değişmez)">✧ Temizle</button>
+          </div>
+          <div class="kb-clean" id="cleanPanel" hidden aria-label="Temizle"></div>
           <div class="kb-fx-clipopts" id="fxClipOpts" hidden>
             <label class="kb-chk" title="Bu klip kanalın efekt zincirinden geçmez (yalnız kendi efektleri)"><input type="checkbox" id="fxSkipTrack"><span>Kanal efektini atla</span></label>
             <button type="button" class="btn" id="fxStackAll" hidden title="Bu klibin efekt zincirini destedeki tüm take'lere kopyala">Tüm desteye uygula</button>
@@ -501,6 +509,8 @@
   <script src="beat-clips.js"></script>
   <script src="beat-transport.js"></script>
   <script src="beat-lyrics.js"></script>
+  <script src="beat-auto.js"></script>
+  <script src="beat-clean.js"></script>
   <script src="beat-timeline.js"></script>
   <script src="beat-fx.js"></script>
   <script src="beat-sim.js"></script>

@@ -26,6 +26,7 @@
   let FX_LEVEL = "track";     // "track" | "clip"
   let FX_OPEN = null;         // acik parametre paneli: { level, tid, cid, idx }
   let PREV = null;            // BeatFx.createPreview
+  let CLEAN = null;           // 2b: BeatClean (Temizle paneli)
   // ---- Asama 1d/1e ----
   let LIB = null;             // BeatLibrary (beat rafi + fikirler)
   let ALIGN = null;           // bekleyen hizalama onerisi { tid, cid, clips, before, label }
@@ -196,11 +197,25 @@
     if (!opts.keepHistory) { UNDO.length = 0; REDO.length = 0; TL?.clearSel(); }
     renderProject();
     syncReference();
+    refreshAutoBuses();
     if (!opts.keepView) { TL?.setPlayhead(0, false); TL?.fit(); }
     if (r.recovered) setStatus("⚠ Proje dosyası bozuktu — son otomatik kayıttan kurtarıldı.");
     hideAlign();
     LIB?.refreshIdeas();
     return true;
+  }
+
+  /** 2b: varsayilan bus'lar ilk kez kurulu eklentilere gore (Supermassive / MDelay) yenilenir; ses/mute korunur. */
+  async function refreshAutoBuses() {
+    if (!PROJ?.buses_auto || !api()?.beat_buses_default) return;
+    const pid = PROJ.id;
+    const r = await api().beat_buses_default(Number(PROJ.bpm) || 120).catch(() => null);
+    if (!r?.ok || !PROJ || PROJ.id !== pid) return;
+    const old = new Map((PROJ.buses || []).map((b) => [b.id, b]));
+    PROJ.buses = r.buses.map((b) => Object.assign(b, old.has(b.id) ? { volume_db: old.get(b.id).volume_db ?? 0, mute: !!old.get(b.id).mute } : {}));
+    delete PROJ.buses_auto;
+    renderProject();
+    scheduleSave();
   }
 
   function selTrack() {
@@ -211,7 +226,8 @@
   // ---------------- Geri al / yinele + otomatik kayit ----------------
   // 1c: bolum haritasi, soz zamanlari ve analizden gelen BPM/ton da geri al kapsaminda
   const snap = () => JSON.stringify({ tracks: PROJ?.tracks || [], latency_ms: PROJ?.latency_ms || 0,
-    sections: PROJ?.sections || [], lyric_times: PROJ?.lyric_times || null, bpm: PROJ?.bpm, key: PROJ?.key });
+    sections: PROJ?.sections || [], lyric_times: PROJ?.lyric_times || null, bpm: PROJ?.bpm, key: PROJ?.key,
+    buses: PROJ?.buses || null });                       // 2b: bus ses/mute geri alinabilir
   function restore(s) {
     const d = JSON.parse(s);
     PROJ.tracks = d.tracks;
@@ -220,6 +236,7 @@
     if (d.lyric_times) PROJ.lyric_times = d.lyric_times;
     if (d.bpm != null) PROJ.bpm = d.bpm;
     if (d.key != null) PROJ.key = d.key;
+    if (Array.isArray(d.buses)) PROJ.buses = d.buses;
     TL?.pruneSelection();
   }
   function pushUndo(before) {
@@ -438,6 +455,7 @@
     syncFxPanel(c);
     renderStyle(c);
     renderAdlibQuick(c);
+    renderMixRow(c);
   }
 
   /** Acik paneli (varsa) gecerli zincirdeki module yeniden baglar; modul yoksa kapatir. */
@@ -475,6 +493,59 @@
     document.querySelectorAll("#fxRack .kb-fx-mod").forEach((m) => m.classList.toggle("open", +m.dataset.fxi === idx));
   }
 
+  // ---------------- 2b: otomasyon serit basligi + bus seritleri + send / vokale yer ac ----------------
+  function autoHeadHtml(tr, col) {
+    if (!tr.auto_lane || !window.BeatAuto) return "";
+    const p = tr.auto_lane === "pan" ? "pan" : "volume";
+    const n = (tr.automation?.[p] || []).length;
+    return `<div class="kb-auto-head" data-autohead="${esc(tr.id)}" style="--tc:${col}">
+      <select class="kb-sel" data-autoparam="${esc(tr.id)}" title="Otomasyon parametresi">
+        <option value="volume" ${p === "volume" ? "selected" : ""} title="Kanal sürgüsüne eklenir">Ses (dB)</option>
+        <option value="pan" ${p === "pan" ? "selected" : ""} title="Noktası varsa pan düğmesinin yerine geçer">Pan</option>
+      </select>
+      <span class="kb-mut">${n} nokta</span>
+      <button type="button" class="btn ic" data-autoclear="${esc(tr.id)}" title="Bu şeridin tüm noktalarını sil" ${n ? "" : "disabled"}>⌫</button>
+    </div>`;
+  }
+  function busStripsHtml() {
+    return (PROJ?.buses || []).map((b) => {
+      const v = Number(b.volume_db) || 0;
+      const eng = (b.fx || []).map((f) => f.name || f.type).join(" → ");
+      return `<div class="kb-bus-strip ${b.mute ? "muted" : ""}" data-bus="${esc(b.id)}" title="${esc(b.name)} bus'ı: ${esc(eng || "efekt yok")}">
+        <b>${esc(b.name)}</b><span class="kb-mut">BUS</span>
+        <input type="range" data-busvol="${esc(b.id)}" min="-24" max="6" step="0.5" value="${v}" title="Bus ses seviyesi">
+        <span class="kb-db-val">${v > 0 ? "+" : ""}${v} dB</span>
+        <button type="button" class="kb-ms ${b.mute ? "m-on" : ""}" data-busmute="${esc(b.id)}" title="Bus'ı sessize al">M</button>
+      </div>`;
+    }).join("");
+  }
+  const SEND_MIN = -60;
+  function renderMixRow(c) {
+    const tr = c?.tr;
+    const box = $("#sendBox");
+    if (!tr) { box.innerHTML = ""; $("#roomBox").hidden = true; return; }
+    const sends = tr.sends || {};
+    box.innerHTML = (PROJ?.buses || []).map((b) => {
+      const v = sends[b.id] ?? SEND_MIN;
+      const off = !(v > SEND_MIN);
+      return `<label class="kb-send ${off ? "off" : ""} ${b.mute ? "bmute" : ""}" title="${esc(b.name)} send (post-fader)${b.mute ? " — bus sessizde" : ""}">
+        <span>${esc(b.name)}</span><input type="range" data-send="${esc(b.id)}" min="${SEND_MIN}" max="6" step="0.5" value="${v}">
+        <b class="kb-num">${off ? "kapalı" : `${v > 0 ? "+" : ""}${v} dB`}</b></label>`;
+    }).join("") || '<span class="kb-mut">Bus yok</span>';
+    const rb = $("#roomBox");
+    rb.hidden = tr.role === "vocal";
+    if (!rb.hidden) {
+      const m = Object.assign({ on: false, mode: "band", center_hz: 2000, width_oct: 2, depth_db: 3 }, tr.make_room || {});
+      rb.innerHTML = `<label class="kb-chk" title="Vokal kanalları ses verdiğinde bu kanalın orta frekanslarını birkaç dB geri çeker (bounce'ta da)"><input type="checkbox" data-room="on" ${m.on ? "checked" : ""}><span>Vokale yer aç</span></label>
+        <select class="kb-sel" data-room="mode" title="Bant: yalnız orta frekanslar · Geniş: tüm beat (basit ducking)">
+          <option value="band" ${m.mode !== "wide" ? "selected" : ""}>Orta bant</option><option value="wide" ${m.mode === "wide" ? "selected" : ""}>Geniş (ducking)</option></select>
+        <label title="Merkez frekans"><span>Merkez</span><input type="range" data-room="center_hz" min="500" max="6000" step="50" value="${m.center_hz}" ${m.mode === "wide" ? "disabled" : ""}><b class="kb-num">${(m.center_hz / 1000).toFixed(1)} kHz</b></label>
+        <label title="Bant genişliği (oktav)"><span>Genişlik</span><input type="range" data-room="width_oct" min="0.5" max="4" step="0.25" value="${m.width_oct}" ${m.mode === "wide" ? "disabled" : ""}><b class="kb-num">${Number(m.width_oct).toFixed(2)} okt</b></label>
+        <label title="Azaltma miktarı (bant: 0-6 dB, geniş: 0-3 dB)"><span>Şiddet</span><input type="range" data-room="depth_db" min="0" max="${m.mode === "wide" ? 3 : 6}" step="0.5" value="${Math.min(m.depth_db, m.mode === "wide" ? 3 : 6)}"><b class="kb-num">${m.depth_db} dB</b></label>`;
+    }
+    $("#cleanOpen").hidden = !(tr.clips || []).length;
+  }
+
   function renderProject() {
     if (!PROJ) return;
     syncLoopUi();
@@ -503,6 +574,7 @@
               ${lay}<b data-rename="${esc(tr.id)}" title="Çift tık: yeniden adlandır">${esc(tr.name)}</b>
               <button type="button" class="kb-ms ${tr.mute ? "m-on" : ""}" data-mute="${esc(tr.id)}" title="Sessize Al (Mute)">M</button>
               <button type="button" class="kb-ms ${tr.solo ? "s-on" : ""}" data-solo="${esc(tr.id)}" title="Tek Çal (Solo)">S</button>
+              <button type="button" class="kb-ms ${tr.auto_lane ? "a-on" : ""} ${window.BeatAuto?.hasAuto(tr) ? "a-has" : ""}" data-autotog="${esc(tr.id)}" title="Otomasyon şeridi (ses / pan)">A</button>
               ${PROTECTED_TRACKS.has(tr.id) ? "" : `<button type="button" class="kb-del" data-deltrack="${esc(tr.id)}" title="Kanalı sil (geri alınabilir)">×</button>`}
             </div>
             <div class="kb-ch-mid">
@@ -518,8 +590,8 @@
               <input type="number" data-lat="${esc(tr.id)}" value="${tr.latency_ms ?? 0}" step="1" title="Kanal kayıt gecikmesi (ms) — bu kanala yeni kayıt klipleri bu kadar sola kaydırılır (proje gecikmesine eklenir)">
             </div>
           </div>
-        </div>`;
-    }).join("");
+        </div>${autoHeadHtml(tr, col)}`;
+    }).join("") + busStripsHtml();
 
     renderFxRack();
     TL?.render();
@@ -633,12 +705,72 @@
       onRegionFx: (tid, cid, a, b) => regionFx(tid, cid, a, b),
       onThrow: (tid, cid, a, b, kind, note) => throwFx(tid, cid, a, b, kind, note),
       onPlayStart: () => PREV?.refresh(true),
+      // 2b
+      onBreathToggle: (tid, cid, i) => CLEAN?.toggleBreath(tid, cid, i),
+      onCleanOpen: (tid, cid) => openClean(tid, cid),
+      breathSuggest: (c) => CLEAN?.breathSuggest(c),
     });
     TL.setSnap(gridMode());
     initPreview();
+    initClean();
     syncGridLabel();
     applyRecSetUi();
   }
+
+  /** 2b: Temizle paneli. */
+  function initClean() {
+    if (!window.BeatClean) return;
+    CLEAN = BeatClean.create({
+      el: $("#cleanPanel"), api, runJob, getProj: () => PROJ, edit, onStatus: setStatus, tl: () => TL,
+      onApplied: () => { TL?.restartIfPlaying(); PREV?.refresh(true); },
+    });
+  }
+  function openClean(tid, cid) {
+    if (!CLEAN || !PROJ) return;
+    if (tid) selectTrack(tid);
+    const h = cid ? null : selClipHit();
+    CLEAN.open(tid || SEL_TID, cid || (FX_LEVEL === "clip" && h ? h.clip.id : ""));
+  }
+  // 2b: send seviyeleri + vokale yer ac (surgu canli; birakinca tek geri al adimi)
+  let MIX_BEFORE = null;
+  function mixField(el) {
+    const tr = selTrack();
+    if (!tr) return null;
+    if (el.dataset.send) {
+      const v = +el.value;
+      tr.sends = Object.assign({}, tr.sends || {});
+      if (v > SEND_MIN) tr.sends[el.dataset.send] = v; else delete tr.sends[el.dataset.send];
+      const lbl = el.nextElementSibling;
+      if (lbl) lbl.textContent = v > SEND_MIN ? `${v > 0 ? "+" : ""}${v} dB` : "kapalı";
+      el.closest(".kb-send")?.classList.toggle("off", !(v > SEND_MIN));
+      return "Send";
+    }
+    if (el.dataset.room) {
+      const k = el.dataset.room;
+      tr.make_room = Object.assign({ on: false, mode: "band", center_hz: 2000, width_oct: 2, depth_db: 3 }, tr.make_room || {});
+      tr.make_room[k] = el.type === "checkbox" ? el.checked : (el.tagName === "SELECT" ? el.value : +el.value);
+      if (k === "mode" && el.value === "wide") tr.make_room.depth_db = Math.min(3, tr.make_room.depth_db);
+      const lbl = el.nextElementSibling;
+      if (lbl && el.type === "range") lbl.textContent = k === "center_hz" ? `${(+el.value / 1000).toFixed(1)} kHz` : k === "width_oct" ? `${(+el.value).toFixed(2)} okt` : `${el.value} dB`;
+      return "Vokale yer aç";
+    }
+    return null;
+  }
+  $("#mixRow").addEventListener("input", (e) => {
+    if (!PROJ || e.target.type !== "range") return;
+    if (MIX_BEFORE === null) MIX_BEFORE = snap();
+    mixField(e.target);
+  });
+  $("#mixRow").addEventListener("change", (e) => {
+    if (!PROJ) return;
+    const before = MIX_BEFORE ?? snap();
+    MIX_BEFORE = null;
+    const label = mixField(e.target);
+    if (e.target.tagName === "SELECT") e.target.blur();
+    if (label) commitFrom(label, before);
+  });
+
+  $("#cleanOpen").onclick = (e) => { e.currentTarget.blur(); if (CLEAN?.isOpen()) CLEAN.close(); else openClean(); };
 
   /** Efektli onizleme yoneticisi + arac cubugu denetimleri. */
   function initPreview() {
@@ -746,7 +878,7 @@
     else if (ctrl && (k === "y" || k === "Y" || ((k === "z" || k === "Z") && e.shiftKey))) { e.preventDefault(); redo(); }
     else if (ctrl && (k === "d" || k === "D")) { e.preventDefault(); TL.duplicateSelected(); }
     else if (!ctrl && (k === "s" || k === "S")) { e.preventDefault(); TL.splitSelected(); }
-    else if (k === "Delete" || k === "Backspace") { e.preventDefault(); TL.deleteSelected(); }
+    else if (k === "Delete" || k === "Backspace") { e.preventDefault(); if (!TL.autoDeleteSelected()) TL.deleteSelected(); }
     else if (!ctrl && (k === "+" || k === "=" || e.code === "NumpadAdd")) { e.preventDefault(); TL.zoomBy(1.5); }
     else if (!ctrl && (k === "-" || k === "_" || e.code === "NumpadSubtract")) { e.preventDefault(); TL.zoomBy(1 / 1.5); }
     else if (k === "Home") { e.preventDefault(); TL.setPlayhead(0); TL.ensureVisible(0); }
@@ -1146,6 +1278,15 @@
       edit("Mute", () => { const tr = PROJ.tracks.find((x) => x.id === b.dataset.mute); if (tr) tr.mute = !tr.mute; });
     } else if (b.dataset.solo) {
       edit("Solo", () => { const tr = PROJ.tracks.find((x) => x.id === b.dataset.solo); if (tr) tr.solo = !tr.solo; });
+    } else if (b.dataset.autotog) {           // 2b: otomasyon seridi ac/kapa (gorunum durumu, geri al adimi degil)
+      const tr = PROJ.tracks.find((x) => x.id === b.dataset.autotog);
+      if (tr) { if (tr.auto_lane) delete tr.auto_lane; else tr.auto_lane = "volume"; TL?.clearAutoSel(); renderProject(); scheduleSave(); }
+    } else if (b.dataset.autoclear) {
+      const tr = PROJ.tracks.find((x) => x.id === b.dataset.autoclear);
+      const p = tr?.auto_lane === "pan" ? "pan" : "volume";
+      if (tr?.automation?.[p]?.length) edit(`${p === "pan" ? "Pan" : "Ses"} otomasyonu temizlendi`, () => { tr.automation[p] = []; });
+    } else if (b.dataset.busmute) {
+      edit("Bus mute", () => { const bb = (PROJ.buses || []).find((x) => x.id === b.dataset.busmute); if (bb) bb.mute = !bb.mute; });
     } else if (b.dataset.deltrack) {
       const tr = PROJ.tracks.find((x) => x.id === b.dataset.deltrack);
       if (!tr) return;
@@ -1289,6 +1430,12 @@
           return BeatClips.normalize(n);
         });
       });
+    } else if (el.dataset.autoparam) {
+      const tr = PROJ.tracks.find((x) => x.id === el.dataset.autoparam);
+      if (tr) { tr.auto_lane = el.value === "pan" ? "pan" : "volume"; TL?.clearAutoSel(); renderProject(); scheduleSave(); }
+    } else if (el.dataset.busvol) {
+      const before = el.dataset.before;
+      if (before) { delete el.dataset.before; commitFrom("Bus ses seviyesi", before); }
     } else if (el.dataset.lat) {
       edit("Kanal gecikmesi", () => { const tr = PROJ.tracks.find((x) => x.id === el.dataset.lat); if (tr) tr.latency_ms = +el.value || 0; });
     } else if (el.dataset.vol || el.dataset.pan) {
@@ -1301,6 +1448,12 @@
   $("#tlHeads").addEventListener("input", (e) => {
     if (!PROJ) return;
     const el = e.target;
+    if (el.dataset.busvol) {                  // 2b: bus ses seviyesi (birakinca tek geri al adimi)
+      if (!el.dataset.before) el.dataset.before = snap();
+      const bb = (PROJ.buses || []).find((x) => x.id === el.dataset.busvol);
+      if (bb) { bb.volume_db = +el.value; el.nextElementSibling.textContent = `${bb.volume_db > 0 ? "+" : ""}${bb.volume_db} dB`; }
+      return;
+    }
     const tid = el.dataset.vol || el.dataset.pan;
     if (!tid) return;
     if (!el.dataset.before) el.dataset.before = snap();
@@ -1447,7 +1600,15 @@
     renderStyle();
   }
   function resolveStyle(id, intensity) {
-    return api()?.beat_style_resolve?.(id, intensity, $("#styVst").checked, Number(PROJ?.bpm) || 0).catch((e) => ({ ok: false, error: String(e) }));
+    return api()?.beat_style_resolve?.(id, intensity, $("#styVst").checked, Number(PROJ?.bpm) || 0, useSends()).catch((e) => ({ ok: false, error: String(e) }));
+  }
+  /** 2b: onayarin reverb/delay'i bus send'ine (varsayilan acik; bus yoksa kanal sonunda kalir). */
+  function useSends() { return !!$("#stySends")?.checked && (PROJ?.buses || []).length > 0; }
+  function applySends(tr, r) {
+    if (!r?.use_sends) return;
+    tr.sends = Object.assign({}, tr.sends || {}, r.sends || {});
+    for (const b of ["reverb", "delay"]) if (!(r.sends || {})[b] && tr.style_sends?.includes(b)) delete tr.sends[b];
+    tr.style_sends = Object.keys(r.sends || {});
   }
   function renderStyle(c) {
     c = c || fxCtx();
@@ -1491,6 +1652,7 @@
         c.tr.style = { id, name: r.name, intensity: inten, use_vst: !!r.use_vst, fx_sig: fxSig(c.owner.fx) };
         c.tr.preset = ""; delete c.tr.preset_base;
         c.tr.denoise = !!r.denoise;
+        applySends(c.tr, r);
       }
     });
     if (tid) { STY.notes.set(tid, r); renderStyle(); suggestLayers(tid, id); }
@@ -1504,6 +1666,7 @@
     if (my !== STY.live.seq) return;
     if (r?.ok) {
       tr.fx = r.fx; tr.style.intensity = v; tr.style.fx_sig = fxSig(tr.fx);
+      applySends(tr, r);
       STY.notes.set(tr.id, r);
       FX_OPEN = null;
       renderFxRack();
@@ -1584,6 +1747,7 @@
           t.fx = JSON.parse(JSON.stringify(r2.fx));
           t.style = { id: x.preset_id, name: r2.name, intensity: r2.intensity, use_vst: !!r2.use_vst, fx_sig: fxSig(t.fx) };
           t.preset = ""; delete t.preset_base;
+          applySends(t, r2);
           STY.notes.set(t.id, r2);
         });
       });

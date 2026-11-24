@@ -222,16 +222,58 @@
   const REFILL = 4;            // pencerenin sonuna bu kadar kala sonraki pencere istenir
 
   /** Kanalda duyulan efekt var mi (Python track_has_fx ile ayni kural). */
-  function trackHasFx(tr) {
-    if ((tr.fx || []).some((f) => f && !f.bypass) || tr.denoise) return true;
-    return (tr.clips || []).some((c) => !c.muted && (c.fx || []).some((f) => f && !f.bypass));
+  // ---- 2b: send/bus + vokale yer acma (Python beat_mixbus ile ayni kurallar) ----
+  const SEND_OFF_DB = -60;
+  function activeSends(tr, buses) {
+    const s = tr?.sends;
+    if (!s || typeof s !== "object") return {};
+    const live = new Set((buses || []).filter((b) => b && !b.mute).map((b) => b.id));
+    const out = {};
+    for (const [k, v] of Object.entries(s)) if (live.has(k) && v !== null && Number(v) > SEND_OFF_DB) out[k] = Number(v);
+    return out;
   }
-  /** Islenen sesi degistiren her seyin imzasi (ses seviyesi/pan/mute haric: onlar Web Audio'da). */
-  function trackSig(tr) {
-    const clips = (tr.clips || []).map((c) => [c.id, c.path, c.src_in, c.src_out, c.start, c.gain_db, c.fade_in, c.fade_out,
+  function makeRoomOn(tr) {
+    const m = tr?.make_room;
+    return !!(m && m.on && tr.role !== "vocal" && Number(m.depth_db ?? 3) > 0);
+  }
+  function vocalKeys(P, exceptId) {
+    const trs = (P?.tracks || []).filter((t) => t.id !== exceptId);
+    const solo = (P?.tracks || []).some((t) => t.solo);
+    return trs.filter((t) => t.role === "vocal" && !t.mute && !(solo && !t.solo));
+  }
+  /** P (proje) verilirse send/make_room de sayilir: kanal Python'da islenmeli mi. */
+  function trackHasFx(tr, P) {
+    if ((tr.fx || []).some((f) => f && !f.bypass) || tr.denoise) return true;
+    if ((tr.clips || []).some((c) => !c.muted && (c.fx || []).some((f) => f && !f.bypass))) return true;
+    if (!P) return false;
+    if (Object.keys(activeSends(tr, P.buses)).length) return true;
+    return makeRoomOn(tr) && vocalKeys(P, tr.id).length > 0;
+  }
+  /** Islenen sesi degistiren her seyin imzasi (ses seviyesi/pan/mute haric: onlar Web Audio'da).
+      2b: temizlik dosyasi (+ A/B), send'liyse surgu + ses otomasyonu + bus'lar + BPM, make_room'luysa vokal imzalari. */
+  function clipSig(c, ab) {
+    const cl = c.clean && c.clean.file && !c.clean.off && ab !== "raw" ? c.clean.file : "";
+    return [c.id, c.path, c.src_in, c.src_out, c.start, c.gain_db, c.fade_in, c.fade_out,
       !!c.muted, c.stack_id || "", !!c.stack_active, c.fx || null, !!c.skip_track_fx,
-      Number(c.pan) || 0, Number(c.tail_sec) || 0, Number(c.head_sec) || 0]);       // 2a: klip pan'i + kuyruk
-    return JSON.stringify([tr.fx || [], !!tr.denoise, clips]);
+      Number(c.pan) || 0, Number(c.tail_sec) || 0, Number(c.head_sec) || 0, cl];       // 2a: klip pan'i + kuyruk
+  }
+  function trackSig(tr, P, ab) {
+    const clips = (tr.clips || []).map((c) => clipSig(c, ab));
+    const extra = [];
+    if (P) {
+      const sends = activeSends(tr, P.buses);
+      if (Object.keys(sends).length) extra.push(["s", sends, Number(tr.volume_db) || 0, tr.automation?.volume || [],
+        (P.buses || []).filter((b) => b.id in sends), Number(P.bpm) || 120]);
+      if (makeRoomOn(tr)) extra.push(["m", tr.make_room, vocalKeys(P, tr.id).map((k) => [k.id, Number(k.volume_db) || 0,
+        k.automation?.volume || [], (k.fx || []), (k.clips || []).map((c) => clipSig(c, ab))])]);
+    }
+    return JSON.stringify([tr.fx || [], !!tr.denoise, clips, extra]);
+  }
+  /** A/B "ham" modunda Python'a giden kopyadan temizlik alanlari cikarilir (render ham kaynagi okur). */
+  function stripClean(tr) {
+    const c = JSON.parse(JSON.stringify(tr));
+    for (const k of c.clips || []) delete k.clean;
+    return c;
   }
 
   /** o: { api, tl(), getProj(), selTid(), onState({text, kind, title}) } */
@@ -243,12 +285,13 @@
       tick: 0,
     };
     const tl = () => o.tl();
+    const ab = () => tl()?.getCleanAB?.() || "clean";
     function targets() {
       const P = o.getProj();
       if (!st.enabled || !P) return [];
       const trs = P.tracks || [];
       const list = st.scope === "all" ? trs : trs.filter((t) => t.id === o.selTid());
-      return list.filter((t) => (t.clips || []).length && trackHasFx(t));
+      return list.filter((t) => (t.clips || []).length && trackHasFx(t, P));
     }
     function ent(id) { if (!st.tr.has(id)) st.tr.set(id, { req: 0, timer: 0, busy: false }); return st.tr.get(id); }
     function dropWet(id) { if (tl()?.hasWet(id)) tl().setWet(id, null); }
@@ -263,7 +306,7 @@
       for (const tr of order) {
         const e = ent(tr.id);
         if (!want.has(tr.id)) { clearTimeout(e.timer); e.req++; e.busy = false; dropWet(tr.id); continue; }
-        const sig = trackSig(tr);
+        const sig = trackSig(tr, P, ab());
         const w = T.wetInfo()[tr.id];
         if (w && w.sig !== sig) dropWet(tr.id);        // eski efekt: aninda kuruya don
         const ph = T.getPlayhead();
@@ -293,10 +336,14 @@
       const tr = (P?.tracks || []).find((t) => t.id === id);
       if (!tr || !T || my !== e.req) return;
       const start = Math.max(0, T.getPlayhead() - 0.25);
-      const snapTr = JSON.parse(JSON.stringify(tr));
+      const raw = ab() === "raw";
+      const snapTr = raw ? stripClean(tr) : JSON.parse(JSON.stringify(tr));
       const loop = P.loop ? JSON.parse(JSON.stringify(P.loop)) : {};
+      // 2b: ctx = diger kanallar (vokale yer acma anahtari) + bus'lar + BPM
+      const ctx = { tracks: (P.tracks || []).filter((t) => t.id !== id).map((t) => (raw ? stripClean(t) : JSON.parse(JSON.stringify(t)))),
+                    buses: JSON.parse(JSON.stringify(P.buses || [])), bpm: Number(P.bpm) || 120 };
       let r = null;
-      try { r = await o.api()?.beat_preview_render?.(P.id, id, start, WIN_DUR, "", snapTr, loop); } catch (err) { r = { ok: false, error: String(err) }; }
+      try { r = await o.api()?.beat_preview_render?.(P.id, id, start, WIN_DUR, "", snapTr, loop, ctx); } catch (err) { r = { ok: false, error: String(err) }; }
       if (my !== e.req) return;                  // daha yeni istek var
       if (!r?.ok) {
         e.busy = false;
@@ -305,13 +352,14 @@
       }
       if (r.dry) { e.busy = false; dropWet(id); syncState(); return; }
       const buf = await decode(r.path).catch(() => null);
+      const busBuf = r.bus_path ? await decode(r.bus_path).catch(() => null) : null;
       if (my !== e.req) return;
       e.busy = false;
       if (!buf) { e.err = "decode"; syncState(); return; }
       const cur = (o.getProj()?.tracks || []).find((t) => t.id === id);
-      if (!cur || trackSig(cur) !== sig) { refresh(); return; }   // bu arada degisti
+      if (!cur || trackSig(cur, o.getProj(), ab()) !== sig) { refresh(); return; }   // bu arada degisti
       e.err = ""; e.skipped = r.skipped || []; e.engine = r.engine || (r.cached ? e.engine : "");
-      T.setWet(id, { buf, t0: r.t0, t1: r.t1, sig });
+      T.setWet(id, { buf, busBuf, t0: r.t0, t1: r.t1, sig });
       syncState();
     }
     async function decode(path) {
@@ -357,6 +405,6 @@
 
   root.BeatFx = {
     setSchema, schema, available, defaultFx, label, summary, fmt, toSlider, fromSlider, chainEquals,
-    openPanel, closePanel, createPreview, trackHasFx, trackSig,
+    openPanel, closePanel, createPreview, trackHasFx, trackSig, activeSends, makeRoomOn,
   };
 })(typeof window !== "undefined" ? window : globalThis);

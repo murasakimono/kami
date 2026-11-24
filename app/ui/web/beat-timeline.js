@@ -43,6 +43,7 @@
       dur: new Map(),              // path -> kaynak suresi
       frame: 0,
       laneOrder: [],
+      cleanAB: "clean",            // 2b: "clean" temizlik dosyasi | "raw" ham kaynak (A/B)
     };
 
     const proj = () => opts.getProj();
@@ -102,9 +103,10 @@
         const clips = BC.stackView(all).map((c) => clipHtml(tr, c, col, all)).join("");
         const empty = !(tr.clips || []).length
           ? `<div class="kb-lane-empty">Boş kanal — "📂 Ses" ile ekle veya buraya çift tıkla</div>` : "";
-        return `<div class="kb-tl-lane ${tr.id === opts.selTid() ? "sel" : ""} ${tr.mute ? "muted" : ""}" data-lane="${esc(tr.id)}" style="--tc:${col}">${empty}${clips}</div>`;
+        return `<div class="kb-tl-lane ${tr.id === opts.selTid() ? "sel" : ""} ${tr.mute ? "muted" : ""}" data-lane="${esc(tr.id)}" style="--tc:${col}">${empty}${clips}</div>` + autoLaneHtml(tr, col);
       }).join("");
-      el.content.innerHTML = `<div class="kb-loop-band" id="tlLoopBand" hidden></div>` + lanes + `<div class="kb-playhead" id="tlPlayhead"><i class="kb-ph-grip" title="Çalma çizgisini sürükle (ızgaraya yapışır, Alt: serbest)"></i></div>`;
+      const busLanes = (proj()?.buses || []).map((b) => `<div class="kb-bus-lane ${b.mute ? "muted" : ""}" data-buslane="${esc(b.id)}"></div>`).join("");
+      el.content.innerHTML = `<div class="kb-loop-band" id="tlLoopBand" hidden></div>` + lanes + busLanes + `<div class="kb-playhead" id="tlPlayhead"><i class="kb-ph-grip" title="Çalma çizgisini sürükle (ızgaraya yapışır, Alt: serbest)"></i></div>`;
       el.playhead = el.content.querySelector("#tlPlayhead");
       drawLoopBand();
       if (REC) setRecLive(REC);
@@ -112,6 +114,79 @@
       drawPlayhead();
       drawRuler();
       scheduleWaves();
+    }
+
+    // ---------------- 2b: otomasyon seritleri (ses / pan) ----------------
+    const BA = root.BeatAuto;
+    const AUTO_H = 64;
+    const AUTO = { sel: null /* {tid, param, idx} */, drag: null };
+    function autoParam(tr) { return tr.auto_lane === "pan" ? "pan" : "volume"; }
+    function autoPts(tr, param) { return (tr.automation && Array.isArray(tr.automation[param])) ? tr.automation[param] : []; }
+    function autoLaneHtml(tr, col) {
+      if (!BA || !tr.auto_lane) return "";
+      const param = autoParam(tr);
+      const sel = AUTO.sel && AUTO.sel.tid === tr.id && AUTO.sel.param === param ? AUTO.sel.idx : -1;
+      const w = Math.max(1, parseFloat(el.content.style.width) || contentWidth());
+      return `<div class="kb-auto-lane" data-auto="${esc(tr.id)}" data-param="${param}" style="--tc:${col};height:${AUTO_H}px" title="Tıkla: nokta ekle · sürükle: taşı · sağ tık / Delete: sil (ızgaraya yapışır, Alt: serbest)">${BA.laneSvg(autoPts(tr, param), param, t2x, w, AUTO_H, sel)}</div>`;
+    }
+    function redrawAutoLane(tid) {
+      const tr = tracks().find((t) => t.id === tid);
+      const ln = el.content.querySelector(`.kb-auto-lane[data-auto="${CSS.escape(tid)}"]`);
+      if (!tr || !ln) return;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = autoLaneHtml(tr, ln.style.getPropertyValue("--tc"));
+      ln.replaceWith(tmp.firstChild);
+    }
+    function autoPointer(ev) {
+      const ln = ev.target.closest(".kb-auto-lane");
+      const tid = ln.dataset.auto, param = ln.dataset.param;
+      const tr = tracks().find((t) => t.id === tid);
+      if (!tr || !BA) return;
+      ev.preventDefault();
+      opts.onSelectTrack?.(tid);
+      const rc = ln.getBoundingClientRect();
+      const x = ev.clientX - rc.left + 0, y = ev.clientY - rc.top;
+      const cx = ev.clientX - el.content.getBoundingClientRect().left;
+      const before = opts.snap();
+      let pts = autoPts(tr, param);
+      let idx = BA.hitPoint(pts, param, cx, y, t2x, AUTO_H);
+      if (idx < 0) {                          // bos yere tikla: nokta ekle (ızgaraya yapisik)
+        const r = BA.insert(pts, snapT(x2t(cx), ev), BA.vOf(y, param, AUTO_H), param);
+        pts = r.points; idx = r.idx;
+        tr.automation = Object.assign({ volume: [], pan: [] }, tr.automation || {}, { [param]: pts });
+      }
+      AUTO.sel = { tid, param, idx };
+      redrawAutoLane(tid);
+      showTip(ev.clientX, ev.clientY, pts[idx][0], BA.fmt(pts[idx][1], param));
+      const mv = (e) => {
+        const cur = autoPts(tr, param);
+        const t = snapT(x2t(e.clientX - el.content.getBoundingClientRect().left), e);
+        const v = BA.vOf(e.clientY - ln.getBoundingClientRect().top, param, AUTO_H);
+        const r = BA.move(cur, AUTO.sel.idx, t, v, param);
+        tr.automation[param] = r.points;
+        redrawAutoLane(tid);
+        showTip(e.clientX, e.clientY, r.points[r.idx][0], BA.fmt(r.points[r.idx][1], param));
+      };
+      const up = () => {
+        document.removeEventListener("pointermove", mv);
+        document.removeEventListener("pointerup", up);
+        hideTip();
+        opts.commitFrom?.(param === "pan" ? "Pan otomasyonu" : "Ses otomasyonu", before);
+        if (Eng.playing && !Eng.o.rec) play(currentTime());       // duyulan zarf yeniden planlansin
+      };
+      document.addEventListener("pointermove", mv);
+      document.addEventListener("pointerup", up);
+    }
+    /** Secili otomasyon noktasini siler (Delete). Islediyse true. */
+    function autoDeleteSelected() {
+      const A = AUTO.sel;
+      if (!A) return false;
+      const tr = tracks().find((t) => t.id === A.tid);
+      if (!tr || !autoPts(tr, A.param)[A.idx]) { AUTO.sel = null; return false; }
+      opts.edit?.("Otomasyon noktası silindi", () => { tr.automation[A.param] = BA.remove(autoPts(tr, A.param), A.idx); });
+      AUTO.sel = null;
+      if (Eng.playing && !Eng.o.rec) play(currentTime());
+      return true;
     }
 
     // ---------------- 1c: bolum seridi ----------------
@@ -252,6 +327,24 @@
       return (tl > 0 ? `<i class="kb-clip-tail r" style="left:${t2x(e)}px;width:${t2x(tl)}px;--tc:${col}" title="Efekt kuyruğu ${tl.toFixed(1)} sn — sonraki klibin üstüne karışır"></i>` : "")
         + (hd > 0 ? `<i class="kb-clip-tail l" style="left:${t2x(s - hd)}px;width:${t2x(hd)}px;--tc:${col}" title="Ters reverb kabarması ${hd.toFixed(1)} sn"></i>` : "");
     }
+    /** 2b: klibin temizlik dosyasi duyuluyor mu (A/B "ham" modunda hayir). */
+    function cleanOn(c) {
+      const cl = c?.clean;
+      return !!(cl && cl.file && !cl.off && (cl.src || c.path) === c.path && S.cleanAB !== "raw");
+    }
+    /** Dry onizleme kaynagi: gecerli temizlik dosyasi (Python beat_clean.source_path ile ayni kural) ya da ham. */
+    function srcOf(c) { return cleanOn(c) ? c.clean.file : c.path; }
+    function breathHtml(c) {
+      const regs = c.clean?.breath?.regions || opts.breathSuggest?.(c) || [];
+      if (!regs.length) return "";
+      const si = Number(c.src_in) || 0, so = Number(c.src_out) || 0, L = so - si;
+      if (!(L > 0)) return "";
+      return regs.map((r, i) => {
+        const a = Math.max(Number(r[0]), si), b = Math.min(Number(r[1]), so);
+        if (b <= a) return "";
+        return `<i class="kb-breath ${r[2] === false ? "off" : ""}" data-breath="${i}" style="left:${((a - si) / L * 100).toFixed(3)}%;width:${((b - a) / L * 100).toFixed(3)}%" title="Nefes ${(b - a).toFixed(2)} sn — tıkla: ${r[2] === false ? "kıs (aç)" : "dokunma (kapat)"}"></i>`;
+      }).join("");
+    }
     function clipHtml(tr, c, col, all) {
       const [s, e] = BC.clipBounds(c);
       const take = (tr.takes || []).find((t) => t.id === c.take_id);
@@ -266,7 +359,9 @@
       const badge = n > 1 ? `<b class="kb-stack-badge" data-h="stack" title="Take destesi — tıkla: take seç">▤ ${n}</b>` : "";
       const nfx = (c.fx || []).filter((f) => f && !f.bypass).length;   // R4: klibin kendi efekti / kanal efektini atlama
       const fxb = BC.hasClipFx(c) ? `<b class="kb-clipfx-badge" data-h="clipfx" title="Bu klibin kendi efekti var${c.skip_track_fx ? " · kanal efektini atlıyor" : ""} — tıkla: klip efektlerini aç">FX${nfx ? " " + nfx : ""}${c.skip_track_fx ? " ⤳" : ""}</b>` : "";
-      return `${ghosts}${ghost1}${tailHtml(c, s, e, col)}<div class="${cls}" data-clip="${esc(c.id)}" ${n > 1 ? `data-stack="${esc(c.stack_id)}"` : ""} style="${geo}">${badge}${fxb}
+      const cl = cleanOn(c);   // 2b: temizlik rozeti + nefes isaretleri (tek tek ac/kapa)
+      const clb = c.clean?.file ? `<b class="kb-clean-badge ${cl ? "" : "off"}" data-h="clean" title="${cl ? "Temizlenmiş kaynak çalıyor" : "Temizlik var ama ham dinleniyor (A/B)"} — tıkla: Temizle paneli">✧</b>` : "";
+      return `${ghosts}${ghost1}${tailHtml(c, s, e, col)}<div class="${cls}" data-clip="${esc(c.id)}" ${n > 1 ? `data-stack="${esc(c.stack_id)}"` : ""} style="${geo}">${badge}${fxb}${clb}${breathHtml(c)}
         <canvas class="kb-clip-wf"></canvas>
         <span class="kb-clip-lbl">${esc(label)}${gain ? ` · ${gain > 0 ? "+" : ""}${gain.toFixed(1)} dB` : ""}${c.muted ? " · sessiz" : ""}${panTxt(c)}</span>
         <i class="kb-fade-h l" data-h="fi" title="Fade in (sürükle)"></i><i class="kb-fade-h r" data-h="fo" title="Fade out (sürükle)"></i>
@@ -774,6 +869,15 @@
       if (ev.target.closest(".kb-ph-grip")) { if (!REC) startPlayheadDrag(ev); return; }
       hideMenu();
       S.loopSel = "";
+      if (ev.target.closest(".kb-auto-lane")) { autoPointer(ev); return; }        // 2b
+      if (ev.target.closest(".kb-bus-lane")) return;
+      if (ev.target.classList?.contains("kb-breath")) {                          // 2b: nefes isaretini ac/kapa
+        ev.preventDefault(); ev.stopPropagation();
+        const cd = ev.target.closest(".kb-clip"), h = cd && findClip(cd.dataset.clip);
+        if (h) opts.onBreathToggle?.(h.tr.id, h.clip.id, +ev.target.dataset.breath);
+        return;
+      }
+      AUTO.sel = null;
       const card = ev.target.closest(".kb-clip");
       const lane = ev.target.closest(".kb-tl-lane");
       if (lane) opts.onSelectTrack?.(lane.dataset.lane);
@@ -790,6 +894,7 @@
       const mode = ev.target.dataset.h || "move";
       if (mode === "stack") { ev.preventDefault(); select(id, false); openStackMenu(card, hit); return; }
       if (mode === "clipfx") { ev.preventDefault(); select(id, false); opts.onClipFx?.(hit.tr.id, id); return; }
+      if (mode === "clean") { ev.preventDefault(); select(id, false); opts.onCleanOpen?.(hit.tr.id, id); return; }
       if (mode === "move" && (ev.ctrlKey || ev.metaKey)) {   // R4: Ctrl+surukle = klipte bolge sec ("Bu bolgeye efekt")
         ev.preventDefault();
         select(id, false);
@@ -1029,6 +1134,17 @@
     let menu = null;
     function hideMenu() { if (menu) { menu.remove(); menu = null; } }
     el.content.addEventListener("contextmenu", (ev) => {
+      const aln = ev.target.closest(".kb-auto-lane");
+      if (aln && BA) {                         // 2b: sag tik = otomasyon noktasini sil
+        ev.preventDefault();
+        const tr = tracks().find((t) => t.id === aln.dataset.auto);
+        const param = aln.dataset.param;
+        if (!tr) return;
+        const rc = aln.getBoundingClientRect();
+        const i = BA.hitPoint(autoPts(tr, param), param, ev.clientX - el.content.getBoundingClientRect().left, ev.clientY - rc.top, t2x, AUTO_H);
+        if (i >= 0) { AUTO.sel = { tid: tr.id, param, idx: i }; autoDeleteSelected(); }
+        return;
+      }
       const card = ev.target.closest(".kb-clip");
       if (!card) return;
       ev.preventDefault();
@@ -1410,12 +1526,30 @@
         const [s, e] = BC.clipBounds(c);
         const s0 = Math.max(s, seg.ts), e0 = Math.min(e, seg.te);
         if (e0 - s0 < 0.002) continue;
-        const buf = Eng.buffers.get(c.path);
+        const buf = Eng.buffers.get(srcOf(c));
         if (!buf) { missing++; continue; }
         scheduleClipPart(tr, c, buf, seg, s0, e0, token);
       }
       for (const [tid, w] of WET) if (Eng.audTr.has(tid)) scheduleWetPart(tid, w, seg, 0);
+      scheduleAuto(seg);
       return missing;
+    }
+    /** 2b: kanal ses/pan otomasyonu bu segment icin (dongu turlari ayri segmentler -> her turda yeniden). */
+    function scheduleAuto(seg) {
+      if (!BA) return;
+      const ac = Eng.ctx;
+      const toCtx = (t) => seg.cs + (t - seg.ts);
+      const from = ac.currentTime;
+      for (const tr of tracks()) {
+        const a = tr.automation;
+        if (!a) continue;
+        const vol = BA.normalize(a.volume, "volume"), pan = BA.normalize(a.pan, "pan");
+        const te = Number.isFinite(seg.te) ? seg.te : Math.max(seg.ts, ...vol.map((p) => p[0]), ...pan.map((p) => p[0])) + 0.001;
+        const g = Eng.bus.get(tr.id), pn = Eng.pan.get(tr.id);
+        const base = Number(tr.volume_db) || 0;
+        if (vol.length && g) BA.schedule(g.gain, vol, seg.ts, te, toCtx, (db) => dbToGain(base + db), 0.02, 0, from);
+        if (pan.length && pn) BA.schedule(pn.pan, pan, seg.ts, te, toCtx, (v) => clamp(v, -1, 1), 0, 0, from);
+      }
     }
 
     // ---------------- R4: efektli onizleme katmani ----------------
@@ -1457,6 +1591,20 @@
       const nodes = w.nodes || (w.nodes = new Set());
       nodes.add(src); nodes.add(g);
       src.onended = () => { nodes.delete(src); nodes.delete(g); try { g.disconnect(); } catch {} };
+      if (w.busBuf) {                          // 2b: send -> bus katkisi (post-fader, bus fx/ses dahil) dogrudan miks cikisina
+        const g2 = ac.createGain();
+        g2.gain.setValueAtTime(0, ca);
+        g2.gain.linearRampToValueAtTime(1, ca + xin);
+        g2.gain.setValueAtTime(1, Math.max(ca + xin, cb - xout));
+        g2.gain.linearRampToValueAtTime(0, cb);
+        g2.connect(Out.mixOut);
+        const s2 = ac.createBufferSource();
+        s2.buffer = w.busBuf;
+        s2.connect(g2);
+        s2.start(ca, Math.max(0, offset), Math.max(0.001, cb - ca));
+        nodes.add(s2); nodes.add(g2);
+        s2.onended = () => { nodes.delete(s2); nodes.delete(g2); try { g2.disconnect(); } catch {} };
+      }
       // kuru dugum: pencere boyunca 0 (dikiste zaten 0)
       if (!seamIn) {
         dry.gain.setValueAtTime(dryLast(tid), ca);
@@ -1587,7 +1735,7 @@
       }
       const refOnly = Out.ab === "B" && !!Out.ref?.buf;
       if (!audible.length && !o.force && !Metro.on && !refOnly) { opts.onStatus?.("Çalınacak klip yok (kanallar boş, sessiz veya çalma çizgisi sonda)."); return false; }
-      const paths = [...new Set(audible.map((a) => a.c.path))];
+      const paths = [...new Set(audible.map((a) => srcOf(a.c)))];
       const slow = paths.some((p) => !Eng.buffers.has(p));
       if (slow) opts.onStatus?.("Önizleme için sesler yükleniyor…");
       const ac = ctx();
@@ -1598,14 +1746,14 @@
       Eng.anchor = { u: start, wall: Date.now() + (when - ac.currentTime) * 1000 };   // kayit capasi (ayni saat)
       Eng.when = when; Eng.uStart = start; Eng.loop = effLoop; Eng.playing = true; Eng.o = o; Eng.audible = audible;
       Eng.lastLaps = 0; Eng.lastCount = null; Eng.autoStopped = false;
-      Eng.bus = new Map();
+      Eng.bus = new Map(); Eng.pan = new Map();
       Eng.dry = new Map(); Eng.dryLast = new Map();
       Eng.audTr = new Set(trs.filter((t) => !(t.mute || (hasSolo && !t.solo))).map((t) => t.id));
       for (const tr of trs) {
         const g = track(ac.createGain());
         g.gain.value = dbToGain(tr.volume_db);
         const pan = ac.createStereoPanner ? ac.createStereoPanner() : null;
-        if (pan) { pan.pan.value = clamp(Number(tr.pan) || 0, -1, 1); g.connect(pan); pan.connect(Out.mixOut); track(pan); }
+        if (pan) { pan.pan.value = clamp(Number(tr.pan) || 0, -1, 1); g.connect(pan); pan.connect(Out.mixOut); track(pan); Eng.pan.set(tr.id, pan); }
         else g.connect(Out.mixOut);
         Eng.bus.set(tr.id, g);
         const d = track(ac.createGain());       // R4: kuru klipler buradan; islak pencere boyunca 0
@@ -1622,7 +1770,7 @@
       Eng.metroH = when;
       schedTick(token);
       Eng.sched = setInterval(() => schedTick(token), SCHED_MS);
-      const missing = audible.filter((a) => !Eng.buffers.get(a.c.path)).length;
+      const missing = audible.filter((a) => !Eng.buffers.get(srcOf(a.c))).length;
       if (missing) opts.onStatus?.(`${missing} klibin kaynağı açılamadı (dosya taşınmış olabilir).`);
       else if (slow) opts.onStatus?.(WET.size ? "Önizleme çalıyor." : "Önizleme çalıyor (efektsiz).");
       opts.onPlayState?.(true);
@@ -1738,6 +1886,10 @@
       dropAt,
       // 1c
       sectionAt, renameSection: startSecRename, splitSectionAt, mergeSectionPrev,
+      // 2b
+      autoDeleteSelected, hasAutoSel: () => !!AUTO.sel, clearAutoSel: () => { AUTO.sel = null; },
+      setCleanAB: (m) => { S.cleanAB = m === "raw" ? "raw" : "clean"; render(); restartIfPlaying(); return S.cleanAB; },
+      getCleanAB: () => S.cleanAB, srcOf,
       openStackMenu: (id) => { const h = findClip(id); const card = el.content.querySelector(`.kb-clip[data-clip="${CSS.escape(id)}"]`); if (h && card) openStackMenu(card, h); },
     };
   }
