@@ -127,7 +127,7 @@ class Api(StudioMixin, EnhanceMixin):
         "subtitle_batch", "clip_factory_highlights", "hardsub_extract", "kamipack_export", "kamipack_import",
         "kasa_index_media", "lyrics_word_sync",
         "mpv_install", "mix_autodj", "music_tag_fetch_cover", "music_tag_auto_apply", "player_replaygain",
-        "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_apply_fx", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
+        "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_analyze_sections", "beat_mic_test", "beat_apply_fx", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
         "enhance_preview_split", "enhance_batch_start", "pic_tarif_run",
         "games_hltb_real", "games_pcgamingwiki", "games_mod_install", "games_ocr_translate",
         "oracle_relay_ping", "oracle_relay_pull",
@@ -6717,6 +6717,24 @@ class Api(StudioMixin, EnhanceMixin):
     def beat_measure_latency(self, device_id: int = -1) -> dict[str, Any]:
         from app.core import beat_studio
         return beat_studio.measure_latency(int(device_id if device_id is not None else -1))
+
+    def beat_analyze_sections(self, pid: str, path: str = "") -> dict[str, Any]:
+        """1c (arka plan isi): BPM + ton + bolum haritasi; projeye yazmaz, arayuz uygular."""
+        from app.core import beat_sections
+        return beat_sections.analyze_project(str(pid or ""), str(path or ""))
+
+    def beat_analysis_progress(self) -> dict[str, Any]:
+        from app.core import beat_sections
+        return beat_sections.get_progress()
+
+    def beat_mic_test(self, device_id: int = -1) -> dict[str, Any]:
+        """1c (arka plan isi): 5 sn sessizlik + 5 sn okuma -> seviye karti + yankililik tahmini + yer onerisi."""
+        from app.core import beat_mic
+        return beat_mic.run_mic_test(int(device_id if device_id is not None else -1))
+
+    def beat_mic_test_status(self) -> dict[str, Any]:
+        from app.core import beat_mic
+        return beat_mic.test_status()
 
     def beat_ai_mix(self, pid: str, instruction: str, track_id: str = "vocal1") -> dict[str, Any]:
         from app.core import beat_mcp

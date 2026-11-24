@@ -20,6 +20,7 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 SCHEMA_VERSION = 2
 _TR_VOWELS = set("aeıioöuüAEIİOÖUÜ")
+RHYME_PALETTE_SIZE = 8   # 1c: soz panelindeki sonuk kafiye renkleri (beat.js RHYME_COLORS ile ayni uzunluk)
 
 VOCAL_PRESETS: dict[str, dict[str, Any]] = {
     "clean_rap": {
@@ -163,11 +164,13 @@ def _rhyme_key(line: str) -> str:
 
 def analyze_lyrics_bars(text: str, bpm: float = 0.0) -> dict[str, Any]:
     """Soz Defteri: satir bazli hece sayimi, kafiye grubu renk etiketi ve bar tahmini."""
+    from app.core import beat_lyrics
     lines = str(text or "").splitlines()
     rhyme_counts: dict[str, int] = {}
     keys: list[str] = []
-    for ln in lines:
-        rk = _rhyme_key(ln)
+    heads = [beat_lyrics.header_name(ln) if beat_lyrics._HEADER_RE.match(ln) else None for ln in lines]
+    for i, ln in enumerate(lines):
+        rk = "" if heads[i] is not None else _rhyme_key(ln)   # 1c: [Nakarat] gibi basliklar kafiye/heceye girmez
         keys.append(rk)
         if rk:
             rhyme_counts[rk] = rhyme_counts.get(rk, 0) + 1
@@ -176,8 +179,10 @@ def analyze_lyrics_bars(text: str, bpm: float = 0.0) -> dict[str, Any]:
     next_gid = 1
     out: list[dict[str, Any]] = []
     bar_sec = (240.0 / bpm) if bpm and bpm > 0 else 0.0
+    n_sung = 0
     for idx, ln in enumerate(lines):
-        syl = count_syllables_tr(ln)
+        is_head = heads[idx] is not None
+        syl = 0 if is_head else count_syllables_tr(ln)
         rk = keys[idx]
         gid = 0
         if rk and rhyme_counts.get(rk, 0) >= 2:
@@ -192,9 +197,16 @@ def analyze_lyrics_bars(text: str, bpm: float = 0.0) -> dict[str, Any]:
             "rhyme_group": gid,
             "rhyme_key": rk if gid else "",
             "bar_seconds": round(bar_sec, 2) if bar_sec else 0.0,
+            # 1c: renk paleti indeksi (RHYME_PALETTE_SIZE renk, ayni kafiye anahtari = ayni renk), baslik, soz sirasi
+            "color": ((gid - 1) % RHYME_PALETTE_SIZE) if gid else -1,
+            "header": heads[idx] or "",
+            "kind": "header" if is_head else ("line" if ln.strip() else "blank"),
+            "n": (n_sung if (not is_head and ln.strip()) else -1),
         })
+        if not is_head and ln.strip():
+            n_sung += 1
     total_syl = sum(x["syllables"] for x in out)
-    non_empty = sum(1 for x in out if x["text"].strip())
+    non_empty = sum(1 for x in out if x["kind"] == "line")
     return {
         "ok": True,
         "lines": out,
@@ -519,6 +531,8 @@ def _default_project(name: str = "Yeni Parça") -> dict[str, Any]:
         "updated_at": time.time(),
         "schema": SCHEMA_VERSION,
         "latency_ms": 0.0,
+        "sections": [],                                      # 1c: [{id, name, start, end, bars_per_line?}]
+        "lyric_times": {"bars_per_line": 1, "anchors": []},  # 1c: teleprompter; anchors=[{line, t, text}]
         "tracks": [
             {
                 "id": "beat",
@@ -696,6 +710,14 @@ def migrate_project(proj: dict[str, Any]) -> bool:
         changed = True
     if "latency_ms" not in proj:
         proj["latency_ms"] = 0.0
+        changed = True
+    if not isinstance(proj.get("sections"), list):        # 1c: bolum haritasi
+        proj["sections"] = []
+        changed = True
+    lt = proj.get("lyric_times")
+    if not isinstance(lt, dict) or not isinstance(lt.get("anchors"), list):
+        proj["lyric_times"] = {"bars_per_line": (lt or {}).get("bars_per_line", 1) if isinstance(lt, dict) else 1,
+                               "anchors": []}
         changed = True
     return changed
 
