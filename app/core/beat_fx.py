@@ -5,8 +5,9 @@ eklentinin kendi penceresi.
   sozluklerinin (VOCAL_PRESETS, beat_mcp) anahtarlariyla birebir ayni; arayuz (beat.js) surguleri bu tablodan
   kurar (api.beat_fx_schema).
 - process(data, sr, fx_list, denoise): (N,2) float32 diziyi zincirden gecirir. pedalboard yoksa (bu Linux
-  test ortami gibi) yalniz saf numpy ile birebir yapilabilen efektler (gain) uygulanir, digerleri atlanir ve
-  'skipped' olarak bildirilir -> uygulama cokmeden kuru/yarim efektli calar.
+  test ortami gibi) yalniz saf numpy ile birebir yapilabilen efektler (gain, 2a: delay) uygulanir, digerleri
+  atlanir ve 'skipped' olarak bildirilir -> uygulama cokmeden kuru/yarim efektli calar. 2a: ozel efektler
+  (CUSTOM_FX: ters reverb) zinciri bolumlere ayirir ve her makinede numpy ile islenir.
 - VST3: load_plugin onbellekli havuz (ayni eklenti iki is parcaciginda ayni anda kullanilmaz), durum
   (state_b64 = plugin.raw_state) veya parametre degerleri (params = {ad: raw 0..1}) her islemede uygulanir.
 - vst_params(path): eklentinin parametre listesi (onbellekli; onemli ilk 24 + arama).

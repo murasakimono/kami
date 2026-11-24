@@ -1963,6 +1963,7 @@
   async function recStart(kind = "auto") {
     if (RECST || !PROJ || !TL) return;
     if (MICTEST) { setStatus("Mikrofon testi sürüyor — bitince kayda başlayabilirsin."); return; }
+    if (AB_MODE === "B") setAB("A", true);      // 2a: kayitta beat duyulsun (referans degil)
     const bpmv = Number(PROJ.bpm) || 120;
     let plan;
     if (kind === "punch") {
