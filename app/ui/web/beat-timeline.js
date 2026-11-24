@@ -8,6 +8,7 @@
      yapilir (geri al yigini + otomatik kayit beat.js'te). */
 (function (root) {
   const BC = root.BeatClips;
+  const BTR = root.BeatTransport;    // R1: izgara / kaydirma / konum ipucu saf hesaplari
   const TILE = 2048;                 // karo basina tepe
   const MAX_RATE = 256;              // Python PEAK_RATE
   const EDGE_PX = 7;                 // kirpma tutamaci genisligi
@@ -33,7 +34,8 @@
       pps: 40,                     // piksel / saniye
       playhead: 0,
       sel: new Set(),
-      snapDiv: 4,                  // 0 = kapali
+      snapMode: "auto",            // R1: "auto" (zoom'a bagli) | 1..32 | 0 = kapali
+      loopSel: "",                 // R1: secili dongu parcasi (ok tuslari): "ls" | "le" | "lm" | ""
       drag: null,
       tiles: new Map(),            // key -> peaks dizisi
       pending: new Set(),
@@ -65,8 +67,25 @@
       }
       return null;
     }
-    function snapOn(ev) { return S.snapDiv > 0 && !(ev && ev.altKey); }
-    function snapT(t, ev) { return snapOn(ev) ? BC.snapTime(t, bpm(), S.snapDiv) : BC.r6(Math.max(0, t)); }
+    /** R1: etkin izgara bolumu (Otomatik: gorunen piksel/saniyeye gore; 0 = kapali). */
+    function effDiv() { return BTR.resolveGrid(S.snapMode, S.pps, bpm()); }
+    function snapOn(ev) { return effDiv() > 0 && !(ev && ev.altKey); }
+    function lyricFlagT() { const v = opts.lyricFlag?.(); return v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v); }
+    // Izgara kapali / Alt: piksel -> zaman, yuvarlama yok (yalniz mikro-saniye)
+    function snapT(t, ev) { return snapOn(ev) ? BTR.snapTo(t, bpm(), effDiv()) : BC.r6(Math.max(0, t)); }
+
+    // ---- R1: surukleme ipucu balonu (baslangic zamani + bar.vurus) ----
+    let tipEl = null;
+    function showTip(clientX, clientY, t, label) {
+      if (!tipEl) { tipEl = document.createElement("div"); tipEl.className = "kb-drag-tip kb-num"; document.body.appendChild(tipEl); }
+      const p = BTR.formatPosition(t, bpm());
+      tipEl.innerHTML = `${label ? `<i>${esc(label)}</i>` : ""}<b>${p.time}</b><span>${p.bbt}</span>`;
+      tipEl.hidden = false;
+      const w = tipEl.offsetWidth || 120;
+      tipEl.style.left = clamp(clientX - w / 2, 4, (window.innerWidth || 1200) - w - 4) + "px";
+      tipEl.style.top = Math.max(4, clientY - 40) + "px";
+    }
+    function hideTip() { if (tipEl) tipEl.hidden = true; }
 
     // ---------------- Cizim ----------------
     function render() {
@@ -84,7 +103,7 @@
           ? `<div class="kb-lane-empty">Boş kanal — "📂 Ses" ile ekle veya buraya çift tıkla</div>` : "";
         return `<div class="kb-tl-lane ${tr.id === opts.selTid() ? "sel" : ""} ${tr.mute ? "muted" : ""}" data-lane="${esc(tr.id)}" style="--tc:${col}">${empty}${clips}</div>`;
       }).join("");
-      el.content.innerHTML = `<div class="kb-loop-band" id="tlLoopBand" hidden></div>` + lanes + `<div class="kb-playhead" id="tlPlayhead"></div>`;
+      el.content.innerHTML = `<div class="kb-loop-band" id="tlLoopBand" hidden></div>` + lanes + `<div class="kb-playhead" id="tlPlayhead"><i class="kb-ph-grip" title="Çalma çizgisini sürükle (ızgaraya yapışır, Alt: serbest)"></i></div>`;
       el.playhead = el.content.querySelector("#tlPlayhead");
       drawLoopBand();
       if (REC) setRecLive(REC);
@@ -262,6 +281,7 @@
       const lastBar = Math.ceil(x2t(sl + w) / barSec);
       g.font = "500 12px 'Chakra Petch', system-ui, sans-serif";
       g.textBaseline = "top";
+      const gridDiv = effDiv();
       for (let b = firstBar; b <= lastBar; b++) {
         const x = Math.round(t2x(b * barSec) - sl) + 0.5;
         if (b % every === 0) {
@@ -273,19 +293,14 @@
           g.strokeStyle = "rgba(157,107,255,.25)";
           g.beginPath(); g.moveTo(x, h - 9); g.lineTo(x, h); g.stroke();
         }
-        if (barPx >= 48) {                         // vuruslar
-          g.strokeStyle = "rgba(157,107,255,.22)";
-          for (let k = 1; k < 4; k++) {
-            const bx = Math.round(x + (barPx * k) / 4) + 0.5;
-            g.beginPath(); g.moveTo(bx, h - 7); g.lineTo(bx, h); g.stroke();
-          }
-        }
-        if (barPx >= 220) {                        // onaltiliklar
-          g.strokeStyle = "rgba(157,107,255,.12)";
-          for (let k = 1; k < 16; k++) {
-            if (k % 4 === 0) continue;
-            const bx = Math.round(x + (barPx * k) / 16) + 0.5;
-            g.beginPath(); g.moveTo(bx, h - 4); g.lineTo(bx, h); g.stroke();
+        // R1: etkin yapisma izgarasi cetvelde (vurus cizgileri uzun, ince bolumler kisa)
+        const sub = gridDiv > 1 ? gridDiv : (gridDiv === 0 && barPx >= 48 ? 4 : 1);
+        if (sub > 1 && barPx / sub >= 3) {
+          for (let k = 1; k < sub; k++) {
+            const onBeat = (k * 4) % sub === 0;
+            g.strokeStyle = onBeat ? "rgba(157,107,255,.30)" : "rgba(157,107,255,.16)";
+            const bx = Math.round(x + (barPx * k) / sub) + 0.5;
+            g.beginPath(); g.moveTo(bx, h - (onBeat ? 7 : 4)); g.lineTo(bx, h); g.stroke();
           }
         }
       }
@@ -302,11 +317,24 @@
           g.fillRect(Math.round(x1) - 1, 0, 1, h);
         }
       }
-      // calma cizgisi isareti
+      // R3: "Sozler buradan baslar" bayragi
+      const lf = lyricFlagT();
+      if (lf !== null) {
+        const fx = Math.round(t2x(lf) - sl) + 0.5;
+        if (fx >= -40 && fx <= w + 4) {
+          g.strokeStyle = "#EC4899"; g.lineWidth = 1.5;
+          g.beginPath(); g.moveTo(fx, 2); g.lineTo(fx, h); g.stroke(); g.lineWidth = 1;
+          g.fillStyle = S.flagHot ? "#F472B6" : "#EC4899";
+          g.beginPath(); g.moveTo(fx, 2); g.lineTo(fx + 11, 6); g.lineTo(fx, 10); g.closePath(); g.fill();
+          g.font = "600 10px 'Chakra Petch', system-ui, sans-serif";
+          g.fillText("SÖZ", fx + 13, 2);
+        }
+      }
+      // calma cizgisi isareti (R1: tutamac - surukle)
       const px = t2x(S.playhead) - sl;
       if (px >= -6 && px <= w + 6) {
         g.fillStyle = "#14F195";
-        g.beginPath(); g.moveTo(px - 5, h - 8); g.lineTo(px + 5, h - 8); g.lineTo(px, h); g.closePath(); g.fill();
+        g.beginPath(); g.moveTo(px - 6, h - 11); g.lineTo(px + 6, h - 11); g.lineTo(px + 6, h - 6); g.lineTo(px, h); g.lineTo(px - 6, h - 6); g.closePath(); g.fill();
       }
     }
 
@@ -506,53 +534,96 @@
       return x2t(ev.clientX - rc.left + el.scroll.scrollLeft);
     }
     function rulerSeek(ev) { setPlayhead(snapT(rulerT(ev), ev), false); }
+    function rulerX(ev) {
+      const rc = el.ruler.getBoundingClientRect();
+      return { x: ev.clientX - rc.left + el.scroll.scrollLeft, y: ev.clientY - rc.top };
+    }
     function loopHit(ev) {
       const L = proj()?.loop;
       if (!L || !(Number(L.end) > Number(L.start))) return "";
-      const rc = el.ruler.getBoundingClientRect();
-      const x = ev.clientX - rc.left + el.scroll.scrollLeft;
+      const { x } = rulerX(ev);
       const x0 = t2x(Number(L.start)), x1 = t2x(Number(L.end));
       if (Math.abs(x - x0) <= 6) return "ls";
       if (Math.abs(x - x1) <= 6) return "le";
       if (x > x0 && x < x1) return "lm";
       return "";
     }
+    /** R1/R3: cetvelde neye basildi: calma cizgisi tutamaci > soz bayragi > dongu kenari/ici. */
+    function rulerHit(ev) {
+      const { x, y } = rulerX(ev);
+      if (Math.abs(x - t2x(S.playhead)) <= 7) return "ph";
+      const lf = lyricFlagT();
+      if (lf !== null) {
+        const fx = t2x(lf);
+        if (Math.abs(x - fx) <= 4 || (y <= 13 && x >= fx - 2 && x <= fx + 34)) return "flag";
+      }
+      return loopHit(ev);
+    }
     el.ruler.addEventListener("pointermove", (ev) => {
       if (ev.buttons) return;
-      const h = loopHit(ev);
-      el.ruler.style.cursor = h === "ls" || h === "le" ? "ew-resize" : h === "lm" ? "grab" : "text";
+      const h = rulerHit(ev);
+      el.ruler.style.cursor = h === "ph" || h === "ls" || h === "le" || h === "flag" ? "ew-resize" : h === "lm" ? "grab" : "text";
+      const hot = h === "flag";
+      if (hot !== !!S.flagHot) { S.flagHot = hot; drawRuler(); }
     });
+    el.ruler.addEventListener("pointerleave", () => { if (S.flagHot) { S.flagHot = false; drawRuler(); } });
     // Cetvel: tikla = konum; surukle = dongu bolgesi ciz (izgaraya yapisir, Alt: serbest); bandin kenari = boyutla,
-    // ici = tasi; Ctrl+surukle = eski kaydirma (scrub).
+    // ici = tasi; calma cizgisi tutamaci = surukle (sessiz); soz bayragi = surukle, cift tik = calma cizgisine;
+    // Ctrl+surukle = eski kaydirma (scrub).
     el.ruler.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0 || REC) return;
       const t0 = rulerT(ev);
       const x0 = ev.clientX;
-      const mode = ev.ctrlKey ? "scrub" : (loopHit(ev) || "new");
+      const mode = ev.ctrlKey ? "scrub" : (rulerHit(ev) || "new");
       const L0 = proj()?.loop ? Object.assign({}, proj().loop) : null;
       const wasPlaying = Eng.playing;
+      const flag0 = lyricFlagT();
       let moved = false;
       if (mode === "scrub") { if (wasPlaying) stopEngine(); rulerSeek(ev); }
+      if (mode === "ph") { if (wasPlaying) stopEngine(); S.loopSel = ""; }
+      if (mode === "ls" || mode === "le" || mode === "lm") S.loopSel = mode;
+      else if (mode !== "flag") S.loopSel = "";
       el.ruler.setPointerCapture(ev.pointerId);
       const mv = (e) => {
         if (mode === "scrub") { rulerSeek(e); return; }
-        if (!moved && Math.abs(e.clientX - x0) < 4) return;
+        if (!moved && Math.abs(e.clientX - x0) < (mode === "ph" || mode === "flag" ? 1 : 4)) return;
         moved = true;
         const t = rulerT(e);
-        if (mode === "new") setLoop({ start: snapT(Math.min(t0, t), e), end: snapT(Math.max(t0, t), e), on: true }, true);
-        else if (mode === "ls") setLoop({ start: snapT(t, e), end: L0.end }, true);
-        else if (mode === "le") setLoop({ start: L0.start, end: snapT(t, e) }, true);
+        if (mode === "ph") {
+          setPlayhead(snapT(t, e), false);
+          showTip(e.clientX, e.clientY, S.playhead, "Çalma");
+          return;
+        }
+        if (mode === "flag") {
+          const nt = snapT(flag0 + (t - t0), e);
+          opts.onLyricStart?.(nt, false);
+          showTip(e.clientX, e.clientY, nt, "Sözler");
+          drawRuler();
+          return;
+        }
+        let tipT = null;
+        if (mode === "new") { setLoop({ start: snapT(Math.min(t0, t), e), end: snapT(Math.max(t0, t), e), on: true }, true); tipT = t < t0 ? proj()?.loop?.start : proj()?.loop?.end; }
+        else if (mode === "ls") { setLoop({ start: snapT(t, e), end: L0.end }, true); tipT = proj()?.loop?.start; }
+        else if (mode === "le") { setLoop({ start: L0.start, end: snapT(t, e) }, true); tipT = proj()?.loop?.end; }
         else if (mode === "lm") {
           const ln = L0.end - L0.start;
           const ns = Math.max(0, snapT(L0.start + (t - t0), e));
           setLoop({ start: ns, end: ns + ln }, true);
+          tipT = ns;
         }
+        if (tipT != null) showTip(e.clientX, e.clientY, tipT, mode === "le" || (mode === "new" && t >= t0) ? "Döngü sonu" : "Döngü başı");
       };
       const up = (e) => {
         el.ruler.removeEventListener("pointermove", mv);
         el.ruler.removeEventListener("pointerup", up);
         el.ruler.removeEventListener("pointercancel", up);
+        hideTip();
         if (mode === "scrub") { if (wasPlaying) play(S.playhead); return; }
+        if (mode === "ph") { if (wasPlaying) play(S.playhead); return; }    // birakinca oradan devam
+        if (mode === "flag") {
+          if (moved) opts.onLyricStart?.(lyricFlagT(), true);
+          return;
+        }
         if (!moved) {                                  // tiklama: konum
           if (wasPlaying) stopEngine();
           rulerSeek(e);
@@ -561,12 +632,18 @@
         }
         const P = proj();
         if (P?.loop && P.loop.end - P.loop.start < 0.05) setLoop(L0, true);   // cok kisa: eskiye don
+        if (mode === "new") S.loopSel = "lm";
         opts.onLoopChange?.(proj()?.loop);
         if (Eng.playing) play(currentTime());           // yeni dongu hemen gecerli olsun
       };
       el.ruler.addEventListener("pointermove", mv);
       el.ruler.addEventListener("pointerup", up);
       el.ruler.addEventListener("pointercancel", up);
+    });
+    el.ruler.addEventListener("dblclick", (ev) => {
+      if (rulerHit(ev) !== "flag") return;
+      opts.onLyricStart?.(BC.r6(S.playhead), true);   // cift tik: bayrak calma cizgisine
+      drawRuler();
     });
     function toggleLoop() {
       const P = proj();
@@ -584,6 +661,45 @@
       opts.onLoopChange?.(P.loop);
       if (Eng.playing && !Eng.o.rec) play(currentTime());
       return P.loop;
+    }
+
+    // ---------------- R1: ok tusu kaydirma (izgara adimi / 10 ms / 1 ms) ----------------
+    /** Secili klip(ler)i kaydirir (deste uyeleri birlikte). Dondurur: en soldaki klibin yeni baslangici ya da null. */
+    function nudgeSelected(dir, mode) {
+      if (!S.sel.size) return null;
+      const group = groupWithStacks([...S.sel]);
+      if (!group.length) return null;
+      const before = opts.snap();
+      const ref = Math.min(...group.map((g) => Number(g.clip.start) || 0));
+      let delta = BTR.nudgeTime(ref, dir, mode, bpm(), effDiv()) - ref;
+      if (ref + delta < 0) delta = -ref;
+      if (Math.abs(delta) < 1e-9) return BC.r6(ref);
+      for (const g of group) {
+        const tr = tracks().find((t) => t.id === g.trId);
+        if (tr) tr.clips = BC.move(tr.clips, g.clip.id, (Number(g.clip.start) || 0) + delta);
+      }
+      (opts.commitNudge || opts.commitFrom)("Klip kaydırıldı", before);
+      render();
+      return BC.r6(ref + delta);
+    }
+    function nudgePlayhead(dir, mode) {
+      const t = BTR.nudgeTime(Eng.playing ? currentTime() : S.playhead, dir, mode, bpm(), effDiv());
+      setPlayhead(t);
+      ensureVisible(t);
+      return t;
+    }
+    /** Dongu secildiyse (cetvelde kenarina/icine basildi): kenari ya da tum bandi kaydirir. */
+    function nudgeLoop(dir, mode) {
+      const L = proj()?.loop;
+      if (!S.loopSel || !L || !(L.end - L.start > 0)) return null;
+      const g = (t) => BTR.nudgeTime(t, dir, mode, bpm(), effDiv());
+      if (S.loopSel === "ls") { const a = Math.min(g(L.start), L.end - 0.05); setLoop({ start: a, end: L.end }, true); }
+      else if (S.loopSel === "le") { const b = Math.max(g(L.end), L.start + 0.05); setLoop({ start: L.start, end: b }, true); }
+      else { const a = g(L.start); setLoop({ start: a, end: a + (L.end - L.start) }, true); }
+      opts.onLoopChange?.(proj()?.loop);
+      if (Eng.playing && !Eng.o.rec) play(currentTime());
+      const P = proj().loop;
+      return S.loopSel === "le" ? P.end : P.start;
     }
 
     // ---------------- Secim + surukleme ----------------
@@ -606,9 +722,39 @@
       return null;
     }
 
+    // R1: calma cizgisinin bas tutamaci (klip alaninin ustu): surukle; calarken sessiz konum degisimi, birakinca devam
+    function startPlayheadDrag(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const wasPlaying = Eng.playing;
+      if (wasPlaying) stopEngine();
+      S.loopSel = "";
+      const grip = ev.target;
+      grip.setPointerCapture(ev.pointerId);
+      document.body.classList.add("kb-dragging");
+      const rc0 = () => el.content.getBoundingClientRect();
+      const mv = (e) => {
+        setPlayhead(snapT(x2t(e.clientX - rc0().left), e), false);
+        showTip(e.clientX, e.clientY, S.playhead, "Çalma");
+      };
+      const up = () => {
+        grip.removeEventListener("pointermove", mv);
+        grip.removeEventListener("pointerup", up);
+        grip.removeEventListener("pointercancel", up);
+        document.body.classList.remove("kb-dragging");
+        hideTip();
+        if (wasPlaying) play(S.playhead);
+      };
+      grip.addEventListener("pointermove", mv);
+      grip.addEventListener("pointerup", up);
+      grip.addEventListener("pointercancel", up);
+    }
+
     el.content.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0) return;
+      if (ev.target.closest(".kb-ph-grip")) { if (!REC) startPlayheadDrag(ev); return; }
       hideMenu();
+      S.loopSel = "";
       const card = ev.target.closest(".kb-clip");
       const lane = ev.target.closest(".kb-tl-lane");
       if (lane) opts.onSelectTrack?.(lane.dataset.lane);
@@ -653,8 +799,8 @@
       if (!hit) return;
       const o = D.orig;
       if (D.mode === "move") {
-        let ns = o.start + dxT;
-        if (snapOn(ev)) ns = BC.snapTime(ns, bpm(), S.snapDiv);
+        let ns = o.start + dxT;                 // 1 piksel cozunurluk; izgara kapali/Alt ise yuvarlama yok
+        if (snapOn(ev)) ns = BTR.snapTo(ns, bpm(), effDiv());
         let delta = ns - o.start;
         const minStart = Math.min(...D.group.map((g) => g.clip.start));
         if (minStart + delta < 0) delta = -minStart;
@@ -675,6 +821,11 @@
       } else if (D.mode === "fo") {
         Object.assign(hit.clip, BC.setFade(hit.clip, hit.clip.fade_in, (Number(o.fade_out) || 0) - dxT));
       }
+      const cur = findClip(D.id);
+      if (cur && (D.mode === "move" || D.mode === "ts" || D.mode === "te")) {
+        const [cs, ce] = BC.clipBounds(cur.clip);
+        showTip(ev.clientX, ev.clientY, D.mode === "te" ? ce : cs, D.mode === "move" ? "Başlangıç" : D.mode === "ts" ? "Baş" : "Son");
+      }
       updateCards();
     });
 
@@ -682,6 +833,7 @@
       if (!S.drag) return;
       const D = S.drag;
       S.drag = null;
+      hideTip();
       document.body.classList.remove("kb-dragging", `kb-drag-${D.mode}`);
       if (!D.moved) return;
       if (opts.snap() !== D.before) {
@@ -1257,7 +1409,11 @@
       isPlaying: () => Eng.playing, getPlayhead: () => (Eng.playing ? currentTime() : S.playhead),
       selection: () => S.sel, clearSel, pruneSelection, select,
       splitSelected, duplicateSelected, deleteSelected, resetFadeSelected, toggleMuteSelected,
-      setSnap: (d) => { S.snapDiv = Number(d) || 0; }, getSnap: () => S.snapDiv,
+      setSnap: (m) => { S.snapMode = m === "auto" || m === "" || m == null ? "auto" : (Number(m) || 0); drawRuler(); },
+      getSnap: () => S.snapMode, effGrid: effDiv,
+      // R1/R2/R3
+      nudgeSelected, nudgePlayhead, nudgeLoop, loopSelected: () => S.loopSel, clearLoopSel: () => { S.loopSel = ""; },
+      audioCtx: () => ctx(), drawRuler, formatPos: (t) => BTR.formatPosition(t, bpm()),
       pps: () => S.pps, projectEnd, dropBuffer, isDragging: () => !!S.drag,
       trackColor,
       // 1b

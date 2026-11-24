@@ -109,6 +109,7 @@
   async function init() {
     initTimeline();
     await waitApi();
+    loadGlobalLat();   // R2: kalici genel gecikme ayari
     const [pr, vr, lr, dr] = await Promise.all([
       api()?.beat_presets?.().catch(() => ({ presets: {} })) || { presets: {} },
       api()?.beat_vst_scan?.().catch(() => ({ plugins: [] })) || { plugins: [] },
@@ -206,6 +207,22 @@
   }
   function commitFrom(label, before) {
     if (!PROJ || snap() === before) return;
+    pushUndo(before);
+    afterChange(label);
+  }
+  /** R1: ard arda ok tusu kaydirmalari tek geri al adimi (900 ms icinde ayni secim). */
+  let NUDGE = { t: 0, key: "", base: null };
+  function commitNudge(label, before) {
+    if (!PROJ || snap() === before) return;
+    const key = [...(TL?.selection() || [])].sort().join(",");
+    const now = Date.now();
+    if (NUDGE.base !== null && NUDGE.key === key && now - NUDGE.t < 900 && UNDO[UNDO.length - 1] === NUDGE.base) {
+      NUDGE.t = now;            // yigin ustu zaten ilk kaydirmadan onceki hal: yeni adim ekleme
+      REDO.length = 0;
+      afterChange(label);
+      return;
+    }
+    NUDGE = { t: now, key, base: before };
     pushUndo(before);
     afterChange(label);
   }
@@ -317,7 +334,7 @@
     $("#metaPill").textContent = `${Math.round(PROJ.bpm || 120)} BPM · ${PROJ.key || "—"}`;
     if (document.activeElement !== $("#lyrInput")) $("#lyrInput").value = PROJ.lyrics || "";
     $("#abToggle").disabled = !PROJ.reference_path;
-    $("#latCur").textContent = `${Math.round(Number(PROJ.latency_ms) || 0)} ms`;
+    syncLatUi();
 
     const tracks = PROJ.tracks || [];
     tracks.forEach((tr) => { if (!Array.isArray(tr.clips)) tr.clips = []; });
@@ -450,7 +467,10 @@
         if (on && !aud().paused) aud().pause();
         syncTransport();
       },
-      onZoom: (pps) => { $("#tlZoomLbl").textContent = `${pps < 10 ? pps.toFixed(1) : Math.round(pps)} px/s`; },
+      onZoom: (pps) => { $("#tlZoomLbl").textContent = `${pps < 10 ? pps.toFixed(1) : Math.round(pps)} px/s`; syncGridLabel(); },
+      commitNudge,
+      lyricFlag: () => lyricFlagT(),
+      onLyricStart: (t, commit) => setLyricStart(t, commit),
       onSelectTrack: (tid) => selectTrack(tid),
       onPickForTrack: (tid, t) => pickAudioFor(tid, t),
       follow: () => $("#tlFollow").checked,
@@ -458,7 +478,8 @@
       onLoopChange: () => { syncLoopUi(); scheduleSave(); },
       onSectionClick: (sec) => sectionToLoop(sec),
     });
-    TL.setSnap(+$("#tlSnap").value);
+    TL.setSnap(gridMode());
+    syncGridLabel();
     applyRecSetUi();
   }
 
@@ -490,7 +511,21 @@
   $("#tlZoomIn").onclick = () => TL?.zoomBy(1.5);
   $("#tlZoomOut").onclick = () => TL?.zoomBy(1 / 1.5);
   $("#tlFit").onclick = () => TL?.fit();
-  $("#tlSnap").onchange = (e) => { TL?.setSnap(+e.target.value); e.target.blur(); };
+  // R1: izgara secimi kalici (localStorage); Otomatik'te etkin bolum secicide yazar
+  const GRID_LBL = { 1: "1 bar", 2: "1/2", 4: "1/4", 8: "1/8", 16: "1/16", 32: "1/32" };
+  function gridMode() { const v = $("#tlSnap").value; return v === "auto" ? "auto" : +v; }
+  function syncGridLabel() {
+    const o = $("#tlSnap").querySelector('option[value="auto"]');
+    if (o && TL) o.textContent = `Otomatik (${GRID_LBL[TL.effGrid()] || "—"})`;
+  }
+  try {
+    const g = localStorage.getItem("kb.grid");
+    if (g !== null && $("#tlSnap").querySelector(`option[value="${CSS.escape(g)}"]`)) $("#tlSnap").value = g;
+  } catch {}
+  $("#tlSnap").onchange = (e) => {
+    try { localStorage.setItem("kb.grid", e.target.value); } catch {}
+    TL?.setSnap(gridMode()); syncGridLabel(); e.target.blur();
+  };
   // secim kutusu degisince odagi birak: kisayollar (Bosluk, S, Delete) hemen calissin
   $("#tlHeads").addEventListener("change", (e) => { if (e.target.tagName === "SELECT") setTimeout(() => e.target.blur(), 0); });
 
@@ -504,6 +539,13 @@
       else if ((k0 === "m" || k0 === "M") && !(e.ctrlKey || e.metaKey)) { e.preventDefault(); toggleMetro(); }
       else if ((k0 === "n" || k0 === "N") && !(e.ctrlKey || e.metaKey)) { e.preventDefault(); prSyncNow(); }
       return;
+    }
+    if (EAR && !(t && /^(INPUT|TEXTAREA)$/.test(t.tagName) && t.type !== "checkbox")) {   // R2: kulakla ayar modu
+      const k1 = e.key;
+      if (k1 === "ArrowLeft" || k1 === "ArrowRight") { e.preventDefault(); earAdjust((k1 === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 10 : 1)); return; }
+      if (k1 === "Enter") { e.preventDefault(); earSave(); return; }
+      if (k1 === "Escape") { e.preventDefault(); earCancel(); return; }
+      if (k1 === " ") { e.preventDefault(); if (t && t.tagName === "BUTTON") t.blur(); if (TL.isPlaying()) TL.stop(); else TL.play(EAR.loop.a, { loop: EAR.loop }); return; }
     }
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) {
       if (t.type !== "range") return;   // surgu odaktaysa kisayollar yine calissin
@@ -522,6 +564,25 @@
     else if (!ctrl && (k === "+" || k === "=" || e.code === "NumpadAdd")) { e.preventDefault(); TL.zoomBy(1.5); }
     else if (!ctrl && (k === "-" || k === "_" || e.code === "NumpadSubtract")) { e.preventDefault(); TL.zoomBy(1 / 1.5); }
     else if (k === "Home") { e.preventDefault(); TL.setPlayhead(0); TL.ensureVisible(0); }
+    else if (k === "Escape" && (TL.selection().size || TL.loopSelected())) { TL.clearSel(); TL.clearLoopSel(); setStatus("Seçim bırakıldı — ok tuşları artık çalma çizgisini kaydırır"); }
+    else if (k === "ArrowLeft" || k === "ArrowRight") {
+      // R1: secili klip(ler) > secili dongu > calma cizgisi. Sol/Sag = bir izgara, Shift = 10 ms, Ctrl+Shift = 1 ms
+      e.preventDefault();
+      const dir = k === "ArrowRight" ? 1 : -1;
+      const mode = e.shiftKey && ctrl ? "1ms" : e.shiftKey ? "10ms" : "grid";
+      const stepTxt = mode === "grid" ? `ızgara ${GRID_LBL[TL.effGrid()] || "10 ms"}` : mode.replace("ms", " ms");
+      // oncelik: cetvelde az once tutulan dongu > secili klip(ler) > calma cizgisi (Esc: secimleri birak)
+      if (TL.loopSelected()) {
+        const t = TL.nudgeLoop(dir, mode);
+        if (t !== null) { const p = TL.formatPos(t); setStatus(`Döngü ${TL.loopSelected() === "le" ? "sonu" : TL.loopSelected() === "ls" ? "başı" : "(taşı) başı"} ${p.time} · ${p.bbt} (${stepTxt})`); }
+      } else if (TL.selection().size) {
+        const t = TL.nudgeSelected(dir, mode);
+        if (t !== null) { const p = TL.formatPos(t); setStatus(`Klip başı ${p.time} · ${p.bbt} (${stepTxt})`); }
+      } else {
+        const t = TL.nudgePlayhead(dir, mode);
+        const p = TL.formatPos(t); setStatus(`Çalma ${p.time} · ${p.bbt} (${stepTxt})`);
+      }
+    }
     else if (!ctrl && !e.altKey && (k === "r" || k === "R")) { e.preventDefault(); recStart(); }
     else if (!ctrl && !e.altKey && (k === "l" || k === "L")) { e.preventDefault(); toggleLoopUi(); }
     else if (!ctrl && !e.altKey && (k === "m" || k === "M")) { e.preventDefault(); toggleMetro(); }
@@ -545,7 +606,53 @@
   function lyricTimes() {
     if (!PROJ || !window.BeatLyrics) return [];
     const lt = PROJ.lyric_times || {};
-    return BeatLyrics.lineTimes(PROJ.lyrics || "", PROJ.sections || [], PROJ.bpm || 120, lt.bars_per_line || 1, lt.anchors || []);
+    return BeatLyrics.lineTimes(PROJ.lyrics || "", PROJ.sections || [], PROJ.bpm || 120, lt.bars_per_line || 1, lt.anchors || [], 4,
+      BeatLyrics.lyricStart(lt.start));
+  }
+  // ---- R3: "Sozler buradan baslar" isareti (lyric_times.start) ----
+  /** Cetveldeki bayragin yeri: elle konduysa o, yoksa ilk satirin tahmini zamani. Soz yoksa null (bayrak yok). */
+  function lyricFlagT() {
+    if (!PROJ || !window.BeatLyrics || !String(PROJ.lyrics || "").trim()) return null;
+    const st = BeatLyrics.lyricStart(PROJ.lyric_times?.start);
+    if (st !== null) return st;
+    // cetvel her karede cizilir: ilk satir zamanini girdiler degismedikce onbellekten ver
+    const key = `${PROJ.lyrics.length}|${PROJ.bpm}|${JSON.stringify(PROJ.sections || [])}|${JSON.stringify(PROJ.lyric_times || {})}|${PROJ.lyrics.slice(0, 200)}`;
+    if (FLAG_CACHE.key !== key) {
+      const tm = lyricTimes();
+      FLAG_CACHE = { key, t: tm.length ? Math.max(0, Number(tm.find((x) => x.n === 0)?.t ?? tm[0].t) || 0) : null };
+    }
+    return FLAG_CACHE.t;
+  }
+  let FLAG_CACHE = { key: "", t: null };
+  let LS_BEFORE = null;   // surukleme basindaki anlik goruntu (tek geri al adimi)
+  function setLyricStart(t, commit) {
+    if (!PROJ || t === null || t === undefined) return;
+    const v = BeatClips.r6(Math.max(0, Number(t) || 0));
+    if (!commit) {                                  // surukleme: canli onizleme, geri al yiginina girmez
+      if (LS_BEFORE === null) LS_BEFORE = snap();
+      ensureLyricTimes().start = v;
+      if (PR.on) { prCompute(); prUpdate(TL?.getPlayhead() || 0, true); }
+      syncLyricStartUi();
+      return;
+    }
+    const before = LS_BEFORE ?? snap();
+    LS_BEFORE = null;
+    ensureLyricTimes().start = v;
+    if (snap() !== before) { pushUndo(before); scheduleSave(); }
+    renderLyrics();
+    TL?.drawRuler();
+    const p = TL?.formatPos(v);
+    const anc0 = (PROJ.lyric_times.anchors || []).some((a) => Math.trunc(Number(a.line)) === 0);
+    setStatus(`Sözler ${p ? `${p.time} · ${p.bbt}` : fmtTime(v)}'den başlar${anc0 ? " — 1. satır elle sabit (⏱), o satırın senkronunu kaldırırsan bayrağa uyar" : ""}`);
+  }
+  function syncLyricStartUi() {
+    const st = BeatLyrics?.lyricStart(PROJ?.lyric_times?.start);
+    const p = st !== null && st !== undefined && TL ? TL.formatPos(st) : null;
+    $("#lyrStartLbl").textContent = p ? `Başlangıç: ${p.time} · bar ${p.bbt}` : "Başlangıç: bölüm haritası / en baştan";
+    $("#lyrStartClear").disabled = !p;
+    const ft = lyricFlagT();
+    $("#prStartHint").innerHTML = ft === null ? "Söz yok"
+      : `Sözler <b>${esc(fmtTime(ft))}</b>'den başlar — ilk satırı sürükle (cetveldeki pembe <b>SÖZ</b> bayrağı) veya N ile o anı sabitle`;
   }
   function rhymeTail(text, col) {
     const m = /([0-9A-Za-zÇĞİÖŞÜçğıöşü]+)([^0-9A-Za-zÇĞİÖŞÜçğıöşü]*)$/.exec(text);
@@ -596,6 +703,8 @@
     }
     $("#lyrBars").innerHTML = rows.join("") || `<div class="kb-mut kb-lyr-empty">Sözler burada satır satır görünür: hece, bar konumu ve kafiye rengiyle.</div>`;
     if (PR.on) { prCompute(); prUpdate(TL?.getPlayhead() || 0, true); }
+    syncLyricStartUi();
+    TL?.drawRuler();
   }
   /** Gecikmesiz duzenleme (calmayi yeniden baslatmaz): soz zamanlari ve bolum ayarlari icin. Geri alinabilir. */
   function quietEdit(label, fn) {
@@ -655,6 +764,29 @@
     const v = +e.target.value || 1;
     quietEdit(`Satır başına ${v} bar`, () => { ensureLyricTimes().bars_per_line = v; });
     e.target.blur();
+  };
+  $("#lyrStartHere").onclick = (e) => { e.currentTarget.blur(); if (TL) setLyricStart(TL.getPlayhead(), true); };
+  $("#lyrStartClear").onclick = (e) => {
+    e.currentTarget.blur();
+    if (!PROJ?.lyric_times || PROJ.lyric_times.start == null) return;
+    quietEdit("Söz başlangıç işareti kaldırıldı (bölüm haritası / en baştan)", () => { delete ensureLyricTimes().start; });
+  };
+  $("#lyrFind").onclick = async (e) => {
+    const btn = e.currentTarget;
+    btn.blur();
+    if (!PROJ) return;
+    btn.disabled = true;
+    setStatus("Vokalde ilk sesli an aranıyor…");
+    try {
+      await flushSave();
+      const r = await runJob("beat_find_lyric_start", [PROJ.id]);
+      if (r?.ok) {
+        setLyricStart(r.start, true);
+        setStatus(r.source === "vocal" ? `Sözler vokalin ilk sesli anından başlıyor: ${fmtTime(r.start)}`
+          : `Vokal bulunamadı — beat'in ilk Verse bölümüne kondu: ${fmtTime(r.start)}`);
+        TL?.ensureVisible(r.start);
+      } else setStatus("Vokal kaydı da Verse bölümü de yok — bayrağı cetvelde elle sürükle (veya \"Analiz et\" ile bölüm haritası çıkar).");
+    } finally { btn.disabled = false; }
   };
   $("#lyrResetSync").onclick = () => {
     if (!PROJ || !(PROJ.lyric_times?.anchors || []).length) { setStatus("Elle senkron yok."); return; }
@@ -1271,33 +1403,233 @@
     }
   };
 
-  // ---- Gecikme (alkis) testi ----
+  // ---- Revize R2: kalici kayit gecikmesi (genel ayar; proje degeri ayrica girilmisse o) ----
+  let GLOBAL_LAT = 0;
+  const clampLat = (v) => Math.max(-500, Math.min(500, Math.round((Number(v) || 0) * 10) / 10));
+  function latEffective() { return BeatTransport.effectiveLatencyMs(PROJ?.latency_ms, GLOBAL_LAT); }
+  function syncLatUi() {
+    const e = latEffective();
+    const proj = e.source === "project";
+    $("#latCur").textContent = `${Math.round(e.ms * 10) / 10} ms · ${proj ? "proje" : "genel"}`;
+    if (document.activeElement !== $("#latInput")) $("#latInput").value = String(e.ms);
+    $("#latProjOnly").checked = proj;
+    $("#latSource").textContent = proj
+      ? `Bu projeye özel değer etkin (genel ayar ${GLOBAL_LAT} ms bu projede kullanılmıyor). Her yeni kayda uygulanır.`
+      : "Genel ayar etkin — her kayda uygulanır, uygulama yeniden açılınca da durur.";
+  }
+  async function loadGlobalLat() {
+    const r = await api()?.beat_latency_get?.().catch(() => null);
+    if (r?.ok) GLOBAL_LAT = Number(r.global_ms) || 0;
+    syncLatUi();
+  }
+  let LAT_SAVE_T = 0;
+  /** Etkin gecikmeyi ayarlar: proje ozel ise proje (geri alinabilir), degilse genel ayar (kalici, 300 ms sonra yazilir). */
+  function setLatency(v, why) {
+    v = clampLat(v);
+    if (latEffective().source === "project") {
+      if (v === 0) { setStatus("Projeye özel değer 0 olamaz (0 = genel ayar) — kutuyu kaldır."); syncLatUi(); return; }
+      edit(`Proje kayıt gecikmesi: ${v} ms${why ? " · " + why : ""}`, () => { PROJ.latency_ms = v; });
+    } else {
+      GLOBAL_LAT = v;
+      clearTimeout(LAT_SAVE_T);
+      LAT_SAVE_T = setTimeout(async () => {
+        const r = await api()?.beat_latency_set?.(v).catch(() => null);
+        if (r?.ok) { GLOBAL_LAT = Number(r.global_ms) || 0; setStatus(`Kayıt gecikmesi ${GLOBAL_LAT} ms (genel ayar, kalıcı)${why ? " · " + why : ""}`); }
+        else setStatus("⚠ Gecikme ayarı yazılamadı: " + (r?.error || "?"));
+        syncLatUi();
+      }, 300);
+    }
+    syncLatUi();
+  }
+  $("#latInput").addEventListener("change", (e) => { setLatency(e.target.value); e.target.blur(); });
+  $("#latInput").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+  for (const [id, d] of [["latMinus10", -10], ["latMinus1", -1], ["latPlus1", 1], ["latPlus10", 10]]) {
+    $("#" + id).onclick = (e) => { e.currentTarget.blur(); setLatency(latEffective().ms + d); };
+  }
+  $("#latProjOnly").onchange = (e) => {
+    e.target.blur();
+    if (!PROJ) return;
+    if (e.target.checked) {
+      const v = clampLat(GLOBAL_LAT) || 1;     // 0 "genel" demek: ozel deger en az 1 ms
+      edit(`Bu proje kendi gecikmesini kullanıyor: ${v} ms`, () => { PROJ.latency_ms = v; });
+    } else edit(`Bu proje genel gecikme ayarını kullanıyor (${GLOBAL_LAT} ms)`, () => { PROJ.latency_ms = 0; });
+    syncLatUi();
+  };
+
+  // ---- Tik olcumu: tik ARAYUZDEN (kullanicinin duydugu cikis, Web Audio) calar, Python yalniz kaydeder ----
+  function probeBuffer(ac, P) {
+    const sr = ac.sampleRate;
+    const n = Math.round(P.dur * sr), r = Math.max(1, Math.round(P.ramp * sr));
+    const total = Math.round(((P.count - 1) * P.spacing + P.dur + 0.05) * sr);
+    const buf = ac.createBuffer(1, total, sr);
+    const d = buf.getChannelData(0);
+    const k = (P.f1 - P.f0) / P.dur;
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      let w = 1;
+      if (i < r) w = 0.5 - 0.5 * Math.cos(Math.PI * i / r);
+      else if (i >= n - r) w = 0.5 - 0.5 * Math.cos(Math.PI * (n - 1 - i) / r);
+      const v = Math.sin(2 * Math.PI * (P.f0 * t + 0.5 * k * t * t)) * w * P.amp;
+      for (let c = 0; c < P.count; c++) { const j = Math.round(c * P.spacing * sr) + i; if (j < total) d[j] = v; }
+    }
+    return buf;
+  }
+  async function measureLatencyWeb() {
+    const A = api();
+    if (!A?.beat_latency_listen_start || !TL) return { ok: false, error: "no_api" };
+    const P = await A.beat_latency_probe().catch(() => null);
+    if (!P?.ok) return { ok: false, error: "no_api" };
+    const st = await A.beat_latency_listen_start(+$("#micSel").value).catch((e) => ({ ok: false, error: String(e) }));
+    if (!st?.ok) return st || { ok: false, error: "mic" };
+    try {
+      for (let i = 0; i < 20; i++) { const r = await A.beat_latency_listen_ready().catch(() => null); if (r?.ready) break; await sleep(100); }
+      const ac = TL.audioCtx();
+      if (ac.state !== "running") await ac.resume();
+      const src = ac.createBufferSource();
+      src.buffer = probeBuffer(ac, P);
+      src.connect(ac.destination);
+      await sleep(300);                                 // mikrofon akisi otursun
+      const when = ac.currentTime + 0.25;
+      const wall = Date.now() + (when - ac.currentTime) * 1000;   // 1b kayit capasiyla ayni saat eslemesi
+      src.start(when);
+      await sleep(250 + src.buffer.duration * 1000 + 600);
+      return await A.beat_latency_listen_stop(wall / 1000);
+    } catch (e) {
+      await A.beat_latency_listen_stop(0).catch(() => {});
+      return { ok: false, error: String(e?.message || e).slice(0, 120) };
+    }
+  }
+  function latErrorText(r) {
+    const tail = " Olmazsa yukarıdaki sayıyı elle gir ya da 🎧 Kulakla ayarla'yı kullan.";
+    if (r?.error === "no_signal") {
+      if (r.reason === "silent_device") return "Mikrofondan hiç veri gelmedi — aygıt başka bir uygulamada açık olabilir ya da Windows mikrofon izni kapalı (Ayarlar › Gizlilik › Mikrofon › masaüstü uygulamaları)." + tail;
+      if (r.reason === "quiet" || (r.peak != null && r.peak < 0.01))
+        return `Mikrofon neredeyse hiç ses almadı (tepe ${Math.round((r.peak || 0) * 1000) / 10}%). Dene: 1) üstteki listeden doğru mikrofonu seç, 2) Windows giriş seviyesini yükselt, 3) kulaklığı kulağından çıkarıp hoparlörünü mikrofona daya ve sistem sesini %50+ yap.` + tail;
+      return `Ses geldi ama 5 tık seçilemedi (güven düşük, oran ${r.ratio ?? "?"}). Ortamı sessizleştir, kulaklık hoparlörünü mikrofona tam daya; tıkları hiç duymadıysan Kami'nin sesi başka çıkıştan gidiyor olabilir — Windows ses çıkışını kulaklık yap ya da aşağıdaki "Windows varsayılan çıkışıyla dene"ye bas.` + tail;
+    }
+    return ({ sounddevice_missing: "Ses aygıtı kütüphanesi (sounddevice) yok.", already_recording: "Kayıt sürerken ölçülemez — önce kaydı bitir.",
+      clock: "Saat eşlemesi tutmadı (mikrofon geç açıldı) — bir kez daha dene.", no_api: "Arayüz köprüsü hazır değil." }[r?.error]
+      || ("Hata: " + (r?.error || "?"))) + tail;
+  }
+  function showLatResult(r) {
+    $("#latMeasurePy").hidden = !!r?.ok;
+    if (r?.ok) {
+      LAT_RESULT = Number(r.latency_ms) || 0;
+      const conf = Math.round((Number(r.confidence) || 0) * 100);
+      $("#latRes").textContent = `Ölçüm: ${LAT_RESULT.toFixed(1)} ms · güven %${conf}${r.spread_ms != null ? ` · sapma ${r.spread_ms} ms` : ""} — "Uygula" ile kaydet`;
+      $("#latApply").disabled = false;
+    } else $("#latRes").textContent = latErrorText(r);
+  }
   $("#latMeasure").onclick = async () => {
     const btn = $("#latMeasure");
     btn.disabled = true;
-    $("#latRes").textContent = "Ölçülüyor… (3 tık)";
+    $("#latRes").textContent = "Ölçülüyor… 5 tık çalınacak (kulaklık hoparlörü mikrofona dayalı olsun)";
     LAT_RESULT = null; $("#latApply").disabled = true;
-    try {
-      TL?.stop();
-      const r = await api()?.beat_measure_latency?.(+$("#micSel").value);
-      if (r?.ok) {
-        LAT_RESULT = Number(r.latency_ms) || 0;
-        const conf = Math.round((Number(r.confidence) || 0) * 100);
-        $("#latRes").textContent = `${LAT_RESULT.toFixed(1)} ms · güven %${conf}${r.spread_ms != null ? ` · sapma ${r.spread_ms} ms` : ""}`;
-        $("#latApply").disabled = false;
-      } else {
-        const msg = { no_signal: "Tık duyulmadı — sesi aç, kulaklığı mikrofona yaklaştır ve tekrar dene.",
-          sounddevice_missing: "Ses aygıtı kütüphanesi (sounddevice) yok." }[r?.error] || ("Hata: " + (r?.error || "?"));
-        $("#latRes").textContent = msg;
-      }
-    } finally { btn.disabled = false; }
+    try { TL?.stop(); showLatResult(await measureLatencyWeb()); } finally { btn.disabled = false; }
+  };
+  $("#latMeasurePy").onclick = async () => {
+    const btn = $("#latMeasurePy");
+    btn.disabled = true;
+    $("#latRes").textContent = "Ölçülüyor… (Windows varsayılan çıkışı, 2 deneme)";
+    try { TL?.stop(); const r = await api()?.beat_measure_latency?.(+$("#micSel").value, -1); showLatResult(r); if (!r?.ok) $("#latMeasurePy").hidden = false; }
+    finally { btn.disabled = false; }
   };
   $("#latApply").onclick = () => {
-    if (LAT_RESULT == null || !PROJ) return;
-    const v = Math.round(LAT_RESULT * 10) / 10;
-    edit(`Proje kayıt gecikmesi: ${v} ms`, () => { PROJ.latency_ms = v; });
+    if (LAT_RESULT == null) return;
+    setLatency(LAT_RESULT, "ölçümden");
     $("#latApply").disabled = true;
   };
+
+  // ---- Kulakla ayarla: son kayit beat'le dongude; +-ms anlik duyulur, Kaydet genel ayara yazar ----
+  let EAR = null;
+  const isRecPath = (p) => /(^|[\\/])(clean_)?pc_mic_/i.test(String(p || ""));
+  function lastRecordedClip() {
+    let best = null;
+    for (const tr of PROJ?.tracks || []) {
+      if (tr.role === "beat") continue;
+      const created = new Map((tr.takes || []).map((t) => [t.id, Number(t.created_at) || 0]));
+      for (const c of BeatClips.stackView(tr.clips || [])) {
+        if (!isRecPath(c.path) || c.muted) continue;
+        const ts = created.get(c.take_id) || 0;
+        if (!best || ts > best.ts || (ts === best.ts && Number(c.start) > Number(best.clip.start))) best = { tr, clip: c, ts };
+      }
+    }
+    if (!best && TL) {   // kayit yolu taninmadiysa: secili klip
+      const h = [...TL.selection()].map((id) => TL.findClip(id)).find(Boolean);
+      if (h && h.tr.role !== "beat") best = { tr: h.tr, clip: h.clip, ts: 0 };
+    }
+    return best;
+  }
+  function earMembers() {
+    const tr = (PROJ.tracks || []).find((t) => t.id === EAR.trId);
+    if (!tr) return [];
+    const c = (tr.clips || []).find((x) => x.id === EAR.clipId);
+    if (!c) return [];
+    return c.stack_id ? (tr.clips || []).filter((x) => x.stack_id === c.stack_id) : [c];
+  }
+  function earApplyPreview() {
+    for (const c of earMembers()) c.start = BeatClips.r6(Math.max(0, (EAR.orig.get(c.id) ?? c.start) - EAR.delta / 1000));
+    const lat = clampLat(EAR.base + EAR.delta);
+    $("#earVal").textContent = `${lat} ms`;
+    $("#earInfo").textContent = `${EAR.delta > 0 ? "+" : ""}${Math.round(EAR.delta * 10) / 10} ms fark · klip ${EAR.delta >= 0 ? "erkene" : "geçe"} kaydı`;
+    TL.render();
+    if (TL.isPlaying()) TL.play(TL.getPlayhead(), { loop: EAR.loop });
+  }
+  function earAdjust(d) { if (!EAR) return; EAR.delta = clampLat(EAR.base + EAR.delta + d) - EAR.base; earApplyPreview(); }
+  function earRestore() { for (const c of earMembers()) if (EAR.orig.has(c.id)) c.start = EAR.orig.get(c.id); }
+  function earEnd() {
+    TL?.stop();
+    $("#earBar").hidden = true;
+    $("#latEar").disabled = false;
+    SAVE_LOCK = Math.max(0, SAVE_LOCK - 1);
+    EAR = null;
+    TL?.render();
+  }
+  $("#latEar").onclick = async (e) => {
+    e.currentTarget.blur();
+    if (!PROJ || !TL || EAR || RECST) return;
+    const h = lastRecordedClip();
+    if (!h) { setStatus("Önce bir kayıt al (ya da vokal kanalında bir klip seç) — kulakla ayar son kaydın üstünde yapılır."); return; }
+    const [s0, e0] = BeatClips.clipBounds(h.clip);
+    const bar = 240 / (Number(PROJ.bpm) || 120);
+    EAR = { trId: h.tr.id, clipId: h.clip.id, base: latEffective().ms, delta: 0, orig: new Map(), loop: { a: s0, b: Math.min(e0, s0 + 4 * bar) } };
+    for (const c of earMembers()) EAR.orig.set(c.id, c.start);
+    if (EAR.loop.b - EAR.loop.a < 0.5) EAR.loop.b = EAR.loop.a + Math.min(4 * bar, Math.max(0.5, e0 - s0));
+    SAVE_LOCK++;
+    $("#earBar").hidden = false;
+    $("#latEar").disabled = true;
+    earApplyPreview();
+    TL.ensureVisible(EAR.loop.a);
+    const ok = await TL.play(EAR.loop.a, { loop: EAR.loop });
+    if (ok === false) setStatus("Ses motoru açılamadı — Boşluk ile tekrar dene.");
+    else setStatus("🎧 Dinle: ses vuruşun gerisinde kalıyorsa + , önündeyse − ; ←/→ (Shift: 10 ms), Enter: kaydet, Esc: vazgeç");
+  };
+  $("#earBar").addEventListener("click", (e) => { const b = e.target.closest("[data-ear]"); if (b) { b.blur(); earAdjust(+b.dataset.ear); } });
+  async function earSave() {
+    if (!EAR) return;
+    const d = EAR.delta, lat = clampLat(EAR.base + d), fixAll = $("#earFixAll").checked;
+    const projOwn = latEffective().source === "project";
+    earRestore();
+    const before = snap();
+    if (fixAll && Math.abs(d) > 1e-9) {
+      for (const tr of PROJ.tracks || []) {
+        if (tr.role === "beat") continue;
+        for (const c of tr.clips || []) {
+          if (isRecPath(c.path) || EAR.orig.has(c.id)) c.start = BeatClips.r6(Math.max(0, Number(c.start) - d / 1000));
+        }
+      }
+    }
+    if (projOwn) PROJ.latency_ms = lat || 1;
+    earEnd();
+    commitFrom(fixAll && d ? `Gecikme ${lat} ms · kayıt klipleri ${Math.abs(d)} ms ${d > 0 ? "erkene" : "geçe"} kaydı` : `Gecikme ${lat} ms`, before);
+    const r = await api()?.beat_latency_set?.(lat).catch(() => null);
+    if (r?.ok) GLOBAL_LAT = Number(r.global_ms) || 0;
+    syncLatUi();
+    setStatus(`✓ Kayıt gecikmesi ${lat} ms kaydedildi (genel ayar${projOwn ? " + bu proje" : ""}) — yeni kayıtlara uygulanır${fixAll && d ? "; mevcut kayıt klipleri düzeltildi (Ctrl+Z ile geri al)" : ""}`);
+  }
+  function earCancel() { if (!EAR) return; earRestore(); earEnd(); setStatus("Kulakla ayar iptal — hiçbir şey değişmedi."); }
+  $("#earSave").onclick = (e) => { e.currentTarget.blur(); earSave(); };
+  $("#earCancel").onclick = (e) => { e.currentTarget.blur(); earCancel(); };
 
   $("#boothSrvBtn").onclick = async () => {
     const btn = $("#boothSrvBtn");

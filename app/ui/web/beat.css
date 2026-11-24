@@ -1006,3 +1006,70 @@ body.kb-recmode .kb-tl-secs, body.kb-recmode .kb-sec-corner .btn { pointer-event
 .kb-mic-tips { margin-top: 4px; font-size: 12px; }
 .kb-mic-tips b { color: var(--tx); }
 .kb-mic-tips ul { margin: 4px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; color: #C9C2DB; line-height: 1.45; }
+
+/* ================= Revize R1-R3 ================= */
+/* R1: calma cizgisi bas tutamaci (klip alaninin ustu) */
+.kb-ph-grip {
+  position: absolute;
+  top: 0;
+  left: -6px;
+  width: 13px;
+  height: 14px;
+  pointer-events: auto;
+  cursor: ew-resize;
+  background: var(--ok);
+  clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+  opacity: .9;
+}
+.kb-ph-grip:hover { opacity: 1; filter: brightness(1.15); }
+/* R1: surukleme ipucu balonu */
+.kb-drag-tip {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(15, 11, 22, .94);
+  border: 1px solid var(--line-hi);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.kb-drag-tip i { font-style: normal; color: var(--mut); font-size: 11px; }
+.kb-drag-tip b { color: #EDE7FF; font-weight: 600; }
+.kb-drag-tip span { color: var(--ok); }
+/* R2: gecikme ayari + kulakla ayar */
+.kb-lat-set { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 12px; }
+.kb-lat-set > span:first-child { flex-basis: 100%; color: var(--mut); }
+.kb-lat-set .btn.ic { min-width: 36px; height: 28px; padding: 0 4px; font-size: 12px; }
+.kb-lat-set input { flex: 1; min-width: 56px; height: 28px; text-align: right; }
+.kb-ear {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(20, 241, 149, .45);
+  background: rgba(20, 241, 149, .06);
+}
+.kb-ear-t { font-size: 12px; }
+.kb-ear kbd, .kb-lat-row kbd { font-family: var(--mono); font-size: 11px; color: var(--mut); margin-left: 3px; }
+.kb-ear #earVal { min-width: 64px; text-align: center; font-size: 14px; color: var(--ok); }
+.kb-lat-res { white-space: normal; }
+.kb-lat-alt { height: 26px; font-size: 11.5px; }
+/* R3: sozlerin baslangic noktasi */
+.kb-lyr-start { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.kb-lyr-start .btn { height: 26px; font-size: 12px; }
+.kb-lyr-start .btn.ic { width: 26px; padding: 0; }
+.kb-lyr-flag {
+  padding: 1px 6px 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  color: #0F0B16;
+  background: #EC4899;
+  clip-path: polygon(0 0, 100% 0, 85% 50%, 100% 100%, 0 100%);
+}
+.kb-pr-start { font-size: 11.5px; color: #6E6588; margin-bottom: 6px; }
+.kb-pr-start b { color: #EC4899; font-weight: 600; }

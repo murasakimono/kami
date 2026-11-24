@@ -57,15 +57,17 @@
           <button type="button" class="btn ic" id="tlDup" title="Kopyala, hemen sağına (Ctrl+D)">⧉</button>
           <button type="button" class="btn ic" id="tlDel" title="Sil (Delete)">✕</button>
         </div>
-        <label class="kb-tl-snap" title="Izgaraya yapış (sürüklerken Alt basılıysa kapalı)">
+        <label class="kb-tl-snap" title="Izgaraya yapış — Otomatik: yakınlaştıkça incelir (1 bar … 1/32). Alt basılıyken geçici serbest. Ok tuşları: ←/→ bir ızgara, Shift 10 ms, Ctrl+Shift 1 ms">
           <span>Izgara</span>
           <select id="tlSnap" class="kb-sel">
-            <option value="0">Kapalı</option>
+            <option value="auto" selected>Otomatik</option>
             <option value="1">1 bar</option>
             <option value="2">1/2</option>
-            <option value="4" selected>1/4 vuruş</option>
+            <option value="4">1/4 vuruş</option>
             <option value="8">1/8</option>
             <option value="16">1/16</option>
+            <option value="32">1/32</option>
+            <option value="0">Kapalı (serbest)</option>
           </select>
         </label>
         <div class="kb-tl-grp kb-rec-grp" aria-label="Kayıt akışı">
@@ -109,6 +111,7 @@
         <div class="kb-hud-count kb-num" id="hudCount" hidden></div>
         <div class="kb-prompter" id="prompter" hidden aria-live="polite">
           <div class="kb-pr-lines" id="prLines"></div>
+          <div class="kb-pr-start" id="prStartHint">İlk satırı sürükle (cetveldeki pembe <b>SÖZ</b> bayrağı) veya N ile o anı sabitle</div>
           <div class="kb-pr-bar">
             <span class="kb-pr-tag">TELEPROMPTER</span>
             <span class="kb-pr-hint" id="prHint">Satıra tıkla, doğru anda "Şimdi"ye bas (N) — o satır çalma konumuna sabitlenir</span>
@@ -235,17 +238,48 @@
           <div class="kb-mic-card" id="micCard" hidden></div>
         </div>
 
-        <div class="kb-mod">
+        <div class="kb-mod" id="latMod">
           <div class="kb-mod-head">
-            <b>Kayıt Gecikmesi (alkış testi)</b>
-            <span class="kb-badge-em kb-num" id="latCur">0 ms</span>
+            <b>Kayıt Gecikmesi</b>
+            <span class="kb-badge-em kb-num" id="latCur" title="Yeni kayıtlara uygulanan etkin gecikme">0 ms</span>
           </div>
-          <small class="kb-mut">Kulaklığı mikrofona yaklaştır (veya hoparlörü aç), "Ölç"e bas: kısa bir tık çalınıp mikrofondan geri dinlenir. Sonuç yeni kayıt kliplerini o kadar sola kaydırır.</small>
+          <div class="kb-lat-set" title="Her yeni kayıt klibi bu kadar sola (erkene) kaydırılır. Ok tuşu gibi: −/+ 1 ms, −−/++ 10 ms">
+            <span>Kayıt gecikmesi (her kayda uygulanır)</span>
+            <button type="button" class="btn ic" id="latMinus10" title="−10 ms">−10</button>
+            <button type="button" class="btn ic" id="latMinus1" title="−1 ms">−1</button>
+            <input type="number" id="latInput" class="kb-num" min="-500" max="500" step="1" value="0" aria-label="Kayıt gecikmesi (ms)">
+            <span class="kb-mut">ms</span>
+            <button type="button" class="btn ic" id="latPlus1" title="+1 ms">+1</button>
+            <button type="button" class="btn ic" id="latPlus10" title="+10 ms">+10</button>
+          </div>
+          <small class="kb-mut" id="latSource">Genel ayar — her kayda uygulanır, uygulama yeniden açılınca da durur.</small>
+          <label class="kb-chk" title="İşaretliyse bu proje genel ayar yerine kendi değerini kullanır (0 = genel ayarı kullan)">
+            <input type="checkbox" id="latProjOnly">
+            <span>Bu projeye özel değer</span>
+          </label>
           <div class="kb-lat-row">
-            <button type="button" class="btn full" id="latMeasure">Gecikmeyi ölç</button>
+            <button type="button" class="btn full" id="latEar" title="Son kaydın beat'le döngüde çalar; vuruşa oturana kadar ±ms kaydır, Kaydet">🎧 Kulakla ayarla</button>
+            <button type="button" class="btn" id="latMeasure" title="Kulaklığı kulağından çıkar, hoparlörünü mikrofona daya: 5 tık çalınır ve mikrofondan geri dinlenir">Tıkla ölç</button>
             <button type="button" class="btn ok" id="latApply" disabled>Uygula</button>
           </div>
-          <small class="kb-mut kb-num" id="latRes">—</small>
+          <div class="kb-ear" id="earBar" hidden aria-live="polite">
+            <div class="kb-ear-t">🎧 Son kayıt beat'le döngüde — sesin vuruşa oturana kadar kaydır <kbd>←</kbd><kbd>→</kbd> (Shift: 10 ms)</div>
+            <div class="kb-lat-set">
+              <button type="button" class="btn ic" data-ear="-10">−10</button>
+              <button type="button" class="btn ic" data-ear="-1">−1</button>
+              <b class="kb-num" id="earVal">0 ms</b>
+              <button type="button" class="btn ic" data-ear="1">+1</button>
+              <button type="button" class="btn ic" data-ear="10">+10</button>
+            </div>
+            <small class="kb-mut kb-num" id="earInfo">—</small>
+            <label class="kb-chk"><input type="checkbox" id="earFixAll" checked><span>Bu projedeki mevcut kayıt kliplerini de bu farkla düzelt (dinlediğin dahil, tek geri al)</span></label>
+            <div class="kb-lat-row">
+              <button type="button" class="btn ok full" id="earSave">Kaydet <kbd>Enter</kbd></button>
+              <button type="button" class="btn" id="earCancel">Vazgeç <kbd>Esc</kbd></button>
+            </div>
+          </div>
+          <small class="kb-mut kb-lat-res" id="latRes">—</small>
+          <button type="button" class="btn kb-lat-alt" id="latMeasurePy" hidden title="Tıkı Kami yerine Windows varsayılan çıkışından çalarak dene">Windows varsayılan çıkışıyla dene</button>
         </div>
 
         <div class="kb-mod">
@@ -282,6 +316,13 @@
             </label>
             <button type="button" class="btn" id="lyrPrompt" title="Teleprompter'ı aç/kapa (kayıt modunda kendiliğinden açılır)">Teleprompter</button>
             <button type="button" class="btn" id="lyrResetSync" title="Elle yapılan tüm satır senkronlarını kaldır">Senkronu sıfırla</button>
+          </div>
+          <div class="kb-lyr-start">
+            <span class="kb-lyr-flag">SÖZ</span>
+            <span class="kb-num" id="lyrStartLbl" title="Sözler buradan başlar — cetveldeki pembe bayrağı sürükle (ızgaraya yapışır), çift tık: çalma çizgisine">Başlangıç: en baştan</span>
+            <button type="button" class="btn" id="lyrStartHere" title="Sözlerin başlangıcını çalma çizgisine taşı">Buraya al</button>
+            <button type="button" class="btn" id="lyrFind" title="Vokal kanalındaki ilk sesli anı bul (vokal yoksa beat'in ilk Verse bölümü)">Vokalden bul</button>
+            <button type="button" class="btn ic" id="lyrStartClear" title="Başlangıç işaretini kaldır (bölümlere / en başa dön)">✕</button>
           </div>
           <div class="kb-lyr-bars" id="lyrBars"></div>
         </div>
