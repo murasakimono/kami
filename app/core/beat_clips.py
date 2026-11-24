@@ -17,7 +17,7 @@ import uuid
 from typing import Any
 
 MIN_LEN = 0.01            # 10 ms: bir klibin alabilecegi en kisa uzunluk
-DIVISIONS = (1, 2, 4, 8, 16)
+DIVISIONS = (1, 2, 4, 8, 16, 32)
 
 
 def r6(x: float) -> float:

@@ -5,7 +5,7 @@
    Sureler SANIYE. Fonksiyonlar girdiyi degistirmez, yeni nesne/dizi dondurur. */
 (function (root) {
   const MIN_LEN = 0.01;
-  const DIVISIONS = [1, 2, 4, 8, 16];
+  const DIVISIONS = [1, 2, 4, 8, 16, 32];
 
   const r6 = (x) => Math.floor(Number(x) * 1e6 + 0.5) / 1e6;
   const num = (v, d = 0) => {

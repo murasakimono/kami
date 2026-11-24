@@ -140,8 +140,11 @@ def resolve_anchors(anchors: Any, texts: list[str]) -> dict[int, float]:
 
 
 def line_times(text: Any, sections: list[dict[str, Any]] | None, bpm: float, bars_per_line: float = 1.0,
-               anchors: Any = None, beats_per_bar: int = 4) -> list[dict[str, Any]]:
-    """Soz satirlarinin zaman cizelgesi zamanlari: [{n, t, block, section, anchored}] (n sirali)."""
+               anchors: Any = None, beats_per_bar: int = 4, start: Any = None) -> list[dict[str, Any]]:
+    """Soz satirlarinin zaman cizelgesi zamanlari: [{n, t, block, section, anchored}] (n sirali).
+    start (R3, 'Sozler buradan baslar'): verilirse satirli ILK blok bu noktadan baslar (bolume bagliysa da);
+    sonraki bloklar kendi bolumlerine bagli kalir, bolumsuz bloklar oncekinin ardindan akar. Elle capalar
+    (anchors) her zaman onceliklidir."""
     p = parse_lyrics(text)
     secs = list(sections or [])
     bpm = _f(bpm, 120.0)
@@ -153,6 +156,8 @@ def line_times(text: Any, sections: list[dict[str, Any]] | None, bpm: float, bar
     texts = [x["text"] for x in p["lines"] if x["kind"] == "line"]
     anc = resolve_anchors(anchors, texts)
     owner = assign_blocks(p["blocks"], secs)
+    st = lyric_start(start)
+    first = next((i for i, b in enumerate(p["blocks"]) if b["lines"]), -1)
     out: list[dict[str, Any]] = []
     prev_end = 0.0
     for bi, b in enumerate(p["blocks"]):
@@ -160,7 +165,10 @@ def line_times(text: Any, sections: list[dict[str, Any]] | None, bpm: float, bar
         sec = secs[k] if 0 <= k < len(secs) else None
         bpl = _f(sec.get("bars_per_line"), 0.0) if sec else 0.0
         step = bar * (bpl if bpl > 0 else g_bpl)
-        start = _f(sec.get("start"), 0.0) if sec else prev_end
+        if bi == first and st is not None:
+            start = st
+        else:
+            start = _f(sec.get("start"), 0.0) if sec else prev_end
         base_t, base_j = start, 0
         t = start
         for j, n in enumerate(b["lines"]):
@@ -171,6 +179,14 @@ def line_times(text: Any, sections: list[dict[str, Any]] | None, bpm: float, bar
         prev_end = (t + step) if b["lines"] else start
     out.sort(key=lambda x: x["n"])
     return out
+
+
+def lyric_start(v: Any) -> float | None:
+    """lyric_times.start dogrulamasi: sonlu ve >= 0 ise sn (r6), degilse None (= baslangic isareti yok)."""
+    if v is None or v == "" or isinstance(v, bool):
+        return None
+    x = _f(v, -1.0)
+    return _r6(x) if x >= 0 else None
 
 
 def sync_line(anchors: Any, n: int, t: float, text: str = "") -> list[dict[str, Any]]:

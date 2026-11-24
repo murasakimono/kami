@@ -143,3 +143,95 @@ def punch_window(u0e: float, rec_len: float, t0: float, t1: float, xfade: float 
     if src_out - src_in < MIN_LEN:
         return None
     return {"start": r6(start), "src_in": r6(src_in), "src_out": r6(src_out)}
+
+
+# ---------------- Revize R1: hassas duzenleme (zoom'a bagli izgara, ok tusu kaydirma) ----------------
+GRID_DIVS = (1, 2, 4, 8, 16, 32)   # bar basina nota (1 = bar, 4 = dortluk/vurus, 32 = otuzikilik)
+GRID_MIN_PX = 10.0                 # otomatik izgarada iki cizgi arasi en az bu kadar piksel
+NUDGE_MS = {"10ms": 0.01, "1ms": 0.001}
+LATENCY_LIMIT_MS = 500.0
+
+
+def grid_sec(bpm: float, div: int) -> float:
+    """Izgara adimi (sn). div 0/gecersiz -> 0 (izgara kapali). 4/4 varsayimi (snap_time ile ayni)."""
+    try:
+        d = int(div)
+    except (TypeError, ValueError):
+        return 0.0
+    if d not in GRID_DIVS:
+        return 0.0
+    return bar_sec(bpm, 4) / d
+
+
+def auto_grid_div(pps: float, bpm: float, min_px: float = GRID_MIN_PX) -> int:
+    """Gorunen piksel/saniyeye gore en ince izgara: iki cizgi arasi >= min_px olan en buyuk bolum (en az 1 bar)."""
+    pps = _f(pps)
+    mp = _f(min_px, GRID_MIN_PX)
+    best = GRID_DIVS[0]
+    if pps <= 0:
+        return best
+    for d in GRID_DIVS:
+        if grid_sec(bpm, d) * pps >= mp - 1e-9:
+            best = d
+    return best
+
+
+def resolve_grid(mode: Any, pps: float, bpm: float) -> int:
+    """Izgara secicisi -> etkin bolum. 'auto' (veya bos) -> auto_grid_div; 1..32 -> o; 0/'off'/gecersiz -> 0 (kapali)."""
+    if mode is None or mode == "" or str(mode).lower() == "auto":
+        return auto_grid_div(pps, bpm)
+    try:
+        d = int(float(mode))
+    except (TypeError, ValueError):
+        return 0
+    return d if d in GRID_DIVS else 0
+
+
+def snap_to(t: float, bpm: float, div: int) -> float:
+    """Izgaraya yapistir; div 0 (kapali) -> yuvarlama yok (yalniz mikro-saniye r6 + negatif degil)."""
+    try:
+        d = int(div)
+    except (TypeError, ValueError):
+        d = 0
+    if d not in GRID_DIVS or _f(bpm) <= 0:
+        return r6(max(0.0, _f(t)))
+    g = grid_sec(bpm, d)
+    return r6(max(0.0, math.floor(_f(t) / g + 0.5) * g))
+
+
+def nudge_time(t: float, direction: int, mode: str, bpm: float, div: int) -> float:
+    """Ok tusu kaydirmasi. mode: 'grid' (bir izgara adimi: izgara disindaysa yondeki ilk cizgiye),
+    '10ms' (Shift), '1ms' (Ctrl+Shift). Izgara kapaliyken 'grid' 10 ms gibi davranir. Sonuc >= 0."""
+    t = _f(t)
+    d = 1 if _f(direction) > 0 else -1
+    if mode in NUDGE_MS:
+        return r6(max(0.0, t + d * NUDGE_MS[mode]))
+    g = grid_sec(bpm, div)
+    if g <= 0:
+        return r6(max(0.0, t + d * NUDGE_MS["10ms"]))
+    k = t / g
+    n = math.floor(k + 1e-6) + 1 if d > 0 else math.ceil(k - 1e-6) - 1
+    return r6(max(0.0, n * g))
+
+
+def format_position(t: float, bpm: float, beats_per_bar: int = 4) -> dict[str, str]:
+    """Surukleme ipucu: {'time': 'dk:sn.ms', 'bbt': 'bar.vurus.onaltilik'} (1'den sayar)."""
+    t = max(0.0, _f(t))
+    ms = int(math.floor(t * 1000.0 + 0.5))
+    tm = f"{ms // 60000}:{(ms % 60000) // 1000:02d}.{ms % 1000:03d}"
+    bpb = max(1, int(beats_per_bar or 4))
+    q = t / beat_sec(bpm)
+    qi = int(math.floor(q + 1e-9))
+    six = min(4, int(math.floor((q - qi) * 4 + 1e-9)) + 1)
+    return {"time": tm, "bbt": f"{qi // bpb + 1}.{qi % bpb + 1}.{six}"}
+
+
+# ---------------- Revize R2: kalici gecikme (proje > genel ayar) ----------------
+def effective_latency_ms(project_ms: Any, global_ms: Any) -> dict[str, Any]:
+    """Yeni kayitlara uygulanacak gecikme. Projede elle girilmis (0 olmayan) deger varsa o; yoksa genel ayar
+    (settings.beat_latency_ms, -500..500). Dondurur {'ms', 'source': 'project'|'global'}."""
+    p = _f(project_ms)
+    if abs(p) > 1e-9:
+        return {"ms": r6(max(-LATENCY_LIMIT_MS, min(LATENCY_LIMIT_MS, p))), "source": "project"}
+    g = max(-LATENCY_LIMIT_MS, min(LATENCY_LIMIT_MS, _f(global_ms)))
+    return {"ms": r6(g), "source": "global"}

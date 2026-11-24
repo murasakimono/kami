@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import threading
 import time
 import uuid
@@ -355,3 +356,65 @@ def analyze_project(pid: str, path: str = "") -> dict[str, Any]:
     finally:
         with _PROGRESS_LOCK:
             PROGRESS["running"] = False
+
+
+# ---------------- Revize R3: "Vokalden bul" (sozlerin baslangic noktasi) ----------------
+def first_voiced_time(mono, sr: int, win_s: float = 0.02, hold_s: float = 0.06, rel_db: float = -24.0,
+                      floor_db: float = -50.0) -> float | None:
+    """Ilk sesli an (sn): pencere RMS'i (20 ms) esigi hold_s boyunca asan ilk pencere. Esik = en yuksek pencere
+    seviyesinin rel_db alti, ama en az floor_db (dBFS). Hic ses yoksa None. Saf hesap."""
+    import numpy as np
+    x = np.asarray(mono, dtype="float64").reshape(-1)
+    w = max(1, int(round(win_s * sr)))
+    n = len(x) // w
+    if n <= 0:
+        return None
+    rms = np.sqrt(np.mean(x[: n * w].reshape(n, w) ** 2, axis=1))
+    db = 20.0 * np.log10(np.maximum(rms, 1e-12))
+    top = float(np.max(db))
+    if top < floor_db:
+        return None
+    thr = max(top + rel_db, floor_db)
+    h = max(1, int(round(hold_s / win_s)))
+    above = db >= thr
+    run = 0
+    for i, a in enumerate(above):
+        run = run + 1 if a else 0
+        if run >= h:
+            return round((i - h + 1) * w / float(sr), 6)
+    i = int(np.argmax(above))           # kisa patlama: hold saglanmadi ama ses var
+    return round(i * w / float(sr), 6) if above.any() else None
+
+
+def find_lyric_start(proj: dict[str, Any], max_scan_s: float = 90.0, sr: int = 16000) -> dict[str, Any]:
+    """Sozlerin baslayacagi an: vokal kanallarindaki (beat disi) en erken duyulan klibin ilk sesli ani;
+    vokal yoksa / sessizse bolum haritasindaki ilk Verse'un baslangici. {'ok', 'start', 'source', ...}."""
+    from app.core import beat_clips
+    from app.core.beat_lyrics import section_base
+    cands = []
+    for tr in proj.get("tracks", []) or []:
+        if tr.get("role") == "beat" or tr.get("mute"):
+            continue
+        for c in beat_clips.stack_view(tr.get("clips") or []):
+            if c.get("muted") or not c.get("path") or not os.path.isfile(str(c.get("path"))):
+                continue
+            cands.append((float(c.get("start") or 0.0), tr.get("id"), c))
+    cands.sort(key=lambda x: x[0])
+    for st, tid, c in cands[:6]:
+        s_in = float(c.get("src_in") or 0.0)
+        ln = max(0.0, float(c.get("src_out") or 0.0) - s_in)
+        if ln <= 0:
+            continue
+        try:
+            mono, sr2 = _read_mono(str(c["path"]), sr, s_in, min(ln, max_scan_s))
+        except Exception:
+            log.warning("Beat: vokal baslangici okunamadi: %s", c.get("path"), exc_info=True)
+            continue
+        on = first_voiced_time(mono, sr2)
+        if on is not None:
+            return {"ok": True, "start": round(st + on, 6), "source": "vocal", "track_id": tid, "clip_id": c.get("id")}
+    verses = [s for s in proj.get("sections") or [] if section_base(s.get("name")) == "verse"]
+    if verses:
+        v = min(verses, key=lambda s: float(s.get("start") or 0.0))
+        return {"ok": True, "start": round(float(v.get("start") or 0.0), 6), "source": "verse", "section_id": v.get("id")}
+    return {"ok": False, "error": "no_vocal_or_verse"}

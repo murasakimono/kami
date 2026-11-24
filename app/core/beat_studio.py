@@ -718,7 +718,24 @@ def migrate_project(proj: dict[str, Any]) -> bool:
     if not isinstance(lt, dict) or not isinstance(lt.get("anchors"), list):
         proj["lyric_times"] = {"bars_per_line": (lt or {}).get("bars_per_line", 1) if isinstance(lt, dict) else 1,
                                "anchors": []}
+        if isinstance(lt, dict) and lt.get("start") is not None:
+            proj["lyric_times"]["start"] = lt.get("start")
         changed = True
+    lt = proj["lyric_times"]
+    if "start" in lt:                                    # R3: sozlerin baslangic noktasi (sn) ya da None
+        st = lt.get("start")
+        try:
+            stf = float(st) if st is not None else None
+        except (TypeError, ValueError):
+            stf = None
+        if stf is not None and not (math.isfinite(stf) and stf >= 0):
+            stf = None
+        if stf is None:
+            lt.pop("start", None)
+            changed = True
+        elif stf != st:
+            lt["start"] = stf
+            changed = True
     return changed
 
 
@@ -810,7 +827,7 @@ def add_take_to_track(pid: str, track_id: str, audio_path: str, label: str = "",
             clips = tr.setdefault("clips", [])
             pos = beat_clips.track_end(clips) if start is None or float(start) < 0 else float(start)
             if from_recording:
-                pos -= (float(proj.get("latency_ms") or 0.0) + float(tr.get("latency_ms") or 0.0)) / 1000.0
+                pos -= _recording_latency_s(proj, tr)
             clip = _new_clip_for(audio_path, tid, pos, audio_duration(audio_path))
             if clip:
                 clips.append(clip)
@@ -871,8 +888,38 @@ def render_track_clips(clips: list[dict[str, Any]], sr: int = 48000, cache: dict
     return out
 
 
+# Revize R2: genel (kalici) gecikme ayari. Api, settings.beat_latency_ms okuyan bir fonksiyon baglar;
+# bagli degilse (testler, MCP) 0 kabul edilir.
+_GLOBAL_LATENCY_GETTER = None
+
+
+def set_global_latency_getter(fn) -> None:
+    global _GLOBAL_LATENCY_GETTER
+    _GLOBAL_LATENCY_GETTER = fn
+
+
+def global_latency_ms() -> float:
+    fn = _GLOBAL_LATENCY_GETTER
+    if fn is None:
+        return 0.0
+    try:
+        v = float(fn() or 0.0)
+    except Exception:
+        return 0.0
+    return v if math.isfinite(v) else 0.0
+
+
+def effective_latency(proj: dict[str, Any]) -> dict[str, Any]:
+    """Projenin etkin kayit gecikmesi: proje degeri (0 degilse) > genel ayar. {'ms', 'source'}."""
+    return beat_transport.effective_latency_ms(proj.get("latency_ms"), global_latency_ms())
+
+
 def _recording_latency_s(proj: dict[str, Any], tr: dict[str, Any]) -> float:
-    return (float(proj.get("latency_ms") or 0.0) + float(tr.get("latency_ms") or 0.0)) / 1000.0
+    try:
+        tr_ms = float(tr.get("latency_ms") or 0.0)
+    except (TypeError, ValueError):
+        tr_ms = 0.0
+    return (float(effective_latency(proj)["ms"]) + tr_ms) / 1000.0
 
 
 def _same_span(c: dict[str, Any], start: float, length: float) -> bool:
@@ -1089,23 +1136,44 @@ def bounce(pid: str, out_path: str = "", target_lufs: float = -14.0) -> dict[str
 LAT_SR = 48000
 
 
-def latency_probe_signal(sr: int = LAT_SR, total_s: float = 0.8, at_s: float = 0.05):
-    """Gecikme olcumu icin calinacak sinyal: Hann pencereli 20 ms dogrusal chirp (600 Hz -> 6 kHz)."""
+# Revize R2: tek 20 ms'lik kisik tik yerine 5 tiklik, genis bantli, yuksek enerjili chirp dizisi.
+# Ayni parametrelerle arayuz (Web Audio) de birebir ayni sinyali uretir: tik kullanicinin DUYDUGU cikistan calar,
+# Python yalniz kaydeder (zaman eslemesi 1b'deki saat capasi ile).
+LAT_PROBE = {"count": 5, "spacing": 0.5, "dur": 0.05, "f0": 300.0, "f1": 8000.0, "amp": 0.8, "ramp": 0.003,
+             "at": 0.05, "tail": 0.35}
+
+
+def latency_probe_signal(sr: int = LAT_SR, total_s: float | None = None, at_s: float | None = None):
+    """Gecikme olcumu sinyali: LAT_PROBE['count'] adet dogrusal chirp (300 Hz -> 8 kHz, 50 ms, Tukey kenarli),
+    0.5 sn arayla. Ilk chirp at_s'de baslar. total_s verilmezse son chirp'ten sonra 'tail' kadar sessizlik."""
     import numpy as np
-    n = int(round(0.02 * sr))
+    P = LAT_PROBE
+    at = float(P["at"] if at_s is None else at_s)
+    n = int(round(P["dur"] * sr))
     t = np.arange(n, dtype="float64") / sr
-    f0, f1 = 600.0, 6000.0
-    k = (f1 - f0) / 0.02
-    chirp = np.sin(2 * np.pi * (f0 * t + 0.5 * k * t * t)) * np.hanning(n)
-    out = np.zeros(int(round(total_s * sr)), dtype="float32")
-    a = int(round(at_s * sr))
-    out[a:a + n] = (0.6 * chirp).astype("float32")
+    k = (P["f1"] - P["f0"]) / P["dur"]
+    w = np.ones(n)                                       # Tukey penceresi: 3 ms yumusak kenar, ortasi tam enerji
+    r = max(1, int(round(P["ramp"] * sr)))
+    ramp = 0.5 - 0.5 * np.cos(np.pi * np.arange(r) / r)
+    w[:r] = ramp
+    w[n - r:] = ramp[::-1]
+    chirp = np.sin(2 * np.pi * (P["f0"] * t + 0.5 * k * t * t)) * w * P["amp"]
+    last = at + (P["count"] - 1) * P["spacing"] + P["dur"]
+    total = float(total_s) if total_s is not None else last + P["tail"]
+    out = np.zeros(max(int(round(total * sr)), int(round(last * sr)) + 1), dtype="float32")
+    for i in range(int(P["count"])):
+        a = int(round((at + i * P["spacing"]) * sr))
+        out[a:a + n] = chirp.astype("float32")
     return out
 
 
-def estimate_latency(played, recorded, sr: int) -> dict[str, Any]:
-    """Saf hesap: calinan ve kaydedilen sinyal arasindaki gidis-donus gecikmesi (capraz korelasyon, FFT).
-    Dondurur {"ok", "latency_ms", "confidence"(0..1)} veya {"ok": False, "error": "no_signal"}."""
+def estimate_latency(played, recorded, sr: int, expected_at: int = 0, min_ms: float = -150.0,
+                     max_ms: float = 1000.0) -> dict[str, Any]:
+    """Saf hesap: calinan sinyalin kayitta nerede oldugunu bulur (normalize capraz korelasyon, FFT).
+    expected_at: kayitta sinyalin gecikmesiz baslamasi gereken ornek (saat capasindan). Arama penceresi
+    expected_at + [min_ms, max_ms] (expected_at=0 iken yalniz >= 0). Guven: normalize tepe (NCC) ve
+    tepe / medyan orani. Dondurur {"ok", "latency_ms", "confidence", "ncc", "ratio"} veya
+    {"ok": False, "error": "no_signal", ["reason": "quiet"|"weak"], ...} (sessiz kayitta yalniz ilk iki anahtar)."""
     import numpy as np
     x = np.asarray(played, dtype="float64").reshape(-1)
     y = np.asarray(recorded, dtype="float64")
@@ -1116,32 +1184,66 @@ def estimate_latency(played, recorded, sr: int) -> dict[str, Any]:
         return {"ok": False, "error": "no_signal"}
     y = y - float(np.mean(y))
     ex = float(np.sqrt(np.sum(x * x)))
-    ey = float(np.sqrt(np.sum(y * y)))
-    if ex < 1e-9 or ey < 1e-6 or float(np.max(np.abs(y))) < 1e-3:
+    peak_in = float(np.max(np.abs(y)))
+    if ex < 1e-9 or peak_in < 1e-3:
         return {"ok": False, "error": "no_signal"}
-    n = len(x) + len(y)
-    nfft = 1 << (n - 1).bit_length()
-    corr = np.fft.irfft(np.fft.rfft(y, nfft) * np.conj(np.fft.rfft(x, nfft)), nfft)[: len(y)]   # gecikme >= 0
-    lag = int(np.argmax(corr))
-    peak = float(corr[lag])
+    # sinyalin etkin (sifir olmayan) kismi: korelasyon ve enerji penceresi yalniz bu bolgede
+    nz = np.nonzero(np.abs(x) > 1e-9)[0]
+    x0, x1 = int(nz[0]), int(nz[-1]) + 1
+    xs = x[x0:x1]
+    m = len(xs)
+    exp = int(expected_at) + x0                     # kayitta xs'nin baslamasi gereken ornek
+    lo = exp + int(math.floor(min_ms * sr / 1000.0)) if expected_at else exp
+    hi = exp + int(math.ceil(max_ms * sr / 1000.0))
+    lo = max(0, lo)
+    hi = min(len(y) - m, hi)
+    if hi < lo:
+        return {"ok": False, "error": "no_signal"}
+    nfft = 1 << (len(y) + m - 1).bit_length()
+    corr = np.fft.irfft(np.fft.rfft(y, nfft) * np.conj(np.fft.rfft(xs, nfft)), nfft)[: len(y) - m + 1]
+    c2 = np.concatenate(([0.0], np.cumsum(y * y)))
+    eseg = np.sqrt(np.maximum(c2[m:] - c2[:-m], 0.0))[: len(corr)]
+    ncc = np.where(eseg > 1e-9, corr / (np.sqrt(np.sum(xs * xs)) * np.maximum(eseg, 1e-12)), 0.0)
+    win = ncc[lo:hi + 1]
+    j = int(np.argmax(win))
+    lag = lo + j
+    pk = float(ncc[lag])
+    med = float(np.median(np.abs(win))) + 1e-9
+    ratio = pk / med
     frac = 0.0
-    if 0 < lag < len(corr) - 1:   # parabolik ara degerleme (alt-ornek)
-        a, b, c = float(corr[lag - 1]), peak, float(corr[lag + 1])
+    if 0 < lag < len(corr) - 1:                     # parabolik ara degerleme (alt-ornek)
+        a, b, c = float(corr[lag - 1]), float(corr[lag]), float(corr[lag + 1])
         den = a - 2 * b + c
         if abs(den) > 1e-12:
             frac = max(-0.5, min(0.5, 0.5 * (a - c) / den))
-    # guven: tepedeki normalize korelasyon (kaydin tepe cevresindeki enerjisine gore)
-    seg = y[lag: lag + len(x)]
-    eseg = float(np.sqrt(np.sum(seg * seg))) if len(seg) else 0.0
-    conf = peak / (ex * eseg) if eseg > 1e-9 else 0.0
-    conf = max(0.0, min(1.0, conf))
-    if conf < 0.3:
-        return {"ok": False, "error": "no_signal", "confidence": round(conf, 3)}
-    return {"ok": True, "latency_ms": round((lag + frac) * 1000.0 / sr, 2), "confidence": round(conf, 3)}
+    conf = max(0.0, min(1.0, (ratio - 10.0) / 40.0))   # saf gurultude oran ~5-8; net tikta yuzlerce
+    info = {"ncc": round(pk, 3), "ratio": round(ratio, 1), "confidence": round(conf, 3)}
+    if pk < 0.02 or ratio < 11.0:
+        return {"ok": False, "error": "no_signal", "reason": "weak" if peak_in >= 0.01 else "quiet", **info}
+    return {"ok": True, "latency_ms": round((lag + frac - exp) * 1000.0 / sr, 2), **info}
 
 
-def measure_latency(device_id: int = -1, trials: int = 3) -> dict[str, Any]:
-    """Kulaklik/hoparlorden tik calip ayni anda mikrofondan kaydeder; 3 deneme ortalamasi (ms)."""
+def latency_from_recording(rec, sr: int, rec_epoch0: float, play_wall: float) -> dict[str, Any]:
+    """Revize R2 (arayuzden calinan tik): Python yalniz kaydetti; tik dizisinin ilk ornegi duvar saatinde
+    play_wall'da (Web Audio zamanlamasi, 1b saat capasi) calindi. Kaydin 0. ornegi rec_epoch0'da.
+    Gecikme = tikin kayitta bulundugu yer - beklenen yer. Kayit yerlesimiyle ayni saatler kullanildigi icin
+    sonuc dogrudan latency_ms olarak kullanilabilir."""
+    import numpy as np
+    y = np.asarray(rec, dtype="float64")
+    if y.ndim > 1:
+        y = y.mean(axis=1)
+    sig = latency_probe_signal(int(sr), at_s=0.0)
+    expected = int(round((float(play_wall) - float(rec_epoch0)) * sr))
+    if expected < 0 or expected >= len(y):
+        return {"ok": False, "error": "clock", "expected": expected}
+    r = estimate_latency(sig, y, int(sr), expected_at=max(1, expected))
+    r["peak"] = round(float(np.max(np.abs(y))) if len(y) else 0.0, 4)
+    return r
+
+
+def measure_latency(device_id: int = -1, trials: int = 2, out_device: int = -1) -> dict[str, Any]:
+    """Yedek yol: tiki Python calar (out_device; -1 = Windows varsayilan cikisi) ve ayni anda kaydeder.
+    Arayuz once Web Audio yolunu (kullanicinin duydugu cikis) kullanir; bu yol ikinci secenek."""
     try:
         import numpy as np
         import sounddevice as sd
@@ -1151,9 +1253,10 @@ def measure_latency(device_id: int = -1, trials: int = 3) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     try:
         dev_in = None if device_id is None or int(device_id) < 0 else int(device_id)
+        dev_out = None if out_device is None or int(out_device) < 0 else int(out_device)
         for _ in range(max(1, int(trials))):
             rec = sd.playrec(sig.reshape(-1, 1), samplerate=LAT_SR, channels=1, dtype="float32",
-                             device=(dev_in, None))
+                             device=(dev_in, dev_out))
             sd.wait()
             results.append(estimate_latency(sig, np.asarray(rec).reshape(-1), LAT_SR))
             time.sleep(0.15)

@@ -214,6 +214,80 @@ class PcRecorder:
 RECORDER = PcRecorder()
 
 
+class LatencyListener:
+    """Revize R2: alkis/tik testinde yalniz KAYDEDER. Tik arayuzde Web Audio ile (kullanicinin duydugu cikistan)
+    calinir; arayuz tikin duvar saatini (1b saat capasi) stop()'a verir, gecikme kayittan hesaplanir."""
+
+    MAX_SEC = 12.0
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._stream = None
+        self._chunks: list[Any] = []
+        self._sr = 48000
+        self._epoch0: float | None = None
+        self._frames = 0
+
+    def _on_block(self, indata, frames: int) -> None:
+        if self._epoch0 is None:
+            self._epoch0 = time.time() - frames / float(self._sr or 48000)
+        if self._frames < self.MAX_SEC * self._sr:
+            self._chunks.append(indata.copy())
+            self._frames += int(frames)
+
+    def start(self, device_id: int | None = None, sr: int = 48000) -> dict[str, Any]:
+        with self._lock:
+            if RECORDER.status().get("recording"):
+                return {"ok": False, "error": "already_recording"}
+            self._close()
+            try:
+                import sounddevice as sd
+            except Exception:
+                return {"ok": False, "error": "sounddevice_missing"}
+            self._chunks, self._frames, self._epoch0, self._sr = [], 0, None, int(sr or 48000)
+            try:
+                self._stream = sd.InputStream(samplerate=self._sr, channels=1, dtype="float32",
+                                              device=device_id if device_id is not None and device_id >= 0 else None,
+                                              callback=lambda indata, frames, ti, st: self._on_block(indata, frames))
+                self._stream.start()
+            except Exception as exc:
+                self._stream = None
+                return {"ok": False, "error": str(exc)[:140]}
+            return {"ok": True, "sr": self._sr}
+
+    def _close(self) -> None:
+        try:
+            if self._stream is not None:
+                self._stream.stop()
+                self._stream.close()
+        except Exception:
+            pass
+        self._stream = None
+
+    def ready(self) -> bool:
+        return self._epoch0 is not None
+
+    def stop(self, play_wall: float) -> dict[str, Any]:
+        """play_wall: tik dizisinin ilk orneginin calindigi duvar saati (epoch sn)."""
+        with self._lock:
+            self._close()
+            if not self._chunks or self._epoch0 is None:
+                return {"ok": False, "error": "no_signal", "reason": "silent_device"}
+            import numpy as np
+            rec = np.concatenate(self._chunks, axis=0).reshape(-1)
+            self._chunks = []
+            return beat_studio.latency_from_recording(rec, self._sr, self._epoch0, float(play_wall))
+
+    def cancel(self) -> dict[str, Any]:
+        with self._lock:
+            self._close()
+            self._chunks = []
+            return {"ok": True}
+
+
+LATENCY = LatencyListener()
+
+
 class BoothServer:
     """iPhone 15 Pro Max kablosuz 48 kHz WAV kayit + canli Teleprompter HTTP koprusu."""
 

@@ -94,11 +94,74 @@
     return { start: r6(start), src_in: r6(srcIn), src_out: r6(srcOut) };
   }
 
+  // ---------------- Revize R1: hassas duzenleme ----------------
+  const GRID_DIVS = [1, 2, 4, 8, 16, 32];
+  const GRID_MIN_PX = 10;
+  const NUDGE_MS = { "10ms": 0.01, "1ms": 0.001 };
+  const LATENCY_LIMIT_MS = 500;
+  const divOf = (div) => { const d = Math.trunc(Number(div)); return Number.isFinite(d) ? d : 0; };
+
+  function gridSec(bpm, div) {
+    const d = divOf(div);
+    if (!GRID_DIVS.includes(d)) return 0;
+    return barSec(bpm, 4) / d;
+  }
+  function autoGridDiv(pps, bpm, minPx = GRID_MIN_PX) {
+    pps = f(pps);
+    const mp = f(minPx, GRID_MIN_PX);
+    let best = GRID_DIVS[0];
+    if (pps <= 0) return best;
+    for (const d of GRID_DIVS) if (gridSec(bpm, d) * pps >= mp - 1e-9) best = d;
+    return best;
+  }
+  function resolveGrid(mode, pps, bpm) {
+    if (mode === null || mode === undefined || mode === "" || String(mode).toLowerCase() === "auto") return autoGridDiv(pps, bpm);
+    const d = Math.trunc(Number(mode));
+    if (!Number.isFinite(d)) return 0;
+    return GRID_DIVS.includes(d) ? d : 0;
+  }
+  function snapTo(t, bpm, div) {
+    const d = divOf(div);
+    if (!GRID_DIVS.includes(d) || f(bpm) <= 0) return r6(Math.max(0, f(t)));
+    const g = gridSec(bpm, d);
+    return r6(Math.max(0, Math.floor(f(t) / g + 0.5) * g));
+  }
+  function nudgeTime(t, direction, mode, bpm, div) {
+    t = f(t);
+    const d = f(direction) > 0 ? 1 : -1;
+    if (Object.prototype.hasOwnProperty.call(NUDGE_MS, mode)) return r6(Math.max(0, t + d * NUDGE_MS[mode]));
+    const g = gridSec(bpm, div);
+    if (g <= 0) return r6(Math.max(0, t + d * NUDGE_MS["10ms"]));
+    const k = t / g;
+    const n = d > 0 ? Math.floor(k + 1e-6) + 1 : Math.ceil(k - 1e-6) - 1;
+    return r6(Math.max(0, n * g));
+  }
+  function formatPosition(t, bpm, beatsPerBar = 4) {
+    t = Math.max(0, f(t));
+    const ms = Math.floor(t * 1000 + 0.5);
+    const tm = `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
+    const bpb = bpbOf(beatsPerBar);
+    const q = t / beatSec(bpm);
+    const qi = Math.floor(q + 1e-9);
+    const six = Math.min(4, Math.floor((q - qi) * 4 + 1e-9) + 1);
+    return { time: tm, bbt: `${Math.floor(qi / bpb) + 1}.${(qi % bpb) + 1}.${six}` };
+  }
+  // ---------------- Revize R2: kalici gecikme (proje > genel ayar) ----------------
+  function effectiveLatencyMs(projectMs, globalMs) {
+    const p = f(projectMs);
+    if (Math.abs(p) > 1e-9) return { ms: r6(Math.max(-LATENCY_LIMIT_MS, Math.min(LATENCY_LIMIT_MS, p))), source: "project" };
+    const g = Math.max(-LATENCY_LIMIT_MS, Math.min(LATENCY_LIMIT_MS, f(globalMs)));
+    return { ms: r6(g), source: "global" };
+  }
+
   root.BeatTransport = {
     beatSec, barSec, metronomeTicks, countInPlan, timelineAt, recordingOrigin, linearTake, loopLaps, punchWindow,
     // Python adlari (esdeger testi)
     beat_sec: beatSec, bar_sec: barSec, metronome_ticks: metronomeTicks, count_in_plan: countInPlan,
     timeline_at: timelineAt, recording_origin: recordingOrigin, linear_take: linearTake, loop_laps: loopLaps,
     punch_window: punchWindow,
+    GRID_DIVS, gridSec, autoGridDiv, resolveGrid, snapTo, nudgeTime, formatPosition, effectiveLatencyMs,
+    grid_sec: gridSec, auto_grid_div: autoGridDiv, resolve_grid: resolveGrid, snap_to: snapTo, nudge_time: nudgeTime,
+    format_position: formatPosition, effective_latency_ms: effectiveLatencyMs,
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -193,6 +193,8 @@ DEFAULTS: dict[str, Any] = {
     "player_loudness_norm": False,   # acilip kapanabilir -14 LUFS ses seviyesi dengeleyici
     "player_target_lufs": -14.0,     # hedef ses siddeti (LUFS)
     "discord_rp_enabled": False,     # opsiyonel Discord Rich Presence (oynatilan medya)
+    # Kami Beat (Revize R2): kalici kayit gecikmesi (ms). Projede ayri deger girilmemisse her yeni kayda uygulanir.
+    "beat_latency_ms": 0.0,          # -500..500; pozitif = kayit klibi o kadar sola (erkene) kaydirilir
 }
 
 
@@ -344,6 +346,13 @@ def _coerce(key: str, value: Any) -> Any:
         raise ValueError("player_engine")
     if key == "player_target_lufs":
         return max(-30.0, min(-5.0, float(value)))
+    if key == "beat_latency_ms":
+        if isinstance(value, bool):
+            raise ValueError("beat_latency_ms")
+        v = float(value)
+        if v != v or v in (float("inf"), float("-inf")):
+            raise ValueError("beat_latency_ms")
+        return round(max(-500.0, min(500.0, v)), 3)
     if key == "ntfy_server" and not str(value).startswith(("https://", "http://")):
         raise ValueError("ntfy_server")
     if key in ("schedule_start", "schedule_stop"):

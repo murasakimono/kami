@@ -127,7 +127,7 @@ class Api(StudioMixin, EnhanceMixin):
         "subtitle_batch", "clip_factory_highlights", "hardsub_extract", "kamipack_export", "kamipack_import",
         "kasa_index_media", "lyrics_word_sync",
         "mpv_install", "mix_autodj", "music_tag_fetch_cover", "music_tag_auto_apply", "player_replaygain",
-        "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_analyze_sections", "beat_mic_test", "beat_apply_fx", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
+        "beat_render_mixdown", "beat_bounce", "beat_measure_latency", "beat_analyze_sections", "beat_mic_test", "beat_find_lyric_start", "beat_apply_fx", "beat_mashup", "beat_studio_mashup", "beat_export_lyric_video",
         "enhance_preview_split", "enhance_batch_start", "pic_tarif_run",
         "games_hltb_real", "games_pcgamingwiki", "games_mod_install", "games_ocr_translate",
         "oracle_relay_ping", "oracle_relay_pull",
@@ -6666,6 +6666,7 @@ class Api(StudioMixin, EnhanceMixin):
         return beat_studio.save_project(proj)
 
     def beat_add_take(self, pid: str, track_id: str, audio_path: str, label: str = "", start: float = -1.0) -> dict[str, Any]:
+        self._beat_bind_latency()   # R2: genel gecikme ayari yeni kayitlara uygulansin
         from app.core import beat_studio
         st = None if start is None or float(start) < 0 else float(start)
         return beat_studio.add_take_to_track(pid, track_id, audio_path, label=label, start=st)
@@ -6714,9 +6715,66 @@ class Api(StudioMixin, EnhanceMixin):
         from app.core import beat_studio
         return beat_studio.bounce(pid, out_path=out_path, target_lufs=float(target_lufs))
 
-    def beat_measure_latency(self, device_id: int = -1) -> dict[str, Any]:
+    def beat_measure_latency(self, device_id: int = -1, out_device: int = -1) -> dict[str, Any]:
+        """Yedek yol: tik Python'dan (out_device; -1 = Windows varsayilani) calar ve kaydedilir."""
         from app.core import beat_studio
-        return beat_studio.measure_latency(int(device_id if device_id is not None else -1))
+        return beat_studio.measure_latency(int(device_id if device_id is not None else -1),
+                                           out_device=int(out_device if out_device is not None else -1))
+
+    # ---- Revize R2: kalici gecikme + arayuzden calinan tikla olcum ----
+    def _beat_bind_latency(self):
+        from app.core import beat_studio
+        st = getattr(self._manager, "settings", None)
+        if st is not None:
+            beat_studio.set_global_latency_getter(lambda: st.get("beat_latency_ms", 0.0))
+        return beat_studio
+
+    def beat_latency_get(self, pid: str = "") -> dict[str, Any]:
+        """Genel gecikme ayari + (pid verilirse) projenin etkin degeri ve kaynagi."""
+        bs = self._beat_bind_latency()
+        out: dict[str, Any] = {"ok": True, "global_ms": bs.global_latency_ms()}
+        if pid:
+            ld = bs.load_project(pid)
+            if ld.get("ok"):
+                out["project_ms"] = float(ld["project"].get("latency_ms") or 0.0)
+                out.update(effective=bs.effective_latency(ld["project"]))
+        return out
+
+    def beat_latency_set(self, ms: float) -> dict[str, Any]:
+        """Genel (kalici) kayit gecikmesi; -500..500 ms. Uygulama yeniden acilinca da gecerli."""
+        try:
+            self._manager.settings.set("beat_latency_ms", ms)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "bad_value"}
+        return {"ok": True, "global_ms": self._manager.settings.get("beat_latency_ms")}
+
+    def beat_latency_probe(self) -> dict[str, Any]:
+        """Arayuzun Web Audio ile birebir ayni tik dizisini uretmesi icin parametreler."""
+        from app.core import beat_studio
+        return {"ok": True, "sr": beat_studio.LAT_SR, **beat_studio.LAT_PROBE}
+
+    def beat_latency_listen_start(self, device_id: int = -1) -> dict[str, Any]:
+        from app.core import kami_booth
+        return kami_booth.LATENCY.start(None if device_id is None or int(device_id) < 0 else int(device_id))
+
+    def beat_latency_listen_ready(self) -> dict[str, Any]:
+        from app.core import kami_booth
+        return {"ok": True, "ready": kami_booth.LATENCY.ready()}
+
+    def beat_latency_listen_stop(self, play_wall: float = 0.0) -> dict[str, Any]:
+        """play_wall: tik dizisinin calindigi duvar saati (epoch sn, arayuzun saat capasindan)."""
+        from app.core import kami_booth
+        if not play_wall:
+            return kami_booth.LATENCY.cancel()
+        return kami_booth.LATENCY.stop(float(play_wall))
+
+    def beat_find_lyric_start(self, pid: str) -> dict[str, Any]:
+        """R3 'Vokalden bul': vokal kanalindaki ilk klibin ilk sesli ani, yoksa ilk Verse baslangici."""
+        from app.core import beat_sections, beat_studio
+        ld = beat_studio.load_project(pid)
+        if not ld.get("ok"):
+            return ld
+        return beat_sections.find_lyric_start(ld["project"])
 
     def beat_analyze_sections(self, pid: str, path: str = "") -> dict[str, Any]:
         """1c (arka plan isi): BPM + ton + bolum haritasi; projeye yazmaz, arayuz uygular."""
@@ -6772,12 +6830,14 @@ class Api(StudioMixin, EnhanceMixin):
         return kami_booth.list_input_devices()
 
     def booth_rec_start(self, pid: str = "", track_id: str = "vocal1", device_id: int = -1, start_sec: float = -1.0) -> dict[str, Any]:
+        self._beat_bind_latency()   # R2: genel gecikme ayari yeni kayitlara uygulansin
         from app.core import kami_booth
         return kami_booth.RECORDER.start(pid, track_id, None if device_id < 0 else int(device_id),
                                          timeline_start=None if start_sec is None or float(start_sec) < 0 else float(start_sec))
 
     def booth_rec_stop(self, ai_clean: bool = True, plan: dict | None = None) -> dict[str, Any]:
         """plan (1b): {mode: linear|loop|punch, anchor_u, anchor_wall, keep_from, loop_a, loop_b, clip_id, t0, t1, track_id}."""
+        self._beat_bind_latency()   # R2: genel gecikme ayari yeni kayitlara uygulansin
         from app.core import kami_booth
         return kami_booth.RECORDER.stop(ai_clean=bool(ai_clean), plan=plan if isinstance(plan, dict) else None)
 
@@ -6791,6 +6851,7 @@ class Api(StudioMixin, EnhanceMixin):
         return kami_booth.RECORDER.status()
 
     def booth_server_start(self, pid: str = "", track_id: str = "vocal1") -> dict[str, Any]:
+        self._beat_bind_latency()   # R2: genel gecikme ayari yeni kayitlara uygulansin
         from app.core import kami_booth
         return kami_booth.BOOTH.start(pid, track_id)
 

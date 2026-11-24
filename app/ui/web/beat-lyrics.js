@@ -107,7 +107,13 @@
     return out;
   }
 
-  function lineTimes(text, sections, bpm, barsPerLine = 1, anchors = null, beatsPerBar = 4) {
+  function lyricStart(v) {
+    if (v === null || v === undefined || v === "" || typeof v === "boolean") return null;
+    const x = f(v, -1);
+    return x >= 0 ? r6(x) : null;
+  }
+
+  function lineTimes(text, sections, bpm, barsPerLine = 1, anchors = null, beatsPerBar = 4, start = null) {
     const p = parseLyrics(text);
     const secs = sections ? Array.from(sections) : [];
     bpm = f(bpm, 120);
@@ -119,6 +125,8 @@
     const texts = p.lines.filter((x) => x.kind === "line").map((x) => x.text);
     const anc = resolveAnchors(anchors, texts);
     const owner = assignBlocks(p.blocks, secs);
+    const st = lyricStart(start);
+    const first = p.blocks.findIndex((b) => b.lines.length > 0);
     const out = [];
     let prevEnd = 0;
     p.blocks.forEach((b, bi) => {
@@ -126,7 +134,7 @@
       const sec = k >= 0 && k < secs.length ? secs[k] : null;
       const bpl = sec ? f(sec.bars_per_line, 0) : 0;
       const step = bar * (bpl > 0 ? bpl : gBpl);
-      const start = sec ? f(sec.start, 0) : prevEnd;
+      const start = bi === first && st !== null ? st : (sec ? f(sec.start, 0) : prevEnd);
       let baseT = start, baseJ = 0, t = start;
       b.lines.forEach((n, j) => {
         const has = Object.prototype.hasOwnProperty.call(anc, n);
@@ -163,12 +171,13 @@
 
   const api = {
     trLower, headerName, sectionBase, parseLyrics, assignBlocks, resolveAnchors, lineTimes, syncLine, unsyncLine, activeLine,
+    lyricStart,
   };
   // Python adlariyla da (testler ayni adla cagirir)
   Object.assign(api, {
     tr_lower: trLower, header_name: headerName, section_base: sectionBase, parse_lyrics: parseLyrics,
     assign_blocks: assignBlocks, resolve_anchors: resolveAnchors, line_times: lineTimes, sync_line: syncLine,
-    unsync_line: unsyncLine, active_line: activeLine,
+    unsync_line: unsyncLine, active_line: activeLine, lyric_start: lyricStart,
   });
   root.BeatLyrics = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
